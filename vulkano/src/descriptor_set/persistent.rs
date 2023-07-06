@@ -31,7 +31,7 @@ use crate::{
         UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
-    VulkanError, VulkanObject,
+    Validated, VulkanError, VulkanObject,
 };
 use std::{
     hash::{Hash, Hasher},
@@ -54,7 +54,7 @@ impl PersistentDescriptorSet {
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
         descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, VulkanError>
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, Validated<VulkanError>>
     where
         A: DescriptorSetAllocator + ?Sized,
     {
@@ -74,7 +74,7 @@ impl PersistentDescriptorSet {
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
         descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, VulkanError>
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, Validated<VulkanError>>
     where
         A: DescriptorSetAllocator + ?Sized,
     {

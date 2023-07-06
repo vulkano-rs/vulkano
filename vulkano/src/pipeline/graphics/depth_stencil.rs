@@ -87,7 +87,7 @@ impl DepthStencilState {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref depth,
@@ -112,7 +112,7 @@ impl DepthStencilState {
 
         if let Some(depth_bounds_state) = depth_bounds {
             if !device.enabled_features().depth_bounds {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "depth_bounds".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
@@ -121,7 +121,7 @@ impl DepthStencilState {
                     vuids: &[
                         "VUID-VkPipelineDepthStencilStateCreateInfo-depthBoundsTestEnable-00598",
                     ],
-                });
+                }));
             }
 
             depth_bounds_state
@@ -198,7 +198,7 @@ pub struct DepthState {
 }
 
 impl DepthState {
-    pub(crate) fn validate(self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self {
             enable_dynamic,
             write_enable,
@@ -209,7 +209,7 @@ impl DepthState {
             && !(device.api_version() >= Version::V1_3
                 || device.enabled_features().extended_dynamic_state)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "enable_dynamic".into(),
                 problem: "is `true`".into(),
                 requires_one_of: RequiresOneOf(&[
@@ -218,7 +218,7 @@ impl DepthState {
                 ]),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         match write_enable {
@@ -227,7 +227,7 @@ impl DepthState {
                 if !(device.api_version() >= Version::V1_3
                     || device.enabled_features().extended_dynamic_state)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "write_enable".into(),
                         problem: "is dynamic".into(),
                         requires_one_of: RequiresOneOf(&[
@@ -236,7 +236,7 @@ impl DepthState {
                         ]),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -257,7 +257,7 @@ impl DepthState {
                 if !(device.api_version() >= Version::V1_3
                     || device.enabled_features().extended_dynamic_state)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "compare_op".into(),
                         problem: "is dynamic".into(),
                         requires_one_of: RequiresOneOf(&[
@@ -266,7 +266,7 @@ impl DepthState {
                         ]),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -310,7 +310,7 @@ pub struct DepthBoundsState {
 }
 
 impl DepthBoundsState {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             enable_dynamic,
             ref bounds,
@@ -320,7 +320,7 @@ impl DepthBoundsState {
             && !(device.api_version() >= Version::V1_3
                 || device.enabled_features().extended_dynamic_state)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "enable_dynamic".into(),
                 problem: "is `true`".into(),
                 requires_one_of: RequiresOneOf(&[
@@ -329,31 +329,31 @@ impl DepthBoundsState {
                 ]),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         if let StateMode::Fixed(bounds) = bounds {
             if !device.enabled_extensions().ext_depth_range_unrestricted {
                 if !(0.0..1.0).contains(bounds.start()) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "bounds.start".into(),
                         problem: "is not between 0.0 and 1.0 inclusive".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceExtension("ext_depth_range_unrestricted"),
                         ])]),
                         vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510"],
-                    });
+                    }));
                 }
 
                 if !(0.0..1.0).contains(bounds.end()) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "bounds.end".into(),
                         problem: "is not between 0.0 and 1.0 inclusive".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceExtension("ext_depth_range_unrestricted"),
                         ])]),
                         vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510"],
-                    });
+                    }));
                 }
             }
         }
@@ -397,7 +397,7 @@ pub struct StencilState {
 }
 
 impl StencilState {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &StencilState {
             enable_dynamic,
             ref front,
@@ -408,7 +408,7 @@ impl StencilState {
             && !(device.api_version() >= Version::V1_3
                 || device.enabled_features().extended_dynamic_state)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "enable_dynamic".into(),
                 problem: "is `true`".into(),
                 requires_one_of: RequiresOneOf(&[
@@ -417,7 +417,7 @@ impl StencilState {
                 ]),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         match (front.ops, back.ops) {
@@ -433,7 +433,7 @@ impl StencilState {
                 if !(device.api_version() >= Version::V1_3
                     || device.enabled_features().extended_dynamic_state)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`front.ops` and `back.ops` are dynamic".into(),
                         requires_one_of: RequiresOneOf(&[
                             RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
@@ -441,17 +441,17 @@ impl StencilState {
                         ]),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             _ => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`front.ops` and `back.ops` are \
                         not both fixed or both dynamic"
                         .into(),
                     // vuids?
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -459,39 +459,39 @@ impl StencilState {
             (front.compare_mask, back.compare_mask),
             (StateMode::Fixed(_), StateMode::Fixed(_)) | (StateMode::Dynamic, StateMode::Dynamic)
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`front.compare_mask` and `back.compare_mask` are \
                     not both fixed or both dynamic"
                     .into(),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         if !matches!(
             (front.write_mask, back.write_mask),
             (StateMode::Fixed(_), StateMode::Fixed(_)) | (StateMode::Dynamic, StateMode::Dynamic)
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`front.write_mask` and `back.write_mask` are \
                     not both fixed or both dynamic"
                     .into(),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         if !matches!(
             (front.reference, back.reference),
             (StateMode::Fixed(_), StateMode::Fixed(_)) | (StateMode::Dynamic, StateMode::Dynamic)
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`front.reference` and `back.reference` are \
                     not both fixed or both dynamic"
                     .into(),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -560,7 +560,7 @@ pub struct StencilOps {
 }
 
 impl StencilOps {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             fail_op,
             pass_op,

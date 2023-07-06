@@ -29,7 +29,7 @@ use crate::{
         semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
         Sharing,
     },
-    DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
 };
 use bytemuck::cast_slice;
@@ -95,7 +95,7 @@ impl PhysicalDevice {
     pub unsafe fn from_handle(
         instance: Arc<Instance>,
         handle: ash::vk::PhysicalDevice,
-    ) -> Result<Arc<Self>, RuntimeError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         let api_version = Self::get_api_version(handle, &instance);
         let extension_properties = Self::get_extension_properties(handle, &instance)?;
         let supported_extensions: DeviceExtensions = extension_properties
@@ -160,7 +160,7 @@ impl PhysicalDevice {
     unsafe fn get_extension_properties(
         handle: ash::vk::PhysicalDevice,
         instance: &Instance,
-    ) -> Result<Vec<ExtensionProperties>, RuntimeError> {
+    ) -> Result<Vec<ExtensionProperties>, VulkanError> {
         let fns = instance.fns();
 
         loop {
@@ -172,7 +172,7 @@ impl PhysicalDevice {
                 ptr::null_mut(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
             let mut output = Vec::with_capacity(count as usize);
             let result = (fns.v1_0.enumerate_device_extension_properties)(
@@ -188,7 +188,7 @@ impl PhysicalDevice {
                     return Ok(output.into_iter().map(Into::into).collect());
                 }
                 ash::vk::Result::INCOMPLETE => (),
-                err => return Err(RuntimeError::from(err)),
+                err => return Err(VulkanError::from(err)),
             }
         }
     }
@@ -429,7 +429,7 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         dfb: *const D,
-    ) -> Result<bool, ValidationError> {
+    ) -> Result<bool, Box<ValidationError>> {
         self.validate_directfb_presentation_support(queue_family_index, dfb)?;
 
         Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
@@ -439,18 +439,18 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         _dfb: *const D,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().ext_directfb_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_directfb_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
                     .into(),
@@ -458,7 +458,7 @@ impl PhysicalDevice {
                     "VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-queueFamilyIndex-04119",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-dfb-parameter
@@ -496,7 +496,7 @@ impl PhysicalDevice {
     pub fn external_buffer_properties(
         &self,
         info: ExternalBufferInfo,
-    ) -> Result<ExternalBufferProperties, ValidationError> {
+    ) -> Result<ExternalBufferProperties, Box<ValidationError>> {
         self.validate_external_buffer_properties(&info)?;
 
         unsafe { Ok(self.external_buffer_properties_unchecked(info)) }
@@ -505,14 +505,14 @@ impl PhysicalDevice {
     fn validate_external_buffer_properties(
         &self,
         info: &ExternalBufferInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_memory_capabilities)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
                     RequiresAllOf(&[Requires::InstanceExtension(
@@ -520,7 +520,7 @@ impl PhysicalDevice {
                     )]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         info.validate(self).map_err(|err| err.add_context("info"))?;
@@ -596,7 +596,7 @@ impl PhysicalDevice {
     pub fn external_fence_properties(
         &self,
         info: ExternalFenceInfo,
-    ) -> Result<ExternalFenceProperties, ValidationError> {
+    ) -> Result<ExternalFenceProperties, Box<ValidationError>> {
         self.validate_external_fence_properties(&info)?;
 
         unsafe { Ok(self.external_fence_properties_unchecked(info)) }
@@ -605,14 +605,14 @@ impl PhysicalDevice {
     fn validate_external_fence_properties(
         &self,
         info: &ExternalFenceInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_fence_capabilities)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
                     RequiresAllOf(&[Requires::InstanceExtension(
@@ -620,7 +620,7 @@ impl PhysicalDevice {
                     )]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         info.validate(self).map_err(|err| err.add_context("info"))?;
@@ -699,7 +699,7 @@ impl PhysicalDevice {
     pub fn external_semaphore_properties(
         &self,
         info: ExternalSemaphoreInfo,
-    ) -> Result<ExternalSemaphoreProperties, ValidationError> {
+    ) -> Result<ExternalSemaphoreProperties, Box<ValidationError>> {
         self.validate_external_semaphore_properties(&info)?;
 
         unsafe { Ok(self.external_semaphore_properties_unchecked(info)) }
@@ -708,14 +708,14 @@ impl PhysicalDevice {
     fn validate_external_semaphore_properties(
         &self,
         info: &ExternalSemaphoreInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_semaphore_capabilities)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
                     RequiresAllOf(&[Requires::InstanceExtension(
@@ -723,7 +723,7 @@ impl PhysicalDevice {
                     )]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         info.validate(self).map_err(|err| err.add_context("info"))?;
@@ -797,13 +797,16 @@ impl PhysicalDevice {
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
     #[inline]
-    pub fn format_properties(&self, format: Format) -> Result<FormatProperties, ValidationError> {
+    pub fn format_properties(
+        &self,
+        format: Format,
+    ) -> Result<FormatProperties, Box<ValidationError>> {
         self.validate_format_properties(format)?;
 
         unsafe { Ok(self.format_properties_unchecked(format)) }
     }
 
-    fn validate_format_properties(&self, format: Format) -> Result<(), ValidationError> {
+    fn validate_format_properties(&self, format: Format) -> Result<(), Box<ValidationError>> {
         format
             .validate_physical_device(self)
             .map_err(|err| ValidationError {
@@ -993,7 +996,7 @@ impl PhysicalDevice {
     pub fn image_format_properties(
         &self,
         image_format_info: ImageFormatInfo,
-    ) -> Result<Option<ImageFormatProperties>, VulkanError> {
+    ) -> Result<Option<ImageFormatProperties>, Validated<VulkanError>> {
         self.validate_image_format_properties(&image_format_info)?;
 
         unsafe { Ok(self.image_format_properties_unchecked(image_format_info)?) }
@@ -1002,7 +1005,7 @@ impl PhysicalDevice {
     fn validate_image_format_properties(
         &self,
         image_format_info: &ImageFormatInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         image_format_info
             .validate(self)
             .map_err(|err| err.add_context("image_format_info"))?;
@@ -1015,7 +1018,7 @@ impl PhysicalDevice {
     pub unsafe fn image_format_properties_unchecked(
         &self,
         mut image_format_info: ImageFormatInfo,
-    ) -> Result<Option<ImageFormatProperties>, RuntimeError> {
+    ) -> Result<Option<ImageFormatProperties>, VulkanError> {
         {
             let ImageFormatInfo {
                 format,
@@ -1193,7 +1196,7 @@ impl PhysicalDevice {
                         )
                     }
                     .result()
-                    .map_err(RuntimeError::from)
+                    .map_err(VulkanError::from)
                 };
 
                 Ok(match result {
@@ -1211,7 +1214,7 @@ impl PhysicalDevice {
                             }),
                         ..properties2_vk.image_format_properties.into()
                     }),
-                    Err(RuntimeError::FormatNotSupported) => None,
+                    Err(VulkanError::FormatNotSupported) => None,
                     Err(err) => return Err(err),
                 })
             })
@@ -1227,7 +1230,7 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         window: *const W,
-    ) -> Result<bool, ValidationError> {
+    ) -> Result<bool, Box<ValidationError>> {
         self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
 
         Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
@@ -1237,18 +1240,18 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         _window: *const W,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().qnx_screen_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "qnx_screen_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
                     .into(),
@@ -1256,7 +1259,7 @@ impl PhysicalDevice {
                     "VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-queueFamilyIndex-04743",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-window-parameter
@@ -1292,7 +1295,7 @@ impl PhysicalDevice {
     pub fn sparse_image_format_properties(
         &self,
         format_info: SparseImageFormatInfo,
-    ) -> Result<Vec<SparseImageFormatProperties>, ValidationError> {
+    ) -> Result<Vec<SparseImageFormatProperties>, Box<ValidationError>> {
         self.validate_sparse_image_format_properties(&format_info)?;
 
         unsafe { Ok(self.sparse_image_format_properties_unchecked(format_info)) }
@@ -1301,7 +1304,7 @@ impl PhysicalDevice {
     fn validate_sparse_image_format_properties(
         &self,
         format_info: &SparseImageFormatInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         format_info
             .validate(self)
             .map_err(|err| err.add_context("format_info"))?;
@@ -1470,7 +1473,7 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<SurfaceCapabilities, VulkanError> {
+    ) -> Result<SurfaceCapabilities, Validated<VulkanError>> {
         self.validate_surface_capabilities(surface, &surface_info)?;
 
         unsafe { Ok(self.surface_capabilities_unchecked(surface, surface_info)?) }
@@ -1480,20 +1483,20 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: &SurfaceInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !(self
             .instance
             .enabled_extensions()
             .khr_get_surface_capabilities2
             || self.instance.enabled_extensions().khr_surface)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::InstanceExtension("khr_get_surface_capabilities2")]),
                     RequiresAllOf(&[Requires::InstanceExtension("khr_surface")]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-commonparent
@@ -1503,12 +1506,12 @@ impl PhysicalDevice {
             self.surface_support_unchecked(index, surface)
                 .unwrap_or_default()
         }) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "surface".into(),
                 problem: "is not supported by the physical device".into(),
                 vuids: &["VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pSurfaceInfo-06210"],
                 ..Default::default()
-            });
+            }));
         }
 
         surface_info
@@ -1533,11 +1536,11 @@ impl PhysicalDevice {
             };
 
             if !present_modes.any(|mode| mode == present_mode) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface_info.present_mode` is not supported for `surface`".into(),
                     vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-07780"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -1547,7 +1550,7 @@ impl PhysicalDevice {
             win32_monitor.is_some(),
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface` is a Win32 surface, and \
                         `surface_info.full_screen_exclusive` is \
                         `FullScreenExclusive::ApplicationControlled`, but \
@@ -1555,17 +1558,17 @@ impl PhysicalDevice {
                         .into(),
                     vuids: &["VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface` is not a Win32 surface, or \
                         `surface_info.full_screen_exclusive` is not \
                         `FullScreenExclusive::ApplicationControlled`, but \
                         `surface_info.win32_monitor` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (true, true) | (false, false) => (),
         }
@@ -1578,7 +1581,7 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<SurfaceCapabilities, RuntimeError> {
+    ) -> Result<SurfaceCapabilities, VulkanError> {
         /* Input */
 
         let SurfaceInfo {
@@ -1696,7 +1699,7 @@ impl PhysicalDevice {
                 &mut capabilities_vk,
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
         } else {
             (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
                 self.handle(),
@@ -1704,7 +1707,7 @@ impl PhysicalDevice {
                 &mut capabilities_vk.surface_capabilities,
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
         };
 
         Ok(SurfaceCapabilities {
@@ -1835,7 +1838,7 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
+    ) -> Result<Vec<(Format, ColorSpace)>, Validated<VulkanError>> {
         self.validate_surface_formats(surface, &surface_info)?;
 
         unsafe { Ok(self.surface_formats_unchecked(surface, surface_info)?) }
@@ -1845,20 +1848,20 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: &SurfaceInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !(self
             .instance
             .enabled_extensions()
             .khr_get_surface_capabilities2
             || self.instance.enabled_extensions().khr_surface)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::InstanceExtension("khr_get_surface_capabilities2")]),
                     RequiresAllOf(&[Requires::InstanceExtension("khr_surface")]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-commonparent
@@ -1868,12 +1871,12 @@ impl PhysicalDevice {
             self.surface_support_unchecked(index, surface)
                 .unwrap_or_default()
         }) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "surface".into(),
                 problem: "is not supported by the physical device".into(),
                 vuids: &["VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-pSurfaceInfo-06522"],
                 ..Default::default()
-            });
+            }));
         }
 
         surface_info
@@ -1898,11 +1901,11 @@ impl PhysicalDevice {
             };
 
             if !present_modes.any(|mode| mode == present_mode) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface_info.present_mode` is not supported for `surface`".into(),
                     vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-07780"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -1912,25 +1915,25 @@ impl PhysicalDevice {
             .khr_get_surface_capabilities2
         {
             if full_screen_exclusive != FullScreenExclusive::Default {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "surface_info.full_screen_exclusive".into(),
                     problem: "is not `FullScreenExclusive::Default`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                         Requires::InstanceExtension("khr_get_surface_capabilities2"),
                     ])]),
                     ..Default::default()
-                });
+                }));
             }
 
             if win32_monitor.is_some() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "surface_info.win32_monitor".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                         Requires::InstanceExtension("khr_get_surface_capabilities2"),
                     ])]),
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -1940,7 +1943,7 @@ impl PhysicalDevice {
             win32_monitor.is_some(),
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface` is a Win32 surface, and \
                         `surface_info.full_screen_exclusive` is \
                         `FullScreenExclusive::ApplicationControlled`, but \
@@ -1948,17 +1951,17 @@ impl PhysicalDevice {
                         .into(),
                     vuids: &["VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface` is not a Win32 surface, or \
                         `surface_info.full_screen_exclusive` is not \
                         `FullScreenExclusive::ApplicationControlled`, but \
                         `surface_info.win32_monitor` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (true, true) | (false, false) => (),
         }
@@ -1971,7 +1974,7 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<Vec<(Format, ColorSpace)>, RuntimeError> {
+    ) -> Result<Vec<(Format, ColorSpace)>, VulkanError> {
         surface.surface_formats.get_or_try_insert(
             (self.handle, surface_info),
             |(_, surface_info)| {
@@ -2041,7 +2044,7 @@ impl PhysicalDevice {
                             ptr::null_mut(),
                         )
                         .result()
-                        .map_err(RuntimeError::from)?;
+                        .map_err(VulkanError::from)?;
 
                         let mut surface_format2s_vk =
                             vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
@@ -2060,7 +2063,7 @@ impl PhysicalDevice {
                                 break surface_format2s_vk;
                             }
                             ash::vk::Result::INCOMPLETE => (),
-                            err => return Err(RuntimeError::from(err)),
+                            err => return Err(VulkanError::from(err)),
                         }
                     };
 
@@ -2081,7 +2084,7 @@ impl PhysicalDevice {
                             ptr::null_mut(),
                         )
                         .result()
-                        .map_err(RuntimeError::from)?;
+                        .map_err(VulkanError::from)?;
 
                         let mut surface_formats = Vec::with_capacity(count as usize);
                         let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
@@ -2097,7 +2100,7 @@ impl PhysicalDevice {
                                 break surface_formats;
                             }
                             ash::vk::Result::INCOMPLETE => (),
-                            err => return Err(RuntimeError::from(err)),
+                            err => return Err(VulkanError::from(err)),
                         }
                     };
 
@@ -2124,20 +2127,23 @@ impl PhysicalDevice {
     pub fn surface_present_modes(
         &self,
         surface: &Surface,
-    ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
+    ) -> Result<impl Iterator<Item = PresentMode>, Validated<VulkanError>> {
         self.validate_surface_present_modes(surface)?;
 
         unsafe { Ok(self.surface_present_modes_unchecked(surface)?) }
     }
 
-    fn validate_surface_present_modes(&self, surface: &Surface) -> Result<(), ValidationError> {
+    fn validate_surface_present_modes(
+        &self,
+        surface: &Surface,
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-commonparent
@@ -2147,12 +2153,12 @@ impl PhysicalDevice {
             self.surface_support_unchecked(index, surface)
                 .unwrap_or_default()
         }) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "surface".into(),
                 problem: "is not supported by the physical device".into(),
                 vuids: &["VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-surface-06525"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -2162,7 +2168,7 @@ impl PhysicalDevice {
     pub unsafe fn surface_present_modes_unchecked(
         &self,
         surface: &Surface,
-    ) -> Result<impl Iterator<Item = PresentMode>, RuntimeError> {
+    ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
         surface
             .surface_present_modes
             .get_or_try_insert(self.handle, |_| {
@@ -2178,7 +2184,7 @@ impl PhysicalDevice {
                         ptr::null_mut(),
                     )
                     .result()
-                    .map_err(RuntimeError::from)?;
+                    .map_err(VulkanError::from)?;
 
                     let mut modes = Vec::with_capacity(count as usize);
                     let result = (fns
@@ -2196,7 +2202,7 @@ impl PhysicalDevice {
                             break modes;
                         }
                         ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(RuntimeError::from(err)),
+                        err => return Err(VulkanError::from(err)),
                     }
                 };
 
@@ -2217,7 +2223,7 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         surface: &Surface,
-    ) -> Result<bool, VulkanError> {
+    ) -> Result<bool, Validated<VulkanError>> {
         self.validate_surface_support(queue_family_index, surface)?;
 
         unsafe { Ok(self.surface_support_unchecked(queue_family_index, surface)?) }
@@ -2227,24 +2233,24 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         _surface: &Surface,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
                     .into(),
                 vuids: &["VUID-vkGetPhysicalDeviceSurfaceSupportKHR-queueFamilyIndex-01269"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -2255,7 +2261,7 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         surface: &Surface,
-    ) -> Result<bool, RuntimeError> {
+    ) -> Result<bool, VulkanError> {
         surface
             .surface_support
             .get_or_try_insert((self.handle, queue_family_index), |_| {
@@ -2269,7 +2275,7 @@ impl PhysicalDevice {
                     output.as_mut_ptr(),
                 )
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
 
                 Ok(output.assume_init() != 0)
             })
@@ -2284,21 +2290,21 @@ impl PhysicalDevice {
     /// [`ext_tooling_info`](crate::device::DeviceExtensions::ext_tooling_info)
     /// extension must be supported by the physical device.
     #[inline]
-    pub fn tool_properties(&self) -> Result<Vec<ToolProperties>, VulkanError> {
+    pub fn tool_properties(&self) -> Result<Vec<ToolProperties>, Validated<VulkanError>> {
         self.validate_tool_properties()?;
 
         unsafe { Ok(self.tool_properties_unchecked()?) }
     }
 
-    fn validate_tool_properties(&self) -> Result<(), ValidationError> {
+    fn validate_tool_properties(&self) -> Result<(), Box<ValidationError>> {
         if !(self.api_version() >= Version::V1_3 || self.supported_extensions().ext_tooling_info) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
                     RequiresAllOf(&[Requires::DeviceExtension("ext_tooling_info")]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -2306,7 +2312,7 @@ impl PhysicalDevice {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub unsafe fn tool_properties_unchecked(&self) -> Result<Vec<ToolProperties>, RuntimeError> {
+    pub unsafe fn tool_properties_unchecked(&self) -> Result<Vec<ToolProperties>, VulkanError> {
         let fns = self.instance.fns();
 
         loop {
@@ -2326,7 +2332,7 @@ impl PhysicalDevice {
                 )
             }
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
             let mut tool_properties = Vec::with_capacity(count as usize);
             let result = if self.api_version() >= Version::V1_3 {
@@ -2375,7 +2381,7 @@ impl PhysicalDevice {
                         })
                         .collect());
                 }
-                err => return Err(RuntimeError::from(err)),
+                err => return Err(VulkanError::from(err)),
             }
         }
     }
@@ -2390,7 +2396,7 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         display: *const D,
-    ) -> Result<bool, ValidationError> {
+    ) -> Result<bool, Box<ValidationError>> {
         self.validate_wayland_presentation_support(queue_family_index, display)?;
 
         Ok(self.wayland_presentation_support_unchecked(queue_family_index, display))
@@ -2400,18 +2406,18 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         _display: *const D,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_wayland_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_wayland_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
                     .into(),
@@ -2419,7 +2425,7 @@ impl PhysicalDevice {
                     "VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-queueFamilyIndex-01306",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-display-parameter
@@ -2449,7 +2455,7 @@ impl PhysicalDevice {
     pub fn win32_presentation_support(
         &self,
         queue_family_index: u32,
-    ) -> Result<bool, ValidationError> {
+    ) -> Result<bool, Box<ValidationError>> {
         self.validate_win32_presentation_support(queue_family_index)?;
 
         unsafe { Ok(self.win32_presentation_support_unchecked(queue_family_index)) }
@@ -2458,18 +2464,18 @@ impl PhysicalDevice {
     fn validate_win32_presentation_support(
         &self,
         queue_family_index: u32,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_win32_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_win32_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
                     .into(),
@@ -2477,7 +2483,7 @@ impl PhysicalDevice {
                     "VUID-vkGetPhysicalDeviceWin32PresentationSupportKHR-queueFamilyIndex-01309",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -2504,7 +2510,7 @@ impl PhysicalDevice {
         queue_family_index: u32,
         connection: *const C,
         visual_id: ash::vk::xcb_visualid_t,
-    ) -> Result<bool, ValidationError> {
+    ) -> Result<bool, Box<ValidationError>> {
         self.validate_xcb_presentation_support(queue_family_index, connection, visual_id)?;
 
         Ok(self.xcb_presentation_support_unchecked(queue_family_index, connection, visual_id))
@@ -2515,18 +2521,18 @@ impl PhysicalDevice {
         queue_family_index: u32,
         _connection: *const C,
         _visual_id: ash::vk::xcb_visualid_t,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_xcb_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_xcb_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
                     .into(),
@@ -2534,7 +2540,7 @@ impl PhysicalDevice {
                     "VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-queueFamilyIndex-01312",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-connection-parameter
@@ -2571,7 +2577,7 @@ impl PhysicalDevice {
         queue_family_index: u32,
         display: *const D,
         visual_id: ash::vk::VisualID,
-    ) -> Result<bool, ValidationError> {
+    ) -> Result<bool, Box<ValidationError>> {
         self.validate_xlib_presentation_support(queue_family_index, display, visual_id)?;
 
         Ok(self.xlib_presentation_support_unchecked(queue_family_index, display, visual_id))
@@ -2582,18 +2588,18 @@ impl PhysicalDevice {
         queue_family_index: u32,
         _display: *const D,
         _visual_id: ash::vk::VisualID,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_xlib_surface {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_xlib_surface",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
                     .into(),
@@ -2601,7 +2607,7 @@ impl PhysicalDevice {
                     "VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-queueFamilyIndex-01315",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-dpy-parameter

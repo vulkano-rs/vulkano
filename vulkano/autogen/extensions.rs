@@ -160,13 +160,13 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
                         quote! {
                             if !(#(#condition_items)||*) {
-                                return Err(crate::ValidationError {
+                                return Err(Box::new(crate::ValidationError {
                                     problem: #problem.into(),
                                     requires_one_of: crate::RequiresOneOf(&[
                                         #(#requires_one_of_items)*
                                     ]),
                                     ..Default::default()
-                                });
+                                }));
                             }
                         }
                     })
@@ -180,10 +180,10 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             quote! {
                 if self.#name {
                     if !supported.#name {
-                        return Err(crate::ValidationError {
+                        return Err(Box::new(crate::ValidationError {
                             problem: #problem.into(),
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     #(#dependency_check_items)*
@@ -277,7 +277,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 supported: &DeviceExtensions,
                 api_version: crate::Version,
                 instance_extensions: &crate::instance::InstanceExtensions,
-            ) -> Result<(), crate::ValidationError> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 #(#check_requirements_items)*
                 Ok(())
             }
@@ -317,7 +317,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
                         quote! {
                             if !(api_version >= crate::Version::#version) {
-                                return Err(crate::ValidationError {
+                                return Err(Box::new(crate::ValidationError {
                                     problem: #problem.into(),
                                     requires_one_of: crate::RequiresOneOf(&[
                                         crate::RequiresAllOf(&[
@@ -325,7 +325,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                                         ]),
                                     ]),
                                     ..Default::default()
-                                });
+                                }));
                             }
                         }
                     })
@@ -339,10 +339,10 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             quote! {
                 if self.#name {
                     if !supported.#name {
-                        return Err(crate::ValidationError {
+                        return Err(Box::new(crate::ValidationError {
                             problem: #problem.into(),
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     #(#dependency_check_items)*
@@ -435,7 +435,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 &self,
                 supported: &InstanceExtensions,
                 api_version: crate::Version,
-            ) -> Result<(), crate::ValidationError> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 #(#check_requirements_items)*
                 Ok(())
             }

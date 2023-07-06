@@ -25,7 +25,7 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
-    RuntimeError, ValidationError, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -92,7 +92,7 @@ impl PipelineCache {
     pub unsafe fn new(
         device: Arc<Device>,
         create_info: PipelineCacheCreateInfo,
-    ) -> Result<Arc<PipelineCache>, VulkanError> {
+    ) -> Result<Arc<PipelineCache>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         Ok(Self::new_unchecked(device, create_info)?)
@@ -101,7 +101,7 @@ impl PipelineCache {
     fn validate_new(
         device: &Device,
         create_info: &PipelineCacheCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
@@ -113,7 +113,7 @@ impl PipelineCache {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: PipelineCacheCreateInfo,
-    ) -> Result<Arc<PipelineCache>, RuntimeError> {
+    ) -> Result<Arc<PipelineCache>, VulkanError> {
         let &PipelineCacheCreateInfo {
             flags,
             ref initial_data,
@@ -141,7 +141,7 @@ impl PipelineCache {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -205,7 +205,7 @@ impl PipelineCache {
     /// }
     /// ```
     #[inline]
-    pub fn get_data(&self) -> Result<Vec<u8>, RuntimeError> {
+    pub fn get_data(&self) -> Result<Vec<u8>, VulkanError> {
         let fns = self.device.fns();
 
         let data = unsafe {
@@ -218,7 +218,7 @@ impl PipelineCache {
                     ptr::null_mut(),
                 )
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
 
                 let mut data: Vec<u8> = Vec::with_capacity(count);
                 let result = (fns.v1_0.get_pipeline_cache_data)(
@@ -234,7 +234,7 @@ impl PipelineCache {
                         break data;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(RuntimeError::from(err)),
+                    err => return Err(VulkanError::from(err)),
                 }
             }
         };
@@ -251,22 +251,22 @@ impl PipelineCache {
     pub fn merge<'a>(
         &self,
         src_caches: impl IntoIterator<Item = &'a PipelineCache>,
-    ) -> Result<(), VulkanError> {
+    ) -> Result<(), Validated<VulkanError>> {
         let src_caches: SmallVec<[_; 8]> = src_caches.into_iter().collect();
         self.validate_merge(&src_caches)?;
 
         unsafe { Ok(self.merge_unchecked(src_caches)?) }
     }
 
-    fn validate_merge(&self, src_caches: &[&PipelineCache]) -> Result<(), ValidationError> {
+    fn validate_merge(&self, src_caches: &[&PipelineCache]) -> Result<(), Box<ValidationError>> {
         for (index, &src_cache) in src_caches.iter().enumerate() {
             if src_cache == self {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: format!("src_caches[{}]", index).into(),
                     problem: "equals `self`".into(),
                     vuids: &["VUID-vkMergePipelineCaches-dstCache-00770"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -277,7 +277,7 @@ impl PipelineCache {
     pub unsafe fn merge_unchecked<'a>(
         &self,
         src_caches: impl IntoIterator<Item = &'a PipelineCache>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let src_caches_vk: SmallVec<[_; 8]> =
             src_caches.into_iter().map(VulkanObject::handle).collect();
 
@@ -289,7 +289,7 @@ impl PipelineCache {
             src_caches_vk.as_ptr(),
         )
         .result()
-        .map_err(RuntimeError::from)?;
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -358,7 +358,7 @@ impl Default for PipelineCacheCreateInfo {
 }
 
 impl PipelineCacheCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             initial_data: _,

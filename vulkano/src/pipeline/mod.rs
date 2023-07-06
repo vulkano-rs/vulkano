@@ -336,7 +336,7 @@ impl PipelineShaderStageCreateInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref entry_point,
@@ -381,7 +381,7 @@ impl PipelineShaderStageCreateInfo {
             }
             ShaderStage::TessellationControl | ShaderStage::TessellationEvaluation => {
                 if !device.enabled_features().tessellation_shader {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "entry_point".into(),
                         problem: "specifies a `ShaderStage::TessellationControl` or \
                             `ShaderStage::TessellationEvaluation` entry point"
@@ -390,7 +390,7 @@ impl PipelineShaderStageCreateInfo {
                             "tessellation_shader",
                         )])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00705"],
-                    });
+                    }));
                 }
 
                 // VUID-VkPipelineShaderStageCreateInfo-stage-00713
@@ -398,14 +398,14 @@ impl PipelineShaderStageCreateInfo {
             }
             ShaderStage::Geometry => {
                 if !device.enabled_features().geometry_shader {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "entry_point".into(),
                         problem: "specifies a `ShaderStage::Geometry` entry point".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                             "geometry_shader",
                         )])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00704"],
-                    });
+                    }));
                 }
 
                 // TODO:
@@ -427,26 +427,26 @@ impl PipelineShaderStageCreateInfo {
             ShaderStage::Callable => (),
             ShaderStage::Task => {
                 if !device.enabled_features().task_shader {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "entry_point".into(),
                         problem: "specifies a `ShaderStage::Task` entry point".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                             "task_shader",
                         )])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02092"],
-                    });
+                    }));
                 }
             }
             ShaderStage::Mesh => {
                 if !device.enabled_features().mesh_shader {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "entry_point".into(),
                         problem: "specifies a `ShaderStage::Mesh` entry point".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                             "mesh_shader",
                         )])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02091"],
-                    });
+                    }));
                 }
             }
             ShaderStage::SubpassShading => (),
@@ -461,7 +461,7 @@ impl PipelineShaderStageCreateInfo {
             {
                 // Check for equal types rather than only equal size.
                 if !provided_value.eq_type(default_value) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`specialization_info[{0}]` does not have the same type as \
                             `entry_point.info().specialization_constants[{0}]`",
@@ -470,7 +470,7 @@ impl PipelineShaderStageCreateInfo {
                         .into(),
                         vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }

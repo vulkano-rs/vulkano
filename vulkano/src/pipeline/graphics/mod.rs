@@ -93,8 +93,7 @@ use crate::{
         DescriptorBindingRequirements, FragmentShaderExecution, FragmentTestsStages,
         ShaderExecution, ShaderScalarType, ShaderStage, ShaderStages,
     },
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
-    VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -154,7 +153,7 @@ impl GraphicsPipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: GraphicsPipelineCreateInfo,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
@@ -164,7 +163,7 @@ impl GraphicsPipeline {
         device: &Device,
         _cache: Option<&PipelineCache>,
         create_info: &GraphicsPipelineCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
@@ -177,7 +176,7 @@ impl GraphicsPipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: GraphicsPipelineCreateInfo,
-    ) -> Result<Arc<Self>, RuntimeError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         let &GraphicsPipelineCreateInfo {
             flags,
             ref stages,
@@ -1141,7 +1140,7 @@ impl GraphicsPipeline {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
             output.assume_init()
         };
@@ -1880,7 +1879,7 @@ impl GraphicsPipelineCreateInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref stages,
@@ -1926,7 +1925,7 @@ impl GraphicsPipelineCreateInfo {
             let stage_flag = ShaderStages::from(stage_enum);
 
             if stages_present.intersects(stage_flag) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: format!(
                         "contains more than one element whose stage is \
@@ -1936,7 +1935,7 @@ impl GraphicsPipelineCreateInfo {
                     .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-stage-06897"],
                     ..Default::default()
-                });
+                }));
             }
 
             const PRIMITIVE_SHADING_STAGES: ShaderStages = ShaderStages::VERTEX
@@ -1950,13 +1949,13 @@ impl GraphicsPipelineCreateInfo {
                 || stage_flag.intersects(MESH_SHADING_STAGES)
                     && stages_present.intersects(PRIMITIVE_SHADING_STAGES)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains both primitive shading stages and mesh shading stages"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02095"],
                     ..Default::default()
-                });
+                }));
             }
 
             let stage_slot = match stage_enum {
@@ -1966,12 +1965,12 @@ impl GraphicsPipelineCreateInfo {
                 ShaderStage::Geometry => &mut geometry_stage,
                 ShaderStage::Fragment => &mut fragment_stage,
                 _ => {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: format!("stages[{}]", stage_index).into(),
                         problem: "is not a pre-rasterization or fragment shader stage".into(),
                         vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06896"],
                         ..Default::default()
-                    });
+                    }));
                 }
             };
 
@@ -1991,24 +1990,24 @@ impl GraphicsPipelineCreateInfo {
             need_pre_rasterization_shader_state,
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization shader state, but \
                         `rasterization_state` is `Some`"
                         .into(),
                     // vuids?
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         pre-rasterization shader state, but \
                         `rasterization_state` is `None`"
                         .into(),
                     // vuids?
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2032,24 +2031,24 @@ impl GraphicsPipelineCreateInfo {
 
         match (vertex_stage.is_some(), need_pre_rasterization_shader_state) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization shader state, but `stages` contains a \
                         `ShaderStage::Vertex` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         pre-rasterization shader state, but `stages` does not contain a \
                         `ShaderStage::Vertex` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-stage-02096"],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2059,14 +2058,14 @@ impl GraphicsPipelineCreateInfo {
             need_pre_rasterization_shader_state,
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization shader state, but `stages` contains a \
                         `ShaderStage::TessellationControl` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => (),
             _ => (),
@@ -2077,14 +2076,14 @@ impl GraphicsPipelineCreateInfo {
             need_pre_rasterization_shader_state,
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization shader state, but `stages` contains a \
                         `ShaderStage::TessellationEvaluation` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => (),
             _ => (),
@@ -2093,25 +2092,25 @@ impl GraphicsPipelineCreateInfo {
         if stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
             && !stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains a `ShaderStage::TessellationControl` stage, but not a \
                     `ShaderStage::TessellationEvaluation` stage"
                     .into(),
                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00729"],
                 ..Default::default()
-            });
+            }));
         } else if stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
             && !stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains a `ShaderStage::TessellationEvaluation` stage, but not a \
                     `ShaderStage::TessellationControl` stage"
                     .into(),
                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00730"],
                 ..Default::default()
-            });
+            }));
         }
 
         match (
@@ -2119,14 +2118,14 @@ impl GraphicsPipelineCreateInfo {
             need_pre_rasterization_shader_state,
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization shader state, but `stages` contains a \
                         `ShaderStage::Geometry` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => (),
             _ => (),
@@ -2134,14 +2133,14 @@ impl GraphicsPipelineCreateInfo {
 
         match (fragment_stage.is_some(), need_fragment_shader_state) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         fragment shader state, but `stages` contains a \
                         `ShaderStage::Geometry` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06894"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => (),
             _ => (),
@@ -2149,46 +2148,46 @@ impl GraphicsPipelineCreateInfo {
 
         match (vertex_input_state.is_some(), need_vertex_input_state) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         vertex input state, but \
                         `vertex_input_state` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         vertex input state, but \
                         `vertex_input_state` is `None`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02097"],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
 
         match (input_assembly_state.is_some(), need_vertex_input_state) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         vertex input state, but \
                         `input_assembly_state` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         vertex input state, but \
                         `input_assembly_state` is `None`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02098"],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2201,17 +2200,17 @@ impl GraphicsPipelineCreateInfo {
                 ),
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization state, or \
                         `stages` does not contain tessellation shader stages, but \
                         `tessellation_state` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         pre-rasterization state, and \
                         `stages` contains tessellation shader stages, but \
@@ -2219,7 +2218,7 @@ impl GraphicsPipelineCreateInfo {
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00731"],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2234,17 +2233,17 @@ impl GraphicsPipelineCreateInfo {
                     != StateMode::Fixed(true),
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization state, or \
                         `rasterization_state.rasterization_discard_enable` is `true`, but \
                         `viewport_state` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         pre-rasterization state, and \
                         `rasterization_state.rasterization_discard_enable` is `false` \
@@ -2255,30 +2254,30 @@ impl GraphicsPipelineCreateInfo {
                         "VUID-VkGraphicsPipelineCreateInfo-pViewportState-04892",
                     ],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
 
         match (multisample_state.is_some(), need_fragment_output_state) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         fragment output state, but \
                         `multisample_state` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         fragment output state, but \
                         `multisample_state` is `None`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00751"],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2298,17 +2297,17 @@ impl GraphicsPipelineCreateInfo {
                 },
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         fragment output state, and \
                         `subpass` does not have a depth/stencil attachment, but \
                         `depth_stencil_state` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         fragment output state, or \
                         `subpass` has a depth/stencil attachment, but \
@@ -2320,7 +2319,7 @@ impl GraphicsPipelineCreateInfo {
                         "VUID-VkGraphicsPipelineCreateInfo-renderPass-06053",
                     ],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2339,17 +2338,17 @@ impl GraphicsPipelineCreateInfo {
                 },
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         fragment output state, or \
                         `subpass` does not have any color attachments, but \
                         `color_blend_state` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         fragment output state, and \
                         `subpass` has a color attachment, but \
@@ -2360,7 +2359,7 @@ impl GraphicsPipelineCreateInfo {
                         "VUID-VkGraphicsPipelineCreateInfo-renderPass-06054",
                     ],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2372,23 +2371,23 @@ impl GraphicsPipelineCreateInfo {
                 || need_fragment_output_state,
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization, fragment shader or fragment output state, but \
                         `subpass` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         pre-rasterization, fragment shader or fragment output state, but \
                         `subpass` is `None`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06575"],
                     ..Default::default()
-                });
+                }));
             }
             _ => (),
         }
@@ -2398,14 +2397,14 @@ impl GraphicsPipelineCreateInfo {
             need_pre_rasterization_shader_state,
         ) {
             (true, false) => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
                         pre-rasterization state, but \
                         `discard_rectangle_state` is `Some`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04058"],
                     ..Default::default()
-                });
+                }));
             }
             (false, true) => (),
             _ => (),
@@ -2461,7 +2460,7 @@ impl GraphicsPipelineCreateInfo {
             if let Err(err) = (input.entry_point.info().input_interface)
                 .matches(&output.entry_point.info().output_interface)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: format!(
                         "the output interface of the `ShaderStage::{:?}` stage does not \
@@ -2476,7 +2475,7 @@ impl GraphicsPipelineCreateInfo {
                         "VUID-VkGraphicsPipelineCreateInfo-None-04889",
                     ],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -2566,7 +2565,7 @@ impl GraphicsPipelineCreateInfo {
                                 | ShaderStages::TESSELLATION_EVALUATION,
                         ) && !device.enabled_features().multiview_tessellation_shader
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "`stages` contains tessellation shaders, and \
                                     `subpass` has a non-zero `view_mask`"
                                     .into(),
@@ -2575,13 +2574,13 @@ impl GraphicsPipelineCreateInfo {
                                 ])]),
                                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06047"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if stages_present.intersects(ShaderStages::GEOMETRY)
                             && !device.enabled_features().multiview_geometry_shader
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "`stages` contains a geometry shader, and \
                                     `subpass` has a non-zero `view_mask`"
                                     .into(),
@@ -2590,20 +2589,20 @@ impl GraphicsPipelineCreateInfo {
                                 ])]),
                                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06048"],
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
                 }
                 PipelineSubpassType::BeginRendering(rendering_info) => {
                     if !device.enabled_features().dynamic_rendering {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: "subpass".into(),
                             problem: "is `PipelineRenderPassType::BeginRendering`".into(),
                             requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                                 "dynamic_rendering",
                             )])]),
                             vuids: &["VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576"],
-                        });
+                        }));
                     }
 
                     rendering_info
@@ -2624,7 +2623,7 @@ impl GraphicsPipelineCreateInfo {
                                 | ShaderStages::TESSELLATION_EVALUATION,
                         ) && !device.enabled_features().multiview_tessellation_shader
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "`stages` contains tessellation shaders, and \
                                     `subpass.view_mask` is not 0"
                                     .into(),
@@ -2633,13 +2632,13 @@ impl GraphicsPipelineCreateInfo {
                                 ])]),
                                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06057"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if stages_present.intersects(ShaderStages::GEOMETRY)
                             && !device.enabled_features().multiview_geometry_shader
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "`stages` contains a geometry shader, and \
                                     `subpass.view_mask` is not 0"
                                     .into(),
@@ -2648,7 +2647,7 @@ impl GraphicsPipelineCreateInfo {
                                 ])]),
                                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06058"],
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
                 }
@@ -2657,14 +2656,14 @@ impl GraphicsPipelineCreateInfo {
 
         if let Some(discard_rectangle_state) = discard_rectangle_state {
             if !device.enabled_extensions().ext_discard_rectangles {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "discard_rectangle_state".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_discard_rectangles",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             discard_rectangle_state
@@ -2686,7 +2685,7 @@ impl GraphicsPipelineCreateInfo {
                     let attribute_desc = match vertex_input_state.attributes.get(&location) {
                         Some(attribute_desc) => attribute_desc,
                         None => {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "the vertex shader has an input variable with location {0}, but \
                                     `vertex_input_state.attributes` does not contain {0}",
@@ -2695,7 +2694,7 @@ impl GraphicsPipelineCreateInfo {
                                 .into(),
                                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-Input-07905"],
                                 ..Default::default()
-                            });
+                            }));
                         }
                     };
 
@@ -2720,7 +2719,7 @@ impl GraphicsPipelineCreateInfo {
                         ) | (ShaderScalarType::Sint, NumericType::SINT)
                             | (ShaderScalarType::Uint, NumericType::UINT)
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`vertex_input_state.attributes[{}].format` has a different \
                                 scalar type than the vertex shader input variable with \
@@ -2730,7 +2729,7 @@ impl GraphicsPipelineCreateInfo {
                             .into(),
                             vuids: &["VUID-VkGraphicsPipelineCreateInfo-Input-07905"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -2764,13 +2763,13 @@ impl GraphicsPipelineCreateInfo {
 
             if let PartialStateMode::Fixed(topology) = input_assembly_state.topology {
                 if !input.is_compatible_with(topology) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`input_assembly_state.topology` is not compatible with the \
                             input topology of the geometry shader"
                             .into(),
                         vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00738"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -2782,12 +2781,12 @@ impl GraphicsPipelineCreateInfo {
             match subpass {
                 PipelineSubpassType::BeginRenderPass(subpass) => {
                     if !subpass.is_compatible_with(&entry_point_info.output_interface) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`subpass` is not compatible with the \
                                 output interface of the fragment shader"
                                 .into(),
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
                 PipelineSubpassType::BeginRendering(_) => {
@@ -2808,13 +2807,13 @@ impl GraphicsPipelineCreateInfo {
                 PartialStateMode::Dynamic(PrimitiveTopologyClass::Patch)
                     | PartialStateMode::Fixed(PrimitiveTopology::PatchList)
             ) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`stages` contains tessellation shaders, but \
                         `input_assembly_state.topology` is not `PrimitiveTopology::PatchList`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00736"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -2833,7 +2832,7 @@ impl GraphicsPipelineCreateInfo {
                         )
                         && front_reference != back_reference
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "this device is a portability subset device, \
                                 `rasterization_state.cull_mode` is `CullMode::None`, and \
                                 `depth_stencil_state.stencil.front.reference` does not equal \
@@ -2843,7 +2842,7 @@ impl GraphicsPipelineCreateInfo {
                             )])]),
                             vuids: &["VUID-VkPipelineDepthStencilStateCreateInfo-separateStencilMaskRef-04453"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -2854,14 +2853,14 @@ impl GraphicsPipelineCreateInfo {
                 PipelineSubpassType::BeginRenderPass(subpass) => {
                     if let Some(samples) = subpass.num_samples() {
                         if multisample_state.rasterization_samples != samples {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "`multisample_state.rasterization_samples` does not \
                                     equal the number of samples in the color and depth/stencil \
                                     attachments of `subpass`"
                                     .into(),
                                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-subpass-00757"],
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
 
@@ -2899,13 +2898,13 @@ impl GraphicsPipelineCreateInfo {
                 };
 
                 if !has_depth_attachment {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`depth_stencil_state.depth` is `Some`, but `subpass` does not \
                             have a depth attachment"
                             .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if let StateMode::Fixed(true) = depth_state.write_enable {
@@ -2929,14 +2928,14 @@ impl GraphicsPipelineCreateInfo {
                                         .intersects(ImageAspects::DEPTH)
                                 })
                             {
-                                return Err(ValidationError {
+                                return Err(Box::new(ValidationError {
                                     problem: "`depth_stencil_state.depth.write_enable` is `true`, \
                                         but `subpass` does not have a depth attachment whose \
                                         layout for the depth aspect allows writing"
                                         .into(),
                                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06039"],
                                     ..Default::default()
-                                });
+                                }));
                             }
                         }
                         PipelineSubpassType::BeginRendering(_) => {
@@ -2966,13 +2965,13 @@ impl GraphicsPipelineCreateInfo {
                 };
 
                 if !has_stencil_attachment {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`depth_stencil_state.stencil` is `Some`, but `subpass` does not \
                             have a stencil attachment"
                             .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -2988,7 +2987,7 @@ impl GraphicsPipelineCreateInfo {
             };
 
             if color_attachment_count != color_blend_state.attachments.len() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the length of `color_blend_state.attachments` does not equal the \
                         number of color attachments in `subpass`"
                         .into(),
@@ -2998,7 +2997,7 @@ impl GraphicsPipelineCreateInfo {
                         "VUID-VkGraphicsPipelineCreateInfo-renderPass-06060",
                     ],
                     ..Default::default()
-                });
+                }));
             }
 
             for (attachment_index, state) in color_blend_state.attachments.iter().enumerate() {
@@ -3025,7 +3024,7 @@ impl GraphicsPipelineCreateInfo {
                             .potential_format_features()
                             .intersects(FormatFeatures::COLOR_ATTACHMENT_BLEND)
                     }) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`color_blend_state.attachments[{}].blend` is `Some`, but \
                                 the format features of that color attachment in `subpass` \
@@ -3038,7 +3037,7 @@ impl GraphicsPipelineCreateInfo {
                                 "VUID-VkGraphicsPipelineCreateInfo-renderPass-06062",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }

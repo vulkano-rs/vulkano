@@ -22,7 +22,7 @@ use crate::{
         },
         DeviceAlignment,
     },
-    DeviceSize, NonZeroDeviceSize,
+    DeviceSize, NonZeroDeviceSize, Validated,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{
@@ -355,7 +355,7 @@ where
             DeviceLayout::from_size_alignment(self.arena_size, 1).unwrap(),
         )
         .map_err(|err| match err {
-            BufferAllocateError::AllocateMemory(err) => err,
+            Validated::Error(BufferAllocateError::AllocateMemory(err)) => err,
             // We don't use sparse-binding, concurrent sharing or external memory, therefore the
             // other errors can't happen.
             _ => unreachable!(),

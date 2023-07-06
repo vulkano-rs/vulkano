@@ -62,7 +62,10 @@ impl BuffersDefinition {
 #[allow(deprecated)]
 unsafe impl VertexDefinition for BuffersDefinition {
     #[inline]
-    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
+    fn definition(
+        &self,
+        interface: &ShaderInterface,
+    ) -> Result<VertexInputState, Box<ValidationError>> {
         self.0.definition(interface)
     }
 }

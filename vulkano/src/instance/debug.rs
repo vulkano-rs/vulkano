@@ -44,7 +44,7 @@
 use super::{Instance, InstanceExtensions};
 use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
-    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
 use std::{
@@ -81,7 +81,7 @@ impl DebugUtilsMessenger {
     pub unsafe fn new(
         instance: Arc<Instance>,
         create_info: DebugUtilsMessengerCreateInfo,
-    ) -> Result<Self, VulkanError> {
+    ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(&instance, &create_info)?;
 
         Ok(Self::new_unchecked(instance, create_info)?)
@@ -90,14 +90,14 @@ impl DebugUtilsMessenger {
     fn validate_new(
         instance: &Instance,
         create_info: &DebugUtilsMessengerCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ext_debug_utils {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_debug_utils",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         create_info
@@ -111,7 +111,7 @@ impl DebugUtilsMessenger {
     pub unsafe fn new_unchecked(
         instance: Arc<Instance>,
         create_info: DebugUtilsMessengerCreateInfo,
-    ) -> Result<Self, RuntimeError> {
+    ) -> Result<Self, VulkanError> {
         let DebugUtilsMessengerCreateInfo {
             message_severity,
             message_type,
@@ -142,7 +142,7 @@ impl DebugUtilsMessenger {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -263,7 +263,7 @@ impl DebugUtilsMessengerCreateInfo {
     }
 
     #[inline]
-    pub(crate) fn validate(&self, instance: &Instance) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, instance: &Instance) -> Result<(), Box<ValidationError>> {
         self.validate_raw(instance.api_version(), instance.enabled_extensions())
     }
 
@@ -271,7 +271,7 @@ impl DebugUtilsMessengerCreateInfo {
         &self,
         instance_api_version: Version,
         instance_extensions: &InstanceExtensions,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         let &DebugUtilsMessengerCreateInfo {
             message_severity,
             message_type,
@@ -288,12 +288,12 @@ impl DebugUtilsMessengerCreateInfo {
             })?;
 
         if message_severity.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "message_severity".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         message_type
@@ -305,12 +305,12 @@ impl DebugUtilsMessengerCreateInfo {
             })?;
 
         if message_type.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "message_type".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-PFN_vkDebugUtilsMessengerCallbackEXT-None-04769

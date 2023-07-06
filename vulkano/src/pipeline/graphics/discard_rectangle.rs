@@ -46,7 +46,7 @@ impl DiscardRectangleState {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             mode,
             ref rectangles,
@@ -67,14 +67,14 @@ impl DiscardRectangleState {
         };
 
         if discard_rectangle_count > properties.max_discard_rectangles.unwrap() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "rectangles".into(),
                 problem: "the length exceeds the `max_discard_rectangles` limit".into(),
                 vuids: &[
                     "VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleCount-00582",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())

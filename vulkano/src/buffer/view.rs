@@ -53,7 +53,7 @@ use crate::{
     format::{Format, FormatFeatures},
     macros::impl_id_counter,
     memory::{is_aligned, DeviceAlignment},
-    DeviceSize, RuntimeError, ValidationError, Version, VulkanError, VulkanObject,
+    DeviceSize, Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
 use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 
@@ -76,7 +76,7 @@ impl BufferView {
     pub fn new(
         subbuffer: Subbuffer<impl ?Sized>,
         create_info: BufferViewCreateInfo,
-    ) -> Result<Arc<BufferView>, VulkanError> {
+    ) -> Result<Arc<BufferView>, Validated<VulkanError>> {
         let subbuffer = subbuffer.into_bytes();
         Self::validate_new(&subbuffer, &create_info)?;
 
@@ -86,7 +86,7 @@ impl BufferView {
     fn validate_new(
         subbuffer: &Subbuffer<[u8]>,
         create_info: &BufferViewCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         let device = subbuffer.device();
 
         create_info
@@ -110,66 +110,66 @@ impl BufferView {
             .usage()
             .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "subbuffer".into(),
                 problem: "was not created with the `BufferUsage::UNIFORM_TEXEL_BUFFER` \
                     or `BufferUsage::STORAGE_TEXEL_BUFFER` usage"
                     .into(),
                 vuids: &["VUID-VkBufferViewCreateInfo-buffer-00932"],
                 ..Default::default()
-            });
+            }));
         }
 
         if buffer.usage().intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
             && !format_features.intersects(FormatFeatures::UNIFORM_TEXEL_BUFFER)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`subbuffer` was created with the `BufferUsage::UNIFORM_TEXEL_BUFFER` \
                     usage, but the format features of `create_info.format` do not include \
                     `FormatFeatures::UNIFORM_TEXEL_BUFFER`"
                     .into(),
                 vuids: &["VUID-VkBufferViewCreateInfo-buffer-00933"],
                 ..Default::default()
-            });
+            }));
         }
 
         if buffer.usage().intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
             && !format_features.intersects(FormatFeatures::STORAGE_TEXEL_BUFFER)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`subbuffer` was created with the `BufferUsage::STORAGE_TEXEL_BUFFER` \
                     usage, but the format features of `create_info.format` do not include \
                     `FormatFeatures::STORAGE_TEXEL_BUFFER`"
                     .into(),
                 vuids: &["VUID-VkBufferViewCreateInfo-buffer-00934"],
                 ..Default::default()
-            });
+            }));
         }
 
         let block_size = format.block_size().unwrap();
         let texels_per_block = format.texels_per_block();
 
         if subbuffer.size() % block_size != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`subbuffer.size()` is not a multiple of \
                     `create_info.format.block_size()`"
                     .into(),
                 vuids: &["VUID-VkBufferViewCreateInfo-range-00929"],
                 ..Default::default()
-            });
+            }));
         }
 
         if ((subbuffer.size() / block_size) * texels_per_block as DeviceSize) as u32
             > properties.max_texel_buffer_elements
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`subbuffer.size() / create_info.format.block_size() * \
                     create_info.format.texels_per_block()` is greater than the \
                     `max_texel_buffer_elements` limit"
                     .into(),
                 vuids: &["VUID-VkBufferViewCreateInfo-range-00930"],
                 ..Default::default()
-            });
+            }));
         }
 
         if device.api_version() >= Version::V1_3 || device.enabled_features().texel_buffer_alignment
@@ -193,7 +193,7 @@ impl BufferView {
                             .unwrap()
                             .min(element_size),
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`subbuffer` was created with the \
                                 `BufferUsage::STORAGE_TEXEL_BUFFER` usage, and the \
                                 `storage_texel_buffer_offset_single_texel_alignment` \
@@ -204,7 +204,7 @@ impl BufferView {
                                 .into(),
                             vuids: &["VUID-VkBufferViewCreateInfo-buffer-02750"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 } else {
                     if !is_aligned(
@@ -213,7 +213,7 @@ impl BufferView {
                             .storage_texel_buffer_offset_alignment_bytes
                             .unwrap(),
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`subbuffer` was created with the \
                                 `BufferUsage::STORAGE_TEXEL_BUFFER` usage, and the \
                                 `storage_texel_buffer_offset_single_texel_alignment` \
@@ -223,7 +223,7 @@ impl BufferView {
                                 .into(),
                             vuids: &["VUID-VkBufferViewCreateInfo-buffer-02750"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -240,7 +240,7 @@ impl BufferView {
                             .unwrap()
                             .min(element_size),
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`subbuffer` was created with the \
                                 `BufferUsage::UNIFORM_TEXEL_BUFFER` usage, and the \
                                 `uniform_texel_buffer_offset_single_texel_alignment` \
@@ -251,7 +251,7 @@ impl BufferView {
                                 .into(),
                             vuids: &["VUID-VkBufferViewCreateInfo-buffer-02751"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 } else {
                     if !is_aligned(
@@ -260,7 +260,7 @@ impl BufferView {
                             .uniform_texel_buffer_offset_alignment_bytes
                             .unwrap(),
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`subbuffer` was created with the \
                                 `BufferUsage::UNIFORM_TEXEL_BUFFER` usage, and the \
                                 `uniform_texel_buffer_offset_single_texel_alignment` \
@@ -270,7 +270,7 @@ impl BufferView {
                                 .into(),
                             vuids: &["VUID-VkBufferViewCreateInfo-buffer-02751"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -279,13 +279,13 @@ impl BufferView {
                 subbuffer.offset(),
                 properties.min_texel_buffer_offset_alignment,
             ) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`subbuffer.offset()` is not a multiple of the \
                         `min_texel_buffer_offset_alignment` limit"
                         .into(),
                     vuids: &["VUID-VkBufferViewCreateInfo-offset-02749"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -296,7 +296,7 @@ impl BufferView {
     pub unsafe fn new_unchecked(
         subbuffer: Subbuffer<impl ?Sized>,
         create_info: BufferViewCreateInfo,
-    ) -> Result<Arc<BufferView>, RuntimeError> {
+    ) -> Result<Arc<BufferView>, VulkanError> {
         let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
 
         let device = subbuffer.device();
@@ -320,7 +320,7 @@ impl BufferView {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -438,7 +438,7 @@ impl Default for BufferViewCreateInfo {
 }
 
 impl BufferViewCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self { format, _ne: _ } = self;
 
         let format = format.ok_or(ValidationError {

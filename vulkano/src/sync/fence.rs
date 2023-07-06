@@ -14,8 +14,8 @@ use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
-    ValidationError, Version, VulkanObject,
+    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -132,7 +132,7 @@ impl Fence {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: FenceCreateInfo,
-    ) -> Result<Fence, RuntimeError> {
+    ) -> Result<Fence, VulkanError> {
         let FenceCreateInfo {
             signaled,
             export_handle_types,
@@ -173,7 +173,7 @@ impl Fence {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
             output.assume_init()
         };
@@ -207,7 +207,7 @@ impl Fence {
                     let fns = device.fns();
                     (fns.v1_0.reset_fences)(device.handle(), 1, &handle)
                         .result()
-                        .map_err(RuntimeError::from)?;
+                        .map_err(VulkanError::from)?;
                 }
 
                 Fence {
@@ -282,7 +282,7 @@ impl Fence {
             match result {
                 ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
                 ash::vk::Result::NOT_READY => return Ok(false),
-                err => return Err(RuntimeError::from(err).into()),
+                err => return Err(VulkanError::from(err).into()),
             }
         };
 
@@ -332,7 +332,7 @@ impl Fence {
             match result {
                 ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
                 ash::vk::Result::TIMEOUT => return Err(FenceError::Timeout),
-                err => return Err(RuntimeError::from(err).into()),
+                err => return Err(VulkanError::from(err).into()),
             }
         };
 
@@ -434,7 +434,7 @@ impl Fence {
                     .filter_map(|(fence, state)| state.set_signaled().map(|state| (state, fence)))
                     .collect(),
                 ash::vk::Result::TIMEOUT => return Err(FenceError::Timeout),
-                err => return Err(RuntimeError::from(err).into()),
+                err => return Err(VulkanError::from(err).into()),
             }
         };
 
@@ -469,17 +469,17 @@ impl Fence {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub unsafe fn reset_unchecked(&self) -> Result<(), RuntimeError> {
+    pub unsafe fn reset_unchecked(&self) -> Result<(), VulkanError> {
         let mut state = self.state.lock();
 
         self.reset_unchecked_locked(&mut state)
     }
 
-    unsafe fn reset_unchecked_locked(&self, state: &mut FenceState) -> Result<(), RuntimeError> {
+    unsafe fn reset_unchecked_locked(&self, state: &mut FenceState) -> Result<(), VulkanError> {
         let fns = self.device.fns();
         (fns.v1_0.reset_fences)(self.device.handle(), 1, &self.handle)
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
         state.reset();
 
@@ -532,7 +532,7 @@ impl Fence {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn multi_reset_unchecked<'a>(
         fences: impl IntoIterator<Item = &'a Fence>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let (fences, mut states): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = fences
             .into_iter()
             .map(|fence| {
@@ -547,7 +547,7 @@ impl Fence {
     unsafe fn multi_reset_unchecked_locked(
         fences: &[&Fence],
         states: &mut [MutexGuard<'_, FenceState>],
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         if fences.is_empty() {
             return Ok(());
         }
@@ -558,7 +558,7 @@ impl Fence {
         let fns = device.fns();
         (fns.v1_0.reset_fences)(device.handle(), fences_vk.len() as u32, fences_vk.as_ptr())
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
         for state in states {
             state.reset();
@@ -654,7 +654,7 @@ impl Fence {
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalFenceHandleType,
-    ) -> Result<File, RuntimeError> {
+    ) -> Result<File, VulkanError> {
         let mut state = self.state.lock();
         self.export_fd_unchecked_locked(handle_type, &mut state)
     }
@@ -664,7 +664,7 @@ impl Fence {
         &self,
         handle_type: ExternalFenceHandleType,
         state: &mut FenceState,
-    ) -> Result<File, RuntimeError> {
+    ) -> Result<File, VulkanError> {
         use std::os::unix::io::FromRawFd;
 
         let info_vk = ash::vk::FenceGetFdInfoKHR {
@@ -681,7 +681,7 @@ impl Fence {
             output.as_mut_ptr(),
         )
         .result()
-        .map_err(RuntimeError::from)?;
+        .map_err(VulkanError::from)?;
 
         state.export(handle_type);
 
@@ -785,7 +785,7 @@ impl Fence {
     pub unsafe fn export_win32_handle_unchecked(
         &self,
         handle_type: ExternalFenceHandleType,
-    ) -> Result<*mut std::ffi::c_void, RuntimeError> {
+    ) -> Result<*mut std::ffi::c_void, VulkanError> {
         let mut state = self.state.lock();
         self.export_win32_handle_unchecked_locked(handle_type, &mut state)
     }
@@ -795,7 +795,7 @@ impl Fence {
         &self,
         handle_type: ExternalFenceHandleType,
         state: &mut FenceState,
-    ) -> Result<*mut std::ffi::c_void, RuntimeError> {
+    ) -> Result<*mut std::ffi::c_void, VulkanError> {
         let info_vk = ash::vk::FenceGetWin32HandleInfoKHR {
             fence: self.handle,
             handle_type: handle_type.into(),
@@ -810,7 +810,7 @@ impl Fence {
             output.as_mut_ptr(),
         )
         .result()
-        .map_err(RuntimeError::from)?;
+        .map_err(VulkanError::from)?;
 
         state.export(handle_type);
 
@@ -897,7 +897,7 @@ impl Fence {
     pub unsafe fn import_fd_unchecked(
         &self,
         import_fence_fd_info: ImportFenceFdInfo,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let mut state = self.state.lock();
         self.import_fd_unchecked_locked(import_fence_fd_info, &mut state)
     }
@@ -907,7 +907,7 @@ impl Fence {
         &self,
         import_fence_fd_info: ImportFenceFdInfo,
         state: &mut FenceState,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         use std::os::unix::io::IntoRawFd;
 
         let ImportFenceFdInfo {
@@ -928,7 +928,7 @@ impl Fence {
         let fns = self.device.fns();
         (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.handle(), &info_vk)
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
         state.import(handle_type, flags.intersects(FenceImportFlags::TEMPORARY));
 
@@ -1015,7 +1015,7 @@ impl Fence {
     pub unsafe fn import_win32_handle_unchecked(
         &self,
         import_fence_win32_handle_info: ImportFenceWin32HandleInfo,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let mut state = self.state.lock();
         self.import_win32_handle_unchecked_locked(import_fence_win32_handle_info, &mut state)
     }
@@ -1025,7 +1025,7 @@ impl Fence {
         &self,
         import_fence_win32_handle_info: ImportFenceWin32HandleInfo,
         state: &mut FenceState,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let ImportFenceWin32HandleInfo {
             flags,
             handle_type,
@@ -1048,7 +1048,7 @@ impl Fence {
             &info_vk,
         )
         .result()
-        .map_err(RuntimeError::from)?;
+        .map_err(VulkanError::from)?;
 
         state.import(handle_type, flags.intersects(FenceImportFlags::TEMPORARY));
 
@@ -1420,7 +1420,10 @@ impl ExternalFenceInfo {
         }
     }
 
-    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+    pub(crate) fn validate(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             handle_type,
             _ne: _,
@@ -1595,13 +1598,13 @@ impl Display for FenceError {
     }
 }
 
-impl From<RuntimeError> for FenceError {
-    fn from(err: RuntimeError) -> Self {
+impl From<VulkanError> for FenceError {
+    fn from(err: VulkanError) -> Self {
         match err {
-            e @ RuntimeError::OutOfHostMemory | e @ RuntimeError::OutOfDeviceMemory => {
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
                 Self::OomError(e.into())
             }
-            RuntimeError::DeviceLost => Self::DeviceLost,
+            VulkanError::DeviceLost => Self::DeviceLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

@@ -15,7 +15,7 @@ use crate::{
         ImageAspects, ImageType, ImageUsage,
     },
     macros::{impl_id_counter, vulkan_bitflags},
-    RuntimeError, ValidationError, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
@@ -61,7 +61,7 @@ impl Framebuffer {
     pub fn new(
         render_pass: Arc<RenderPass>,
         mut create_info: FramebufferCreateInfo,
-    ) -> Result<Arc<Framebuffer>, VulkanError> {
+    ) -> Result<Arc<Framebuffer>, Validated<VulkanError>> {
         create_info.set_auto_extent_layers(&render_pass);
         Self::validate_new(&render_pass, &create_info)?;
 
@@ -71,7 +71,7 @@ impl Framebuffer {
     fn validate_new(
         render_pass: &RenderPass,
         create_info: &FramebufferCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateFramebuffer-pCreateInfo-parameter
         create_info
             .validate(render_pass.device())
@@ -86,13 +86,13 @@ impl Framebuffer {
         } = create_info;
 
         if attachments.len() != render_pass.attachments().len() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.attachments` does not have the same length as \
                     `render_pass.attachments()`"
                     .into(),
                 vuids: &["VUID-VkFramebufferCreateInfo-attachmentCount-00876"],
                 ..Default::default()
-            });
+            }));
         }
 
         for (index, ((image_view, attachment_desc), attachment_use)) in attachments
@@ -104,7 +104,7 @@ impl Framebuffer {
             if attachment_use.color_attachment
                 && !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "`render_pass` uses `create_info.attachments[{}]` as \
                         a color attachment, but it was not created with the \
@@ -114,7 +114,7 @@ impl Framebuffer {
                     .into(),
                     vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00877"],
                     ..Default::default()
-                });
+                }));
             }
 
             if attachment_use.depth_stencil_attachment
@@ -122,7 +122,7 @@ impl Framebuffer {
                     .usage()
                     .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "`render_pass` uses `create_info.attachments[{}]` as \
                         a depth or stencil attachment, but it was not created with the \
@@ -135,13 +135,13 @@ impl Framebuffer {
                         "VUID-VkFramebufferCreateInfo-pAttachments-02634",
                     ],
                     ..Default::default()
-                });
+                }));
             }
 
             if attachment_use.input_attachment
                 && !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "`render_pass` uses `create_info.attachments[{}]` as \
                         an input attachment, but it was not created with the \
@@ -151,11 +151,11 @@ impl Framebuffer {
                     .into(),
                     vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-02633"],
                     ..Default::default()
-                });
+                }));
             }
 
             if image_view.format() != attachment_desc.format {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "the format of `create_info.attachments[{}]` does not equal \
                         `render_pass.attachments()[{0}].format`",
@@ -164,11 +164,11 @@ impl Framebuffer {
                     .into(),
                     vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00880"],
                     ..Default::default()
-                });
+                }));
             }
 
             if image_view.image().samples() != attachment_desc.samples {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "the samples of `create_info.attachments[{}]` does not equal \
                         `render_pass.attachments()[{0}].samples`",
@@ -177,7 +177,7 @@ impl Framebuffer {
                     .into(),
                     vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00881"],
                     ..Default::default()
-                });
+                }));
             }
 
             let image_view_extent = image_view.image().extent();
@@ -189,7 +189,7 @@ impl Framebuffer {
                 || attachment_use.depth_stencil_attachment
             {
                 if image_view_extent[0] < extent[0] || image_view_extent[1] < extent[1] {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`render_pass` uses `create_info.attachments[{}]` as an input, color, \
                             depth or stencil attachment, but \
@@ -202,11 +202,11 @@ impl Framebuffer {
                             "VUID-VkFramebufferCreateInfo-flags-04534",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if image_view_array_layers < layers {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`render_pass` uses `create_info.attachments[{}]` as an input, color, \
                             depth or stencil attachment, but \
@@ -216,11 +216,11 @@ impl Framebuffer {
                         .into(),
                         vuids: &["VUID-VkFramebufferCreateInfo-flags-04535"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if image_view_array_layers < render_pass.views_used() {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`render_pass` has multiview enabled, and uses \
                             `create_info.attachments[{}]` as an input, color, depth or stencil \
@@ -231,18 +231,18 @@ impl Framebuffer {
                         .into(),
                         vuids: &["VUID-VkFramebufferCreateInfo-renderPass-04536"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
 
             if render_pass.views_used() != 0 && layers != 1 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`render_pass` has multiview enabled, but \
                         `create_info.layers` is not 1"
                         .into(),
                     vuids: &["VUID-VkFramebufferCreateInfo-renderPass-02531"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -253,7 +253,7 @@ impl Framebuffer {
     pub unsafe fn new_unchecked(
         render_pass: Arc<RenderPass>,
         mut create_info: FramebufferCreateInfo,
-    ) -> Result<Arc<Framebuffer>, RuntimeError> {
+    ) -> Result<Arc<Framebuffer>, VulkanError> {
         create_info.set_auto_extent_layers(&render_pass);
 
         let &FramebufferCreateInfo {
@@ -288,7 +288,7 @@ impl Framebuffer {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -514,7 +514,7 @@ impl FramebufferCreateInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref attachments,
@@ -538,21 +538,21 @@ impl FramebufferCreateInfo {
                 - image_view.subresource_range().mip_levels.start;
 
             if image_view_mip_levels != 1 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: format!("attachments[{}]", index).into(),
                     problem: "has more than one mip level".into(),
                     vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00883"],
                     ..Default::default()
-                });
+                }));
             }
 
             if !image_view.component_mapping().is_identity() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: format!("attachments[{}]", index).into(),
                     problem: "is not identity swizzled".into(),
                     vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00884"],
                     ..Default::default()
-                });
+                }));
             }
 
             match image_view.view_type() {
@@ -561,23 +561,23 @@ impl FramebufferCreateInfo {
                         && (image_view.format().unwrap().aspects())
                             .intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("attachments[{}]", index).into(),
                             problem: "is a 2D or 2D array image view, but its format is a \
                                 depth/stencil format"
                                 .into(),
                             vuids: &["VUID-VkFramebufferCreateInfo-pAttachments-00891"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
                 ImageViewType::Dim3d => {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: format!("attachments[{}]", index).into(),
                         problem: "is a 3D image view".into(),
                         vuids: &["VUID-VkFramebufferCreateInfo-flags-04113"],
                         ..Default::default()
-                    });
+                    }));
                 }
                 _ => (),
             }
@@ -586,57 +586,57 @@ impl FramebufferCreateInfo {
         let properties = device.physical_device().properties();
 
         if extent[0] == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[0]".into(),
                 problem: "is zero".into(),
                 vuids: &["VUID-VkFramebufferCreateInfo-width-00885"],
                 ..Default::default()
-            });
+            }));
         }
 
         if extent[0] > properties.max_framebuffer_width {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[0]".into(),
                 problem: "exceeds the `max_framebuffer_width` limit".into(),
                 vuids: &["VUID-VkFramebufferCreateInfo-width-00886"],
                 ..Default::default()
-            });
+            }));
         }
 
         if extent[1] == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[1]".into(),
                 problem: "is zero".into(),
                 vuids: &["VUID-VkFramebufferCreateInfo-height-00887"],
                 ..Default::default()
-            });
+            }));
         }
 
         if extent[1] > properties.max_framebuffer_height {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[1]".into(),
                 problem: "exceeds the `max_framebuffer_height` limit".into(),
                 vuids: &["VUID-VkFramebufferCreateInfo-height-00888"],
                 ..Default::default()
-            });
+            }));
         }
 
         if layers == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "layers".into(),
                 problem: "is zero".into(),
                 vuids: &["VUID-VkFramebufferCreateInfo-layers-00889"],
                 ..Default::default()
-            });
+            }));
         }
 
         if layers > properties.max_framebuffer_layers {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "layers".into(),
                 problem: "exceeds the `max_framebuffer_layers` limit".into(),
                 vuids: &["VUID-VkFramebufferCreateInfo-layers-00890"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())

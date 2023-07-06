@@ -15,7 +15,7 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
 use ahash::HashMap;
@@ -47,7 +47,7 @@ impl DescriptorPool {
     pub fn new(
         device: Arc<Device>,
         create_info: DescriptorPoolCreateInfo,
-    ) -> Result<DescriptorPool, VulkanError> {
+    ) -> Result<DescriptorPool, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
@@ -57,7 +57,7 @@ impl DescriptorPool {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: DescriptorPoolCreateInfo,
-    ) -> Result<DescriptorPool, RuntimeError> {
+    ) -> Result<DescriptorPool, VulkanError> {
         let &DescriptorPoolCreateInfo {
             flags,
             max_sets,
@@ -106,7 +106,7 @@ impl DescriptorPool {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -116,7 +116,7 @@ impl DescriptorPool {
     fn validate_new(
         device: &Device,
         create_info: &DescriptorPoolCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateDescriptorPool-pCreateInfo-parameter
         create_info
             .validate(device)
@@ -205,7 +205,7 @@ impl DescriptorPool {
     pub unsafe fn allocate_descriptor_sets<'a>(
         &self,
         allocate_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
-    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, RuntimeError> {
+    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, VulkanError> {
         let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
             allocate_info
                 .into_iter()
@@ -256,15 +256,15 @@ impl DescriptorPool {
             let fns = self.device.fns();
             (fns.v1_0.allocate_descriptor_sets)(self.device.handle(), &infos, output.as_mut_ptr())
                 .result()
-                .map_err(RuntimeError::from)
+                .map_err(VulkanError::from)
                 .map_err(|err| match err {
-                    RuntimeError::OutOfHostMemory
-                    | RuntimeError::OutOfDeviceMemory
-                    | RuntimeError::OutOfPoolMemory => err,
+                    VulkanError::OutOfHostMemory
+                    | VulkanError::OutOfDeviceMemory
+                    | VulkanError::OutOfPoolMemory => err,
                     // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after
                     // version 1.0 of Vulkan, any negative return value except out-of-memory errors
                     // must be considered as a fragmented pool error.
-                    _ => RuntimeError::FragmentedPool,
+                    _ => VulkanError::FragmentedPool,
                 })?;
 
             output.set_len(layouts.len());
@@ -288,7 +288,7 @@ impl DescriptorPool {
     pub unsafe fn free_descriptor_sets(
         &self,
         descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let sets: SmallVec<[_; 8]> = descriptor_sets.into_iter().map(|s| s.handle()).collect();
         if !sets.is_empty() {
             let fns = self.device.fns();
@@ -299,7 +299,7 @@ impl DescriptorPool {
                 sets.as_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -309,7 +309,7 @@ impl DescriptorPool {
     ///
     /// This destroys all descriptor sets and empties the pool.
     #[inline]
-    pub unsafe fn reset(&self) -> Result<(), RuntimeError> {
+    pub unsafe fn reset(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
         (fns.v1_0.reset_descriptor_pool)(
             self.device.handle(),
@@ -317,7 +317,7 @@ impl DescriptorPool {
             ash::vk::DescriptorPoolResetFlags::empty(),
         )
         .result()
-        .map_err(RuntimeError::from)?;
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -399,7 +399,7 @@ impl Default for DescriptorPoolCreateInfo {
 }
 
 impl DescriptorPoolCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             max_sets,
@@ -417,21 +417,21 @@ impl DescriptorPoolCreateInfo {
             })?;
 
         if max_sets == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "max_sets".into(),
                 problem: "is zero".into(),
                 vuids: &["VUID-VkDescriptorPoolCreateInfo-maxSets-00301"],
                 ..Default::default()
-            });
+            }));
         }
 
         if pool_sizes.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "pool_sizes".into(),
                 problem: "is empty".into(),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-VkDescriptorPoolCreateInfo-pPoolSizes-parameter
@@ -445,21 +445,21 @@ impl DescriptorPoolCreateInfo {
                 })?;
 
             if pool_size == 0 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: format!("pool_sizes[DescriptorType::{:?}]", descriptor_type).into(),
                     problem: "is zero".into(),
                     vuids: &["VUID-VkDescriptorPoolSize-descriptorCount-00302"],
                     ..Default::default()
-                });
+                }));
             }
 
             if descriptor_type == DescriptorType::InlineUniformBlock {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "pool_sizes[DescriptorType::InlineUniformBlock]".into(),
                     problem: "is not a multiple of 4".into(),
                     vuids: &["VUID-VkDescriptorPoolSize-type-02218"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -467,7 +467,7 @@ impl DescriptorPoolCreateInfo {
             && !(device.api_version() >= Version::V1_3
                 || device.enabled_extensions().ext_inline_uniform_block)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "max_inline_uniform_block_bindings".into(),
                 problem: "is not zero".into(),
                 requires_one_of: RequiresOneOf(&[
@@ -476,7 +476,7 @@ impl DescriptorPoolCreateInfo {
                 ]),
                 // vuids?
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())

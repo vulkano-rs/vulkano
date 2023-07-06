@@ -115,7 +115,7 @@ use crate::{
     image::sampler::{ComponentMapping, ComponentSwizzle, Filter},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_enum},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
 use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -145,7 +145,7 @@ impl SamplerYcbcrConversion {
     pub fn new(
         device: Arc<Device>,
         create_info: SamplerYcbcrConversionCreateInfo,
-    ) -> Result<Arc<SamplerYcbcrConversion>, VulkanError> {
+    ) -> Result<Arc<SamplerYcbcrConversion>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
@@ -154,15 +154,15 @@ impl SamplerYcbcrConversion {
     fn validate_new(
         device: &Device,
         create_info: &SamplerYcbcrConversionCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().sampler_ycbcr_conversion {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "sampler_ycbcr_conversion",
                 )])]),
                 vuids: &["VUID-vkCreateSamplerYcbcrConversion-None-01648"],
                 ..Default::default()
-            });
+            }));
         }
 
         create_info
@@ -176,7 +176,7 @@ impl SamplerYcbcrConversion {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: SamplerYcbcrConversionCreateInfo,
-    ) -> Result<Arc<SamplerYcbcrConversion>, RuntimeError> {
+    ) -> Result<Arc<SamplerYcbcrConversion>, VulkanError> {
         let &SamplerYcbcrConversionCreateInfo {
             format,
             ycbcr_model,
@@ -217,7 +217,7 @@ impl SamplerYcbcrConversion {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -456,7 +456,7 @@ impl Default for SamplerYcbcrConversionCreateInfo {
 }
 
 impl SamplerYcbcrConversionCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             format,
             ycbcr_model,
@@ -527,12 +527,12 @@ impl SamplerYcbcrConversionCreateInfo {
             .type_color()
             .map_or(false, |ty| ty == NumericType::UNORM)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "format".into(),
                 problem: "the numeric type is not `UNORM`".into(),
                 vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-format-04061"],
                 ..Default::default()
-            });
+            }));
         }
 
         // Use unchecked, because all validation has been done above.
@@ -546,7 +546,7 @@ impl SamplerYcbcrConversionCreateInfo {
         if !potential_format_features.intersects(
             FormatFeatures::MIDPOINT_CHROMA_SAMPLES | FormatFeatures::COSITED_CHROMA_SAMPLES,
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "format".into(),
                 problem: "the potential format features do not contain \
                     `FormatFeatures::MIDPOINT_CHROMA_SAMPLES` or \
@@ -554,7 +554,7 @@ impl SamplerYcbcrConversionCreateInfo {
                     .into(),
                 vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-format-01650"],
                 ..Default::default()
-            });
+            }));
         }
 
         if let Some(chroma_sampling @ (ChromaSampling::Mode422 | ChromaSampling::Mode420)) =
@@ -566,7 +566,7 @@ impl SamplerYcbcrConversionCreateInfo {
                         && !potential_format_features
                             .intersects(FormatFeatures::COSITED_CHROMA_SAMPLES)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`format` has both horizontal and vertical chroma \
                                     subsampling, and \
                                     its potential format features do not \
@@ -576,14 +576,14 @@ impl SamplerYcbcrConversionCreateInfo {
                                 .into(),
                             vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01651"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if chroma_offset.contains(&ChromaLocation::Midpoint)
                         && !potential_format_features
                             .intersects(FormatFeatures::MIDPOINT_CHROMA_SAMPLES)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`format` has both horizontal and vertical chroma \
                                     subsampling, and \
                                     its potential format features do not \
@@ -593,7 +593,7 @@ impl SamplerYcbcrConversionCreateInfo {
                                 .into(),
                             vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01652"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
                 ChromaSampling::Mode422 => {
@@ -601,7 +601,7 @@ impl SamplerYcbcrConversionCreateInfo {
                         && !potential_format_features
                             .intersects(FormatFeatures::COSITED_CHROMA_SAMPLES)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`format` has horizontal chroma subsampling, and \
                                     its potential format features do not \
                                     contain `FormatFeatures::COSITED_CHROMA_SAMPLES`, but \
@@ -610,14 +610,14 @@ impl SamplerYcbcrConversionCreateInfo {
                                 .into(),
                             vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01651"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if chroma_offset[0] == ChromaLocation::Midpoint
                         && !potential_format_features
                             .intersects(FormatFeatures::MIDPOINT_CHROMA_SAMPLES)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`format` has horizontal chroma subsampling, and \
                                     its potential format features do not \
                                     contain `FormatFeatures::MIDPOINT_CHROMA_SAMPLES`, but \
@@ -626,20 +626,20 @@ impl SamplerYcbcrConversionCreateInfo {
                                 .into(),
                             vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01652"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
                 _ => unreachable!(),
             }
 
             if !component_mapping.g_is_identity() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`format` has chroma subsampling, but \
                         `component_mapping.g` is not identity swizzled"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02581"],
                     ..Default::default()
-                });
+                }));
             }
 
             if !(component_mapping.a_is_identity()
@@ -648,7 +648,7 @@ impl SamplerYcbcrConversionCreateInfo {
                     ComponentSwizzle::One | ComponentSwizzle::Zero
                 ))
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "component_mapping.a".into(),
                     problem: "`format` has chroma subsampling, but \
                         `component_mapping.a` is not identity swizzled, or \
@@ -656,33 +656,33 @@ impl SamplerYcbcrConversionCreateInfo {
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02582"],
                     ..Default::default()
-                });
+                }));
             }
 
             if !(component_mapping.r_is_identity()
                 || matches!(component_mapping.r, ComponentSwizzle::Blue))
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`format` has chroma subsampling, but \
                         `component_mapping.r` is not identity swizzled, or \
                         `ComponentSwizzle::Blue`"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02583"],
                     ..Default::default()
-                });
+                }));
             }
 
             if !(component_mapping.b_is_identity()
                 || matches!(component_mapping.b, ComponentSwizzle::Red))
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`format` has chroma subsampling, but \
                         `component_mapping.b` is not identity swizzled, or \
                         `ComponentSwizzle::Red`"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02584"],
                     ..Default::default()
-                });
+                }));
             }
 
             match (
@@ -690,24 +690,24 @@ impl SamplerYcbcrConversionCreateInfo {
                 component_mapping.b_is_identity(),
             ) {
                 (true, false) => {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`format` has chroma subsampling, and \
                             `component_mapping.r` is identity swizzled, but \
                             `component_mapping.b` is not identity swizzled"
                             .into(),
                         vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02585"],
                         ..Default::default()
-                    });
+                    }));
                 }
                 (false, true) => {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`format` has chroma subsampling, and \
                             `component_mapping.b` is identity swizzled, but \
                             `component_mapping.r` is not identity swizzled"
                             .into(),
                         vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02585"],
                         ..Default::default()
-                    });
+                    }));
                 }
                 _ => (),
             }
@@ -723,47 +723,47 @@ impl SamplerYcbcrConversionCreateInfo {
         // VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrModel-01655
         if ycbcr_model != SamplerYcbcrModelConversion::RgbIdentity {
             if components_bits[0].map_or(true, |bits| bits == 0) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.r` does not map to a component that exists in \
                         `format`"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02585"],
                     ..Default::default()
-                });
+                }));
             }
 
             if components_bits[1].map_or(true, |bits| bits == 0) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.g` does not map to a component that exists in \
                         `format`"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02585"],
                     ..Default::default()
-                });
+                }));
             }
 
             if components_bits[2].map_or(true, |bits| bits == 0) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.b` does not map to a component that exists in \
                         `format`"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02585"],
                     ..Default::default()
-                });
+                }));
             }
 
             if components_bits[3].map_or(true, |bits| bits == 0) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_model` is not `SamplerYcbcrModelConversion::RgbIdentity`, \
                         and `component_mapping.a` does not map to a component that exists in \
                         `format`"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-components-02585"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -772,47 +772,47 @@ impl SamplerYcbcrConversionCreateInfo {
             // just skip them for now.
 
             if components_bits[0].map_or(false, |bits| bits < 8) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.r` maps to a component in `format` with less than \
                         8 bits"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-02748"],
                     ..Default::default()
-                });
+                }));
             }
 
             if components_bits[1].map_or(false, |bits| bits < 8) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.g` maps to a component in `format` with less than \
                         8 bits"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-02748"],
                     ..Default::default()
-                });
+                }));
             }
 
             if components_bits[2].map_or(false, |bits| bits < 8) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.b` maps to a component in `format` with less than \
                         8 bits"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-02748"],
                     ..Default::default()
-                });
+                }));
             }
 
             if components_bits[3].map_or(false, |bits| bits < 8) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.a` maps to a component in `format` with less than \
                         8 bits"
                         .into(),
                     vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-02748"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -820,14 +820,14 @@ impl SamplerYcbcrConversionCreateInfo {
             && !potential_format_features.intersects(FormatFeatures::
                 SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`force_explicit_reconstruction` is `true`, but the \
                     potential format features of `format` do not include `FormatFeatures::\
                     SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE`"
                     .into(),
                 vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-forceExplicitReconstruction-01656"],
                 ..Default::default()
-            });
+            }));
         }
 
         match chroma_filter {
@@ -836,23 +836,23 @@ impl SamplerYcbcrConversionCreateInfo {
                 if !potential_format_features
                     .intersects(FormatFeatures::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`chroma_filter` is `Filter::Linear`, but the \
                             potential format features of `format` do not include `FormatFeatures::\
                             SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER`"
                             .into(),
                         vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-01657"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             Filter::Cubic => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "chroma_filter".into(),
                     problem: "is `Filter::Cubic`".into(),
                     // vuids?
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -918,7 +918,7 @@ vulkan_enum! {
 #[cfg(test)]
 mod tests {
     use super::SamplerYcbcrConversion;
-    use crate::{Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanError};
+    use crate::{Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError};
 
     #[test]
     fn feature_not_enabled() {
@@ -927,11 +927,16 @@ mod tests {
         let r = SamplerYcbcrConversion::new(device, Default::default());
 
         match r {
-            Err(VulkanError::ValidationError(ValidationError {
-                requires_one_of:
-                    RequiresOneOf([RequiresAllOf([Requires::Feature("sampler_ycbcr_conversion")])]),
-                ..
-            })) => (),
+            Err(Validated::ValidationError(err))
+                if matches!(
+                    *err,
+                    ValidationError {
+                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::Feature(
+                            "sampler_ycbcr_conversion"
+                        )])]),
+                        ..
+                    }
+                ) => {}
             _ => panic!(),
         }
     }

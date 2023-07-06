@@ -19,7 +19,7 @@
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -66,7 +66,7 @@ impl DeferredOperation {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn new_unchecked(device: Arc<Device>) -> Result<Arc<Self>, RuntimeError> {
+    pub unsafe fn new_unchecked(device: Arc<Device>) -> Result<Arc<Self>, VulkanError> {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
@@ -75,7 +75,7 @@ impl DeferredOperation {
                 device.handle(), ptr::null(), output.as_mut_ptr()
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -99,7 +99,7 @@ impl DeferredOperation {
     }
 
     /// Executes a portion of the operation on the current thread.
-    pub fn join(&self) -> Result<DeferredOperationJoinStatus, RuntimeError> {
+    pub fn join(&self) -> Result<DeferredOperationJoinStatus, VulkanError> {
         let result = unsafe {
             let fns = self.device.fns();
             (fns.khr_deferred_host_operations.deferred_operation_join_khr)(
@@ -112,12 +112,12 @@ impl DeferredOperation {
             ash::vk::Result::SUCCESS => Ok(DeferredOperationJoinStatus::Complete),
             ash::vk::Result::THREAD_DONE_KHR => Ok(DeferredOperationJoinStatus::ThreadDone),
             ash::vk::Result::THREAD_IDLE_KHR => Ok(DeferredOperationJoinStatus::ThreadIdle),
-            err => Err(RuntimeError::from(err)),
+            err => Err(VulkanError::from(err)),
         }
     }
 
     /// Returns the result of the operation, or `None` if the operation is not yet complete.
-    pub fn result(&self) -> Option<Result<(), RuntimeError>> {
+    pub fn result(&self) -> Option<Result<(), VulkanError>> {
         let result = unsafe {
             let fns = self.device.fns();
             (fns.khr_deferred_host_operations
@@ -127,12 +127,12 @@ impl DeferredOperation {
         match result {
             ash::vk::Result::NOT_READY => None,
             ash::vk::Result::SUCCESS => Some(Ok(())),
-            err => Some(Err(RuntimeError::from(err))),
+            err => Some(Err(VulkanError::from(err))),
         }
     }
 
     /// Waits for the operation to complete, then returns its result.
-    pub fn wait(&self) -> Result<Result<(), RuntimeError>, RuntimeError> {
+    pub fn wait(&self) -> Result<Result<(), VulkanError>, VulkanError> {
         // Based on example code on the extension's spec page.
 
         // Call `join` until we get `Complete` or `ThreadDone`.
@@ -210,7 +210,7 @@ unsafe impl DeviceOwned for DeferredOperation {
 /// Error that can happen when creating a `DeferredOperation`.
 #[derive(Clone, Debug)]
 pub enum DeferredOperationCreateError {
-    RuntimeError(RuntimeError),
+    VulkanError(VulkanError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -221,7 +221,7 @@ pub enum DeferredOperationCreateError {
 impl Display for DeferredOperationCreateError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -237,15 +237,15 @@ impl Display for DeferredOperationCreateError {
 impl Error for DeferredOperationCreateError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::RuntimeError(err) => Some(err),
+            Self::VulkanError(err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl From<RuntimeError> for DeferredOperationCreateError {
-    fn from(err: RuntimeError) -> Self {
-        Self::RuntimeError(err)
+impl From<VulkanError> for DeferredOperationCreateError {
+    fn from(err: VulkanError) -> Self {
+        Self::VulkanError(err)
     }
 }
 

@@ -101,7 +101,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         let name_string = name.to_string();
         quote! {
             if self.#name && !supported.#name {
-                return Err(crate::ValidationError {
+                return Err(Box::new(crate::ValidationError {
                     problem: format!(
                         "contains `{}`, but this feature is not supported \
                         by the physical device",
@@ -109,7 +109,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                     )
                     .into(),
                     ..Default::default()
-                });
+                }));
             }
         }
     });
@@ -291,7 +291,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &Features,
-            ) -> Result<(), crate::ValidationError> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 #(#check_requirements_items)*
                 Ok(())
             }

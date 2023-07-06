@@ -336,7 +336,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::Sharing,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
 use parking_lot::Mutex;
@@ -420,7 +420,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), Validated<VulkanError>> {
         Self::validate_new_inner(&device, &surface, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, surface, create_info)?) }
@@ -432,7 +432,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         let (handle, image_handles) =
             Self::new_inner_unchecked(&device, &surface, &create_info, None)?;
 
@@ -449,7 +449,7 @@ impl Swapchain {
     pub fn recreate(
         self: &Arc<Self>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), Validated<VulkanError>> {
         Self::validate_new_inner(&self.device, &self.surface, &create_info)?;
 
         {
@@ -457,12 +457,12 @@ impl Swapchain {
 
             // The swapchain has already been used to create a new one.
             if *is_retired {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "self".into(),
                     problem: "has already been used to recreate a swapchain".into(),
                     vuids: &["VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933"],
                     ..Default::default()
-                }
+                })
                 .into());
             } else {
                 // According to the documentation of VkSwapchainCreateInfoKHR:
@@ -483,7 +483,7 @@ impl Swapchain {
     pub unsafe fn recreate_unchecked(
         self: &Arc<Self>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         // According to the documentation of VkSwapchainCreateInfoKHR:
         //
         // > Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
@@ -520,14 +520,14 @@ impl Swapchain {
         device: &Device,
         surface: &Surface,
         create_info: &SwapchainCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_extensions().khr_swapchain {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_swapchain",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         create_info
@@ -568,12 +568,12 @@ impl Swapchain {
                     .unwrap_or_default()
             })
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "surface".into(),
                 problem: "is not supported by the physical device".into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-surface-01270"],
                 ..Default::default()
-            });
+            }));
         }
 
         let surface_capabilities = unsafe {
@@ -630,23 +630,23 @@ impl Swapchain {
             .max_image_count
             .map_or(false, |c| min_image_count > c)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.min_image_count` is greater than the `max_image_count` \
                     value of the capabilities of `surface`"
                     .into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-minImageCount-01272"],
                 ..Default::default()
-            });
+            }));
         }
 
         if min_image_count < surface_capabilities.min_image_count {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.min_image_count` is less than the `min_image_count` \
                     value of the capabilities of `surface`"
                     .into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-presentMode-02839"],
                 ..Default::default()
-            });
+            }));
         }
 
         if let Some(image_format) = image_format {
@@ -654,24 +654,24 @@ impl Swapchain {
                 .iter()
                 .any(|&fc| fc == (image_format, image_color_space))
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the combination of `create_info.image_format` and \
                         `create_info.image_color_space` is not supported for `surface`"
                         .into(),
                     vuids: &["VUID-VkSwapchainCreateInfoKHR-imageFormat-01273"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if image_array_layers > surface_capabilities.max_image_array_layers {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.image_array_layers` is greater than the \
                     `max_image_array_layers` value of the capabilities of `surface`"
                     .into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-imageArrayLayers-01275"],
                 ..Default::default()
-            });
+            }));
         }
 
         if matches!(
@@ -684,7 +684,7 @@ impl Swapchain {
             .supported_usage_flags
             .contains(image_usage)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.present_mode` is `PresentMode::Immediate`, \
                     `PresentMode::Mailbox`, `PresentMode::Fifo` or `PresentMode::FifoRelaxed`, \
                     and `create_info.image_usage` contains flags that are not set in \
@@ -692,41 +692,41 @@ impl Swapchain {
                     .into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-presentMode-01427"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !surface_capabilities
             .supported_transforms
             .contains_enum(pre_transform)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.pre_transform` is not present in the \
                     `supported_transforms` value of the capabilities of `surface`"
                     .into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-preTransform-01279"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !surface_capabilities
             .supported_composite_alpha
             .contains_enum(composite_alpha)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.composite_alpha` is not present in the \
                     `supported_composite_alpha` value of the capabilities of `surface`"
                     .into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-compositeAlpha-01280"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !surface_present_modes.contains(&present_mode) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.present_mode` is not supported for `surface`".into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-presentMode-01281"],
                 ..Default::default()
-            });
+            }));
         }
 
         if present_modes.is_empty() {
@@ -735,7 +735,7 @@ impl Swapchain {
                     .supported_present_scaling
                     .contains_enum(scaling_behavior)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`create_info.scaling_behavior` is not present in the \
                             `supported_present_scaling` value of the \
                             capabilities of `surface`"
@@ -744,7 +744,7 @@ impl Swapchain {
                             "VUID-VkSwapchainPresentScalingCreateInfoEXT-scalingBehavior-07770",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
 
@@ -755,7 +755,7 @@ impl Swapchain {
                     .enumerate()
                 {
                     if !supported_present_gravity.contains_enum(present_gravity) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`create_info.present_gravity[{0}]` is not present in the \
                                 `supported_present_gravity[{0}]` value of the \
@@ -768,14 +768,14 @@ impl Swapchain {
                                 "VUID-VkSwapchainPresentScalingCreateInfoEXT-presentGravityY-07774",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
         } else {
             for (index, &present_mode) in present_modes.iter().enumerate() {
                 if !surface_present_modes.contains(&present_mode) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`create_info.present_modes[{}]` is not supported for `surface`",
                             index,
@@ -783,14 +783,14 @@ impl Swapchain {
                         .into(),
                         vuids: &["VUID-VkSwapchainPresentModesCreateInfoEXT-None-07762"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if !surface_capabilities
                     .compatible_present_modes
                     .contains(&present_mode)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`create_info.present_modes[{}]` is not present in the \
                             `compatible_present_modes` value of the \
@@ -800,7 +800,7 @@ impl Swapchain {
                         .into(),
                         vuids: &["VUID-VkSwapchainPresentModesCreateInfoEXT-pPresentModes-07763"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if scaling_behavior.is_some() || present_gravity.is_some() {
@@ -828,7 +828,7 @@ impl Swapchain {
                             .supported_present_scaling
                             .contains_enum(scaling_behavior)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`create_info.scaling_behavior` is not present in the \
                                     `supported_present_scaling` value of the \
@@ -841,7 +841,7 @@ impl Swapchain {
                                     "VUID-VkSwapchainPresentScalingCreateInfoEXT-scalingBehavior-07771",
                                 ],
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
 
@@ -853,7 +853,7 @@ impl Swapchain {
                                 .enumerate()
                         {
                             if !supported_present_gravity.contains_enum(present_gravity) {
-                                return Err(ValidationError {
+                                return Err(Box::new(ValidationError {
                                     problem: format!(
                                         "`create_info.present_gravity[{0}]` is not present in the \
                                         `supported_present_gravity[{0}]` value of the \
@@ -867,7 +867,7 @@ impl Swapchain {
                                         "VUID-VkSwapchainPresentScalingCreateInfoEXT-presentGravityY-07775",
                                     ],
                                     ..Default::default()
-                                });
+                                }));
                             }
                         }
                     }
@@ -880,7 +880,7 @@ impl Swapchain {
                 if image_extent[0] < min_scaled_image_extent[0]
                     || image_extent[1] < min_scaled_image_extent[1]
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`scaling_behavior` is `Some`, and an element of \
                             `create_info.image_extent` is less than the corresponding element \
                             of the `min_scaled_image_extent` value of the \
@@ -888,7 +888,7 @@ impl Swapchain {
                             .into(),
                         vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-07782"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
 
@@ -896,7 +896,7 @@ impl Swapchain {
                 if image_extent[0] > max_scaled_image_extent[0]
                     || image_extent[1] > max_scaled_image_extent[1]
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`scaling_behavior` is `Some`, and an element of \
                             `create_info.image_extent` is greater than the corresponding element \
                             of the `max_scaled_image_extent` value of the \
@@ -904,7 +904,7 @@ impl Swapchain {
                             .into(),
                         vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-07782"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         } else {
@@ -919,7 +919,7 @@ impl Swapchain {
             if image_extent[0] < surface_capabilities.min_image_extent[0]
                 || image_extent[1] < surface_capabilities.min_image_extent[1]
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`scaling_behavior` is `Some`, and an element of \
                         `create_info.image_extent` is less than the corresponding element \
                         of the `min_image_extent` value of the \
@@ -927,13 +927,13 @@ impl Swapchain {
                         .into(),
                     vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-07781"],
                     ..Default::default()
-                });
+                }));
             }
 
             if image_extent[0] > surface_capabilities.max_image_extent[0]
                 || image_extent[1] > surface_capabilities.max_image_extent[1]
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`scaling_behavior` is `Some`, and an element of \
                         `create_info.image_extent` is greater than the corresponding element \
                         of the `max_image_extent` value of the \
@@ -941,7 +941,7 @@ impl Swapchain {
                         .into(),
                     vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-07781"],
                     ..Default::default()
-                });
+                }));
             }
             */
         }
@@ -950,7 +950,7 @@ impl Swapchain {
             && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
         {
             if win32_monitor.is_none() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface` is a Win32 surface, and \
                         `create_info.full_screen_exclusive` is \
                         `FullScreenExclusive::ApplicationControlled`, but \
@@ -958,18 +958,18 @@ impl Swapchain {
                         .into(),
                     vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-02679"],
                     ..Default::default()
-                });
+                }));
             }
         } else {
             if win32_monitor.is_some() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`surface` is not a Win32 surface, or \
                         `create_info.full_screen_exclusive` is not \
                         `FullScreenExclusive::ApplicationControlled`, but \
                         `create_info.win32_monitor` is `Some`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -981,7 +981,7 @@ impl Swapchain {
         surface: &Surface,
         create_info: &SwapchainCreateInfo,
         old_swapchain: Option<&Swapchain>,
-    ) -> Result<(ash::vk::SwapchainKHR, Vec<ash::vk::Image>), RuntimeError> {
+    ) -> Result<(ash::vk::SwapchainKHR, Vec<ash::vk::Image>), VulkanError> {
         let &SwapchainCreateInfo {
             flags,
             min_image_count,
@@ -1103,7 +1103,7 @@ impl Swapchain {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -1116,7 +1116,7 @@ impl Swapchain {
                 ptr::null_mut(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
             let mut images = Vec::with_capacity(count as usize);
             let result = (fns.khr_swapchain.get_swapchain_images_khr)(
@@ -1132,7 +1132,7 @@ impl Swapchain {
                     break images;
                 }
                 ash::vk::Result::INCOMPLETE => (),
-                err => return Err(RuntimeError::from(err)),
+                err => return Err(VulkanError::from(err)),
             }
         };
 
@@ -1154,7 +1154,7 @@ impl Swapchain {
         image_handles: impl IntoIterator<Item = ash::vk::Image>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), RuntimeError> {
+    ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), VulkanError> {
         let SwapchainCreateInfo {
             flags,
             min_image_count,
@@ -1223,7 +1223,7 @@ impl Swapchain {
                     image_index as u32,
                 )?))
             })
-            .collect::<Result<_, RuntimeError>>()?;
+            .collect::<Result<_, VulkanError>>()?;
 
         Ok((swapchain, swapchain_images))
     }
@@ -1398,7 +1398,7 @@ impl Swapchain {
                 self.device.handle(), self.handle
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -1428,7 +1428,7 @@ impl Swapchain {
                 self.device.handle(), self.handle
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -1662,7 +1662,7 @@ impl Default for SwapchainCreateInfo {
 }
 
 impl SwapchainCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             min_image_count: _,
@@ -1724,12 +1724,12 @@ impl SwapchainCreateInfo {
             })?;
 
         if image_usage.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "image_usage".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-imageUsage-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         pre_transform
@@ -1757,35 +1757,35 @@ impl SwapchainCreateInfo {
             })?;
 
         if image_extent.contains(&0) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "image_extent".into(),
                 problem: "one or more elements are zero".into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-imageExtent-01689"],
                 ..Default::default()
-            });
+            }));
         }
 
         if image_array_layers == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "image_array_layers".into(),
                 problem: "is zero".into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-imageArrayLayers-01275"],
                 ..Default::default()
-            });
+            }));
         }
 
         match image_sharing {
             Sharing::Exclusive => (),
             Sharing::Concurrent(queue_family_indices) => {
                 if queue_family_indices.len() < 2 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "image_sharing".into(),
                         problem: "is `Sharing::Concurrent`, and contains less than 2 \
                             queue family indices"
                             .into(),
                         vuids: &["VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01278"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 let queue_family_count =
@@ -1793,7 +1793,7 @@ impl SwapchainCreateInfo {
 
                 for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
                     if queue_family_indices[..index].contains(&queue_family_index) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: "queue_family_indices".into(),
                             problem: format!(
                                 "the queue family index in the list at index {} is contained in \
@@ -1803,18 +1803,18 @@ impl SwapchainCreateInfo {
                             .into(),
                             vuids: &["VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if queue_family_index >= queue_family_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("queue_family_indices[{}]", index).into(),
                             problem: "is not less than the number of queue families in the \
                                 physical device"
                                 .into(),
                             vuids: &["VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -1838,25 +1838,25 @@ impl SwapchainCreateInfo {
         };
 
         if image_format_properties.is_none() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the combination of `image_format` and `image_usage` is not supported \
                     for images by the physical device"
                     .into(),
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-imageFormat-01778"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !present_modes.is_empty() {
             if !device.enabled_extensions().ext_swapchain_maintenance1 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "present_modes".into(),
                     problem: "is not empty".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_swapchain_maintenance1",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             for (index, &present_mode) in present_modes.iter().enumerate() {
@@ -1872,25 +1872,25 @@ impl SwapchainCreateInfo {
             }
 
             if !present_modes.contains(&present_mode) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`present_modes` is not empty, but does not contain `present_mode`"
                         .into(),
                     vuids: &["VUID-VkSwapchainPresentModesCreateInfoEXT-presentMode-07764"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if let Some(scaling_behavior) = scaling_behavior {
             if !device.enabled_extensions().ext_swapchain_maintenance1 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "scaling_behavior".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_swapchain_maintenance1",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             scaling_behavior
@@ -1909,14 +1909,14 @@ impl SwapchainCreateInfo {
 
         if let Some(present_gravity) = present_gravity {
             if !device.enabled_extensions().ext_swapchain_maintenance1 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "present_gravity".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_swapchain_maintenance1",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             for (axis_index, present_gravity) in present_gravity.into_iter().enumerate() {
@@ -1943,14 +1943,14 @@ impl SwapchainCreateInfo {
 
         if full_screen_exclusive != FullScreenExclusive::Default {
             if !device.enabled_extensions().ext_full_screen_exclusive {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "full_screen_exclusive".into(),
                     problem: "is not `FullScreenExclusive::Default`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_full_screen_exclusive",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             full_screen_exclusive
@@ -2145,17 +2145,17 @@ impl Display for FullScreenExclusiveError {
     }
 }
 
-impl From<RuntimeError> for FullScreenExclusiveError {
-    fn from(err: RuntimeError) -> FullScreenExclusiveError {
+impl From<VulkanError> for FullScreenExclusiveError {
+    fn from(err: VulkanError) -> FullScreenExclusiveError {
         match err {
-            err @ RuntimeError::OutOfHostMemory => {
+            err @ VulkanError::OutOfHostMemory => {
                 FullScreenExclusiveError::OomError(OomError::from(err))
             }
-            err @ RuntimeError::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfDeviceMemory => {
                 FullScreenExclusiveError::OomError(OomError::from(err))
             }
-            RuntimeError::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
-            RuntimeError::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
+            VulkanError::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
+            VulkanError::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

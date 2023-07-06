@@ -26,7 +26,7 @@ use crate::{
         future::{AccessCheckError, FlushError, GpuFuture},
         semaphore::SemaphoreState,
     },
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanError,
     VulkanObject,
 };
 use ahash::HashMap;
@@ -202,7 +202,7 @@ impl<'a> QueueGuard<'a> {
         &mut self,
         bind_infos: impl IntoIterator<Item = BindSparseInfo>,
         fence: Option<Arc<Fence>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
         let mut states = States::from_bind_infos(&bind_infos);
 
@@ -221,7 +221,7 @@ impl<'a> QueueGuard<'a> {
         bind_infos: &SmallVec<[BindSparseInfo; 4]>,
         fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
         states: &mut States<'_>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         struct PerBindSparseInfo {
             wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
             buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo; 4]>,
@@ -478,7 +478,7 @@ impl<'a> QueueGuard<'a> {
                 .map_or_else(Default::default, |(fence, _)| fence.handle()),
         )
         .result()
-        .map_err(RuntimeError::from)?;
+        .map_err(VulkanError::from)?;
 
         for bind_info in bind_infos {
             let BindSparseInfo {
@@ -518,7 +518,7 @@ impl<'a> QueueGuard<'a> {
     pub unsafe fn present_unchecked(
         &mut self,
         present_info: PresentInfo,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, RuntimeError>>, RuntimeError> {
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
         let mut states = States::from_present_info(&present_info);
         self.present_unchecked_locked(&present_info, &mut states)
     }
@@ -527,7 +527,7 @@ impl<'a> QueueGuard<'a> {
         &mut self,
         present_info: &PresentInfo,
         states: &mut States<'_>,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, RuntimeError>>, RuntimeError> {
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
         let PresentInfo {
             wait_semaphores,
             swapchain_infos,
@@ -657,7 +657,7 @@ impl<'a> QueueGuard<'a> {
                 | ash::vk::Result::ERROR_SURFACE_LOST_KHR
                 | ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
         ) {
-            return Err(RuntimeError::from(result));
+            return Err(VulkanError::from(result));
         }
 
         for semaphore in wait_semaphores {
@@ -683,7 +683,7 @@ impl<'a> QueueGuard<'a> {
         Ok(results.into_iter().map(|result| match result {
             ash::vk::Result::SUCCESS => Ok(false),
             ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
-            err => Err(RuntimeError::from(err)),
+            err => Err(VulkanError::from(err)),
         }))
     }
 
@@ -817,7 +817,7 @@ impl<'a> QueueGuard<'a> {
         &mut self,
         submit_infos: impl IntoIterator<Item = SubmitInfo>,
         fence: Option<Arc<Fence>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         let submit_infos: SmallVec<[_; 4]> = submit_infos.into_iter().collect();
         let mut states = States::from_submit_infos(&submit_infos);
 
@@ -836,7 +836,7 @@ impl<'a> QueueGuard<'a> {
         submit_infos: &SmallVec<[SubmitInfo; 4]>,
         fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
         states: &mut States<'_>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
             struct PerSubmitInfo {
                 wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
@@ -965,7 +965,7 @@ impl<'a> QueueGuard<'a> {
                 )
             }
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
         } else {
             struct PerSubmitInfo {
                 wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
@@ -1067,7 +1067,7 @@ impl<'a> QueueGuard<'a> {
                     .map_or_else(Default::default, |(fence, _)| fence.handle()),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
         }
 
         for submit_info in submit_infos {
@@ -1155,7 +1155,7 @@ impl<'a> QueueGuard<'a> {
     pub fn begin_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         self.validate_begin_debug_utils_label(&label_info)?;
 
         unsafe {
@@ -1167,7 +1167,7 @@ impl<'a> QueueGuard<'a> {
     fn validate_begin_debug_utils_label(
         &self,
         _label_info: &DebugUtilsLabel,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue
             .device
@@ -1175,12 +1175,12 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_debug_utils",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1216,14 +1216,14 @@ impl<'a> QueueGuard<'a> {
     /// - There must be an outstanding queue label region begun with `begin_debug_utils_label` in
     ///   the queue.
     #[inline]
-    pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), ValidationError> {
+    pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
         self.end_debug_utils_label_unchecked();
 
         Ok(())
     }
 
-    fn validate_end_debug_utils_label(&self) -> Result<(), ValidationError> {
+    fn validate_end_debug_utils_label(&self) -> Result<(), Box<ValidationError>> {
         if !self
             .queue
             .device
@@ -1231,12 +1231,12 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_debug_utils",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkQueueEndDebugUtilsLabelEXT-None-01911
@@ -1260,7 +1260,7 @@ impl<'a> QueueGuard<'a> {
     pub fn insert_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         self.validate_insert_debug_utils_label(&label_info)?;
 
         unsafe {
@@ -1272,7 +1272,7 @@ impl<'a> QueueGuard<'a> {
     fn validate_insert_debug_utils_label(
         &self,
         _label_info: &DebugUtilsLabel,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue
             .device
@@ -1280,12 +1280,12 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "ext_debug_utils",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1323,7 +1323,7 @@ impl QueueState {
             let fns = device.fns();
             (fns.v1_0.queue_wait_idle)(handle)
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
 
             // Since we now know that the queue is finished with all work,
             // we can safely release all resources.

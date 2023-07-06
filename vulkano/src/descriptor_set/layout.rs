@@ -17,7 +17,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     shader::{DescriptorBindingRequirements, ShaderStages},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
 use ahash::HashMap;
@@ -42,7 +42,7 @@ impl DescriptorSetLayout {
     pub fn new(
         device: Arc<Device>,
         create_info: DescriptorSetLayoutCreateInfo,
-    ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
+    ) -> Result<Arc<DescriptorSetLayout>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
@@ -51,7 +51,7 @@ impl DescriptorSetLayout {
     fn validate_new(
         device: &Device,
         create_info: &DescriptorSetLayoutCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateDescriptorSetLayout-pCreateInfo-parameter
         create_info
             .validate(device)
@@ -77,13 +77,13 @@ impl DescriptorSetLayout {
                         .is_none()
                 }
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the total number of descriptors across all bindings is greater than \
                         the `max_per_set_descriptors` limit, and \
                         `device.descriptor_set_layout_support` returned `None`"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -94,7 +94,7 @@ impl DescriptorSetLayout {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: DescriptorSetLayoutCreateInfo,
-    ) -> Result<Arc<DescriptorSetLayout>, RuntimeError> {
+    ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
         let &DescriptorSetLayoutCreateInfo {
             flags,
             ref bindings,
@@ -177,7 +177,7 @@ impl DescriptorSetLayout {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -322,7 +322,7 @@ pub struct DescriptorSetLayoutCreateInfo {
 }
 
 impl DescriptorSetLayoutCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref bindings,
@@ -366,7 +366,7 @@ impl DescriptorSetLayoutCreateInfo {
                         | DescriptorType::StorageBufferDynamic
                         | DescriptorType::InlineUniformBlock
                 ) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, \
                             and `bindings[{}].descriptor_type` is
@@ -381,11 +381,11 @@ impl DescriptorSetLayoutCreateInfo {
                             "VUID-VkDescriptorSetLayoutCreateInfo-flags-02208",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, \
                             and `bindings[{}].flags` contains \
@@ -395,14 +395,14 @@ impl DescriptorSetLayoutCreateInfo {
                         .into(),
                         vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-flags-03003"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
 
             if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
                 && Some(binding_num) != highest_binding_num
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "`bindings[{}].flags` contains \
                         `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`, but {0} is not the
@@ -414,7 +414,7 @@ impl DescriptorSetLayoutCreateInfo {
                         "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03004",
                     ],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -427,14 +427,14 @@ impl DescriptorSetLayoutCreateInfo {
         if flags.intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
             && total_descriptor_count > max_push_descriptors
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, and \
                     the total number of descriptors in `bindings` exceeds the \
                     `max_push_descriptors` limit"
                     .into(),
                 vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00281"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -563,10 +563,10 @@ impl DescriptorSetLayoutBinding {
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the
     /// requirements of a shader `other`.
     #[inline]
-    pub fn ensure_compatible_with_shader(
+    pub(crate) fn ensure_compatible_with_shader(
         &self,
         binding_requirements: &DescriptorBindingRequirements,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         let &DescriptorBindingRequirements {
             ref descriptor_types,
             descriptor_count,
@@ -579,38 +579,38 @@ impl DescriptorSetLayoutBinding {
         } = binding_requirements;
 
         if !descriptor_types.contains(&self.descriptor_type) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the descriptor type is not one of the types allowed by the \
                     descriptor binding requirements"
                     .into(),
                 ..Default::default()
-            });
+            }));
         }
 
         if let Some(required) = descriptor_count {
             if self.descriptor_count < required {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the descriptor count is less than the count required by the \
                         descriptor binding requirements"
                         .into(),
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if !self.stages.contains(stages) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the stages are not a superset of the stages required by the \
                     descriptor binding requirements"
                     .into(),
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             binding_flags,
             descriptor_type,
@@ -640,24 +640,24 @@ impl DescriptorSetLayoutBinding {
 
         if descriptor_type == DescriptorType::InlineUniformBlock {
             if !device.enabled_features().inline_uniform_block {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "descriptor_type".into(),
                     problem: "`DescriptorType::InlineUniformBlock`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "inline_uniform_block",
                     )])]),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-04604"],
-                });
+                }));
             }
 
             if descriptor_count % 4 != 0 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and \
                         `descriptor_count` is not a multiple of 4"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-02209"],
                     ..Default::default()
-                });
+                }));
             }
 
             if descriptor_count
@@ -667,14 +667,14 @@ impl DescriptorSetLayoutBinding {
                     .max_inline_uniform_block_size
                     .unwrap_or(0)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`descriptor_type` is `DescriptorType::InlineUniformBlock`, and \
                         `descriptor_count` is greater than the `max_inline_uniform_block_size` \
                         limit"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-08004"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -690,25 +690,25 @@ impl DescriptorSetLayoutBinding {
             if descriptor_type == DescriptorType::InputAttachment
                 && !(stages.is_empty() || stages == ShaderStages::FRAGMENT)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`descriptor_type` is `DescriptorType::InputAttachment`, but \
                         `stages` is not either empty or equal to `ShaderStages::FRAGMENT`"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-01510"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if !immutable_samplers.is_empty() {
             if descriptor_count != immutable_samplers.len() as u32 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`immutable_samplers` is not empty, but its length does not equal \
                         `descriptor_count`"
                         .into(),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
                     ..Default::default()
-                });
+                }));
             }
 
             let mut has_sampler_ycbcr_conversion = false;
@@ -721,27 +721,27 @@ impl DescriptorSetLayoutBinding {
 
             if has_sampler_ycbcr_conversion {
                 if !matches!(descriptor_type, DescriptorType::CombinedImageSampler) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`immutable_samplers` contains a sampler with a \
                             sampler YCbCr conversion, but `descriptor_type` is not \
                             `DescriptorType::CombinedImageSampler`"
                             .into(),
                         vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
                         ..Default::default()
-                    });
+                    }));
                 }
             } else {
                 if !matches!(
                     descriptor_type,
                     DescriptorType::Sampler | DescriptorType::CombinedImageSampler
                 ) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`immutable_samplers` is not empty, but `descriptor_type` is not \
                             `DescriptorType::Sampler` or `DescriptorType::CombinedImageSampler`"
                             .into(),
                         vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-00282"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -751,21 +751,21 @@ impl DescriptorSetLayoutBinding {
                 .enabled_features()
                 .descriptor_binding_variable_descriptor_count
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "binding_flags".into(),
                     problem: "contains `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`".into(),
                     requires_one_of: RequiresOneOf(&[
                         RequiresAllOf(&[Requires::Feature("descriptor_binding_variable_descriptor_count")])
                     ]),
                     vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014"],
-                });
+                }));
             }
 
             if matches!(
                 descriptor_type,
                 DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
             ) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`binding_flags` contains \
                         `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`, and \
                         `descriptor_type` is `DescriptorType::UniformBufferDynamic` or \
@@ -775,7 +775,7 @@ impl DescriptorSetLayoutBinding {
                         "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03015",
                     ],
                     ..Default::default()
-                });
+                }));
             }
         }
 

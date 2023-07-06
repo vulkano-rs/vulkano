@@ -18,7 +18,7 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
-    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, VulkanError,
     VulkanObject,
 };
 use std::{
@@ -96,7 +96,7 @@ impl QueryPool {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -291,13 +291,13 @@ impl From<RequirementNotMet> for QueryPoolCreationError {
     }
 }
 
-impl From<RuntimeError> for QueryPoolCreationError {
-    fn from(err: RuntimeError) -> QueryPoolCreationError {
+impl From<VulkanError> for QueryPoolCreationError {
+    fn from(err: VulkanError) -> QueryPoolCreationError {
         match err {
-            err @ RuntimeError::OutOfHostMemory => {
+            err @ VulkanError::OutOfHostMemory => {
                 QueryPoolCreationError::OomError(OomError::from(err))
             }
-            err @ RuntimeError::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfDeviceMemory => {
                 QueryPoolCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
@@ -424,7 +424,7 @@ impl<'a> QueriesRange<'a> {
         match result {
             ash::vk::Result::SUCCESS => Ok(true),
             ash::vk::Result::NOT_READY => Ok(false),
-            err => Err(RuntimeError::from(err).into()),
+            err => Err(VulkanError::from(err).into()),
         }
     }
 }
@@ -486,13 +486,13 @@ impl Display for GetResultsError {
     }
 }
 
-impl From<RuntimeError> for GetResultsError {
-    fn from(err: RuntimeError) -> Self {
+impl From<VulkanError> for GetResultsError {
+    fn from(err: VulkanError) -> Self {
         match err {
-            RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => {
+            VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
                 Self::OomError(OomError::from(err))
             }
-            RuntimeError::DeviceLost => Self::DeviceLost,
+            VulkanError::DeviceLost => Self::DeviceLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

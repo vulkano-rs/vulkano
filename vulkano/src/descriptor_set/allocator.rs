@@ -26,7 +26,7 @@ use crate::{
     descriptor_set::layout::{DescriptorSetLayoutCreateFlags, DescriptorType},
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    RuntimeError, VulkanError,
+    Validated, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{cell::UnsafeCell, mem::ManuallyDrop, num::NonZeroU64, sync::Arc, thread};
@@ -60,7 +60,7 @@ pub unsafe trait DescriptorSetAllocator: DeviceOwned {
         &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<Self::Alloc, RuntimeError>;
+    ) -> Result<Self::Alloc, VulkanError>;
 }
 
 /// An allocated descriptor set.
@@ -154,7 +154,7 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
         &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<StandardDescriptorSetAlloc, RuntimeError> {
+    ) -> Result<StandardDescriptorSetAlloc, VulkanError> {
         assert!(
             !layout
                 .flags()
@@ -197,7 +197,7 @@ unsafe impl DescriptorSetAllocator for Arc<StandardDescriptorSetAllocator> {
         &self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<Self::Alloc, RuntimeError> {
+    ) -> Result<Self::Alloc, VulkanError> {
         (**self).allocate(layout, variable_descriptor_count)
     }
 }
@@ -221,7 +221,7 @@ struct FixedEntry {
 }
 
 impl FixedEntry {
-    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, RuntimeError> {
+    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, VulkanError> {
         Ok(FixedEntry {
             pool: FixedPool::new(&layout, MAX_SETS)?,
             set_count: MAX_SETS,
@@ -229,7 +229,7 @@ impl FixedEntry {
         })
     }
 
-    fn allocate(&mut self) -> Result<StandardDescriptorSetAlloc, RuntimeError> {
+    fn allocate(&mut self) -> Result<StandardDescriptorSetAlloc, VulkanError> {
         let inner = if let Some(inner) = self.pool.reserve.pop() {
             inner
         } else {
@@ -257,7 +257,7 @@ struct FixedPool {
 }
 
 impl FixedPool {
-    fn new(layout: &Arc<DescriptorSetLayout>, set_count: usize) -> Result<Arc<Self>, RuntimeError> {
+    fn new(layout: &Arc<DescriptorSetLayout>, set_count: usize) -> Result<Arc<Self>, VulkanError> {
         let inner = DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {
@@ -273,7 +273,7 @@ impl FixedPool {
                 ..Default::default()
             },
         )
-        .map_err(VulkanError::unwrap_runtime)?;
+        .map_err(Validated::unwrap)?;
 
         let allocate_infos = (0..set_count).map(|_| DescriptorSetAllocateInfo {
             layout,
@@ -284,12 +284,12 @@ impl FixedPool {
             inner
                 .allocate_descriptor_sets(allocate_infos)
                 .map_err(|err| match err {
-                    RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => err,
-                    RuntimeError::FragmentedPool => {
+                    VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => err,
+                    VulkanError::FragmentedPool => {
                         // This can't happen as we don't free individual sets.
                         unreachable!();
                     }
-                    RuntimeError::OutOfPoolMemory => {
+                    VulkanError::OutOfPoolMemory => {
                         // We created the pool with an exact size.
                         unreachable!();
                     }
@@ -326,7 +326,7 @@ struct VariableEntry {
 }
 
 impl VariableEntry {
-    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, RuntimeError> {
+    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, VulkanError> {
         let reserve = Arc::new(ArrayQueue::new(MAX_POOLS));
 
         Ok(VariableEntry {
@@ -340,7 +340,7 @@ impl VariableEntry {
     fn allocate(
         &mut self,
         variable_descriptor_count: u32,
-    ) -> Result<StandardDescriptorSetAlloc, RuntimeError> {
+    ) -> Result<StandardDescriptorSetAlloc, VulkanError> {
         if self.allocations >= MAX_SETS {
             self.pool = if let Some(inner) = self.reserve.pop() {
                 Arc::new(VariablePool {
@@ -363,12 +363,12 @@ impl VariableEntry {
                 .inner
                 .allocate_descriptor_sets([allocate_info])
                 .map_err(|err| match err {
-                    RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory => err,
-                    RuntimeError::FragmentedPool => {
+                    VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => err,
+                    VulkanError::FragmentedPool => {
                         // This can't happen as we don't free individual sets.
                         unreachable!();
                     }
-                    RuntimeError::OutOfPoolMemory => {
+                    VulkanError::OutOfPoolMemory => {
                         // We created the pool to fit the maximum variable descriptor count.
                         unreachable!();
                     }
@@ -399,7 +399,7 @@ impl VariablePool {
     fn new(
         layout: &Arc<DescriptorSetLayout>,
         reserve: Arc<ArrayQueue<DescriptorPool>>,
-    ) -> Result<Arc<Self>, RuntimeError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {
@@ -421,7 +421,7 @@ impl VariablePool {
                 reserve,
             })
         })
-        .map_err(VulkanError::unwrap_runtime)
+        .map_err(Validated::unwrap)
     }
 }
 

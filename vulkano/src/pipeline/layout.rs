@@ -73,7 +73,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     shader::{DescriptorBindingRequirements, ShaderStage, ShaderStages},
-    RuntimeError, ValidationError, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::SmallVec;
@@ -108,7 +108,7 @@ impl PipelineLayout {
     pub fn new(
         device: Arc<Device>,
         create_info: PipelineLayoutCreateInfo,
-    ) -> Result<Arc<PipelineLayout>, VulkanError> {
+    ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
@@ -117,7 +117,7 @@ impl PipelineLayout {
     fn validate_new(
         device: &Device,
         create_info: &PipelineLayoutCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreatePipelineLayout-pCreateInfo-parameter
         create_info
             .validate(device)
@@ -130,7 +130,7 @@ impl PipelineLayout {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: PipelineLayoutCreateInfo,
-    ) -> Result<Arc<PipelineLayout>, RuntimeError> {
+    ) -> Result<Arc<PipelineLayout>, VulkanError> {
         let &PipelineLayoutCreateInfo {
             flags,
             ref set_layouts,
@@ -167,7 +167,7 @@ impl PipelineLayout {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -320,13 +320,13 @@ impl PipelineLayout {
 
     /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
     /// constant ranges. Returns an `Err` if this is not the case.
-    pub fn ensure_compatible_with_shader<'a>(
+    pub(crate) fn ensure_compatible_with_shader<'a>(
         &self,
         descriptor_requirements: impl IntoIterator<
             Item = ((u32, u32), &'a DescriptorBindingRequirements),
         >,
         push_constant_range: Option<&PushConstantRange>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         for ((set_num, binding_num), reqs) in descriptor_requirements.into_iter() {
             let layout_binding = self
                 .set_layouts
@@ -336,7 +336,7 @@ impl PipelineLayout {
             let layout_binding = match layout_binding {
                 Some(x) => x,
                 None => {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: format!(
                             "the requirements for descriptor set {} binding {} were not met: \
                             no such binding exists in the pipeline layout",
@@ -344,19 +344,19 @@ impl PipelineLayout {
                         )
                         .into(),
                         ..Default::default()
-                    });
+                    }));
                 }
             };
 
             if let Err(error) = layout_binding.ensure_compatible_with_shader(reqs) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "the requirements for descriptor set {} binding {} were not met: {}",
                         set_num, binding_num, error,
                     )
                     .into(),
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -366,12 +366,12 @@ impl PipelineLayout {
                     (range.offset < own_range.offset || // our range must start before and end after the given range
                         own_range.offset + own_range.size < range.offset + range.size)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "the required push constant range is larger than the \
                             push constant range in the pipeline layout"
                             .into(),
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -447,7 +447,7 @@ impl Default for PipelineLayoutCreateInfo {
 }
 
 impl PipelineLayoutCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let properties = device.physical_device().properties();
 
         let &Self {
@@ -466,12 +466,12 @@ impl PipelineLayoutCreateInfo {
             })?;
 
         if set_layouts.len() > properties.max_bound_descriptor_sets as usize {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "set_layouts".into(),
                 problem: "the length exceeds the `max_bound_descriptor_sets` limit".into(),
                 vuids: &["VUID-VkPipelineLayoutCreateInfo-setLayoutCount-00286"],
                 ..Default::default()
-            });
+            }));
         }
 
         struct DescriptorLimit {
@@ -640,14 +640,14 @@ impl PipelineLayoutCreateInfo {
                 .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
             {
                 if has_push_descriptor_set {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "set_layouts".into(),
                         problem: "contains more than one descriptor set layout whose flags \
                             include `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`"
                             .into(),
                         vuids: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00293"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 has_push_descriptor_set = true;
@@ -688,7 +688,7 @@ impl PipelineLayoutCreateInfo {
         {
             if let Some((max_stage, max_count)) = count.into_iter().max_by_key(|(_, c)| *c) {
                 if max_count > (limit.get_limit)(properties) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "set_layouts".into(),
                         problem: format!(
                             "the combined number of {} descriptors accessible to the \
@@ -706,14 +706,14 @@ impl PipelineLayoutCreateInfo {
                         .into(),
                         vuids: limit.vuids,
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
 
         for (limit, count) in TOTAL_DESCRIPTOR_LIMITS.iter().zip(total_descriptors) {
             if count > (limit.get_limit)(properties) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "set_layouts".into(),
                     problem: format!(
                         "the combined number of {} descriptors accessible across all \
@@ -730,7 +730,7 @@ impl PipelineLayoutCreateInfo {
                     .into(),
                     vuids: limit.vuids,
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -748,12 +748,12 @@ impl PipelineLayoutCreateInfo {
             } = range;
 
             if seen_stages.intersects(stages) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "push_constant_ranges".into(),
                     problem: "contains more than one range with the same stage".into(),
                     vuids: &["VUID-VkPipelineLayoutCreateInfo-pPushConstantRanges-00292"],
                     ..Default::default()
-                });
+                }));
             }
 
             seen_stages |= stages;
@@ -812,7 +812,7 @@ impl Default for PushConstantRange {
 }
 
 impl PushConstantRange {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             stages,
             offset,
@@ -828,12 +828,12 @@ impl PushConstantRange {
             })?;
 
         if stages.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkPushConstantRange-stageFlags-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         let max_push_constants_size = device
@@ -842,48 +842,48 @@ impl PushConstantRange {
             .max_push_constants_size;
 
         if offset >= max_push_constants_size {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not less than the `max_push_constants_size` limit".into(),
                 vuids: &["VUID-VkPushConstantRange-offset-00294"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset % 4 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not a multiple of 4".into(),
                 vuids: &["VUID-VkPushConstantRange-offset-00295"],
                 ..Default::default()
-            });
+            }));
         }
 
         if size == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is zero".into(),
                 vuids: &["VUID-VkPushConstantRange-size-00296"],
                 ..Default::default()
-            });
+            }));
         }
 
         if size % 4 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is not a multiple of 4".into(),
                 vuids: &["VUID-VkPushConstantRange-size-00297"],
                 ..Default::default()
-            });
+            }));
         }
 
         if size > max_push_constants_size - offset {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`size` is greater than `max_push_constants_size` limit minus `offset`"
                     .into(),
                 vuids: &["VUID-VkPushConstantRange-size-00298"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1006,7 +1006,7 @@ impl PipelineDescriptorSetLayoutCreateInfo {
 #[derive(Clone, Debug)]
 pub struct IntoPipelineLayoutCreateInfoError {
     pub set_num: u32,
-    pub error: VulkanError,
+    pub error: Validated<VulkanError>,
 }
 
 impl Display for IntoPipelineLayoutCreateInfoError {

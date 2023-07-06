@@ -182,7 +182,7 @@ impl ViewportState {
         None
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self {
             viewports,
             scissors,
@@ -194,12 +194,12 @@ impl ViewportState {
         let viewport_count = match viewports {
             PartialStateMode::Fixed(viewports) => {
                 if viewports.is_empty() {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "viewports".into(),
                         problem: "is empty".into(),
                         vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 for (index, viewport) in viewports.iter().enumerate() {
@@ -212,12 +212,12 @@ impl ViewportState {
             }
             PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
                 if *count == 0 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "viewports".into(),
                         problem: "is empty".into(),
                         vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 *count
@@ -231,12 +231,12 @@ impl ViewportState {
         let scissor_count = match scissors {
             PartialStateMode::Fixed(scissors) => {
                 if scissors.is_empty() {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "scissors".into(),
                         problem: "is empty".into(),
                         vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 for (index, scissor) in scissors.iter().enumerate() {
@@ -250,12 +250,12 @@ impl ViewportState {
                         .and_then(|(o, e)| o.checked_add(e))
                         .is_none()
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("scissors[{}]", index).into(),
                             problem: "`offset[0] + extent[0]` is greater than `i32::MAX`".into(),
                             vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02822"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if (i32::try_from(offset[1]).ok())
@@ -263,12 +263,12 @@ impl ViewportState {
                         .and_then(|(o, e)| o.checked_add(e))
                         .is_none()
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("scissors[{}]", index).into(),
                             problem: "`offset[1] + extent[1]` is greater than `i32::MAX`".into(),
                             vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02823"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
 
@@ -276,12 +276,12 @@ impl ViewportState {
             }
             PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
                 if *count == 0 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "scissors".into(),
                         problem: "is empty".into(),
                         vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 *count
@@ -293,52 +293,52 @@ impl ViewportState {
         };
 
         if viewport_count != 0 && scissor_count != 0 && viewport_count != scissor_count {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the length of `viewports` and the length of `scissors` are not equal"
                     .into(),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04134"],
                 ..Default::default()
-            });
+            }));
         }
 
         if viewport_count > 1 && !device.enabled_features().multi_viewport {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "viewports".into(),
                 problem: "the length is greater than 1".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-01216"],
-            });
+            }));
         }
 
         if scissor_count > 1 && !device.enabled_features().multi_viewport {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "scissors".into(),
                 problem: "the length is greater than 1".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-01217"],
-            });
+            }));
         }
 
         if viewport_count > properties.max_viewports {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "viewports".into(),
                 problem: "the length exceeds the `max_viewports` limit".into(),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-01218"],
                 ..Default::default()
-            });
+            }));
         }
 
         if scissor_count > properties.max_viewports {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "scissors".into(),
                 problem: "the length exceeds the `max_viewports` limit".into(),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-01219"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -373,7 +373,7 @@ pub struct Viewport {
 }
 
 impl Viewport {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             offset,
             extent,
@@ -383,28 +383,28 @@ impl Viewport {
         let properties = device.physical_device().properties();
 
         if extent[0] <= 0.0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[0]".into(),
                 problem: "is not greater than zero".into(),
                 vuids: &["VUID-VkViewport-width-01770"],
                 ..Default::default()
-            });
+            }));
         }
 
         if extent[0] > properties.max_viewport_dimensions[0] as f32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[0]".into(),
                 problem: "exceeds the `max_viewport_dimensions[0]` limit".into(),
                 vuids: &["VUID-VkViewport-width-01771"],
                 ..Default::default()
-            });
+            }));
         }
 
         if extent[1] <= 0.0
             && !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_maintenance1)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[1]".into(),
                 problem: "is not greater than zero".into(),
                 requires_one_of: RequiresOneOf(&[
@@ -412,94 +412,94 @@ impl Viewport {
                     RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance1")]),
                 ]),
                 vuids: &["VUID-VkViewport-apiVersion-07917"],
-            });
+            }));
         }
 
         if extent[1].abs() > properties.max_viewport_dimensions[1] as f32 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "extent[1]".into(),
                 problem: "exceeds the `max_viewport_dimensions[1]` limit".into(),
                 vuids: &["VUID-VkViewport-height-01773"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset[0] < properties.viewport_bounds_range[0] {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`offset[0]` is less than the `viewport_bounds_range[0]` property".into(),
                 vuids: &["VUID-VkViewport-x-01774"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset[0] + extent[0] > properties.viewport_bounds_range[1] {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`offset[0] + extent[0]` is greater than the \
                     `viewport_bounds_range[1]` property"
                     .into(),
                 vuids: &["VUID-VkViewport-x-01232"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset[1] < properties.viewport_bounds_range[0] {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`offset[1]` is less than the `viewport_bounds_range[0]` property".into(),
                 vuids: &["VUID-VkViewport-y-01775"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset[1] > properties.viewport_bounds_range[1] {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`offset[1]` is greater than the `viewport_bounds_range[1]` property"
                     .into(),
                 vuids: &["VUID-VkViewport-y-01776"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset[1] + extent[1] < properties.viewport_bounds_range[0] {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`offset[1] + extent[1]` is less than the \
                     `viewport_bounds_range[0]` property"
                     .into(),
                 vuids: &["VUID-VkViewport-y-01777"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset[1] + extent[1] > properties.viewport_bounds_range[1] {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`offset[1] + extent[1]` is greater than the \
                     `viewport_bounds_range[1]` property"
                     .into(),
                 vuids: &["VUID-VkViewport-y-01233"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !device.enabled_extensions().ext_depth_range_unrestricted {
             if *depth_range.start() < 0.0 || *depth_range.start() > 1.0 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`depth_range.start` is not between 0.0 and 1.0 inclusive".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_depth_range_unrestricted",
                     )])]),
                     vuids: &["VUID-VkViewport-minDepth-01234"],
                     ..Default::default()
-                });
+                }));
             }
 
             if *depth_range.end() < 0.0 || *depth_range.end() > 1.0 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`depth_range.end` is not between 0.0 and 1.0 inclusive".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_depth_range_unrestricted",
                     )])]),
                     vuids: &["VUID-VkViewport-maxDepth-01235"],
                     ..Default::default()
-                });
+                }));
             }
         }
 

@@ -62,7 +62,7 @@ impl TessellationState {
         self
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             patch_control_points,
             domain_origin,
@@ -74,25 +74,25 @@ impl TessellationState {
         match patch_control_points {
             StateMode::Fixed(patch_control_points) => {
                 if patch_control_points == 0 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "patch_control_points".into(),
                         problem: "is zero".into(),
                         vuids: &[
                             "VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if patch_control_points > properties.max_tessellation_patch_size {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "patch_control_points".into(),
                         problem: "exceeds the `max_tessellation_patch_size` limit".into(),
                         vuids: &[
                             "VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             StateMode::Dynamic => {
@@ -100,14 +100,14 @@ impl TessellationState {
                     .enabled_features()
                     .extended_dynamic_state2_patch_control_points
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "patch_control_points".into(),
                         problem: "is dynamic".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                             "extended_dynamic_state2_patch_control_points",
                         )])]),
                         vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04870"],
-                    });
+                    }));
                 }
             }
         };
@@ -126,7 +126,7 @@ impl TessellationState {
             && !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_maintenance2)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "domain_origin".into(),
                 problem: "is not `TessellationDomainOrigin::UpperLeft`".into(),
                 requires_one_of: RequiresOneOf(&[
@@ -134,7 +134,7 @@ impl TessellationState {
                     RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance2")]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())

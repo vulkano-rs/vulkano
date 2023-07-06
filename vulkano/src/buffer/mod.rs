@@ -116,7 +116,7 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError,
+    DeviceSize, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -262,14 +262,14 @@ impl Buffer {
     /// - Panics if the chosen memory type is not host-visible.
     pub fn from_data<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        buffer_info: BufferCreateInfo,
+        create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         data: T,
-    ) -> Result<Subbuffer<T>, BufferAllocateError>
+    ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
     where
         T: BufferContents,
     {
-        let buffer = Buffer::new_sized(allocator, buffer_info, allocation_info)?;
+        let buffer = Buffer::new_sized(allocator, create_info, allocation_info)?;
 
         {
             let mut write_guard = buffer
@@ -295,10 +295,10 @@ impl Buffer {
     /// - Panics if `iter` is empty.
     pub fn from_iter<T, I>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        buffer_info: BufferCreateInfo,
+        create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         iter: I,
-    ) -> Result<Subbuffer<[T]>, BufferAllocateError>
+    ) -> Result<Subbuffer<[T]>, Validated<BufferAllocateError>>
     where
         T: BufferContents,
         I: IntoIterator<Item = T>,
@@ -307,7 +307,7 @@ impl Buffer {
         let iter = iter.into_iter();
         let buffer = Buffer::new_slice(
             allocator,
-            buffer_info,
+            create_info,
             allocation_info,
             iter.len().try_into().unwrap(),
         )?;
@@ -333,16 +333,16 @@ impl Buffer {
     /// - Panics if `buffer_info.size` is not zero.
     pub fn new_sized<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        buffer_info: BufferCreateInfo,
+        create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
-    ) -> Result<Subbuffer<T>, BufferAllocateError>
+    ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
     where
         T: BufferContents,
     {
         let layout = T::LAYOUT.unwrap_sized();
         let buffer = Subbuffer::new(Buffer::new(
             allocator,
-            buffer_info,
+            create_info,
             allocation_info,
             layout,
         )?);
@@ -359,14 +359,14 @@ impl Buffer {
     /// - Panics if `len` is zero.
     pub fn new_slice<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        buffer_info: BufferCreateInfo,
+        create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
-    ) -> Result<Subbuffer<[T]>, BufferAllocateError>
+    ) -> Result<Subbuffer<[T]>, Validated<BufferAllocateError>>
     where
         T: BufferContents,
     {
-        Buffer::new_unsized(allocator, buffer_info, allocation_info, len)
+        Buffer::new_unsized(allocator, create_info, allocation_info, len)
     }
 
     /// Creates a new uninitialized `Buffer` for unsized data. Returns a [`Subbuffer`] spanning the
@@ -378,10 +378,10 @@ impl Buffer {
     /// - Panics if `len` is zero.
     pub fn new_unsized<T>(
         allocator: &(impl MemoryAllocator + ?Sized),
-        buffer_info: BufferCreateInfo,
+        create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
-    ) -> Result<Subbuffer<T>, BufferAllocateError>
+    ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
     where
         T: BufferContents + ?Sized,
     {
@@ -389,7 +389,7 @@ impl Buffer {
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
         let buffer = Subbuffer::new(Buffer::new(
             allocator,
-            buffer_info,
+            create_info,
             allocation_info,
             layout,
         )?);
@@ -405,24 +405,27 @@ impl Buffer {
     /// - Panics if `layout.alignment()` is greater than 64.
     pub fn new(
         allocator: &(impl MemoryAllocator + ?Sized),
-        mut buffer_info: BufferCreateInfo,
+        mut create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
-    ) -> Result<Arc<Self>, BufferAllocateError> {
+    ) -> Result<Arc<Self>, Validated<BufferAllocateError>> {
         assert!(layout.alignment().as_devicesize() <= 64);
         // TODO: Enable once sparse binding materializes
         // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
 
         assert!(
-            buffer_info.size == 0,
+            create_info.size == 0,
             "`Buffer::new*` functions set the `buffer_info.size` field themselves, you should not \
             set it yourself",
         );
 
-        buffer_info.size = layout.size();
+        create_info.size = layout.size();
 
-        let raw_buffer = RawBuffer::new(allocator.device().clone(), buffer_info)
-            .map_err(BufferAllocateError::CreateBuffer)?;
+        let raw_buffer =
+            RawBuffer::new(allocator.device().clone(), create_info).map_err(|err| match err {
+                Validated::Error(err) => Validated::Error(BufferAllocateError::CreateBuffer(err)),
+                Validated::ValidationError(err) => err.into(),
+            })?;
         let mut requirements = *raw_buffer.memory_requirements();
         requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
 
@@ -448,7 +451,7 @@ impl Buffer {
 
         unsafe { raw_buffer.bind_memory_unchecked(allocation) }
             .map(Arc::new)
-            .map_err(|(err, _, _)| BufferAllocateError::BindMemory(err))
+            .map_err(|(err, _, _)| BufferAllocateError::BindMemory(err).into())
     }
 
     fn from_raw(inner: RawBuffer, memory: BufferMemory) -> Self {
@@ -505,32 +508,32 @@ impl Buffer {
 
     /// Returns the device address for this buffer.
     // TODO: Caching?
-    pub fn device_address(&self) -> Result<NonZeroDeviceSize, ValidationError> {
+    pub fn device_address(&self) -> Result<NonZeroDeviceSize, Box<ValidationError>> {
         self.validate_device_address()?;
 
         unsafe { Ok(self.device_address_unchecked()) }
     }
 
-    fn validate_device_address(&self) -> Result<(), ValidationError> {
+    fn validate_device_address(&self) -> Result<(), Box<ValidationError>> {
         let device = self.device();
 
         if !device.enabled_features().buffer_device_address {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "buffer_device_address",
                 )])]),
                 vuids: &["VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !self.usage().intersects(BufferUsage::SHADER_DEVICE_ADDRESS) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self.usage()".into(),
                 problem: "does not contain `BufferUsage::SHADER_DEVICE_ADDRESS`".into(),
                 vuids: &["VUID-VkBufferDeviceAddressInfo-buffer-02601"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -601,7 +604,7 @@ impl Hash for Buffer {
 pub enum BufferAllocateError {
     CreateBuffer(VulkanError),
     AllocateMemory(MemoryAllocatorError),
-    BindMemory(RuntimeError),
+    BindMemory(VulkanError),
 }
 
 impl Error for BufferAllocateError {
@@ -621,6 +624,12 @@ impl Display for BufferAllocateError {
             Self::AllocateMemory(_) => write!(f, "allocating memory for the buffer failed"),
             Self::BindMemory(_) => write!(f, "binding memory to the buffer failed"),
         }
+    }
+}
+
+impl From<BufferAllocateError> for Validated<BufferAllocateError> {
+    fn from(err: BufferAllocateError) -> Self {
+        Self::Error(err)
     }
 }
 
@@ -915,7 +924,10 @@ impl ExternalBufferInfo {
         }
     }
 
-    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+    pub(crate) fn validate(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             handle_type,
             usage,
@@ -932,12 +944,12 @@ impl ExternalBufferInfo {
             })?;
 
         if usage.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "usage".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-usage-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         handle_type

@@ -2675,7 +2675,7 @@ pub enum DescriptorResourceInvalidError {
         image_view_set_num: u32,
         image_view_binding_num: u32,
         image_view_index: u32,
-        error: ValidationError,
+        error: Box<ValidationError>,
     },
     SamplerUnnormalizedCoordinatesNotAllowed,
     SamplerYcbcrConversionNotAllowed,
