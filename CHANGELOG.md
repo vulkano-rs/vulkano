@@ -50,6 +50,8 @@ Changes to command buffers:
 - Command buffers are now created with a wrapping `Arc` like other object types.
 - The type parameter of `PrimaryCommandBuffer` and `SecondaryCommandBuffer` is now the allocator itself (like for the builder) rather than its allocation type.
 - `UnsafeCommandBuffer(Builder)` now takes ownership of the command buffer allocation, and has a type parameter for the allocator.
+- `CommandPoolResetError` is renamed to `ResetCommandPoolError`.
+- Command pool creation and resetting now take `CommandPoolCreateFlags` and `CommandPoolResetFlags` respectively.
 
 Changes to descriptor sets and descriptor set layouts:
 - `PersistentDescriptorSet::new` now takes an additional parameter, specifying descriptor set copy operations.
