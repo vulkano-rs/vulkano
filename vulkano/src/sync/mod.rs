@@ -72,7 +72,7 @@ impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
 }
 
 /// Declares in which queue(s) a resource can be used.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Sharing<I>
 where
     I: IntoIterator<Item = u32>,

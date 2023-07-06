@@ -159,14 +159,10 @@ fn draw_life(
 
         // Flip y.
         normalized_pos.y = 1.0 - normalized_pos.y;
-        let image_size = compute_pipeline
-            .color_image()
-            .image()
-            .dimensions()
-            .width_height();
+        let image_extent = compute_pipeline.color_image().image().extent();
         compute_pipeline.draw_life(Vector2::new(
-            (image_size[0] as f32 * normalized_pos.x) as i32,
-            (image_size[1] as f32 * normalized_pos.y) as i32,
+            (image_extent[0] as f32 * normalized_pos.x) as i32,
+            (image_extent[1] as f32 * normalized_pos.y) as i32,
         ))
     }
 }

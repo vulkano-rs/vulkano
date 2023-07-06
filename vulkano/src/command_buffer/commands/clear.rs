@@ -157,7 +157,7 @@ where
                 return Err(ClearError::MipLevelsOutOfRange {
                     region_index,
                     mip_levels_range_end: subresource_range.mip_levels.end,
-                    image_mip_levels: image.dimensions().array_layers(),
+                    image_mip_levels: image.array_layers(),
                 });
             }
 
@@ -166,11 +166,11 @@ where
 
             // VUID-vkCmdClearDepthStencilImage-baseArrayLayer-01476
             // VUID-vkCmdClearDepthStencilImage-pRanges-01695
-            if subresource_range.array_layers.end > image.dimensions().array_layers() {
+            if subresource_range.array_layers.end > image.array_layers() {
                 return Err(ClearError::ArrayLayersOutOfRange {
                     region_index,
                     array_layers_range_end: subresource_range.array_layers.end,
-                    image_array_layers: image.dimensions().array_layers(),
+                    image_array_layers: image.array_layers(),
                 });
             }
         }
@@ -339,7 +339,7 @@ where
                 return Err(ClearError::MipLevelsOutOfRange {
                     region_index,
                     mip_levels_range_end: subresource_range.mip_levels.end,
-                    image_mip_levels: image.dimensions().array_layers(),
+                    image_mip_levels: image.array_layers(),
                 });
             }
 
@@ -348,11 +348,11 @@ where
 
             // VUID-vkCmdClearDepthStencilImage-baseArrayLayer-01476
             // VUID-vkCmdClearDepthStencilImage-pRanges-01695
-            if subresource_range.array_layers.end > image.dimensions().array_layers() {
+            if subresource_range.array_layers.end > image.array_layers() {
                 return Err(ClearError::ArrayLayersOutOfRange {
                     region_index,
                     array_layers_range_end: subresource_range.array_layers.end,
-                    image_array_layers: image.dimensions().array_layers(),
+                    image_array_layers: image.array_layers(),
                 });
             }
         }

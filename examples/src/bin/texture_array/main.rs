@@ -25,7 +25,7 @@ use vulkano::{
     image::{
         sampler::{Sampler, SamplerCreateInfo},
         view::ImageView,
-        Image, ImageCreateInfo, ImageDimensions, ImageUsage,
+        Image, ImageCreateInfo, ImageType, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -226,12 +226,16 @@ fn main() {
 
     let texture = {
         // Replace with your actual image array dimensions.
-        let dimensions = ImageDimensions::Dim2d {
-            width: 128,
-            height: 128,
-            array_layers: 3,
-        };
+        let format = Format::R8G8B8A8_SRGB;
+        let extent: [u32; 3] = [128, 128, 1];
+        let array_layers = 3u32;
 
+        let buffer_size = format.block_size().unwrap()
+            * extent
+                .into_iter()
+                .map(|e| e as DeviceSize)
+                .product::<DeviceSize>()
+            * array_layers as DeviceSize;
         let upload_buffer = Buffer::new_slice(
             &memory_allocator,
             BufferCreateInfo {
@@ -242,7 +246,7 @@ fn main() {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
             },
-            (dimensions.num_texels() * 4) as DeviceSize,
+            buffer_size,
         )
         .unwrap();
 
@@ -265,8 +269,10 @@ fn main() {
         let image = Image::new(
             &memory_allocator,
             ImageCreateInfo {
-                dimensions,
-                format: Some(Format::R8G8B8A8_SRGB),
+                image_type: ImageType::Dim2d,
+                format: Some(format),
+                extent,
+                array_layers,
                 usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                 ..Default::default()
             },
@@ -477,8 +483,8 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
+    let extent = images[0].extent();
+    viewport.extent = [extent[0] as f32, extent[1] as f32];
 
     images
         .iter()

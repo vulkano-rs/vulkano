@@ -28,7 +28,7 @@ use vulkano::{
         QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageDimensions, ImageUsage},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
@@ -217,12 +217,9 @@ fn main() {
     let image = Image::new(
         &memory_allocator,
         ImageCreateInfo {
-            dimensions: ImageDimensions::Dim2d {
-                width: 1024,
-                height: 1024,
-                array_layers: 1,
-            },
+            image_type: ImageType::Dim2d,
             format: Some(Format::R8G8B8A8_UNORM),
+            extent: [1024, 1024, 1],
             usage: ImageUsage::TRANSFER_SRC | ImageUsage::STORAGE,
             ..Default::default()
         },

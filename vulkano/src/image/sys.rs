@@ -18,39 +18,31 @@
 //! [the parent module-level documentation]: super
 
 use super::{
-    Image, ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout, ImageMemory,
+    Image, ImageAspect, ImageAspects, ImageCreateFlags, ImageLayout, ImageMemory,
     ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount,
-    SampleCounts, SparseImageMemoryRequirements, SubresourceLayout,
+    SparseImageMemoryRequirements, SubresourceLayout,
 };
 use crate::{
     cache::OnceCache,
     device::{Device, DeviceOwned},
-    format::{ChromaSampling, Format, FormatFeatures, NumericType},
+    format::{ChromaSampling, Format, FormatFeatures},
     image::{
-        view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType,
-        SparseImageFormatProperties,
+        max_mip_levels, ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties,
+        ImageType, SparseImageFormatProperties,
     },
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocatorError},
-        is_aligned, DedicatedTo, DeviceAlignment, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MemoryPropertyFlags, MemoryRequirements,
+        allocator::{AllocationType, DeviceLayout, MemoryAlloc},
+        is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryPropertyFlags,
+        MemoryRequirements,
     },
     sync::Sharing,
-    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version,
+    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT;
 use smallvec::{smallvec, SmallVec};
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::{size_of_val, MaybeUninit},
-    num::NonZeroU64,
-    ptr,
-    sync::Arc,
-};
+use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// A raw image, with no memory backing it.
 ///
@@ -68,799 +60,41 @@ pub struct RawImage {
     id: NonZeroU64,
 
     flags: ImageCreateFlags,
-    dimensions: ImageDimensions,
+    image_type: ImageType,
     format: Option<Format>,
     format_features: FormatFeatures,
-    initial_layout: ImageLayout,
+    extent: [u32; 3],
+    array_layers: u32,
     mip_levels: u32,
     samples: SampleCount,
     tiling: ImageTiling,
     usage: ImageUsage,
-    sharing: Sharing<SmallVec<[u32; 4]>>,
     stencil_usage: ImageUsage,
+    sharing: Sharing<SmallVec<[u32; 4]>>,
+    initial_layout: ImageLayout,
+    drm_format_modifier: Option<(u64, u32)>,
     external_memory_handle_types: ExternalMemoryHandleTypes,
 
-    memory_requirements: SmallVec<[MemoryRequirements; 3]>,
+    memory_requirements: SmallVec<[MemoryRequirements; 4]>,
     needs_destruction: bool, // `vkDestroyImage` is called only if true.
     subresource_layout: OnceCache<(ImageAspect, u32, u32), SubresourceLayout>,
 }
 
 impl RawImage {
     /// Creates a new `RawImage`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if one of the values in `create_info.dimensions` is zero.
-    /// - Panics if `create_info.format` is `None`.
-    /// - Panics if `create_info.block_texel_view_compatible` is set but not
-    ///   `create_info.mutable_format`.
-    /// - Panics if `create_info.mip_levels` is `0`.
-    /// - Panics if `create_info.sharing` is [`Sharing::Concurrent`] with less than 2 items.
-    /// - Panics if `create_info.initial_layout` is something other than
-    ///   [`ImageLayout::Undefined`] or [`ImageLayout::Preinitialized`].
-    /// - Panics if `create_info.usage` is empty.
-    /// - Panics if `create_info.usage` contains `transient_attachment`, but does not also contain
-    ///   at least one of `color_attachment`, `depth_stencil_attachment`, `input_attachment`, or
-    ///   if it contains values other than these.
     #[inline]
-    pub fn new(
-        device: Arc<Device>,
-        mut create_info: ImageCreateInfo,
-    ) -> Result<RawImage, ImageError> {
-        match &mut create_info.sharing {
-            Sharing::Exclusive => (),
-            Sharing::Concurrent(queue_family_indices) => {
-                // VUID-VkImageCreateInfo-sharingMode-01420
-                queue_family_indices.sort_unstable();
-                queue_family_indices.dedup();
-            }
-        }
-
+    pub fn new(device: Arc<Device>, create_info: ImageCreateInfo) -> Result<RawImage, VulkanError> {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(RawImage::new_unchecked(device, create_info)?) }
     }
 
-    fn validate_new(
-        device: &Device,
-        create_info: &ImageCreateInfo,
-    ) -> Result<FormatFeatures, ImageError> {
-        let &ImageCreateInfo {
-            flags,
-            dimensions,
-            format,
-            mip_levels,
-            samples,
-            tiling,
-            usage,
-            mut stencil_usage,
-            ref sharing,
-            initial_layout,
-            external_memory_handle_types,
-            _ne: _,
-            image_drm_format_modifier_create_info,
-        } = create_info;
-
-        let physical_device = device.physical_device();
-        let device_properties = physical_device.properties();
-
-        let format = format.unwrap(); // Can be None for "external formats" but Vulkano doesn't support that yet
-        let aspects = format.aspects();
-
-        let has_separate_stencil_usage = if stencil_usage.is_empty()
-            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-        {
-            stencil_usage = usage;
-            false
-        } else {
-            stencil_usage == usage
-        };
-
-        // VUID-VkImageCreateInfo-flags-parameter
-        flags.validate_device(device)?;
-
-        // VUID-VkImageCreateInfo-format-parameter
-        format.validate_device(device)?;
-
-        // VUID-VkImageCreateInfo-samples-parameter
-        samples.validate_device(device)?;
-
-        // VUID-VkImageCreateInfo-tiling-parameter
-        tiling.validate_device(device)?;
-
-        // VUID-VkImageCreateInfo-usage-parameter
-        usage.validate_device(device)?;
-
-        // VUID-VkImageCreateInfo-usage-requiredbitmask
-        assert!(!usage.is_empty());
-
-        if has_separate_stencil_usage {
-            if !(device.api_version() >= Version::V1_2
-                || device.enabled_extensions().ext_separate_stencil_usage)
-            {
-                return Err(ImageError::RequirementNotMet {
-                    required_for: "`create_info.stencil_usage` is `Some` and `create_info.format` \
-                        has both a depth and a stencil aspect",
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
-                        RequiresAllOf(&[Requires::DeviceExtension("ext_separate_stencil_usage")]),
-                    ]),
-                });
-            }
-
-            // VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter
-            stencil_usage.validate_device(device)?;
-
-            // VUID-VkImageStencilUsageCreateInfo-usage-requiredbitmask
-            assert!(!stencil_usage.is_empty());
-        }
-
-        // VUID-VkImageCreateInfo-initialLayout-parameter
-        initial_layout.validate_device(device)?;
-
-        // VUID-VkImageCreateInfo-initialLayout-00993
-        assert!(matches!(
-            initial_layout,
-            ImageLayout::Undefined | ImageLayout::Preinitialized
-        ));
-
-        // VUID-VkImageCreateInfo-flags-01573
-        assert!(
-            !flags.intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
-                || flags.intersects(ImageCreateFlags::MUTABLE_FORMAT)
-        );
-
-        // VUID-VkImageCreateInfo-tiling-02261
-        // VUID-VkImageCreateInfo-pNext-02262
-        if (tiling == ImageTiling::DrmFormatModifier)
-            != image_drm_format_modifier_create_info.is_some()
-        {
-            return Err(ImageError::DrmFormatModifierRequiresCreateInfo);
-        }
-
-        // Get format features
-        let format_features = {
-            // Use unchecked, because all validation has been done above.
-            let format_properties = unsafe { physical_device.format_properties_unchecked(format) };
-            match tiling {
-                ImageTiling::Linear => format_properties.linear_tiling_features,
-                ImageTiling::Optimal => format_properties.optimal_tiling_features,
-                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: Improve
-            }
-        };
-
-        // TODO: VUID-VkImageCreateInfo-tiling-02353
-        // Vulkano currently has no high-level way to add or check for VkImageFormatListCreateInfo.
-
-        // Format isn't supported at all?
-        if format_features.is_empty() {
-            return Err(ImageError::FormatNotSupported);
-        }
-
-        // Decode the dimensions
-        let (image_type, extent, array_layers) = match dimensions {
-            ImageDimensions::Dim1d {
-                width,
-                array_layers,
-            } => (ImageType::Dim1d, [width, 1, 1], array_layers),
-            ImageDimensions::Dim2d {
-                width,
-                height,
-                array_layers,
-            } => (ImageType::Dim2d, [width, height, 1], array_layers),
-            ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => (ImageType::Dim3d, [width, height, depth], 1),
-        };
-
-        // VUID-VkImageCreateInfo-extent-00944
-        assert!(extent[0] != 0);
-
-        // VUID-VkImageCreateInfo-extent-00945
-        assert!(extent[1] != 0);
-
-        // VUID-VkImageCreateInfo-extent-00946
-        assert!(extent[2] != 0);
-
-        // VUID-VkImageCreateInfo-arrayLayers-00948
-        assert!(array_layers != 0);
-
-        // VUID-VkImageCreateInfo-mipLevels-00947
-        assert!(mip_levels != 0);
-
-        // Check mip levels
-
-        let max_mip_levels = dimensions.max_mip_levels();
-        debug_assert!(max_mip_levels >= 1);
-
-        // VUID-VkImageCreateInfo-mipLevels-00958
-        if mip_levels > max_mip_levels {
-            return Err(ImageError::MaxMipLevelsExceeded {
-                mip_levels,
-                max: max_mip_levels,
-            });
-        }
-
-        // VUID-VkImageCreateInfo-samples-02257
-        if samples != SampleCount::Sample1 {
-            if image_type != ImageType::Dim2d {
-                return Err(ImageError::MultisampleNot2d);
-            }
-
-            if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
-                return Err(ImageError::MultisampleCubeCompatible);
-            }
-
-            if mip_levels != 1 {
-                return Err(ImageError::MultisampleMultipleMipLevels);
-            }
-
-            if tiling == ImageTiling::Linear {
-                return Err(ImageError::MultisampleLinearTiling);
-            }
-
-            // VUID-VkImageCreateInfo-multisampleArrayImage-04460
-            if device.enabled_extensions().khr_portability_subset
-                && !device.enabled_features().multisample_array_image
-                && array_layers != 1
-            {
-                return Err(ImageError::RequirementNotMet {
-                    required_for: "this device is a portability subset device, \
-                        `create_info.samples` is not `SampleCount::Sample1` and \
-                        `create_info.dimensions.array_layers()` is greater than `1`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "multisample_array_image",
-                    )])]),
-                });
-            }
-        }
-
-        // Check limits for YCbCr formats
-        if let Some(chroma_sampling) = format.ycbcr_chroma_sampling() {
-            // VUID-VkImageCreateInfo-format-06410
-            if mip_levels != 1 {
-                return Err(ImageError::YcbcrFormatMultipleMipLevels);
-            }
-
-            // VUID-VkImageCreateInfo-format-06411
-            if samples != SampleCount::Sample1 {
-                return Err(ImageError::YcbcrFormatMultisampling);
-            }
-
-            // VUID-VkImageCreateInfo-format-06412
-            if image_type != ImageType::Dim2d {
-                return Err(ImageError::YcbcrFormatNot2d);
-            }
-
-            // VUID-VkImageCreateInfo-format-06413
-            if array_layers > 1 && !device.enabled_features().ycbcr_image_arrays {
-                return Err(ImageError::RequirementNotMet {
-                    required_for: "`create_info.format.ycbcr_chroma_sampling()` is `Some` and \
-                        `create_info.dimensions.array_layers()` is greater than `1`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "ycbcr_image_arrays",
-                    )])]),
-                });
-            }
-
-            match chroma_sampling {
-                ChromaSampling::Mode444 => (),
-                ChromaSampling::Mode422 => {
-                    // VUID-VkImageCreateInfo-format-04712
-                    if extent[0] % 2 != 0 {
-                        return Err(ImageError::YcbcrFormatInvalidDimensions);
-                    }
-                }
-                ChromaSampling::Mode420 => {
-                    // VUID-VkImageCreateInfo-format-04712
-                    // VUID-VkImageCreateInfo-format-04713
-                    if !(extent[0] % 2 == 0 && extent[1] % 2 == 0) {
-                        return Err(ImageError::YcbcrFormatInvalidDimensions);
-                    }
-                }
-            }
-        }
-
-        /* Check usage requirements */
-
-        let combined_usage = usage | stencil_usage;
-
-        if combined_usage.intersects(ImageUsage::SAMPLED)
-            && !format_features.intersects(FormatFeatures::SAMPLED_IMAGE)
-        {
-            return Err(ImageError::FormatUsageNotSupported { usage: "sampled" });
-        }
-
-        if combined_usage.intersects(ImageUsage::COLOR_ATTACHMENT)
-            && !format_features.intersects(FormatFeatures::COLOR_ATTACHMENT)
-        {
-            return Err(ImageError::FormatUsageNotSupported {
-                usage: "color_attachment",
-            });
-        }
-
-        if combined_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-            && !format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
-        {
-            return Err(ImageError::FormatUsageNotSupported {
-                usage: "depth_stencil_attachment",
-            });
-        }
-
-        if combined_usage.intersects(ImageUsage::INPUT_ATTACHMENT)
-            && !format_features.intersects(
-                FormatFeatures::COLOR_ATTACHMENT | FormatFeatures::DEPTH_STENCIL_ATTACHMENT,
-            )
-        {
-            return Err(ImageError::FormatUsageNotSupported {
-                usage: "input_attachment",
-            });
-        }
-
-        if combined_usage.intersects(
-            ImageUsage::COLOR_ATTACHMENT
-                | ImageUsage::DEPTH_STENCIL_ATTACHMENT
-                | ImageUsage::INPUT_ATTACHMENT
-                | ImageUsage::TRANSIENT_ATTACHMENT,
-        ) {
-            // VUID-VkImageCreateInfo-usage-00964
-            // VUID-VkImageCreateInfo-usage-00965
-            // VUID-VkImageCreateInfo-Format-02536
-            // VUID-VkImageCreateInfo-format-02537
-            if extent[0] > device_properties.max_framebuffer_width
-                || extent[1] > device_properties.max_framebuffer_height
-            {
-                return Err(ImageError::MaxFramebufferDimensionsExceeded {
-                    extent: [extent[0], extent[1]],
-                    max: [
-                        device_properties.max_framebuffer_width,
-                        device_properties.max_framebuffer_height,
-                    ],
-                });
-            }
-        }
-
-        if combined_usage.intersects(ImageUsage::STORAGE) {
-            if !format_features.intersects(FormatFeatures::STORAGE_IMAGE) {
-                return Err(ImageError::FormatUsageNotSupported { usage: "storage" });
-            }
-
-            // VUID-VkImageCreateInfo-usage-00968
-            // VUID-VkImageCreateInfo-format-02538
-            if !device.enabled_features().shader_storage_image_multisample
-                && samples != SampleCount::Sample1
-            {
-                return Err(ImageError::RequirementNotMet {
-                    required_for: "`create_info.usage` or `create_info.stencil_usage` contains \
-                        `ImageUsage::STORAGE`, and `create_info.samples` is not \
-                        `SampleCount::Sample1`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "shader_storage_image_multisample",
-                    )])]),
-                });
-            }
-        }
-
-        // These flags only exist in later versions, ignore them otherwise
-        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
-            if combined_usage.intersects(ImageUsage::TRANSFER_SRC)
-                && !format_features.intersects(FormatFeatures::TRANSFER_SRC)
-            {
-                return Err(ImageError::FormatUsageNotSupported {
-                    usage: "transfer_src",
-                });
-            }
-
-            if combined_usage.intersects(ImageUsage::TRANSFER_DST)
-                && !format_features.intersects(FormatFeatures::TRANSFER_DST)
-            {
-                return Err(ImageError::FormatUsageNotSupported {
-                    usage: "transfer_dst",
-                });
-            }
-        }
-
-        if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT) {
-            // VUID-VkImageCreateInfo-usage-00966
-            assert!(usage.intersects(
-                ImageUsage::COLOR_ATTACHMENT
-                    | ImageUsage::DEPTH_STENCIL_ATTACHMENT
-                    | ImageUsage::INPUT_ATTACHMENT
-            ));
-
-            // VUID-VkImageCreateInfo-usage-00963
-            assert!((usage
-                - (ImageUsage::TRANSIENT_ATTACHMENT
-                    | ImageUsage::COLOR_ATTACHMENT
-                    | ImageUsage::DEPTH_STENCIL_ATTACHMENT
-                    | ImageUsage::INPUT_ATTACHMENT))
-                .is_empty())
-        }
-
-        if has_separate_stencil_usage {
-            // VUID-VkImageCreateInfo-format-02795
-            // VUID-VkImageCreateInfo-format-02796
-            if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                != stencil_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-            {
-                return Err(ImageError::StencilUsageMismatch {
-                    usage,
-                    stencil_usage,
-                });
-            }
-
-            // VUID-VkImageCreateInfo-format-02797
-            // VUID-VkImageCreateInfo-format-02798
-            if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
-                != stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
-            {
-                return Err(ImageError::StencilUsageMismatch {
-                    usage,
-                    stencil_usage,
-                });
-            }
-
-            if stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT) {
-                // VUID-VkImageStencilUsageCreateInfo-stencilUsage-02539
-                assert!((stencil_usage
-                    - (ImageUsage::TRANSIENT_ATTACHMENT
-                        | ImageUsage::DEPTH_STENCIL_ATTACHMENT
-                        | ImageUsage::INPUT_ATTACHMENT))
-                    .is_empty())
-            }
-        }
-
-        /* Check flags requirements */
-
-        if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
-            // VUID-VkImageCreateInfo-flags-00949
-            if image_type != ImageType::Dim2d {
-                return Err(ImageError::CubeCompatibleNot2d);
-            }
-
-            // VUID-VkImageCreateInfo-imageType-00954
-            if extent[0] != extent[1] {
-                return Err(ImageError::CubeCompatibleNotSquare);
-            }
-
-            // VUID-VkImageCreateInfo-imageType-00954
-            if array_layers < 6 {
-                return Err(ImageError::CubeCompatibleNotEnoughArrayLayers);
-            }
-        }
-
-        if flags.intersects(ImageCreateFlags::ARRAY_2D_COMPATIBLE) {
-            // VUID-VkImageCreateInfo-flags-00950
-            if image_type != ImageType::Dim3d {
-                return Err(ImageError::Array2dCompatibleNot3d);
-            }
-
-            // VUID-VkImageCreateInfo-imageView2DOn3DImage-04459
-            if device.enabled_extensions().khr_portability_subset
-                && !device.enabled_features().image_view2_d_on3_d_image
-            {
-                return Err(ImageError::RequirementNotMet {
-                    required_for: "this device is a portability subset device, and \
-                        `create_info.flags` contains `ImageCreateFlags::ARRAY_2D_COMPATIBLE`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "image_view2_d_on3_d_image",
-                    )])]),
-                });
-            }
-        }
-
-        if flags.intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE) {
-            // VUID-VkImageCreateInfo-flags-01572
-            if format.compression().is_none() {
-                return Err(ImageError::BlockTexelViewCompatibleNotCompressed);
-            }
-        }
-
-        if flags.intersects(ImageCreateFlags::DISJOINT) {
-            // VUID-VkImageCreateInfo-format-01577
-            if format.planes().len() < 2 {
-                return Err(ImageError::DisjointFormatNotSupported);
-            }
-
-            // VUID-VkImageCreateInfo-imageCreateFormatFeatures-02260
-            if !format_features.intersects(FormatFeatures::DISJOINT) {
-                return Err(ImageError::DisjointFormatNotSupported);
-            }
-        }
-
-        /* Check sharing mode and queue families */
-
-        match sharing {
-            Sharing::Exclusive => (),
-            Sharing::Concurrent(queue_family_indices) => {
-                // VUID-VkImageCreateInfo-sharingMode-00942
-                assert!(queue_family_indices.len() >= 2);
-
-                for &queue_family_index in queue_family_indices {
-                    // VUID-VkImageCreateInfo-sharingMode-01420
-                    if queue_family_index
-                        >= device.physical_device().queue_family_properties().len() as u32
-                    {
-                        return Err(ImageError::SharingQueueFamilyIndexOutOfRange {
-                            queue_family_index,
-                            queue_family_count: device
-                                .physical_device()
-                                .queue_family_properties()
-                                .len() as u32,
-                        });
-                    }
-                }
-            }
-        }
-
-        /* External memory handles */
-
-        if !external_memory_handle_types.is_empty() {
-            if !(device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_external_memory)
-            {
-                return Err(ImageError::RequirementNotMet {
-                    required_for: "`create_info.external_memory_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
-                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
-                    ]),
-                });
-            }
-
-            // VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter
-            external_memory_handle_types.validate_device(device)?;
-
-            // VUID-VkImageCreateInfo-pNext-01443
-            if initial_layout != ImageLayout::Undefined {
-                return Err(ImageError::ExternalMemoryInvalidInitialLayout);
-            }
-        }
-
-        /*
-            Some device limits can be exceeded, but only for particular image configurations, which
-            must be queried with `image_format_properties`. See:
-            https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap44.html#capabilities-image
-            First, we check if this is the case, then query the device if so.
-        */
-
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap44.html#features-extentperimagetype
-        let extent_must_query = || match image_type {
-            ImageType::Dim1d => {
-                let limit = device.physical_device().properties().max_image_dimension1_d;
-                extent[0] > limit
-            }
-            ImageType::Dim2d if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) => {
-                let limit = device
-                    .physical_device()
-                    .properties()
-                    .max_image_dimension_cube;
-                extent[0] > limit
-            }
-            ImageType::Dim2d => {
-                let limit = device.physical_device().properties().max_image_dimension2_d;
-                extent[0] > limit || extent[1] > limit
-            }
-            ImageType::Dim3d => {
-                let limit = device.physical_device().properties().max_image_dimension3_d;
-                extent[0] > limit || extent[1] > limit || extent[2] > limit
-            }
-        };
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkImageFormatProperties.html
-        let mip_levels_must_query = || {
-            if mip_levels > 1 {
-                // TODO: for external memory, the spec says:
-                // "handle type included in the handleTypes member for which mipmap image support is
-                // not required". But which handle types are those?
-                !external_memory_handle_types.is_empty()
-            } else {
-                false
-            }
-        };
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkImageFormatProperties.html
-        let array_layers_must_query = || {
-            if array_layers > device.physical_device().properties().max_image_array_layers {
-                true
-            } else if array_layers > 1 {
-                image_type == ImageType::Dim3d
-            } else {
-                false
-            }
-        };
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap44.html#features-supported-sample-counts
-        let samples_must_query = || {
-            if samples == SampleCount::Sample1 {
-                return false;
-            }
-
-            if combined_usage.intersects(ImageUsage::COLOR_ATTACHMENT)
-                && !device_properties
-                    .framebuffer_color_sample_counts
-                    .contains_enum(samples)
-            {
-                // TODO: how to handle framebuffer_integer_color_sample_counts limit, which only
-                // exists >= Vulkan 1.2
-                return true;
-            }
-
-            if combined_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT) {
-                if aspects.intersects(ImageAspects::DEPTH)
-                    && !device_properties
-                        .framebuffer_depth_sample_counts
-                        .contains_enum(samples)
-                {
-                    return true;
-                }
-
-                if aspects.intersects(ImageAspects::STENCIL)
-                    && !device_properties
-                        .framebuffer_stencil_sample_counts
-                        .contains_enum(samples)
-                {
-                    return true;
-                }
-            }
-
-            if combined_usage.intersects(ImageUsage::SAMPLED) {
-                if let Some(numeric_type) = format.type_color() {
-                    match numeric_type {
-                        NumericType::UINT | NumericType::SINT => {
-                            if !device_properties
-                                .sampled_image_integer_sample_counts
-                                .contains_enum(samples)
-                            {
-                                return true;
-                            }
-                        }
-                        NumericType::SFLOAT
-                        | NumericType::UFLOAT
-                        | NumericType::SNORM
-                        | NumericType::UNORM
-                        | NumericType::SSCALED
-                        | NumericType::USCALED
-                        | NumericType::SRGB => {
-                            if !device_properties
-                                .sampled_image_color_sample_counts
-                                .contains_enum(samples)
-                            {
-                                return true;
-                            }
-                        }
-                    }
-                } else {
-                    if aspects.intersects(ImageAspects::DEPTH)
-                        && !device_properties
-                            .sampled_image_depth_sample_counts
-                            .contains_enum(samples)
-                    {
-                        return true;
-                    }
-
-                    if aspects.intersects(ImageAspects::STENCIL)
-                        && device_properties
-                            .sampled_image_stencil_sample_counts
-                            .contains_enum(samples)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            if combined_usage.intersects(ImageUsage::STORAGE)
-                && !device_properties
-                    .storage_image_sample_counts
-                    .contains_enum(samples)
-            {
-                return true;
-            }
-
-            false
-        };
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkImageCreateInfo.html#_description
-        let linear_must_query = || {
-            if tiling == ImageTiling::Linear {
-                !(image_type == ImageType::Dim2d
-                    && format.type_color().is_some()
-                    && mip_levels == 1
-                    && array_layers == 1
-                    // VUID-VkImageCreateInfo-samples-02257 already states that multisampling+linear
-                    // is invalid so no need to check for that here.
-                    && (usage - (ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST)).is_empty())
-            } else {
-                false
-            }
-        };
-
-        let must_query_device = extent_must_query()
-            || mip_levels_must_query()
-            || array_layers_must_query()
-            || samples_must_query()
-            || linear_must_query();
-
-        // We determined that we must query the device in order to be sure that the image
-        // configuration is supported.
-        if must_query_device {
-            let external_memory_handle_types: SmallVec<[Option<ExternalMemoryHandleType>; 4]> =
-                if !external_memory_handle_types.is_empty() {
-                    // If external memory handles are used, the properties need to be queried
-                    // individually for each handle type.
-                    external_memory_handle_types.into_iter().map(Some).collect()
-                } else {
-                    smallvec![None]
-                };
-
-            for external_memory_handle_type in external_memory_handle_types {
-                // Use unchecked, because all validation has been done above.
-                let image_format_properties = unsafe {
-                    device
-                        .physical_device()
-                        .image_format_properties_unchecked(ImageFormatInfo {
-                            flags,
-                            format: Some(format),
-                            image_type,
-                            tiling,
-                            usage,
-                            external_memory_handle_type,
-                            ..Default::default()
-                        })?
-                };
-
-                let ImageFormatProperties {
-                    max_extent,
-                    max_mip_levels,
-                    max_array_layers,
-                    sample_counts,
-                    max_resource_size: _,
-                    ..
-                } = match image_format_properties {
-                    Some(x) => x,
-                    None => return Err(ImageError::ImageFormatPropertiesNotSupported),
-                };
-
-                // VUID-VkImageCreateInfo-extent-02252
-                // VUID-VkImageCreateInfo-extent-02253
-                // VUID-VkImageCreateInfo-extent-02254
-                if extent[0] > max_extent[0]
-                    || extent[1] > max_extent[1]
-                    || extent[2] > max_extent[2]
-                {
-                    return Err(ImageError::MaxDimensionsExceeded {
-                        extent,
-                        max: max_extent,
-                    });
-                }
-
-                // VUID-VkImageCreateInfo-mipLevels-02255
-                if mip_levels > max_mip_levels {
-                    return Err(ImageError::MaxMipLevelsExceeded {
-                        mip_levels,
-                        max: max_mip_levels,
-                    });
-                }
-
-                // VUID-VkImageCreateInfo-arrayLayers-02256
-                if array_layers > max_array_layers {
-                    return Err(ImageError::MaxArrayLayersExceeded {
-                        array_layers,
-                        max: max_array_layers,
-                    });
-                }
-
-                // VUID-VkImageCreateInfo-samples-02258
-                if !sample_counts.contains_enum(samples) {
-                    return Err(ImageError::SampleCountNotSupported {
-                        samples,
-                        supported: sample_counts,
-                    });
-                }
-
-                // TODO: check resource size?
-            }
-        }
-
-        Ok(format_features)
+    fn validate_new(device: &Device, create_info: &ImageCreateInfo) -> Result<(), ValidationError> {
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -871,8 +105,10 @@ impl RawImage {
     ) -> Result<Self, RuntimeError> {
         let &ImageCreateInfo {
             flags,
-            dimensions,
+            image_type,
             format,
+            extent,
+            array_layers,
             mip_levels,
             samples,
             tiling,
@@ -882,7 +118,8 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
-            mut image_drm_format_modifier_create_info,
+            ref drm_format_modifiers,
+            ref drm_format_modifier_plane_layouts,
         } = &create_info;
 
         let aspects = format.map_or_else(Default::default, |format| format.aspects());
@@ -894,23 +131,6 @@ impl RawImage {
             false
         } else {
             stencil_usage == usage
-        };
-
-        let (image_type, extent, array_layers) = match dimensions {
-            ImageDimensions::Dim1d {
-                width,
-                array_layers,
-            } => (ImageType::Dim1d, [width, 1, 1], array_layers),
-            ImageDimensions::Dim2d {
-                width,
-                height,
-                array_layers,
-            } => (ImageType::Dim2d, [width, height, 1], array_layers),
-            ImageDimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => (ImageType::Dim3d, [width, height, depth], 1),
         };
 
         let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
@@ -942,8 +162,59 @@ impl RawImage {
             initial_layout: initial_layout.into(),
             ..Default::default()
         };
+        let mut drm_format_modifier_explicit_info_vk = None;
+        let drm_format_modifier_plane_layouts_vk: SmallVec<[_; 4]>;
+        let mut drm_format_modifier_list_info_vk = None;
         let mut external_memory_info_vk = None;
         let mut stencil_usage_info_vk = None;
+
+        #[allow(clippy::comparison_chain)]
+        if drm_format_modifiers.len() == 1 {
+            drm_format_modifier_plane_layouts_vk = drm_format_modifier_plane_layouts
+                .iter()
+                .map(|subresource_layout| {
+                    let &SubresourceLayout {
+                        offset,
+                        size,
+                        row_pitch,
+                        array_pitch,
+                        depth_pitch,
+                    } = subresource_layout;
+
+                    ash::vk::SubresourceLayout {
+                        offset,
+                        size,
+                        row_pitch,
+                        array_pitch: array_pitch.unwrap_or(0),
+                        depth_pitch: depth_pitch.unwrap_or(0),
+                    }
+                })
+                .collect();
+
+            let next = drm_format_modifier_explicit_info_vk.insert(
+                ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT {
+                    drm_format_modifier: drm_format_modifiers[0],
+                    drm_format_modifier_plane_count: drm_format_modifier_plane_layouts_vk.len()
+                        as u32,
+                    p_plane_layouts: drm_format_modifier_plane_layouts_vk.as_ptr(),
+                    ..Default::default()
+                },
+            );
+
+            next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *const _ as *const _;
+        } else if drm_format_modifiers.len() > 1 {
+            let next = drm_format_modifier_list_info_vk.insert(
+                ash::vk::ImageDrmFormatModifierListCreateInfoEXT {
+                    drm_format_modifier_count: drm_format_modifiers.len() as u32,
+                    p_drm_format_modifiers: drm_format_modifiers.as_ptr(),
+                    ..Default::default()
+                },
+            );
+
+            next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *const _ as *const _;
+        }
 
         if !external_memory_handle_types.is_empty() {
             let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryImageCreateInfo {
@@ -965,13 +236,6 @@ impl RawImage {
             info_vk.p_next = next as *const _ as *const _;
         }
 
-        if external_memory_handle_types.intersects(ExternalMemoryHandleTypes::DMA_BUF) {
-            let next = image_drm_format_modifier_create_info.as_mut().unwrap();
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
-        }
-
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
@@ -981,7 +245,7 @@ impl RawImage {
             output.assume_init()
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Self::from_handle(device, handle, create_info)
     }
 
     /// Creates a new `RawImage` from a raw object handle.
@@ -996,7 +260,7 @@ impl RawImage {
         device: Arc<Device>,
         handle: ash::vk::Image,
         create_info: ImageCreateInfo,
-    ) -> Self {
+    ) -> Result<Self, RuntimeError> {
         Self::from_handle_with_destruction(device, handle, create_info, true)
     }
 
@@ -1005,11 +269,13 @@ impl RawImage {
         handle: ash::vk::Image,
         create_info: ImageCreateInfo,
         needs_destruction: bool,
-    ) -> Self {
+    ) -> Result<Self, RuntimeError> {
         let ImageCreateInfo {
             flags,
-            dimensions,
+            image_type,
             format,
+            extent,
+            array_layers,
             mip_levels,
             samples,
             tiling,
@@ -1019,51 +285,74 @@ impl RawImage {
             initial_layout,
             external_memory_handle_types,
             _ne: _,
-            image_drm_format_modifier_create_info: _,
+            drm_format_modifiers: _,
+            drm_format_modifier_plane_layouts: _,
         } = create_info;
 
-        let aspects = format.map_or_else(Default::default, |format| format.aspects());
+        let format = format.unwrap();
+        let format_properties =
+            unsafe { device.physical_device().format_properties_unchecked(format) };
+
+        let drm_format_modifier = if tiling == ImageTiling::DrmFormatModifier {
+            let drm_format_modifier = Self::get_drm_format_modifier_properties(&device, handle)?;
+            let drm_format_modifier_plane_count = format_properties
+                .drm_format_modifier_properties
+                .iter()
+                .find(|properties| properties.drm_format_modifier == drm_format_modifier)
+                .expect("couldn't get the DRM format modifier plane count for the image")
+                .drm_format_modifier_plane_count;
+            Some((drm_format_modifier, drm_format_modifier_plane_count))
+        } else {
+            None
+        };
+
+        let format_features = {
+            let drm_format_modifiers: SmallVec<[_; 1]> =
+                drm_format_modifier.map_or_else(Default::default, |(m, _)| smallvec![m]);
+            format_properties.format_features(tiling, &drm_format_modifiers)
+        };
+
+        let format_aspects = format.aspects();
 
         if stencil_usage.is_empty()
-            || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            || !format_aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
         {
             stencil_usage = usage;
         }
 
-        // Get format features
-        let format_features = {
-            // Use unchecked, because `create_info` is assumed to match the info of the handle, and
-            // therefore already valid.
-            let format_properties = device
-                .physical_device()
-                .format_properties_unchecked(format.unwrap());
-            match tiling {
-                ImageTiling::Linear => format_properties.linear_tiling_features,
-                ImageTiling::Optimal => format_properties.optimal_tiling_features,
-                ImageTiling::DrmFormatModifier => format_properties.linear_tiling_features, // TODO: improve
-            }
-        };
-
         let memory_requirements = if needs_destruction {
             if flags.intersects(ImageCreateFlags::DISJOINT) {
-                (0..format.unwrap().planes().len())
-                    .map(|plane| Self::get_memory_requirements(&device, handle, Some(plane)))
+                // VUID-VkImageMemoryRequirementsInfo2-image-01589
+                // VUID-VkImageMemoryRequirementsInfo2-image-02279
+                let plane_count = drm_format_modifier.map_or_else(
+                    || format.planes().len(),
+                    |(_, plane_count)| plane_count as usize,
+                );
+
+                (0..plane_count)
+                    .map(|plane| {
+                        Self::get_memory_requirements(&device, handle, Some((plane, tiling)))
+                    })
                     .collect()
             } else {
+                // VUID-VkImageMemoryRequirementsInfo2-image-01590
                 smallvec![Self::get_memory_requirements(&device, handle, None)]
             }
         } else {
             smallvec![]
         };
 
-        RawImage {
+        Ok(RawImage {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
+
             flags,
-            dimensions,
-            format,
+            image_type,
+            format: Some(format),
             format_features,
+            extent,
+            array_layers,
             mip_levels,
             initial_layout,
             samples,
@@ -1071,17 +360,19 @@ impl RawImage {
             usage,
             stencil_usage,
             sharing,
+            drm_format_modifier,
             external_memory_handle_types,
+
             memory_requirements,
             needs_destruction,
             subresource_layout: OnceCache::new(),
-        }
+        })
     }
 
-    fn get_memory_requirements(
+    unsafe fn get_memory_requirements(
         device: &Device,
         handle: ash::vk::Image,
-        plane: Option<usize>,
+        plane_tiling: Option<(usize, ImageTiling)>,
     ) -> MemoryRequirements {
         let mut info_vk = ash::vk::ImageMemoryRequirementsInfo2 {
             image: handle,
@@ -1089,20 +380,41 @@ impl RawImage {
         };
         let mut plane_info_vk = None;
 
-        if let Some(plane) = plane {
+        if let Some((plane, tiling)) = plane_tiling {
             debug_assert!(
                 device.api_version() >= Version::V1_1
                     || device.enabled_extensions().khr_get_memory_requirements2
-                        && device.enabled_extensions().khr_sampler_ycbcr_conversion
             );
 
+            let plane_aspect = match tiling {
+                // VUID-VkImagePlaneMemoryRequirementsInfo-planeAspect-02281
+                ImageTiling::Optimal | ImageTiling::Linear => {
+                    debug_assert!(
+                        device.api_version() >= Version::V1_1
+                            || device.enabled_extensions().khr_sampler_ycbcr_conversion
+                    );
+                    match plane {
+                        0 => ash::vk::ImageAspectFlags::PLANE_0,
+                        1 => ash::vk::ImageAspectFlags::PLANE_1,
+                        2 => ash::vk::ImageAspectFlags::PLANE_2,
+                        _ => unreachable!(),
+                    }
+                }
+                // VUID-VkImagePlaneMemoryRequirementsInfo-planeAspect-02282
+                ImageTiling::DrmFormatModifier => {
+                    debug_assert!(device.enabled_extensions().ext_image_drm_format_modifier);
+                    match plane {
+                        0 => ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                        1 => ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                        2 => ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                        3 => ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                        _ => unreachable!(),
+                    }
+                }
+            };
+
             let next = plane_info_vk.insert(ash::vk::ImagePlaneMemoryRequirementsInfo {
-                plane_aspect: match plane {
-                    0 => ash::vk::ImageAspectFlags::PLANE_0,
-                    1 => ash::vk::ImageAspectFlags::PLANE_1,
-                    2 => ash::vk::ImageAspectFlags::PLANE_2,
-                    _ => unreachable!(),
-                },
+                plane_aspect,
                 ..Default::default()
             });
 
@@ -1171,7 +483,6 @@ impl RawImage {
         }
     }
 
-    #[inline]
     #[allow(dead_code)] // Remove when sparse memory is implemented
     fn get_sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
         let device = &self.device;
@@ -1351,28 +662,50 @@ impl RawImage {
         }
     }
 
+    unsafe fn get_drm_format_modifier_properties(
+        device: &Device,
+        handle: ash::vk::Image,
+    ) -> Result<u64, RuntimeError> {
+        let mut properties_vk = ash::vk::ImageDrmFormatModifierPropertiesEXT::default();
+
+        let fns = device.fns();
+        (fns.ext_image_drm_format_modifier
+            .get_image_drm_format_modifier_properties_ext)(
+            device.handle(),
+            handle,
+            &mut properties_vk,
+        )
+        .result()
+        .map_err(RuntimeError::from)?;
+
+        Ok(properties_vk.drm_format_modifier)
+    }
+
     /// Binds device memory to this image.
     ///
-    /// - If `self.flags().disjoint` is not set, then `allocations` must contain exactly one
-    ///   element. This element may be a dedicated allocation.
-    /// - If `self.flags().disjoint` is set, then `allocations` must contain exactly
-    ///   `self.format().unwrap().planes().len()` elements. These elements must not be dedicated
-    ///   allocations.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`,
+    ///   then `allocations` must contain exactly one element.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
+    ///   `self.tiling()` is `ImageTiling::Linear` or `ImageTiling::Optimal`, then
+    ///   `allocations` must contain exactly `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
+    ///   `self.tiling()` is `ImageTiling::DrmFormatModifier`, then
+    ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
     pub fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = MemoryAlloc>,
     ) -> Result<
         Image,
         (
-            ImageError,
+            VulkanError,
             RawImage,
             impl ExactSizeIterator<Item = MemoryAlloc>,
         ),
     > {
-        let allocations: SmallVec<[_; 3]> = allocations.into_iter().collect();
+        let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();
 
         if let Err(err) = self.validate_bind_memory(&allocations) {
-            return Err((err, self, allocations.into_iter()));
+            return Err((err.into(), self, allocations.into_iter()));
         }
 
         unsafe { self.bind_memory_unchecked(allocations) }.map_err(|(err, image, allocations)| {
@@ -1381,34 +714,67 @@ impl RawImage {
                 image,
                 allocations
                     .into_iter()
-                    .collect::<SmallVec<[_; 3]>>()
+                    .collect::<SmallVec<[_; 4]>>()
                     .into_iter(),
             )
         })
     }
 
-    fn validate_bind_memory(&self, allocations: &[MemoryAlloc]) -> Result<(), ImageError> {
+    fn validate_bind_memory(&self, allocations: &[MemoryAlloc]) -> Result<(), ValidationError> {
         if self.flags.intersects(ImageCreateFlags::DISJOINT) {
-            if allocations.len() != self.format.unwrap().planes().len() {
-                return Err(ImageError::AllocationsWrongNumberOfElements {
-                    provided: allocations.len(),
-                    required: self.format.unwrap().planes().len(),
-                });
+            match self.tiling {
+                ImageTiling::Optimal | ImageTiling::Linear => {
+                    if allocations.len() != self.format.unwrap().planes().len() {
+                        return Err(ValidationError {
+                            problem: "`self.flags()` contains `ImageCreateFlags::DISJOINT`, and \
+                                `self.tiling()` is `ImageTiling::Optimal` or \
+                                `ImageTiling::Linear`, but \
+                                the length of `allocations` does not equal \
+                                the number of planes in the format of the image"
+                                .into(),
+                            ..Default::default()
+                        });
+                    }
+                }
+                ImageTiling::DrmFormatModifier => {
+                    if allocations.len() != self.drm_format_modifier.unwrap().1 as usize {
+                        return Err(ValidationError {
+                            problem: "`self.flags()` contains `ImageCreateFlags::DISJOINT`, and \
+                                `self.tiling()` is `ImageTiling::DrmFormatModifier`, but \
+                                the length of `allocations` does not equal \
+                                the number of memory planes of the DRM format modifier of the \
+                                image"
+                                .into(),
+                            ..Default::default()
+                        });
+                    }
+                }
             }
         } else {
             if allocations.len() != 1 {
-                return Err(ImageError::AllocationsWrongNumberOfElements {
-                    provided: allocations.len(),
-                    required: 1,
+                return Err(ValidationError {
+                    problem: "`self.flags()` does not contain `ImageCreateFlags::DISJOINT`, but \
+                        the length of `allocations` is not 1"
+                        .into(),
+                    ..Default::default()
                 });
             }
         }
 
-        for (allocations_index, (allocation, memory_requirements)) in (allocations.iter())
+        for (index, (allocation, memory_requirements)) in (allocations.iter())
             .zip(self.memory_requirements.iter())
             .enumerate()
         {
-            assert_ne!(allocation.allocation_type(), AllocationType::Linear);
+            if allocation.allocation_type() == AllocationType::Linear {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`allocations[{}].allocation_type()` is `AllocationType::Linear`",
+                        index
+                    )
+                    .into(),
+                    ..Default::default()
+                });
+            }
 
             let memory = allocation.device_memory();
             let memory_offset = allocation.offset();
@@ -1431,86 +797,138 @@ impl RawImage {
             // VUID-VkBindImageMemoryInfo-memoryOffset-01046
             // Assume that `allocation` was created correctly.
 
+            if memory_requirements.memory_type_bits & (1 << memory.memory_type_index()) == 0 {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`allocation[{}].device_memory().memory_type_index()` is not a bit set in \
+                        `self.memory_requirements().memory_type_bits`",
+                        index
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkBindImageMemoryInfo-pNext-01615",
+                        "VUID-VkBindImageMemoryInfo-pNext-01619",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            if !is_aligned(memory_offset, memory_requirements.layout.alignment()) {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`allocations[{}].offset()` is not aligned according to \
+                        `self.memory_requirements().layout.alignment()`",
+                        index
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkBindImageMemoryInfo-pNext-01616",
+                        "VUID-VkBindImageMemoryInfo-pNext-01620",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            if allocation.size() < memory_requirements.layout.size() {
+                return Err(ValidationError {
+                    problem: format!(
+                        "`allocations[{}].size()` is less than \
+                        `self.memory_requirements().layout.size()`",
+                        index
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkBindImageMemoryInfo-pNext-01617",
+                        "VUID-VkBindImageMemoryInfo-pNext-01621",
+                    ],
+                    ..Default::default()
+                });
+            }
+
             if let Some(dedicated_to) = memory.dedicated_to() {
-                // VUID-VkBindImageMemoryInfo-memory-02628
                 match dedicated_to {
                     DedicatedTo::Image(id) if id == self.id => {}
-                    _ => return Err(ImageError::DedicatedAllocationMismatch),
+                    _ => {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`allocations[{}].device_memory()` is a dedicated allocation, but \
+                                it is not dedicated to this image",
+                                index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBindImageMemoryInfo-memory-02628"],
+                            ..Default::default()
+                        });
+                    }
                 }
                 debug_assert!(memory_offset == 0); // This should be ensured by the allocator
             } else {
-                // VUID-VkBindImageMemoryInfo-image-01445
                 if memory_requirements.requires_dedicated_allocation {
-                    return Err(ImageError::DedicatedAllocationRequired);
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`self.memory_requirements().requires_dedicated_allocation` is \
+                            `true`, but `allocations[{}].device_memory()` is not a \
+                            dedicated allocation",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkBindImageMemoryInfo-image-01445"],
+                        ..Default::default()
+                    });
                 }
             }
 
-            // VUID-VkBindImageMemoryInfo-None-01901
             if memory_type
                 .property_flags
                 .intersects(MemoryPropertyFlags::PROTECTED)
             {
-                return Err(ImageError::MemoryProtectedMismatch {
-                    allocations_index,
-                    image_protected: false,
-                    memory_protected: true,
+                return Err(ValidationError {
+                    problem: format!(
+                        "the `property_flags` of the memory type of \
+                        `allocations[{}].device_memory()` contains \
+                        `MemoryPropertyFlags::PROTECTED`",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBindImageMemoryInfo-None-01901"],
+                    ..Default::default()
                 });
             }
 
-            // VUID-VkBindImageMemoryInfo-memory-02728
             if !memory.export_handle_types().is_empty()
                 && !memory
                     .export_handle_types()
                     .intersects(self.external_memory_handle_types)
             {
-                return Err(ImageError::MemoryExternalHandleTypesDisjoint {
-                    allocations_index,
-                    image_handle_types: self.external_memory_handle_types,
-                    memory_export_handle_types: memory.export_handle_types(),
+                return Err(ValidationError {
+                    problem: format!(
+                        "`allocations[{}].device_memory().export_handle_types()` is not empty, \
+                        but it does not share at least one memory type with \
+                        `self.external_memory_handle_types()`",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBindImageMemoryInfo-memory-02728"],
+                    ..Default::default()
                 });
             }
 
             if let Some(handle_type) = memory.imported_handle_type() {
-                // VUID-VkBindImageMemoryInfo-memory-02989
                 if !ExternalMemoryHandleTypes::from(handle_type)
                     .intersects(self.external_memory_handle_types)
                 {
-                    return Err(ImageError::MemoryImportedHandleTypeNotEnabled {
-                        allocations_index,
-                        image_handle_types: self.external_memory_handle_types,
-                        memory_imported_handle_type: handle_type,
+                    return Err(ValidationError {
+                        problem: format!(
+                            "`allocations[{}].device_memory()` is imported, but \
+                            `self.external_memory_handle_types()` does not contain the imported \
+                            handle type",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkBindImageMemoryInfo-memory-02989"],
+                        ..Default::default()
                     });
                 }
-            }
-
-            // VUID-VkBindImageMemoryInfo-pNext-01615
-            // VUID-VkBindImageMemoryInfo-pNext-01619
-            if memory_requirements.memory_type_bits & (1 << memory.memory_type_index()) == 0 {
-                return Err(ImageError::MemoryTypeNotAllowed {
-                    allocations_index,
-                    provided_memory_type_index: memory.memory_type_index(),
-                    allowed_memory_type_bits: memory_requirements.memory_type_bits,
-                });
-            }
-
-            // VUID-VkBindImageMemoryInfo-pNext-01616
-            // VUID-VkBindImageMemoryInfo-pNext-01620
-            if !is_aligned(memory_offset, memory_requirements.layout.alignment()) {
-                return Err(ImageError::MemoryAllocationNotAligned {
-                    allocations_index,
-                    allocation_offset: memory_offset,
-                    required_alignment: memory_requirements.layout.alignment(),
-                });
-            }
-
-            // VUID-VkBindImageMemoryInfo-pNext-01617
-            // VUID-VkBindImageMemoryInfo-pNext-01621
-            if allocation.size() < memory_requirements.layout.size() {
-                return Err(ImageError::MemoryAllocationTooSmall {
-                    allocations_index,
-                    allocation_size: allocation.size(),
-                    required_size: memory_requirements.layout.size(),
-                });
             }
         }
 
@@ -1519,10 +937,14 @@ impl RawImage {
 
     /// # Safety
     ///
-    /// - If `self.flags().disjoint` is not set, then `allocations` must contain exactly one
-    ///   element.
-    /// - If `self.flags().disjoint` is set, then `allocations` must contain exactly
-    ///   `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`,
+    ///   then `allocations` must contain exactly one element.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
+    ///   `self.tiling()` is `ImageTiling::Linear` or `ImageTiling::Optimal`, then
+    ///   `allocations` must contain exactly `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
+    ///   `self.tiling()` is `ImageTiling::DrmFormatModifier`, then
+    ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_memory_unchecked(
         self,
@@ -1535,21 +957,48 @@ impl RawImage {
             impl ExactSizeIterator<Item = MemoryAlloc>,
         ),
     > {
-        let allocations: SmallVec<[_; 3]> = allocations.into_iter().collect();
+        let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();
         let fns = self.device.fns();
 
         let result = if self.device.api_version() >= Version::V1_1
             || self.device.enabled_extensions().khr_bind_memory2
         {
-            let mut infos_vk: SmallVec<[_; 3]> = SmallVec::with_capacity(3);
-            let mut plane_infos_vk: SmallVec<[_; 3]> = SmallVec::with_capacity(3);
+            let mut infos_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(3);
+            let mut plane_infos_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(3);
 
             if self.flags.intersects(ImageCreateFlags::DISJOINT) {
-                debug_assert_eq!(allocations.len(), self.format.unwrap().planes().len());
-
                 for (plane, allocation) in allocations.iter().enumerate() {
                     let memory = allocation.device_memory();
                     let memory_offset = allocation.offset();
+                    let plane_aspect = match self.tiling {
+                        // VUID-VkBindImagePlaneMemoryInfo-planeAspect-02283
+                        ImageTiling::Optimal | ImageTiling::Linear => {
+                            debug_assert_eq!(
+                                allocations.len(),
+                                self.format.unwrap().planes().len()
+                            );
+                            match plane {
+                                0 => ash::vk::ImageAspectFlags::PLANE_0,
+                                1 => ash::vk::ImageAspectFlags::PLANE_1,
+                                2 => ash::vk::ImageAspectFlags::PLANE_2,
+                                _ => unreachable!(),
+                            }
+                        }
+                        // VUID-VkBindImagePlaneMemoryInfo-planeAspect-02284
+                        ImageTiling::DrmFormatModifier => {
+                            debug_assert_eq!(
+                                allocations.len(),
+                                self.drm_format_modifier.unwrap().1 as usize
+                            );
+                            match plane {
+                                0 => ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                                1 => ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                                2 => ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                                3 => ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                                _ => unreachable!(),
+                            }
+                        }
+                    };
 
                     infos_vk.push(ash::vk::BindImageMemoryInfo {
                         image: self.handle,
@@ -1559,12 +1008,7 @@ impl RawImage {
                     });
                     // VUID-VkBindImageMemoryInfo-pNext-01618
                     plane_infos_vk.push(ash::vk::BindImagePlaneMemoryInfo {
-                        plane_aspect: match plane {
-                            0 => ash::vk::ImageAspectFlags::PLANE_0,
-                            1 => ash::vk::ImageAspectFlags::PLANE_1,
-                            2 => ash::vk::ImageAspectFlags::PLANE_2,
-                            _ => unreachable!(),
-                        },
+                        plane_aspect,
                         ..Default::default()
                     });
                 }
@@ -1644,10 +1088,10 @@ impl RawImage {
         self.flags
     }
 
-    /// Returns the dimensions of the image.
+    /// Returns the image type of the image.
     #[inline]
-    pub fn dimensions(&self) -> ImageDimensions {
-        self.dimensions
+    pub fn image_type(&self) -> ImageType {
+        self.image_type
     }
 
     /// Returns the image's format.
@@ -1662,7 +1106,19 @@ impl RawImage {
         self.format_features
     }
 
-    /// Returns the number of mipmap levels in the image.
+    /// Returns the extent of the image.
+    #[inline]
+    pub fn extent(&self) -> [u32; 3] {
+        self.extent
+    }
+
+    /// Returns the number of array layers in the image.
+    #[inline]
+    pub fn array_layers(&self) -> u32 {
+        self.array_layers
+    }
+
+    /// Returns the number of mip levels in the image.
     #[inline]
     pub fn mip_levels(&self) -> u32 {
         self.mip_levels
@@ -1704,6 +1160,15 @@ impl RawImage {
         &self.sharing
     }
 
+    /// If `self.tiling()` is `ImageTiling::DrmFormatModifier`, returns the DRM format modifier
+    /// of the image, and the number of memory planes.
+    /// This was either provided in [`ImageCreateInfo::drm_format_modifiers`], or if
+    /// multiple modifiers were provided, selected from the list by the Vulkan implementation.
+    #[inline]
+    pub fn drm_format_modifier(&self) -> Option<(u64, u32)> {
+        self.drm_format_modifier
+    }
+
     /// Returns the external memory handle types that are supported with this image.
     #[inline]
     pub fn external_memory_handle_types(&self) -> ExternalMemoryHandleTypes {
@@ -1725,7 +1190,7 @@ impl RawImage {
                 }
             },
             mip_level: 0,
-            array_layers: 0..self.dimensions.array_layers(),
+            array_layers: 0..self.array_layers,
         }
     }
 
@@ -1737,7 +1202,7 @@ impl RawImage {
             aspects: self.format.unwrap().aspects()
                 - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
             mip_levels: 0..self.mip_levels,
-            array_layers: 0..self.dimensions.array_layers(),
+            array_layers: 0..self.array_layers,
         }
     }
 
@@ -1756,7 +1221,7 @@ impl RawImage {
         aspect: ImageAspect,
         mip_level: u32,
         array_layer: u32,
-    ) -> Result<SubresourceLayout, ImageError> {
+    ) -> Result<SubresourceLayout, ValidationError> {
         self.validate_subresource_layout(aspect, mip_level, array_layer)?;
 
         unsafe { Ok(self.subresource_layout_unchecked(aspect, mip_level, array_layer)) }
@@ -1767,53 +1232,187 @@ impl RawImage {
         aspect: ImageAspect,
         mip_level: u32,
         array_layer: u32,
-    ) -> Result<(), ImageError> {
-        // VUID-VkImageSubresource-aspectMask-parameter
-        aspect.validate_device(&self.device)?;
+    ) -> Result<(), ValidationError> {
+        aspect
+            .validate_device(&self.device)
+            .map_err(|err| ValidationError {
+                context: "aspect".into(),
+                vuids: &["VUID-VkImageSubresource-aspectMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
         // VUID-VkImageSubresource-aspectMask-requiredbitmask
         // VUID-vkGetImageSubresourceLayout-aspectMask-00997
         // Ensured by use of enum `ImageAspect`.
 
-        // VUID-vkGetImageSubresourceLayout-image-02270
         if !matches!(
             self.tiling,
-            ImageTiling::DrmFormatModifier | ImageTiling::Linear
+            ImageTiling::Linear | ImageTiling::DrmFormatModifier
         ) {
-            return Err(ImageError::OptimalTilingNotSupported);
+            return Err(ValidationError {
+                context: "self.tiling()".into(),
+                problem: "is not `ImageTiling::Linear` or `ImageTiling::DrmFormatModifier`".into(),
+                vuids: &["VUID-vkGetImageSubresourceLayout-image-02270"],
+                ..Default::default()
+            });
         }
 
-        // VUID-vkGetImageSubresourceLayout-mipLevel-01716
         if mip_level >= self.mip_levels {
-            return Err(ImageError::MipLevelOutOfRange {
-                provided_mip_level: mip_level,
-                image_mip_levels: self.mip_levels,
+            return Err(ValidationError {
+                context: "mip_level".into(),
+                problem: "is greater than the number of mip levels in the image".into(),
+                vuids: &["VUID-vkGetImageSubresourceLayout-mipLevel-01716"],
+                ..Default::default()
             });
         }
 
-        // VUID-vkGetImageSubresourceLayout-arrayLayer-01717
-        if array_layer >= self.dimensions.array_layers() {
-            return Err(ImageError::ArrayLayerOutOfRange {
-                provided_array_layer: array_layer,
-                image_array_layers: self.dimensions.array_layers(),
+        if array_layer >= self.array_layers {
+            return Err(ValidationError {
+                context: "array_layer".into(),
+                problem: "is greater than the number of array layers in the image".into(),
+                vuids: &["VUID-vkGetImageSubresourceLayout-arrayLayer-01717"],
+                ..Default::default()
             });
         }
 
-        let mut allowed_aspects = self.format.unwrap().aspects();
+        let format = self.format.unwrap();
+        let format_aspects = format.aspects();
 
-        // Follows from the combination of these three VUIDs. See:
-        // https://github.com/KhronosGroup/Vulkan-Docs/issues/1942
-        // VUID-vkGetImageSubresourceLayout-aspectMask-00997
-        // VUID-vkGetImageSubresourceLayout-format-04462
-        // VUID-vkGetImageSubresourceLayout-format-04463
-        if allowed_aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL) {
-            return Err(ImageError::DepthStencilFormatsNotSupported);
-        }
-
-        if allowed_aspects
-            .intersects(ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2)
-        {
-            allowed_aspects -= ImageAspects::COLOR;
+        if let Some((_, drm_format_modifier_plane_count)) = self.drm_format_modifier {
+            match drm_format_modifier_plane_count {
+                1 => {
+                    if !matches!(aspect, ImageAspect::MemoryPlane0) {
+                        return Err(ValidationError {
+                            problem: "the image has a DRM format modifier with 1 memory plane, \
+                                but `aspect` is not `ImageAspect::MemoryPlane0`"
+                                .into(),
+                            vuids: &["VUID-vkGetImageSubresourceLayout-tiling-02271"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                2 => {
+                    if !matches!(
+                        aspect,
+                        ImageAspect::MemoryPlane0 | ImageAspect::MemoryPlane1
+                    ) {
+                        return Err(ValidationError {
+                            problem: "the image has a DRM format modifier with 2 memory planes, \
+                                but `aspect` is not `ImageAspect::MemoryPlane0` or \
+                                `ImageAspect::MemoryPlane1`"
+                                .into(),
+                            vuids: &["VUID-vkGetImageSubresourceLayout-tiling-02271"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                3 => {
+                    if !matches!(
+                        aspect,
+                        ImageAspect::MemoryPlane0
+                            | ImageAspect::MemoryPlane1
+                            | ImageAspect::MemoryPlane2
+                    ) {
+                        return Err(ValidationError {
+                            problem: "the image has a DRM format modifier with 3 memory planes, \
+                                but `aspect` is not `ImageAspect::MemoryPlane0`, \
+                                `ImageAspect::MemoryPlane1` or `ImageAspect::MemoryPlane2`"
+                                .into(),
+                            vuids: &["VUID-vkGetImageSubresourceLayout-tiling-02271"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                4 => {
+                    if !matches!(
+                        aspect,
+                        ImageAspect::MemoryPlane0
+                            | ImageAspect::MemoryPlane1
+                            | ImageAspect::MemoryPlane2
+                            | ImageAspect::MemoryPlane3
+                    ) {
+                        return Err(ValidationError {
+                            problem: "the image has a DRM format modifier with 4 memory planes, \
+                                but `aspect` is not `ImageAspect::MemoryPlane0`, \
+                                `ImageAspect::MemoryPlane1`, `ImageAspect::MemoryPlane2` or \
+                                `ImageAspect::MemoryPlane3`"
+                                .into(),
+                            vuids: &["VUID-vkGetImageSubresourceLayout-tiling-02271"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                _ => unreachable!("image has more than 4 memory planes??"),
+            }
+        } else if format_aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL) {
+            // Follows from the combination of these three VUIDs. See:
+            // https://github.com/KhronosGroup/Vulkan-Docs/issues/1942
+            return Err(ValidationError {
+                context: "self.format()".into(),
+                problem: "has both a depth and a stencil aspect".into(),
+                vuids: &[
+                    "VUID-vkGetImageSubresourceLayout-aspectMask-00997",
+                    "VUID-vkGetImageSubresourceLayout-format-04462",
+                    "VUID-vkGetImageSubresourceLayout-format-04463",
+                ],
+                ..Default::default()
+            });
+        } else if format_aspects.intersects(ImageAspects::DEPTH) {
+            if aspect != ImageAspect::Depth {
+                return Err(ValidationError {
+                    problem: "`self.format()` is a depth format, but \
+                        `aspect` is not `ImageAspect::Depth`"
+                        .into(),
+                    vuids: &["VUID-vkGetImageSubresourceLayout-format-04462"],
+                    ..Default::default()
+                });
+            }
+        } else if format_aspects.intersects(ImageAspects::STENCIL) {
+            if aspect != ImageAspect::Stencil {
+                return Err(ValidationError {
+                    problem: "`self.format()` is a stencil format, but \
+                        `aspect` is not `ImageAspect::Stencil`"
+                        .into(),
+                    vuids: &["VUID-vkGetImageSubresourceLayout-format-04463"],
+                    ..Default::default()
+                });
+            }
+        } else if format_aspects.intersects(ImageAspects::COLOR) {
+            if format.planes().is_empty() {
+                if aspect != ImageAspect::Color {
+                    return Err(ValidationError {
+                        problem: "`self.format()` is a color format with a single plane, but \
+                        `aspect` is not `ImageAspect::Color`"
+                            .into(),
+                        vuids: &["VUID-vkGetImageSubresourceLayout-format-08886"],
+                        ..Default::default()
+                    });
+                }
+            } else if format.planes().len() == 2 {
+                if !matches!(aspect, ImageAspect::Plane0 | ImageAspect::Plane1) {
+                    return Err(ValidationError {
+                        problem: "`self.format()` is a color format with two planes, but \
+                            `aspect` is not `ImageAspect::Plane0` or `ImageAspect::Plane1`"
+                            .into(),
+                        vuids: &["VUID-vkGetImageSubresourceLayout-tiling-08717"],
+                        ..Default::default()
+                    });
+                }
+            } else if format.planes().len() == 3 {
+                if !matches!(
+                    aspect,
+                    ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
+                ) {
+                    return Err(ValidationError {
+                        problem: "`self.format()` is a color format with three planes, but \
+                            `aspect` is not `ImageAspect::Plane0`, `ImageAspect::Plane1` or \
+                            `ImageAspect::Plane2`"
+                            .into(),
+                        vuids: &["VUID-vkGetImageSubresourceLayout-tiling-08717"],
+                        ..Default::default()
+                    });
+                }
+            }
         }
 
         // TODO:  VUID-vkGetImageSubresourceLayout-tiling-02271
@@ -1821,16 +1420,18 @@ impl RawImage {
         // Only one-plane image importing is possible for now.
         //}
 
-        // VUID-vkGetImageSubresourceLayout-format-04461
+        // VUID-vkGetImageSubresourceLayout-format-08886
         // VUID-vkGetImageSubresourceLayout-format-04462
         // VUID-vkGetImageSubresourceLayout-format-04463
         // VUID-vkGetImageSubresourceLayout-format-04464
         // VUID-vkGetImageSubresourceLayout-format-01581
         // VUID-vkGetImageSubresourceLayout-format-01582
-        if !allowed_aspects.contains(aspect.into()) {
-            return Err(ImageError::AspectNotAllowed {
-                provided_aspect: aspect,
-                allowed_aspects,
+        if !format_aspects.contains(aspect.into()) {
+            return Err(ValidationError {
+                context: "array_layer".into(),
+                problem: "is greater than the number of array layers in the image".into(),
+                vuids: &["VUID-vkGetImageSubresourceLayout-arrayLayer-01717"],
+                ..Default::default()
             });
         }
 
@@ -1868,8 +1469,8 @@ impl RawImage {
                     offset: output.offset,
                     size: output.size,
                     row_pitch: output.row_pitch,
-                    array_pitch: (self.dimensions.array_layers() > 1).then_some(output.array_pitch),
-                    depth_pitch: matches!(self.dimensions, ImageDimensions::Dim3d { .. })
+                    array_pitch: (self.array_layers > 1).then_some(output.array_pitch),
+                    depth_pitch: matches!(self.image_type, ImageType::Dim3d)
                         .then_some(output.depth_pitch),
                 }
             },
@@ -1917,21 +1518,33 @@ pub struct ImageCreateInfo {
     /// The default value is [`ImageCreateFlags::empty()`].
     pub flags: ImageCreateFlags,
 
-    /// The type, extent and number of array layers to create the image with.
+    /// The basic image dimensionality to create the image with.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
-    /// devices, if `samples` is not [`SampleCount::Sample1`] and `dimensions.array_layers()` is
-    /// not 1, the [`multisample_array_image`](crate::device::Features::multisample_array_image)
-    /// feature must be enabled on the device.
-    ///
-    /// The default value is `ImageDimensions::Dim2d { width: 0, height: 0, array_layers: 1 }`,
-    /// which must be overridden.
-    pub dimensions: ImageDimensions,
+    /// The default value is `ImageType::Dim2d`.
+    pub image_type: ImageType,
 
     /// The format used to store the image data.
     ///
     /// The default value is `None`, which must be overridden.
     pub format: Option<Format>,
+
+    /// The width, height and depth of the image.
+    ///
+    /// If `image_type` is `ImageType::Dim2d`, then the depth must be 1.
+    /// If `image_type` is `ImageType::Dim1d`, then the height and depth must be 1.
+    ///
+    /// The default value is `[0; 3]`, which must be overridden.
+    pub extent: [u32; 3],
+
+    /// The number of array layers to create the image with.
+    ///
+    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
+    /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// feature must be enabled on the device.
+    ///
+    /// The default value is `1`.
+    pub array_layers: u32,
 
     /// The number of mip levels to create the image with.
     ///
@@ -1941,8 +1554,8 @@ pub struct ImageCreateInfo {
     /// The number of samples per texel that the image should use.
     ///
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
-    /// devices, if `samples` is not [`SampleCount::Sample1`] and `dimensions.array_layers()` is
-    /// not 1, the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
+    /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
     /// feature must be enabled on the device.
     ///
     /// The default value is [`SampleCount::Sample1`].
@@ -1991,8 +1604,29 @@ pub struct ImageCreateInfo {
     /// The default value is [`ExternalMemoryHandleTypes::empty()`].
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
-    /// Specify that an image be created with the provided DRM format modifier and explicit memory layout
-    pub image_drm_format_modifier_create_info: Option<ImageDrmFormatModifierExplicitCreateInfoEXT>,
+    /// The Linux DRM format modifiers that the image should be created with.
+    ///
+    /// If this is not empty, then the
+    /// [`ext_image_drm_format_modifier`](crate::device::DeviceExtensions::ext_image_drm_format_modifier)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is empty.
+    pub drm_format_modifiers: SmallVec<[u64; 1]>,
+
+    /// If `drm_format_modifiers` contains one element, provides the subresource layouts of each
+    /// memory plane of the image. The number of elements must equal
+    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`], and the following
+    /// additional requirements apply to each element:
+    /// - [`SubresourceLayout::size`] must always be 0.
+    /// - If `array_layers` is 1, then [`SubresourceLayout::array_pitch`] must be `None`.
+    /// - If `image_type` is not [`ImageType::Dim3d`] or `extent[2]` is 1, then
+    ///   [`SubresourceLayout::depth_pitch`] must be `None`.
+    ///
+    /// If `drm_format_modifiers` does not contain one element, then
+    /// this must be empty.
+    ///
+    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`]: crate::format::DrmFormatModifierProperties::drm_format_modifier_plane_count
+    pub drm_format_modifier_plane_layouts: SmallVec<[SubresourceLayout; 4]>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -2002,12 +1636,10 @@ impl Default for ImageCreateInfo {
     fn default() -> Self {
         Self {
             flags: ImageCreateFlags::empty(),
-            dimensions: ImageDimensions::Dim2d {
-                width: 0,
-                height: 0,
-                array_layers: 1,
-            },
+            image_type: ImageType::Dim2d,
             format: None,
+            extent: [0; 3],
+            array_layers: 1,
             mip_levels: 1,
             samples: SampleCount::Sample1,
             tiling: ImageTiling::Optimal,
@@ -2016,517 +1648,1086 @@ impl Default for ImageCreateInfo {
             sharing: Sharing::Exclusive,
             initial_layout: ImageLayout::Undefined,
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            image_drm_format_modifier_create_info: None,
+            drm_format_modifiers: SmallVec::new(),
+            drm_format_modifier_plane_layouts: SmallVec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-/// Error that can happen in image functions.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ImageError {
-    RuntimeError(RuntimeError),
+impl ImageCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+        let &Self {
+            flags,
+            image_type,
+            format,
+            extent,
+            array_layers,
+            mip_levels,
+            samples,
+            tiling,
+            usage,
+            mut stencil_usage,
+            ref sharing,
+            initial_layout,
+            external_memory_handle_types,
+            _ne: _,
+            ref drm_format_modifiers,
+            ref drm_format_modifier_plane_layouts,
+        } = self;
 
-    /// Allocating memory failed.
-    AllocError(MemoryAllocatorError),
+        let physical_device = device.physical_device();
+        let device_properties = physical_device.properties();
 
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkImageCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-    /// The provided number of elements in `allocations` is not what is required for `image`.
-    AllocationsWrongNumberOfElements {
-        provided: usize,
-        required: usize,
-    },
+        // Can be None for "external formats" but Vulkano doesn't support that yet
+        let format = format.ok_or(ValidationError {
+            context: "format".into(),
+            problem: "is `None`".into(),
+            ..Default::default()
+        })?;
 
-    /// The `array_2d_compatible` flag was enabled, but the image type was not 3D.
-    Array2dCompatibleNot3d,
+        format
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "format".into(),
+                vuids: &["VUID-VkImageCreateInfo-format-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-    /// The provided array layer is not less than the number of array layers in the image.
-    ArrayLayerOutOfRange {
-        provided_array_layer: u32,
-        image_array_layers: u32,
-    },
+        samples
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "samples".into(),
+                vuids: &["VUID-VkImageCreateInfo-samples-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-    /// The provided aspect is not present in the image, or is not allowed.
-    AspectNotAllowed {
-        provided_aspect: ImageAspect,
-        allowed_aspects: ImageAspects,
-    },
+        tiling
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "tiling".into(),
+                vuids: &["VUID-VkImageCreateInfo-tiling-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-    /// The `block_texel_view_compatible` flag was enabled, but the given format was not compressed.
-    BlockTexelViewCompatibleNotCompressed,
+        usage
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "usage".into(),
+                vuids: &["VUID-VkImageCreateInfo-usage-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-    /// The `cube_compatible` flag was enabled, but the image type was not 2D.
-    CubeCompatibleNot2d,
-
-    /// The `cube_compatible` flag was enabled, but the number of array layers was less than 6.
-    CubeCompatibleNotEnoughArrayLayers,
-
-    /// The `cube_compatible` flag was enabled, but the image dimensions were not square.
-    CubeCompatibleNotSquare,
-
-    /// The `cube_compatible` flag was enabled together with multisampling.
-    CubeCompatibleMultisampling,
-
-    /// The memory was created dedicated to a resource, but not to this image.
-    DedicatedAllocationMismatch,
-
-    /// A dedicated allocation is required for this image, but one was not provided.
-    DedicatedAllocationRequired,
-
-    /// The image has a format with both a depth and a stencil aspect, which is not supported for
-    /// this operation.
-    DepthStencilFormatsNotSupported,
-
-    /// The `disjoint` flag was enabled, but the given format is either not multi-planar, or does
-    /// not support disjoint images.
-    DisjointFormatNotSupported,
-
-    /// One or more external memory handle types were provided, but the initial layout was not
-    /// `Undefined`.
-    ExternalMemoryInvalidInitialLayout,
-
-    /// The given format was not supported by the device.
-    FormatNotSupported,
-
-    /// A requested usage flag was not supported by the given format.
-    FormatUsageNotSupported {
-        usage: &'static str,
-    },
-
-    /// The image configuration as queried through the `image_format_properties` function was not
-    /// supported by the device.
-    ImageFormatPropertiesNotSupported,
-
-    /// The number of array layers exceeds the maximum supported by the device for this image
-    /// configuration.
-    MaxArrayLayersExceeded {
-        array_layers: u32,
-        max: u32,
-    },
-
-    /// The specified dimensions exceed the maximum supported by the device for this image
-    /// configuration.
-    MaxDimensionsExceeded {
-        extent: [u32; 3],
-        max: [u32; 3],
-    },
-
-    /// The usage included one of the attachment types, and the specified width and height exceeded
-    /// the `max_framebuffer_width` or `max_framebuffer_height` limits.
-    MaxFramebufferDimensionsExceeded {
-        extent: [u32; 2],
-        max: [u32; 2],
-    },
-
-    /// The maximum number of mip levels for the given dimensions has been exceeded.
-    MaxMipLevelsExceeded {
-        mip_levels: u32,
-        max: u32,
-    },
-
-    /// In an `allocations` element, the offset of the allocation does not have the required
-    /// alignment.
-    MemoryAllocationNotAligned {
-        allocations_index: usize,
-        allocation_offset: DeviceSize,
-        required_alignment: DeviceAlignment,
-    },
-
-    /// In an `allocations` element, the size of the allocation is smaller than what is required.
-    MemoryAllocationTooSmall {
-        allocations_index: usize,
-        allocation_size: DeviceSize,
-        required_size: DeviceSize,
-    },
-
-    /// In an `allocations` element, the memory was created with export handle types, but none of
-    /// these handle types were enabled on the image.
-    MemoryExternalHandleTypesDisjoint {
-        allocations_index: usize,
-        image_handle_types: ExternalMemoryHandleTypes,
-        memory_export_handle_types: ExternalMemoryHandleTypes,
-    },
-
-    /// In an `allocations` element, the memory was created with an import, but the import's handle
-    /// type was not enabled on the image.
-    MemoryImportedHandleTypeNotEnabled {
-        allocations_index: usize,
-        image_handle_types: ExternalMemoryHandleTypes,
-        memory_imported_handle_type: ExternalMemoryHandleType,
-    },
-
-    /// In an `allocations` element, the protection of image and memory are not equal.
-    MemoryProtectedMismatch {
-        allocations_index: usize,
-        image_protected: bool,
-        memory_protected: bool,
-    },
-
-    /// In an `allocations` element, the provided memory type is not one of the allowed memory
-    /// types that can be bound to this image or image plane.
-    MemoryTypeNotAllowed {
-        allocations_index: usize,
-        provided_memory_type_index: u32,
-        allowed_memory_type_bits: u32,
-    },
-
-    /// The provided mip level is not less than the number of mip levels in the image.
-    MipLevelOutOfRange {
-        provided_mip_level: u32,
-        image_mip_levels: u32,
-    },
-
-    /// Multisampling was enabled, and the `cube_compatible` flag was set.
-    MultisampleCubeCompatible,
-
-    /// Multisampling was enabled, and tiling was `Linear`.
-    MultisampleLinearTiling,
-
-    /// Multisampling was enabled, and multiple mip levels were specified.
-    MultisampleMultipleMipLevels,
-
-    /// Multisampling was enabled, but the image type was not 2D.
-    MultisampleNot2d,
-
-    /// The image has optimal tiling, which is not supported for this operation.
-    OptimalTilingNotSupported,
-
-    /// The sample count is not supported by the device for this image configuration.
-    SampleCountNotSupported {
-        samples: SampleCount,
-        supported: SampleCounts,
-    },
-
-    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
-    /// out of range.
-    SharingQueueFamilyIndexOutOfRange {
-        queue_family_index: u32,
-        queue_family_count: u32,
-    },
-
-    /// The provided `usage` and `stencil_usage` have different values for
-    /// `depth_stencil_attachment` or `transient_attachment`.
-    StencilUsageMismatch {
-        usage: ImageUsage,
-        stencil_usage: ImageUsage,
-    },
-
-    /// A YCbCr format was given, but the specified width and/or height was not a multiple of 2
-    /// as required by the format's chroma subsampling.
-    YcbcrFormatInvalidDimensions,
-
-    /// A YCbCr format was given, and multiple mip levels were specified.
-    YcbcrFormatMultipleMipLevels,
-
-    /// A YCbCr format was given, and multisampling was enabled.
-    YcbcrFormatMultisampling,
-
-    /// A YCbCr format was given, but the image type was not 2D.
-    YcbcrFormatNot2d,
-
-    DirectImageViewCreationFailed(ImageViewCreationError),
-
-    /// If and only if tiling is `DRMFormatModifier`, then `image_drm_format_modifier_create_info` must not be `None`.
-    DrmFormatModifierRequiresCreateInfo,
-}
-
-impl Error for ImageError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ImageError::AllocError(err) => Some(err),
-            _ => None,
+        if usage.is_empty() {
+            return Err(ValidationError {
+                context: "usage".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkImageCreateInfo-usage-requiredbitmask"],
+                ..Default::default()
+            });
         }
-    }
-}
 
-impl Display for ImageError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
-            Self::AllocError(_) => write!(f, "allocating memory failed"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::AllocationsWrongNumberOfElements { provided, required } => write!(
-                f,
-                "the provided number of elements in `allocations` ({}) is not what is required for \
-                `image` ({})",
-                provided, required,
-            ),
-            Self::Array2dCompatibleNot3d => write!(
-                f,
-                "the `array_2d_compatible` flag was enabled, but the image type was not 3D",
-            ),
-            Self::ArrayLayerOutOfRange {
-                provided_array_layer,
-                image_array_layers,
-            } => write!(
-                f,
-                "the provided array layer ({}) is not less than the number of array layers in the image ({})",
-                provided_array_layer, image_array_layers,
-            ),
-            Self::AspectNotAllowed {
-                provided_aspect,
-                allowed_aspects,
-            } => write!(
-                f,
-                "the provided aspect ({:?}) is not present in the image, or is not allowed ({:?})",
-                provided_aspect, allowed_aspects,
-            ),
-            Self::BlockTexelViewCompatibleNotCompressed => write!(
-                f,
-                "the `block_texel_view_compatible` flag was enabled, but the given format was not \
-                compressed",
-            ),
-            Self::CubeCompatibleNot2d => write!(
-                f,
-                "the `cube_compatible` flag was enabled, but the image type was not 2D",
-            ),
-            Self::CubeCompatibleNotEnoughArrayLayers => write!(
-                f,
-                "the `cube_compatible` flag was enabled, but the number of array layers was less \
-                than 6",
-            ),
-            Self::CubeCompatibleNotSquare => write!(
-                f,
-                "the `cube_compatible` flag was enabled, but the image dimensions were not square",
-            ),
-            Self::CubeCompatibleMultisampling => write!(
-                f,
-                "the `cube_compatible` flag was enabled together with multisampling",
-            ),
-            Self::DedicatedAllocationMismatch => write!(
-                f,
-                "the memory was created dedicated to a resource, but not to this image",
-            ),
-            Self::DedicatedAllocationRequired => write!(
-                f,
-                "a dedicated allocation is required for this image, but one was not provided"
-            ),
-            Self::DepthStencilFormatsNotSupported => write!(
-                f,
-                "the image has a format with both a depth and a stencil aspect, which is not \
-                supported for this operation",
-            ),
-            Self::DisjointFormatNotSupported => write!(
-                f,
-                "the `disjoint` flag was enabled, but the given format is either not multi-planar, \
-                or does not support disjoint images",
-            ),
-            Self::ExternalMemoryInvalidInitialLayout => write!(
-                f,
-                "one or more external memory handle types were provided, but the initial layout \
-                was not `Undefined`",
-            ),
-            Self::FormatNotSupported => {
-                write!(f, "the given format was not supported by the device")
+        let format_properties = unsafe { physical_device.format_properties_unchecked(format) };
+        let image_create_drm_format_modifiers = &drm_format_modifiers;
+        let image_create_maybe_linear = match tiling {
+            ImageTiling::Linear => true,
+            ImageTiling::Optimal => false,
+            ImageTiling::DrmFormatModifier => {
+                const DRM_FORMAT_MOD_LINEAR: u64 = 0;
+                image_create_drm_format_modifiers.contains(&DRM_FORMAT_MOD_LINEAR)
             }
-            Self::FormatUsageNotSupported { .. } => write!(
-                f,
-                "a requested usage flag was not supported by the given format",
-            ),
-            Self::ImageFormatPropertiesNotSupported => write!(
-                f,
-                "the image configuration as queried through the `image_format_properties` function \
-                was not supported by the device",
-            ),
-            Self::MaxArrayLayersExceeded { .. } => write!(
-                f,
-                "the number of array layers exceeds the maximum supported by the device for this \
-                image configuration",
-            ),
-            Self::MaxDimensionsExceeded { .. } => write!(
-                f,
-                "the specified dimensions exceed the maximum supported by the device for this \
-                image configuration",
-            ),
-            Self::MaxFramebufferDimensionsExceeded { .. } => write!(
-                f,
-                "the usage included one of the attachment types, and the specified width and \
-                height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits",
-            ),
-            Self::MaxMipLevelsExceeded { .. } => write!(
-                f,
-                "the maximum number of mip levels for the given dimensions has been exceeded",
-            ),
-            Self::MemoryAllocationNotAligned {
-                allocations_index,
-                allocation_offset,
-                required_alignment,
-            } => write!(
-                f,
-                "in `allocations` element {}, the offset of the allocation ({}) does not have the \
-                required alignment ({:?})",
-                allocations_index, allocation_offset, required_alignment,
-            ),
-            Self::MemoryAllocationTooSmall {
-                allocations_index,
-                allocation_size,
-                required_size,
-            } => write!(
-                f,
-                "in `allocations` element {}, the size of the allocation ({}) is smaller than what \
-                is required ({})",
-                allocations_index, allocation_size, required_size,
-            ),
-            Self::MemoryExternalHandleTypesDisjoint {
-                allocations_index, ..
-            } => write!(
-                f,
-                "in `allocations` element {}, the memory was created with export handle types, but \
-                none of these handle types were enabled on the image",
-                allocations_index,
-            ),
-            Self::MemoryImportedHandleTypeNotEnabled {
-                allocations_index, ..
-            } => write!(
-                f,
-                "in `allocations` element {}, the memory was created with an import, but the \
-                import's handle type was not enabled on the image",
-                allocations_index,
-            ),
-            Self::MemoryProtectedMismatch {
-                allocations_index,
-                image_protected,
-                memory_protected,
-            } => write!(
-                f,
-                "in `allocations` element {}, the protection of image ({}) and memory ({}) are not \
-                equal",
-                allocations_index, image_protected, memory_protected,
-            ),
-            Self::MemoryTypeNotAllowed {
-                allocations_index,
-                provided_memory_type_index,
-                allowed_memory_type_bits,
-            } => write!(
-                f,
-                "in `allocations` element {}, the provided memory type ({}) is not one of the \
-                allowed memory types (",
-                allocations_index, provided_memory_type_index,
-            )
-            .and_then(|_| {
-                let mut first = true;
+        };
+        let image_create_format_features =
+            format_properties.format_features(tiling, drm_format_modifiers);
 
-                for i in (0..size_of_val(allowed_memory_type_bits))
-                    .filter(|i| allowed_memory_type_bits & (1 << i) != 0)
-                {
-                    if first {
-                        write!(f, "{}", i)?;
-                        first = false;
-                    } else {
-                        write!(f, ", {}", i)?;
-                    }
+        let aspects = format.aspects();
+
+        let has_separate_stencil_usage = if aspects
+            .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            && !stencil_usage.is_empty()
+        {
+            stencil_usage == usage
+        } else {
+            stencil_usage = usage;
+            false
+        };
+
+        if has_separate_stencil_usage {
+            if !(device.api_version() >= Version::V1_2
+                || device.enabled_extensions().ext_separate_stencil_usage)
+            {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil aspect, and `stencil_usage` \
+                        is not empty or equal to `usage`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("ext_separate_stencil_usage")]),
+                    ]),
+                    ..Default::default()
+                });
+            }
+
+            stencil_usage
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "stencil_usage".into(),
+                    vuids: &["VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if stencil_usage.is_empty() {
+                return Err(ValidationError {
+                    context: "stencil_usage".into(),
+                    problem: "is empty".into(),
+                    vuids: &["VUID-VkImageStencilUsageCreateInfo-usage-requiredbitmask"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        initial_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "initial_layout".into(),
+                vuids: &["VUID-VkImageCreateInfo-initialLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !matches!(
+            initial_layout,
+            ImageLayout::Undefined | ImageLayout::Preinitialized
+        ) {
+            return Err(ValidationError {
+                context: "initial_layout".into(),
+                problem: "is not `ImageLayout::Undefined` or `ImageLayout::Preinitialized`".into(),
+                vuids: &["VUID-VkImageCreateInfo-initialLayout-00993"],
+                ..Default::default()
+            });
+        }
+
+        if flags.intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
+            && !flags.intersects(ImageCreateFlags::MUTABLE_FORMAT)
+        {
+            return Err(ValidationError {
+                context: "flags".into(),
+                problem: "contains `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, but does not \
+                    contain `ImageCreateFlags::MUTABLE_FORMAT`"
+                    .into(),
+                vuids: &["VUID-VkImageCreateInfo-flags-01573"],
+                ..Default::default()
+            });
+        }
+
+        match image_type {
+            ImageType::Dim1d => {
+                if extent[1] != 1 {
+                    return Err(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim1d`, but `extent[1]` is not 1"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00956"],
+                        ..Default::default()
+                    });
                 }
 
-                Ok(())
-            })
-            .and_then(|_| write!(f, ") that can be bound to this buffer")),
-            Self::MipLevelOutOfRange {
-                provided_mip_level,
-                image_mip_levels,
-            } => write!(
-                f,
-                "the provided mip level ({}) is not less than the number of mip levels in the image ({})",
-                provided_mip_level, image_mip_levels,
-            ),
-            Self::MultisampleCubeCompatible => write!(
-                f,
-                "multisampling was enabled, and the `cube_compatible` flag was set",
-            ),
-            Self::MultisampleLinearTiling => {
-                write!(f, "multisampling was enabled, and tiling was `Linear`")
+                if extent[2] != 1 {
+                    return Err(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim1d`, but `extent[2]` is not 1"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00956"],
+                        ..Default::default()
+                    });
+                }
             }
-            Self::MultisampleMultipleMipLevels => write!(
-                f,
-                "multisampling was enabled, and multiple mip levels were specified",
-            ),
-            Self::MultisampleNot2d => write!(
-                f,
-                "multisampling was enabled, but the image type was not 2D",
-            ),
-            Self::OptimalTilingNotSupported => write!(
-                f,
-                "the image has optimal tiling, which is not supported for this operation",
-            ),
-            Self::SampleCountNotSupported { .. } => write!(
-                f,
-                "the sample count is not supported by the device for this image configuration",
-            ),
-            Self::SharingQueueFamilyIndexOutOfRange { .. } => write!(
-                f,
-                "the sharing mode was set to `Concurrent`, but one of the specified queue family \
-                indices was out of range",
-            ),
-            Self::StencilUsageMismatch {
-                usage: _,
-                stencil_usage: _,
-            } => write!(
-                f,
-                "the provided `usage` and `stencil_usage` have different values for \
-                `depth_stencil_attachment` or `transient_attachment`",
-            ),
-            Self::YcbcrFormatInvalidDimensions => write!(
-                f,
-                "a YCbCr format was given, but the specified width and/or height was not a \
-                multiple of 2 as required by the format's chroma subsampling",
-            ),
-            Self::YcbcrFormatMultipleMipLevels => write!(
-                f,
-                "a YCbCr format was given, and multiple mip levels were specified",
-            ),
-            Self::YcbcrFormatMultisampling => {
-                write!(f, "a YCbCr format was given, and multisampling was enabled")
+            ImageType::Dim2d => {
+                if extent[2] != 1 {
+                    return Err(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim2d`, but `extent[2]` is not 1"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00957"],
+                        ..Default::default()
+                    });
+                }
             }
-            Self::YcbcrFormatNot2d => {
-                write!(f, "a YCbCr format was given, but the image type was not 2D")
+            ImageType::Dim3d => {
+                if array_layers != 1 {
+                    return Err(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim3d`, but `array_layers` is not 1"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00961"],
+                        ..Default::default()
+                    });
+                }
             }
-            Self::DirectImageViewCreationFailed(e) => write!(f, "Image view creation failed {}", e),
-	    Self::DrmFormatModifierRequiresCreateInfo => write!(f, "If and only if tiling is `DRMFormatModifier`, then `image_drm_format_modifier_create_info` must be `Some`"),
         }
-    }
-}
 
-impl From<RuntimeError> for ImageError {
-    fn from(err: RuntimeError) -> Self {
-        Self::RuntimeError(err)
-    }
-}
-
-impl From<MemoryAllocatorError> for ImageError {
-    fn from(err: MemoryAllocatorError) -> Self {
-        Self::AllocError(err)
-    }
-}
-
-impl From<RequirementNotMet> for ImageError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
+        if extent[0] == 0 {
+            return Err(ValidationError {
+                context: "extent[0]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCreateInfo-extent-00944"],
+                ..Default::default()
+            });
         }
+
+        if extent[1] == 0 {
+            return Err(ValidationError {
+                context: "extent[1]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCreateInfo-extent-00945"],
+                ..Default::default()
+            });
+        }
+
+        if extent[2] == 0 {
+            return Err(ValidationError {
+                context: "extent[2]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCreateInfo-extent-00946"],
+                ..Default::default()
+            });
+        }
+
+        if array_layers == 0 {
+            return Err(ValidationError {
+                context: "array_layers".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCreateInfo-arrayLayers-00948"],
+                ..Default::default()
+            });
+        }
+
+        if mip_levels == 0 {
+            return Err(ValidationError {
+                context: "mip_levels".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCreateInfo-mipLevels-00947"],
+                ..Default::default()
+            });
+        }
+
+        let max_mip_levels = max_mip_levels(extent);
+        debug_assert!(max_mip_levels >= 1);
+
+        if mip_levels > max_mip_levels {
+            return Err(ValidationError {
+                problem: "`mip_levels` is greater than the maximum allowed number of mip levels \
+                    for `dimensions`"
+                    .into(),
+                vuids: &["VUID-VkImageCreateInfo-mipLevels-00958"],
+                ..Default::default()
+            });
+        }
+
+        if samples != SampleCount::Sample1 {
+            if image_type != ImageType::Dim2d {
+                return Err(ValidationError {
+                    problem: "`samples` is not `samples != SampleCount::Sample1`, but \
+                        `image_type` is not `ImageType::Dim2d`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-samples-02257"],
+                    ..Default::default()
+                });
+            }
+
+            if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
+                return Err(ValidationError {
+                    problem: "`samples` is not `samples != SampleCount::Sample1`, but \
+                        `flags` contains `ImageCreateFlags::CUBE_COMPATIBLE`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-samples-02257"],
+                    ..Default::default()
+                });
+            }
+
+            if mip_levels != 1 {
+                return Err(ValidationError {
+                    problem: "`samples` is not `samples != SampleCount::Sample1`, but \
+                        `mip_levels` is not 1"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-samples-02257"],
+                    ..Default::default()
+                });
+            }
+
+            if image_create_maybe_linear {
+                return Err(ValidationError {
+                    problem: "`samples` is not `samples != SampleCount::Sample1`, but \
+                        the image may have linear tiling"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-samples-02257"],
+                    ..Default::default()
+                });
+            }
+
+            if device.enabled_extensions().khr_portability_subset
+                && !device.enabled_features().multisample_array_image
+                && array_layers != 1
+            {
+                return Err(ValidationError {
+                    problem: "this device is a portability subset device, \
+                        `samples` is not `SampleCount::Sample1`, and \
+                        `array_layers` is greater than 1"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multisample_array_image",
+                    )])]),
+                    vuids: &["VUID-VkImageCreateInfo-multisampleArrayImage-04460"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        // Check limits for YCbCr formats
+        if let Some(chroma_sampling) = format.ycbcr_chroma_sampling() {
+            if mip_levels != 1 {
+                return Err(ValidationError {
+                    problem: "`format` is a YCbCr format, but \
+                        `mip_levels` is not 1"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-06410"],
+                    ..Default::default()
+                });
+            }
+
+            if samples != SampleCount::Sample1 {
+                return Err(ValidationError {
+                    problem: "`format` is a YCbCr format, but \
+                        `samples` is not `SampleCount::Sample1`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-06411"],
+                    ..Default::default()
+                });
+            }
+
+            if image_type != ImageType::Dim2d {
+                return Err(ValidationError {
+                    problem: "`format` is a YCbCr format, but \
+                        `image_type` is not `ImageType::Dim2d`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-06412"],
+                    ..Default::default()
+                });
+            }
+
+            if array_layers > 1 && !device.enabled_features().ycbcr_image_arrays {
+                return Err(ValidationError {
+                    problem: "`format` is is a YCbCr format, and \
+                        `array_layers` is greater than 1"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ycbcr_image_arrays",
+                    )])]),
+                    vuids: &["VUID-VkImageCreateInfo-format-06413"],
+                    ..Default::default()
+                });
+            }
+
+            match chroma_sampling {
+                ChromaSampling::Mode444 => (),
+                ChromaSampling::Mode422 => {
+                    if extent[0] % 2 != 0 {
+                        return Err(ValidationError {
+                            problem: "`format` is a YCbCr format with horizontal \
+                                chroma subsampling, but \
+                                `extent[0]` is not \
+                                a multiple of 2"
+                                .into(),
+                            vuids: &["VUID-VkImageCreateInfo-format-04712"],
+                            ..Default::default()
+                        });
+                    }
+                }
+                ChromaSampling::Mode420 => {
+                    if !(extent[0] % 2 == 0 && extent[1] % 2 == 0) {
+                        return Err(ValidationError {
+                            problem: "`format` is a YCbCr format with horizontal and vertical \
+                                chroma subsampling, but \
+                                `extent[0]` and `extent[1]` are not both \
+                                a multiple of 2"
+                                .into(),
+                            vuids: &[
+                                "VUID-VkImageCreateInfo-format-04712",
+                                "VUID-VkImageCreateInfo-format-04713",
+                            ],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+
+        /* Check usage requirements */
+
+        let combined_usage = usage | stencil_usage;
+
+        if combined_usage.intersects(ImageUsage::STORAGE)
+            && samples != SampleCount::Sample1
+            && !device.enabled_features().shader_storage_image_multisample
+        {
+            return Err(ValidationError {
+                problem: "`usage` or `stencil_usage` contains \
+                        `ImageUsage::STORAGE`, but `samples` is not `SampleCount::Sample1`"
+                    .into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "shader_storage_image_multisample",
+                )])]),
+                vuids: &[
+                    "VUID-VkImageCreateInfo-usage-00968",
+                    "VUID-VkImageCreateInfo-format-02538",
+                ],
+                ..Default::default()
+            });
+        }
+
+        if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT) {
+            if !usage.intersects(
+                ImageUsage::COLOR_ATTACHMENT
+                    | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                    | ImageUsage::INPUT_ATTACHMENT,
+            ) {
+                return Err(ValidationError {
+                    context: "usage".into(),
+                    problem: "contains `ImageUsage::TRANSIENT_ATTACHMENT`, but does not also \
+                        contain one of `ImageUsage::COLOR_ATTACHMENT`, \
+                        `ImageUsage::DEPTH_STENCIL_ATTACHMENT` or `ImageUsage::INPUT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-usage-00966"],
+                    ..Default::default()
+                });
+            }
+
+            if !(usage
+                - (ImageUsage::TRANSIENT_ATTACHMENT
+                    | ImageUsage::COLOR_ATTACHMENT
+                    | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                    | ImageUsage::INPUT_ATTACHMENT))
+                .is_empty()
+            {
+                return Err(ValidationError {
+                    context: "usage".into(),
+                    problem: "contains `ImageUsage::TRANSIENT_ATTACHMENT`, but also contains \
+                        usages other than `ImageUsage::COLOR_ATTACHMENT`, \
+                        `ImageUsage::DEPTH_STENCIL_ATTACHMENT` or `ImageUsage::INPUT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-usage-00963"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if combined_usage.intersects(
+            ImageUsage::COLOR_ATTACHMENT
+                | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                | ImageUsage::INPUT_ATTACHMENT
+                | ImageUsage::TRANSIENT_ATTACHMENT,
+        ) {
+            if extent[0] > device_properties.max_framebuffer_width {
+                return Err(ValidationError {
+                    problem: "`usage` or `stencil_usage` contains \
+                        `ImageUsage::COLOR_ATTACHMENT`, \
+                        `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, \
+                        `ImageUsage::INPUT_ATTACHMENT`, or \
+                        `ImageUsage::TRANSIENT_ATTACHMENT`, but \
+                        `extent[0]` exceeds the `max_framebuffer_width` limit"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkImageCreateInfo-usage-00964",
+                        "VUID-VkImageCreateInfo-Format-02536",
+                    ],
+                    ..Default::default()
+                });
+            }
+
+            if extent[1] > device_properties.max_framebuffer_height {
+                return Err(ValidationError {
+                    problem: "`usage` or `stencil_usage` contains \
+                        `ImageUsage::COLOR_ATTACHMENT`, \
+                        `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, \
+                        `ImageUsage::INPUT_ATTACHMENT`, or \
+                        `ImageUsage::TRANSIENT_ATTACHMENT`, but \
+                        `extent[1]` exceeds the `max_framebuffer_height` limit"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkImageCreateInfo-usage-00965",
+                        "VUID-VkImageCreateInfo-format-02537",
+                    ],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if has_separate_stencil_usage {
+            if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                && !stencil_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil aspect, and \
+                        `stencil_usage` is not empty or equal to `usage`, and \
+                        `usage` contains `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, but \
+                        `stencil_usage` does not also contain \
+                        `ImageUsage::DEPTH_STENCIL_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-02795"],
+                    ..Default::default()
+                });
+            }
+
+            if !usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                && stencil_usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil aspect, and \
+                        `stencil_usage` is not empty or equal to `usage`, and \
+                        `usage` does not contain `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, but \
+                        `stencil_usage` does contain `ImageUsage::DEPTH_STENCIL_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-02796"],
+                    ..Default::default()
+                });
+            }
+
+            if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+                && !stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil aspect, and \
+                        `stencil_usage` is not empty or equal to `usage`, and \
+                        `usage` contains `ImageUsage::TRANSIENT_ATTACHMENT`, but \
+                        `stencil_usage` does not also contain \
+                        `ImageUsage::TRANSIENT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-02797"],
+                    ..Default::default()
+                });
+            }
+
+            if !usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+                && stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+            {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil aspect, and \
+                        `stencil_usage` is not empty or equal to `usage`, and \
+                        `usage` does not contain `ImageUsage::TRANSIENT_ATTACHMENT`, but \
+                        `stencil_usage` does contain \
+                        `ImageUsage::TRANSIENT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-02798"],
+                    ..Default::default()
+                });
+            }
+
+            if stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+                && !(stencil_usage
+                    - (ImageUsage::TRANSIENT_ATTACHMENT
+                        | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                        | ImageUsage::INPUT_ATTACHMENT))
+                    .is_empty()
+            {
+                return Err(ValidationError {
+                    problem: "`format` has both a depth and a stencil aspect, and \
+                        `stencil_usage` is not empty or equal to `usage`, and \
+                        `stencil_usage contains `ImageUsage::TRANSIENT_ATTACHMENT`, but \
+                        also contains usages other than `ImageUsage::DEPTH_STENCIL_ATTACHMENT` or \
+                        `ImageUsage::INPUT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageStencilUsageCreateInfo-stencilUsage-02539"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        /* Check flags requirements */
+
+        if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
+            if image_type != ImageType::Dim2d {
+                return Err(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::CUBE_COMPATIBLE`, but \
+                        `image_type` is not `ImageType::Dim2d`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-00949"],
+                    ..Default::default()
+                });
+            }
+
+            if extent[0] != extent[1] {
+                return Err(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::CUBE_COMPATIBLE`, but \
+                        `extent[0]` does not equal `extent[1]`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-imageType-00954"],
+                    ..Default::default()
+                });
+            }
+
+            if array_layers < 6 {
+                return Err(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::CUBE_COMPATIBLE`, but \
+                        `array_layers` is less than 6"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-imageType-00954"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if flags.intersects(ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE) {
+            if image_type != ImageType::Dim3d {
+                return Err(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`, but \
+                        `image_type` is not `ImageType::Dim3d`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-00950"],
+                    ..Default::default()
+                });
+            }
+
+            if device.enabled_extensions().khr_portability_subset
+                && !device.enabled_features().image_view2_d_on3_d_image
+            {
+                return Err(ValidationError {
+                    problem: "this device is a portability subset device, and \
+                        `flags` contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "image_view2_d_on3_d_image",
+                    )])]),
+                    vuids: &["VUID-VkImageCreateInfo-imageView2DOn3DImage-04459"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if flags.intersects(ImageCreateFlags::DIM2D_VIEW_COMPATIBLE) {
+            if image_type != ImageType::Dim3d {
+                return Err(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::DIM2D_VIEW_COMPATIBLE`, but \
+                        `image_type` is not `ImageType::Dim3d`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-07755"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if flags.intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
+            && format.compression().is_none()
+        {
+            return Err(ValidationError {
+                problem: "`flags` contains `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, \
+                        but `format` is not a compressed format"
+                    .into(),
+                vuids: &["VUID-VkImageCreateInfo-flags-01572"],
+                ..Default::default()
+            });
+        }
+
+        if flags.intersects(ImageCreateFlags::DISJOINT) {
+            if format.planes().len() < 2 {
+                return Err(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::DISJOINT`, but `format` \
+                            is not a multi-planat format"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-format-01577"],
+                    ..Default::default()
+                });
+            }
+
+            if !image_create_format_features.intersects(FormatFeatures::DISJOINT) {
+                return Err(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::DISJOINT`, but the \
+                        format features of `format` do not include \
+                        `FormatFeatures::DISJOINT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-imageCreateFormatFeatures-02260"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        /* Check sharing mode and queue families */
+
+        match sharing {
+            Sharing::Exclusive => (),
+            Sharing::Concurrent(queue_family_indices) => {
+                if queue_family_indices.len() < 2 {
+                    return Err(ValidationError {
+                        context: "sharing".into(),
+                        problem: "is `Sharing::Concurrent`, but contains less than 2 elements"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-sharingMode-00942"],
+                        ..Default::default()
+                    });
+                }
+
+                let queue_family_count =
+                    device.physical_device().queue_family_properties().len() as u32;
+
+                for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
+                    if queue_family_indices[..index].contains(&queue_family_index) {
+                        return Err(ValidationError {
+                            context: "queue_family_indices".into(),
+                            problem: format!(
+                                "the queue family index in the list at index {} is contained in \
+                                the list more than once",
+                                index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkImageCreateInfo-sharingMode-01420"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if queue_family_index >= queue_family_count {
+                        return Err(ValidationError {
+                            context: format!("sharing[{}]", index).into(),
+                            problem: "is not less than the number of queue families in the device"
+                                .into(),
+                            vuids: &["VUID-VkImageCreateInfo-sharingMode-01420"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+
+        /* External memory handles */
+
+        if !external_memory_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_memory)
+            {
+                return Err(ValidationError {
+                    context: "external_memory_handle_types".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
+                    ]),
+                    ..Default::default()
+                });
+            }
+
+            external_memory_handle_types
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "external_memory_handle_types".into(),
+                    vuids: &["VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if initial_layout != ImageLayout::Undefined {
+                return Err(ValidationError {
+                    problem: "`external_memory_handle_types` is not empty, but \
+                        `initial_layout` is not `ImageLayout::Undefined`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-pNext-01443"],
+                    ..Default::default()
+                });
+            }
+        }
+
+        if !drm_format_modifiers.is_empty() {
+            // This implicitly checks for the enabled extension too,
+            // so no need to check that separately.
+            if tiling != ImageTiling::DrmFormatModifier {
+                return Err(ValidationError {
+                    problem: "`drm_format_modifiers` is not empty, but \
+                        `tiling` is not `ImageTiling::DrmFormatModifier`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-pNext-02262"],
+                    ..Default::default()
+                });
+            }
+
+            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) {
+                return Err(ValidationError {
+                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
+                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-tiling-02353"],
+                    ..Default::default()
+                });
+            }
+
+            if drm_format_modifiers.len() == 1 {
+                let drm_format_modifier = drm_format_modifiers[0];
+                let drm_format_modifier_properties = format_properties
+                    .drm_format_modifier_properties
+                    .iter()
+                    .find(|properties| properties.drm_format_modifier == drm_format_modifier)
+                    .ok_or(ValidationError {
+                        problem: "`drm_format_modifiers` has a length of 1, but \
+                            `drm_format_modifiers[0]` is not one of the modifiers in \
+                            `FormatProperties::drm_format_properties`, as returned by \
+                            `PhysicalDevice::format_properties` for `format`".into(),
+                        vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                        ..Default::default()
+                    })?;
+
+                if drm_format_modifier_plane_layouts.len()
+                    != drm_format_modifier_properties.drm_format_modifier_plane_count as usize
+                {
+                    return Err(ValidationError {
+                        problem: "`drm_format_modifiers` has a length of 1, but the length of \
+                            `drm_format_modifiers_plane_layouts` does not \
+                            equal `DrmFormatModifierProperties::drm_format_modifier_plane_count` \
+                            for `drm_format_modifiers[0]`, as returned by \
+                            `PhysicalDevice::format_properties` for `format`".into(),
+                        vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                        ..Default::default()
+                    });
+                }
+
+                for (index, subresource_layout) in
+                    drm_format_modifier_plane_layouts.iter().enumerate()
+                {
+                    let &SubresourceLayout {
+                        offset: _,
+                        size,
+                        row_pitch: _,
+                        array_pitch,
+                        depth_pitch,
+                    } = subresource_layout;
+
+                    if size != 0 {
+                        return Err(ValidationError {
+                            context: format!("drm_format_modifier_plane_layouts[{}].size", index)
+                                .into(),
+                            problem: "is not zero".into(),
+                            vuids: &[
+                                "VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-size-02267",
+                            ],
+                            ..Default::default()
+                        });
+                    }
+
+                    if array_layers == 1 && array_pitch.is_some() {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`array_layers` is 1, but \
+                                `drm_format_modifier_plane_layouts[{}].array_pitch` is `Some`",
+                                index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-arrayPitch-02268"],
+                            ..Default::default()
+                        });
+                    }
+
+                    if extent[2] == 1 && depth_pitch.is_some() {
+                        return Err(ValidationError {
+                            problem: format!(
+                                "`extent[2]` is 1, but \
+                                `drm_format_modifier_plane_layouts[{}].depth_pitch` is `Some`",
+                                index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-depthPitch-02269"],
+                            ..Default::default()
+                        });
+                    }
+                }
+            } else {
+                if !drm_format_modifier_plane_layouts.is_empty() {
+                    return Err(ValidationError {
+                        problem: "`drm_format_modifiers` does not contain one element, but \
+                            `drm_format_modifier_plane_layouts` is not empty"
+                            .into(),
+                        ..Default::default()
+                    });
+                }
+            }
+        } else {
+            if tiling == ImageTiling::DrmFormatModifier {
+                return Err(ValidationError {
+                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
+                        `drm_format_modifiers` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-tiling-02261"],
+                    ..Default::default()
+                });
+            }
+
+            if !drm_format_modifier_plane_layouts.is_empty() {
+                return Err(ValidationError {
+                    problem: "`drm_format_modifiers` does not contain one element, but \
+                        `drm_format_modifier_plane_layouts` is not empty"
+                        .into(),
+                    ..Default::default()
+                });
+            }
+        }
+
+        /*
+            Some device limits can be exceeded, but only for particular image configurations, which
+            must be queried with `image_format_properties`. See:
+            https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap48.html#capabilities-image
+            First, we check if this is the case, then query the device if so.
+        */
+
+        fn iter_or_none<T>(iter: impl IntoIterator<Item = T>) -> impl Iterator<Item = Option<T>> {
+            let mut iter = iter.into_iter();
+            [iter.next()].into_iter().chain(iter.map(Some))
+        }
+
+        for drm_format_modifier in iter_or_none(drm_format_modifiers.iter().copied()) {
+            for external_memory_handle_type in iter_or_none(external_memory_handle_types) {
+                let image_format_properties = unsafe {
+                    device
+                        .physical_device()
+                        .image_format_properties_unchecked(ImageFormatInfo {
+                            flags,
+                            format: Some(format),
+                            image_type,
+                            tiling,
+                            usage,
+                            stencil_usage,
+                            external_memory_handle_type,
+                            drm_format_modifier_info: drm_format_modifier.map(
+                                |drm_format_modifier| ImageDrmFormatModifierInfo {
+                                    drm_format_modifier,
+                                    sharing: sharing.clone(),
+                                    ..Default::default()
+                                },
+                            ),
+                            ..Default::default()
+                        })
+                        .map_err(|_err| ValidationError {
+                            context: "PhysicalDevice::image_format_properties".into(),
+                            problem: "returned an error".into(),
+                            ..Default::default()
+                        })?
+                };
+
+                let image_format_properties = image_format_properties.ok_or(ValidationError {
+                    problem: "the combination of parameters of this image is not \
+                        supported by the physical device, as returned by \
+                        `PhysicalDevice::image_format_properties`"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifier-02264",
+                        "VUID-VkImageDrmFormatModifierListCreateInfoEXT-pDrmFormatModifiers-02263",
+                    ],
+                    ..Default::default()
+                })?;
+
+                let ImageFormatProperties {
+                    max_extent,
+                    max_mip_levels,
+                    max_array_layers,
+                    sample_counts,
+                    max_resource_size: _,
+                    external_memory_properties,
+                    filter_cubic: _,
+                    filter_cubic_minmax: _,
+                } = image_format_properties;
+
+                if extent[0] > max_extent[0] {
+                    return Err(ValidationError {
+                        problem: "`extent[0]` exceeds `max_extent[0]` for \
+                            the combination of parameters of this image, as returned by \
+                            `PhysicalDevice::image_format_properties`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-extent-02252"],
+                        ..Default::default()
+                    });
+                }
+
+                if extent[1] > max_extent[1] {
+                    return Err(ValidationError {
+                        problem: "`extent[1]` exceeds `max_extent[1]` for \
+                            the combination of parameters of this image, as returned by \
+                            `PhysicalDevice::image_format_properties`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-extent-02253"],
+                        ..Default::default()
+                    });
+                }
+
+                if extent[2] > max_extent[2] {
+                    return Err(ValidationError {
+                        problem: "`extent[2]` exceeds `max_extent[2]` for \
+                            the combination of parameters of this image, as returned by \
+                            `PhysicalDevice::image_format_properties`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-extent-02254"],
+                        ..Default::default()
+                    });
+                }
+
+                if mip_levels > max_mip_levels {
+                    return Err(ValidationError {
+                        problem: "`mip_levels` exceeds `max_mip_levels` for \
+                            the combination of parameters of this image, as returned by \
+                            `PhysicalDevice::image_format_properties`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-mipLevels-02255"],
+                        ..Default::default()
+                    });
+                }
+
+                if array_layers > max_array_layers {
+                    return Err(ValidationError {
+                        problem: "`array_layers` exceeds `max_array_layers` for \
+                            the combination of parameters of this image, as returned by \
+                            `PhysicalDevice::image_format_properties`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-arrayLayers-02256"],
+                        ..Default::default()
+                    });
+                }
+
+                if !sample_counts.contains_enum(samples) {
+                    return Err(ValidationError {
+                        problem: "`samples` is not present in the `sample_counts` value for \
+                            the combination of parameters of this image, as returned by \
+                            `PhysicalDevice::image_format_properties`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-samples-02258"],
+                        ..Default::default()
+                    });
+                }
+
+                if !external_memory_properties
+                    .compatible_handle_types
+                    .contains(external_memory_handle_types)
+                {
+                    return Err(ValidationError {
+                        problem: "`external_memory_handle_types` is not a subset of the \
+                            `external_memory_properties.compatible_handle_types` value for \
+                            the combination of parameters of this image, as returned by \
+                            `PhysicalDevice::image_format_properties`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-pNext-00990"],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ImageCreateInfo, ImageError, ImageUsage, RawImage};
+    use super::{ImageCreateInfo, ImageUsage, RawImage};
     use crate::{
         format::Format,
         image::{
-            ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageSubresourceRange,
+            ImageAspect, ImageAspects, ImageCreateFlags, ImageSubresourceRange, ImageType,
             SampleCount, SubresourceRangeIterator,
         },
-        DeviceSize, Requires, RequiresAllOf, RequiresOneOf,
+        DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanError,
     };
     use smallvec::SmallVec;
 
@@ -2537,12 +2738,9 @@ mod tests {
         let _ = RawImage::new(
             device,
             ImageCreateInfo {
-                dimensions: ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 32,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent: [32, 32, 1],
                 usage: ImageUsage::SAMPLED,
                 ..Default::default()
             },
@@ -2557,12 +2755,9 @@ mod tests {
         let _ = RawImage::new(
             device,
             ImageCreateInfo {
-                dimensions: ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 32,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent: [32, 32, 1],
                 usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             },
@@ -2574,22 +2769,20 @@ mod tests {
     fn zero_mipmap() {
         let (device, _) = gfx_dev_and_queue!();
 
-        assert_should_panic!({
-            let _ = RawImage::new(
+        assert!(matches!(
+            RawImage::new(
                 device,
                 ImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: 32,
-                        height: 32,
-                        array_layers: 1,
-                    },
+                    image_type: ImageType::Dim2d,
                     format: Some(Format::R8G8B8A8_UNORM),
+                    extent: [32, 32, 1],
                     mip_levels: 0,
                     usage: ImageUsage::SAMPLED,
                     ..Default::default()
                 },
-            );
-        });
+            ),
+            Err(VulkanError::ValidationError(_))
+        ),);
     }
 
     #[test]
@@ -2599,12 +2792,9 @@ mod tests {
         let res = RawImage::new(
             device,
             ImageCreateInfo {
-                dimensions: ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 32,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent: [32, 32, 1],
                 mip_levels: u32::MAX,
                 usage: ImageUsage::SAMPLED,
                 ..Default::default()
@@ -2612,7 +2802,7 @@ mod tests {
         );
 
         match res {
-            Err(ImageError::MaxMipLevelsExceeded { .. }) => (),
+            Err(VulkanError::ValidationError(_)) => (),
             _ => panic!(),
         };
     }
@@ -2624,12 +2814,9 @@ mod tests {
         let res = RawImage::new(
             device,
             ImageCreateInfo {
-                dimensions: ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 32,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent: [32, 32, 1],
                 samples: SampleCount::Sample2,
                 usage: ImageUsage::STORAGE,
                 ..Default::default()
@@ -2637,14 +2824,14 @@ mod tests {
         );
 
         match res {
-            Err(ImageError::RequirementNotMet {
+            Err(VulkanError::ValidationError(ValidationError {
                 requires_one_of:
                     RequiresOneOf(
                         [RequiresAllOf([Requires::Feature("shader_storage_image_multisample")])],
                     ),
                 ..
-            }) => (),
-            Err(ImageError::SampleCountNotSupported { .. }) => (), // unlikely but possible
+            })) => (),
+            Err(VulkanError::ValidationError(_)) => (), // unlikely but possible
             _ => panic!(),
         };
     }
@@ -2656,22 +2843,16 @@ mod tests {
         let res = RawImage::new(
             device,
             ImageCreateInfo {
-                dimensions: ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 32,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::ASTC_5x4_UNORM_BLOCK),
+                extent: [32, 32, 1],
                 usage: ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             },
         );
 
         match res {
-            Err(ImageError::FormatNotSupported) => (),
-            Err(ImageError::FormatUsageNotSupported {
-                usage: "color_attachment",
-            }) => (),
+            Err(VulkanError::ValidationError(_)) => (),
             _ => panic!(),
         };
     }
@@ -2680,21 +2861,19 @@ mod tests {
     fn transient_forbidden_with_some_usages() {
         let (device, _) = gfx_dev_and_queue!();
 
-        assert_should_panic!({
-            let _ = RawImage::new(
+        assert!(matches!(
+            RawImage::new(
                 device,
                 ImageCreateInfo {
-                    dimensions: ImageDimensions::Dim2d {
-                        width: 32,
-                        height: 32,
-                        array_layers: 1,
-                    },
+                    image_type: ImageType::Dim2d,
                     format: Some(Format::R8G8B8A8_UNORM),
+                    extent: [32, 32, 1],
                     usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::SAMPLED,
                     ..Default::default()
                 },
-            );
-        })
+            ),
+            Err(VulkanError::ValidationError(_))
+        ))
     }
 
     #[test]
@@ -2705,20 +2884,16 @@ mod tests {
             device,
             ImageCreateInfo {
                 flags: ImageCreateFlags::CUBE_COMPATIBLE,
-                dimensions: ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 64,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R8G8B8A8_UNORM),
+                extent: [32, 64, 1],
                 usage: ImageUsage::SAMPLED,
                 ..Default::default()
             },
         );
 
         match res {
-            Err(ImageError::CubeCompatibleNotEnoughArrayLayers) => (),
-            Err(ImageError::CubeCompatibleNotSquare) => (),
+            Err(VulkanError::ValidationError(_)) => (),
             _ => panic!(),
         };
     }

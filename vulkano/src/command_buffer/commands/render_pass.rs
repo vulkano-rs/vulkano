@@ -810,7 +810,7 @@ where
             }
 
             let image = image_view.image();
-            let image_extent = image.dimensions().width_height_depth();
+            let image_extent = image.extent();
 
             for i in 0..2 {
                 // VUID-VkRenderingInfo-pNext-06079
@@ -1003,7 +1003,7 @@ where
             }
 
             let image = image_view.image();
-            let image_extent = image.dimensions().width_height_depth();
+            let image_extent = image.extent();
 
             for i in 0..2 {
                 // VUID-VkRenderingInfo-pNext-06079
@@ -1143,7 +1143,7 @@ where
             }
 
             let image = image_view.image();
-            let image_extent = image.dimensions().width_height_depth();
+            let image_extent = image.extent();
 
             for i in 0..2 {
                 // VUID-VkRenderingInfo-pNext-06079
@@ -2293,7 +2293,7 @@ impl RenderingInfo {
                 })
             {
                 if auto_extent {
-                    let extent = image_view.dimensions().width_height();
+                    let extent = image_view.image().extent();
 
                     for i in 0..2 {
                         render_area_extent[i] = min(render_area_extent[i], extent[i]);

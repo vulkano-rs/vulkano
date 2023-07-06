@@ -292,7 +292,8 @@ impl ImageLayout {
             ImageAspect::Metadata
             | ImageAspect::MemoryPlane0
             | ImageAspect::MemoryPlane1
-            | ImageAspect::MemoryPlane2 => false,
+            | ImageAspect::MemoryPlane2
+            | ImageAspect::MemoryPlane3 => false,
         }
     }
 }

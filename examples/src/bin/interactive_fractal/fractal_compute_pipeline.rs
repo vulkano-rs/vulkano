@@ -134,7 +134,7 @@ impl FractalComputePipeline {
 
     pub fn compute(
         &self,
-        image: Arc<ImageView>,
+        image_view: Arc<ImageView>,
         c: Vector2<f32>,
         scale: Vector2<f32>,
         translation: Vector2<f32>,
@@ -142,14 +142,14 @@ impl FractalComputePipeline {
         is_julia: bool,
     ) -> Box<dyn GpuFuture> {
         // Resize image if needed.
-        let img_dims = image.image().dimensions().width_height();
+        let image_extent = image_view.image().extent();
         let pipeline_layout = self.pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             desc_layout.clone(),
             [
-                WriteDescriptorSet::image_view(0, image),
+                WriteDescriptorSet::image_view(0, image_view),
                 WriteDescriptorSet::buffer(1, self.palette.clone()),
             ],
             [],
@@ -175,7 +175,7 @@ impl FractalComputePipeline {
             .bind_pipeline_compute(self.pipeline.clone())
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
             .push_constants(pipeline_layout.clone(), 0, push_constants)
-            .dispatch([img_dims[0] / 8, img_dims[1] / 8, 1])
+            .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
             .unwrap();
         let command_buffer = builder.build().unwrap();
         let finished = command_buffer.execute(self.queue.clone()).unwrap();

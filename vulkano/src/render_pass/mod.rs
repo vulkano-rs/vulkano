@@ -2982,12 +2982,14 @@ impl SubpassDescription {
             if aspects.intersects(
                 ImageAspects::MEMORY_PLANE_0
                     | ImageAspects::MEMORY_PLANE_1
-                    | ImageAspects::MEMORY_PLANE_2,
+                    | ImageAspects::MEMORY_PLANE_2
+                    | ImageAspects::MEMORY_PLANE_3
             ) {
                 return Err(ValidationError {
                     context: format!("input_attachments[{}].aspects", ref_index).into(),
                     problem: "contains `ImageAspects::MEMORY_PLANE_0`, \
-                        `ImageAspects::MEMORY_PLANE_1` or `ImageAspects::MEMORY_PLANE_2`"
+                        `ImageAspects::MEMORY_PLANE_1`, `ImageAspects::MEMORY_PLANE_2` or \
+                        `ImageAspects::MEMORY_PLANE_3`"
                         .into(),
                     vuids: &["VUID-VkSubpassDescription2-attachment-04563"],
                     ..Default::default()

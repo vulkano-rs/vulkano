@@ -32,7 +32,7 @@ mod linux {
             sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
             sys::RawImage,
             view::ImageView,
-            Image, ImageCreateFlags, ImageCreateInfo, ImageDimensions, ImageUsage,
+            Image, ImageCreateFlags, ImageCreateInfo, ImageType, ImageUsage,
         },
         instance::{
             debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
@@ -120,12 +120,9 @@ mod linux {
             device.clone(),
             ImageCreateInfo {
                 flags: ImageCreateFlags::MUTABLE_FORMAT,
-                dimensions: ImageDimensions::Dim2d {
-                    width: 200,
-                    height: 200,
-                    array_layers: 1,
-                },
+                image_type: ImageType::Dim2d,
                 format: Some(Format::R16G16B16A16_UNORM),
+                extent: [200, 200, 1],
                 usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                 external_memory_handle_types: ExternalMemoryHandleTypes::OPAQUE_FD,
                 ..Default::default()
@@ -742,8 +739,8 @@ mod linux {
         render_pass: Arc<RenderPass>,
         viewport: &mut Viewport,
     ) -> Vec<Arc<Framebuffer>> {
-        let dimensions = images[0].dimensions().width_height();
-        viewport.extent = [dimensions[0] as f32, dimensions[1] as f32];
+        let extent = images[0].extent();
+        viewport.extent = [extent[0] as f32, extent[1] as f32];
 
         images
             .iter()
