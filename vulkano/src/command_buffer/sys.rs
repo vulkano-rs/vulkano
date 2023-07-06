@@ -19,9 +19,9 @@ use crate::{
         CommandBufferInheritanceRenderPassInfo, CommandBufferInheritanceRenderPassType,
         CommandBufferInheritanceRenderingInfo,
     },
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, QueueFamilyProperties},
     query::QueryControlFlags,
-    OomError, VulkanError, VulkanObject,
+    ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{fmt::Debug, ptr, sync::Arc};
@@ -60,7 +60,7 @@ where
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<Self, OomError> {
+    ) -> Result<Self, VulkanError> {
         let builder_alloc = allocator
             .allocate(queue_family_index, level, 1)?
             .next()
@@ -186,7 +186,7 @@ where
 
     /// Turns the builder into an actual command buffer.
     #[inline]
-    pub fn build(self) -> Result<UnsafeCommandBuffer<A>, OomError> {
+    pub fn build(self) -> Result<UnsafeCommandBuffer<A>, VulkanError> {
         unsafe {
             let fns = self.device().fns();
             (fns.v1_0.end_command_buffer)(self.handle())
@@ -224,6 +224,10 @@ where
     #[inline]
     pub fn inheritance_info(&self) -> Option<&CommandBufferInheritanceInfo> {
         self.inheritance_info.as_ref()
+    }
+
+    pub(in crate::command_buffer) fn queue_family_properties(&self) -> &QueueFamilyProperties {
+        &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
     }
 }
 
@@ -288,6 +292,27 @@ impl Default for CommandBufferBeginInfo {
             inheritance_info: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl CommandBufferBeginInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            usage: _,
+            ref inheritance_info,
+            _ne: _,
+        } = &self;
+
+        if let Some(inheritance_info) = &inheritance_info {
+            inheritance_info
+                .validate(device)
+                .map_err(|err| err.add_context("inheritance_info"))?;
+        } else {
+            // VUID-vkBeginCommandBuffer-commandBuffer-02840
+            // Ensured by the definition of the `CommandBufferUsage` enum.
+        }
+
+        Ok(())
     }
 }
 

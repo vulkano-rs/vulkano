@@ -18,15 +18,13 @@ use crate::{
         sys::{CommandBufferBeginInfo, UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferImageRangeUsage,
         CommandBufferImageUsage, CommandBufferInheritanceInfo,
-        CommandBufferInheritanceRenderPassInfo, CommandBufferInheritanceRenderPassType,
-        CommandBufferInheritanceRenderingInfo, CommandBufferLevel, CommandBufferResourcesUsage,
+        CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferResourcesUsage,
         CommandBufferUsage, RenderingInfo, ResourceUseRef, SecondaryAutoCommandBuffer,
         SecondaryCommandBufferBufferUsage, SecondaryCommandBufferImageUsage,
         SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned, QueueFamilyProperties},
-    format::FormatFeatures,
     image::{view::ImageView, Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
@@ -47,15 +45,14 @@ use crate::{
         AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier,
         PipelineStageAccessFlags, PipelineStages,
     },
-    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf,
+    DeviceSize, Validated, ValidationError, VulkanError,
 };
 use ahash::HashMap;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry,
-    error::Error,
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    fmt::Debug,
     marker::PhantomData,
     mem::take,
     ops::{Range, RangeInclusive},
@@ -89,7 +86,7 @@ where
         allocator: &A,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, CommandBufferBeginError>
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, Validated<VulkanError>>
     {
         unsafe {
             AutoCommandBufferBuilder::begin(
@@ -111,7 +108,7 @@ where
         allocator: &A,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, OomError> {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, VulkanError> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -136,7 +133,7 @@ where
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, CommandBufferBeginError>
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, Validated<VulkanError>>
     {
         unsafe {
             AutoCommandBufferBuilder::begin(
@@ -159,7 +156,7 @@ where
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, OomError> {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, VulkanError> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -187,7 +184,7 @@ where
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<AutoCommandBufferBuilder<L, A>, CommandBufferBeginError> {
+    ) -> Result<AutoCommandBufferBuilder<L, A>, Validated<VulkanError>> {
         Self::validate_begin(allocator.device(), queue_family_index, level, &begin_info)?;
 
         unsafe {
@@ -203,227 +200,12 @@ where
     fn validate_begin(
         device: &Device,
         _queue_family_index: u32,
-        level: CommandBufferLevel,
+        _level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
-    ) -> Result<(), CommandBufferBeginError> {
-        let physical_device = device.physical_device();
-        let properties = physical_device.properties();
-
-        let &CommandBufferBeginInfo {
-            usage: _,
-            ref inheritance_info,
-            _ne: _,
-        } = &begin_info;
-
-        if let Some(inheritance_info) = &inheritance_info {
-            debug_assert!(level == CommandBufferLevel::Secondary);
-
-            let &CommandBufferInheritanceInfo {
-                ref render_pass,
-                occlusion_query,
-                query_statistics_flags,
-                _ne: _,
-            } = inheritance_info;
-
-            if let Some(render_pass) = render_pass {
-                // VUID-VkCommandBufferBeginInfo-flags-06000
-                // VUID-VkCommandBufferBeginInfo-flags-06002
-                // Ensured by the definition of the `CommandBufferInheritanceRenderPassType` enum.
-
-                match render_pass {
-                    CommandBufferInheritanceRenderPassType::BeginRenderPass(render_pass_info) => {
-                        let &CommandBufferInheritanceRenderPassInfo {
-                            ref subpass,
-                            ref framebuffer,
-                        } = render_pass_info;
-
-                        // VUID-VkCommandBufferInheritanceInfo-commonparent
-                        assert_eq!(device, subpass.render_pass().device().as_ref());
-
-                        // VUID-VkCommandBufferBeginInfo-flags-06001
-                        // Ensured by how the `Subpass` type is constructed.
-
-                        if let Some(framebuffer) = framebuffer {
-                            // VUID-VkCommandBufferInheritanceInfo-commonparent
-                            assert_eq!(device, framebuffer.device().as_ref());
-
-                            // VUID-VkCommandBufferBeginInfo-flags-00055
-                            if !framebuffer
-                                .render_pass()
-                                .is_compatible_with(subpass.render_pass())
-                            {
-                                return Err(CommandBufferBeginError::FramebufferNotCompatible);
-                            }
-                        }
-                    }
-                    CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
-                        let &CommandBufferInheritanceRenderingInfo {
-                            view_mask,
-                            ref color_attachment_formats,
-                            depth_attachment_format,
-                            stencil_attachment_format,
-                            rasterization_samples,
-                        } = rendering_info;
-
-                        // VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008
-                        if view_mask != 0 && !device.enabled_features().multiview {
-                            return Err(CommandBufferBeginError::RequirementNotMet {
-                                required_for: "`inheritance_info.render_pass` is \
-                                    `CommandBufferInheritanceRenderPassType::BeginRendering`, \
-                                    where `view_mask` is not `0`",
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview"),
-                                ])]),
-                            });
-                        }
-
-                        let view_count = u32::BITS - view_mask.leading_zeros();
-
-                        // VUID-VkCommandBufferInheritanceRenderingInfo-viewMask-06009
-                        if view_count > properties.max_multiview_view_count.unwrap_or(0) {
-                            return Err(CommandBufferBeginError::MaxMultiviewViewCountExceeded {
-                                view_count,
-                                max: properties.max_multiview_view_count.unwrap_or(0),
-                            });
-                        }
-
-                        for (attachment_index, format) in color_attachment_formats
-                            .iter()
-                            .enumerate()
-                            .flat_map(|(i, f)| f.map(|f| (i, f)))
-                        {
-                            let attachment_index = attachment_index as u32;
-
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-parameter
-                            format.validate_device(device)?;
-
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-06006
-                            // Use unchecked, because all validation has been done above.
-                            if !unsafe { physical_device.format_properties_unchecked(format) }
-                                .potential_format_features()
-                                .intersects(FormatFeatures::COLOR_ATTACHMENT)
-                            {
-                                return Err(
-                                    CommandBufferBeginError::ColorAttachmentFormatUsageNotSupported {
-                                        attachment_index,
-                                    },
-                                );
-                            }
-                        }
-
-                        if let Some(format) = depth_attachment_format {
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-parameter
-                            format.validate_device(device)?;
-
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06540
-                            if !format.aspects().intersects(ImageAspects::DEPTH) {
-                                return Err(
-                                    CommandBufferBeginError::DepthAttachmentFormatUsageNotSupported,
-                                );
-                            }
-
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06007
-                            // Use unchecked, because all validation has been done above.
-                            if !unsafe { physical_device.format_properties_unchecked(format) }
-                                .potential_format_features()
-                                .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
-                            {
-                                return Err(
-                                    CommandBufferBeginError::DepthAttachmentFormatUsageNotSupported,
-                                );
-                            }
-                        }
-
-                        if let Some(format) = stencil_attachment_format {
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-parameter
-                            format.validate_device(device)?;
-
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06541
-                            if !format.aspects().intersects(ImageAspects::STENCIL) {
-                                return Err(
-                                    CommandBufferBeginError::StencilAttachmentFormatUsageNotSupported,
-                                );
-                            }
-
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06199
-                            // Use unchecked, because all validation has been done above.
-                            if !unsafe { physical_device.format_properties_unchecked(format) }
-                                .potential_format_features()
-                                .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
-                            {
-                                return Err(
-                                    CommandBufferBeginError::StencilAttachmentFormatUsageNotSupported,
-                                );
-                            }
-                        }
-
-                        if let (Some(depth_format), Some(stencil_format)) =
-                            (depth_attachment_format, stencil_attachment_format)
-                        {
-                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06200
-                            if depth_format != stencil_format {
-                                return Err(
-                                    CommandBufferBeginError::DepthStencilAttachmentFormatMismatch,
-                                );
-                            }
-                        }
-
-                        // VUID-VkCommandBufferInheritanceRenderingInfo-rasterizationSamples-parameter
-                        rasterization_samples.validate_device(device)?;
-                    }
-                }
-            }
-
-            if let Some(control_flags) = occlusion_query {
-                // VUID-VkCommandBufferInheritanceInfo-queryFlags-00057
-                control_flags.validate_device(device)?;
-
-                // VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056
-                // VUID-VkCommandBufferInheritanceInfo-queryFlags-02788
-                if !device.enabled_features().inherited_queries {
-                    return Err(CommandBufferBeginError::RequirementNotMet {
-                        required_for: "`inheritance_info.occlusion_query` is `Some`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "inherited_queries",
-                        )])]),
-                    });
-                }
-
-                // VUID-vkBeginCommandBuffer-commandBuffer-00052
-                if control_flags.intersects(QueryControlFlags::PRECISE)
-                    && !device.enabled_features().occlusion_query_precise
-                {
-                    return Err(CommandBufferBeginError::RequirementNotMet {
-                        required_for: "`inheritance_info.occlusion_query` is \
-                            `Some(control_flags)`, where `control_flags` contains \
-                            `QueryControlFlags::PRECISE`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "occlusion_query_precise",
-                        )])]),
-                    });
-                }
-            }
-
-            // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789
-            query_statistics_flags.validate_device(device)?;
-
-            // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058
-            if query_statistics_flags.count() > 0
-                && !device.enabled_features().pipeline_statistics_query
-            {
-                return Err(CommandBufferBeginError::RequirementNotMet {
-                    required_for: "`inheritance_info.query_statistics_flags` is not empty",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "pipeline_statistics_query",
-                    )])]),
-                });
-            }
-        } else {
-            debug_assert!(level == CommandBufferLevel::Primary);
-
-            // VUID-vkBeginCommandBuffer-commandBuffer-02840
-            // Ensured by the definition of the `CommandBufferUsage` enum.
-        }
+    ) -> Result<(), Box<ValidationError>> {
+        begin_info
+            .validate(device)
+            .map_err(|err| err.add_context("begin_info"))?;
 
         Ok(())
     }
@@ -434,7 +216,7 @@ where
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<Self, OomError> {
+    ) -> Result<Self, VulkanError> {
         let &CommandBufferBeginInfo {
             usage: _,
             ref inheritance_info,
@@ -476,7 +258,7 @@ where
             CommandBufferResourcesUsage,
             SecondaryCommandBufferResourcesUsage,
         ),
-        CommandBufferBuildError,
+        Validated<VulkanError>,
     > {
         let mut auto_sync_state = AutoSyncState::new(
             self.device().clone(),
@@ -489,7 +271,18 @@ where
 
         // Add barriers between the commands.
         for (command_info, _) in self.commands.iter() {
-            auto_sync_state.add_command(command_info)?;
+            auto_sync_state.add_command(command_info).map_err(|err| {
+                Box::new(ValidationError {
+                    problem: format!(
+                        "unsolvable resource conflict between:\n\
+                        command resource use: {:?}\n\
+                        previous conflicting command resource use: {:?}",
+                        err.current_use_ref, err.previous_use_ref,
+                    )
+                    .into(),
+                    ..Default::default()
+                })
+            })?;
         }
 
         let (mut barriers, resources_usage, secondary_resources_usage) = auto_sync_state.build();
@@ -531,112 +324,32 @@ where
     }
 }
 
-/// Error that can happen when beginning recording of a command buffer.
-#[derive(Clone, Copy, Debug)]
-pub enum CommandBufferBeginError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// A color attachment has a format that does not support that usage.
-    ColorAttachmentFormatUsageNotSupported { attachment_index: u32 },
-
-    /// The depth attachment has a format that does not support that usage.
-    DepthAttachmentFormatUsageNotSupported,
-
-    /// The depth and stencil attachments have different formats.
-    DepthStencilAttachmentFormatMismatch,
-
-    /// The framebuffer is not compatible with the render pass.
-    FramebufferNotCompatible,
-
-    /// The `max_multiview_view_count` limit has been exceeded.
-    MaxMultiviewViewCountExceeded { view_count: u32, max: u32 },
-
-    /// The stencil attachment has a format that does not support that usage.
-    StencilAttachmentFormatUsageNotSupported,
-}
-
-impl Error for CommandBufferBeginError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for CommandBufferBeginError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::ColorAttachmentFormatUsageNotSupported { attachment_index } => write!(
-                f,
-                "color attachment {} has a format that does not support that usage",
-                attachment_index,
-            ),
-            Self::DepthAttachmentFormatUsageNotSupported => write!(
-                f,
-                "the depth attachment has a format that does not support that usage",
-            ),
-            Self::DepthStencilAttachmentFormatMismatch => write!(
-                f,
-                "the depth and stencil attachments have different formats",
-            ),
-            Self::FramebufferNotCompatible => {
-                write!(f, "the framebuffer is not compatible with the render pass")
-            }
-            Self::MaxMultiviewViewCountExceeded { .. } => {
-                write!(f, "the `max_multiview_view_count` limit has been exceeded")
-            }
-            Self::StencilAttachmentFormatUsageNotSupported => write!(
-                f,
-                "the stencil attachment has a format that does not support that usage",
-            ),
-        }
-    }
-}
-
-impl From<OomError> for CommandBufferBeginError {
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<RequirementNotMet> for CommandBufferBeginError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
 impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>
 where
     A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer<A>>, CommandBufferBuildError> {
+    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer<A>>, Validated<VulkanError>> {
         if self.builder_state.render_pass.is_some() {
-            return Err(CommandBufferBuildError::RenderPassActive);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is still active".into(),
+                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00060"],
+                ..Default::default()
+            })
+            .into());
         }
 
         if !self.builder_state.queries.is_empty() {
-            return Err(CommandBufferBuildError::QueryActive);
+            return Err(Box::new(ValidationError {
+                problem: "a query is still active".into(),
+                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
+                ..Default::default()
+            })
+            .into());
         }
+
+        // TODO:
+        // VUID-vkEndCommandBuffer-commandBuffer-01815
 
         let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked()? };
 
@@ -654,9 +367,14 @@ where
     A: CommandBufferAllocator,
 {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer<A>>, CommandBufferBuildError> {
+    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer<A>>, Validated<VulkanError>> {
         if !self.builder_state.queries.is_empty() {
-            return Err(CommandBufferBuildError::QueryActive);
+            return Err(Box::new(ValidationError {
+                problem: "a query is still active".into(),
+                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
+                ..Default::default()
+            })
+            .into());
         }
 
         let submit_state = match self.inner.usage() {
@@ -680,63 +398,13 @@ where
     }
 }
 
-/// Error that can happen when building a command buffer.
-#[derive(Clone, Debug)]
-pub enum CommandBufferBuildError {
-    OomError(OomError),
-
-    /// A render pass is still active on the command buffer.
-    RenderPassActive,
-
-    /// A query is still active on the command buffer.
-    QueryActive,
-
-    /// A conflict exists between two resources that cannot be resolved by a pipeline barrier.
-    UnsolvableResourceConflict {
-        current_use_ref: ResourceUseRef,
-        previous_use_ref: ResourceUseRef,
-    },
-}
-
-impl Error for CommandBufferBuildError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for CommandBufferBuildError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "out of memory"),
-            Self::RenderPassActive => {
-                write!(f, "a render pass is still active on the command buffer")
-            }
-            Self::QueryActive => write!(f, "a query is still active on the command buffer"),
-            Self::UnsolvableResourceConflict { .. } => write!(
-                f,
-                "a conflict exists between two resources that cannot be resolved by a \
-                pipeline barrier"
-            ),
-        }
-    }
-}
-
-impl From<OomError> for CommandBufferBuildError {
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
 impl<L, A> AutoCommandBufferBuilder<L, A>
 where
     A: CommandBufferAllocator,
 {
+    #[inline]
     pub(in crate::command_buffer) fn queue_family_properties(&self) -> &QueueFamilyProperties {
-        &self.device().physical_device().queue_family_properties()
-            [self.inner.queue_family_index() as usize]
+        self.inner.queue_family_properties()
     }
 
     pub(in crate::command_buffer) fn add_command(
@@ -1584,28 +1252,6 @@ impl AutoSyncState {
 struct UnsolvableResourceConflict {
     current_use_ref: ResourceUseRef,
     previous_use_ref: ResourceUseRef,
-}
-
-impl Error for UnsolvableResourceConflict {}
-
-impl Display for UnsolvableResourceConflict {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(f, "unsolvable resource conflict")
-    }
-}
-
-impl From<UnsolvableResourceConflict> for CommandBufferBuildError {
-    fn from(value: UnsolvableResourceConflict) -> Self {
-        let UnsolvableResourceConflict {
-            current_use_ref,
-            previous_use_ref,
-        } = value;
-
-        Self::UnsolvableResourceConflict {
-            current_use_ref,
-            previous_use_ref,
-        }
-    }
 }
 
 // State of a resource during the building of the command buffer.

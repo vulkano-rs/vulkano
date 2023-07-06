@@ -16,14 +16,14 @@
 use super::{
     pool::{
         CommandBufferAllocateInfo, CommandPool, CommandPoolAlloc, CommandPoolCreateInfo,
-        CommandPoolCreationError,
+        CommandPoolResetFlags,
     },
     CommandBufferLevel,
 };
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    OomError,
+    Validated, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
 use smallvec::{IntoIter, SmallVec};
@@ -72,7 +72,7 @@ pub unsafe trait CommandBufferAllocator: DeviceOwned {
         queue_family_index: u32,
         level: CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> Result<Self::Iter, OomError>;
+    ) -> Result<Self::Iter, VulkanError>;
 }
 
 /// A command buffer allocated from a pool and that can be recorded.
@@ -164,10 +164,10 @@ impl StandardCommandBufferAllocator {
     pub fn try_reset_pool(
         &self,
         queue_family_index: u32,
-        release_resources: bool,
-    ) -> Result<(), CommandPoolResetError> {
+        flags: CommandPoolResetFlags,
+    ) -> Result<(), Validated<ResetCommandPoolError>> {
         if let Some(entry) = unsafe { &mut *self.entry(queue_family_index) }.as_mut() {
-            entry.try_reset_pool(release_resources)
+            entry.try_reset_pool(flags)
         } else {
             Ok(())
         }
@@ -223,7 +223,7 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
         queue_family_index: u32,
         level: CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> Result<Self::Iter, OomError> {
+    ) -> Result<Self::Iter, VulkanError> {
         // VUID-vkCreateCommandPool-queueFamilyIndex-01937
         assert!(self
             .device
@@ -251,7 +251,10 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
         }
 
         // Else try to reset the pool.
-        if entry.try_reset_pool(false).is_err() {
+        if entry
+            .try_reset_pool(CommandPoolResetFlags::empty())
+            .is_err()
+        {
             // If that fails too try to grab a pool from the reserve.
             entry.pool = if let Some(inner) = entry.reserve.pop() {
                 Arc::new(Pool {
@@ -286,7 +289,7 @@ unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
         queue_family_index: u32,
         level: CommandBufferLevel,
         command_buffer_count: u32,
-    ) -> Result<Self::Iter, OomError> {
+    ) -> Result<Self::Iter, VulkanError> {
         (**self).allocate(queue_family_index, level, command_buffer_count)
     }
 }
@@ -312,16 +315,26 @@ struct Entry {
 unsafe impl Send for Entry {}
 
 impl Entry {
-    fn try_reset_pool(&mut self, release_resources: bool) -> Result<(), CommandPoolResetError> {
+    fn try_reset_pool(
+        &mut self,
+        flags: CommandPoolResetFlags,
+    ) -> Result<(), Validated<ResetCommandPoolError>> {
         if let Some(pool) = Arc::get_mut(&mut self.pool) {
-            unsafe { pool.inner.inner.reset(release_resources) }
-                .map_err(|_| CommandPoolResetError::OutOfDeviceMemory)?;
+            unsafe {
+                pool.inner.inner.reset(flags).map_err(|err| match err {
+                    Validated::Error(err) => {
+                        Validated::Error(ResetCommandPoolError::VulkanError(err))
+                    }
+                    Validated::ValidationError(err) => err.into(),
+                })?
+            };
+
             *pool.inner.primary_allocations.get_mut() = 0;
             *pool.inner.secondary_allocations.get_mut() = 0;
 
             Ok(())
         } else {
-            Err(CommandPoolResetError::InUse)
+            Err(ResetCommandPoolError::InUse.into())
         }
     }
 }
@@ -353,7 +366,7 @@ impl Pool {
         queue_family_index: u32,
         reserve: Arc<ArrayQueue<PoolInner>>,
         create_info: &StandardCommandBufferAllocatorCreateInfo,
-    ) -> Result<Arc<Self>, OomError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         let inner = CommandPool::new(
             device,
             CommandPoolCreateInfo {
@@ -361,12 +374,7 @@ impl Pool {
                 ..Default::default()
             },
         )
-        .map_err(|err| match err {
-            CommandPoolCreationError::OomError(err) => err,
-            // We check that the provided queue family index is active on the device, so it can't
-            // be out of range.
-            CommandPoolCreationError::QueueFamilyIndexOutOfRange { .. } => unreachable!(),
-        })?;
+        .map_err(Validated::unwrap)?;
 
         let primary_pool = if create_info.primary_buffer_count > 0 {
             let pool = ArrayQueue::new(create_info.primary_buffer_count);
@@ -505,7 +513,7 @@ impl Drop for Pool {
             return;
         }
 
-        unsafe { inner.inner.reset(false) }.unwrap();
+        unsafe { inner.inner.reset(CommandPoolResetFlags::empty()) }.unwrap();
         inner.primary_allocations.set(0);
         inner.secondary_allocations.set(0);
 
@@ -638,22 +646,34 @@ impl Drop for StandardCommandBufferAlloc {
 
 /// Error that can be returned when resetting a [`CommandPool`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CommandPoolResetError {
+pub enum ResetCommandPoolError {
+    /// A runtime error occurred.
+    VulkanError(VulkanError),
+
     /// The `CommandPool` is still in use.
     InUse,
-
-    /// Out of device memory.
-    OutOfDeviceMemory,
 }
 
-impl Error for CommandPoolResetError {}
+impl Error for ResetCommandPoolError {}
 
-impl Display for CommandPoolResetError {
+impl Display for ResetCommandPoolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InUse => write!(f, "the `CommandPool` is still in use"),
-            Self::OutOfDeviceMemory => write!(f, "out of device memory"),
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
+            Self::InUse => write!(f, "the command pool is still in use"),
         }
+    }
+}
+
+impl From<VulkanError> for ResetCommandPoolError {
+    fn from(err: VulkanError) -> Self {
+        Self::VulkanError(err)
+    }
+}
+
+impl From<ResetCommandPoolError> for Validated<ResetCommandPoolError> {
+    fn from(err: ResetCommandPoolError) -> Self {
+        Self::Error(err)
     }
 }
 

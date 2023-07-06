@@ -179,8 +179,8 @@ impl PipelineRenderingCreateInfo {
                 problem: "the number of views exceeds the \
                     `max_multiview_view_count` limit"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06578"],
+                ..Default::default()
             }));
         }
 
