@@ -233,7 +233,7 @@ fn main() {
                 // NOTE:
                 // On some drivers the swapchain extent is specified by
                 // `surface_capabilities.current_extent` and the swapchain size must use this
-                // extent. This extent are always the same as the window size.
+                // extent. This extent is always the same as the window size.
                 //
                 // However, other drivers don't specify a value, i.e.
                 // `surface_capabilities.current_extent` is `None`. These drivers will allow
