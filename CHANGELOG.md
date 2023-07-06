@@ -41,8 +41,7 @@ Changes to buffers:
 - Index buffers are now specified using the `IndexBuffer` enum instead of the `Index` trait.
 
 Changes to errors:
-- `VulkanError` is renamed to `RuntimeError`.
-- Added new types `ValidationError` and `VulkanError` (enum of `ValidationError` + `RuntimeError`) to return errors from any function. Some existing functions have been converted to use these types, others will follow later.
+- Added new types `ValidationError` and `Validated` (enum of `ValidationError` + something else) to return errors from any function. Some existing functions have been converted to use these types, others will follow later.
 - `AllocationCreationError` is renamed to `MemoryAllocatorError`.
 - `SuballocationCreationError` is renamed to `SuballocatorError`.
 
