@@ -32,6 +32,8 @@ Changes to images:
 - `ImageView` no longer has a type parameter, `ImageViewAbstract` was removed.
 - Removed `ImageAccessFromUndefinedLayout`, `ImmutableImageCreationError`, `ImmutableImageInitialization` and `MipmapsCount`.
 - `Image` was moved to the `image` module.
+- `ImageDimensions` is removed. `ImageCreateInfo` now instead has `image_type`, `extent` and `array_layers` to match Vulkan. Some of the methods of `ImageDimensions` have been turned into bare functions in the `image` module.
+- `ImageCreateFlags::ARRAY_2D_COMPATIBLE` is renamed to `DIM2D_ARRAY_COMPATIBLE` to better match the Vulkan name (but within the limitation that identifiers can't start with a digit).
 
 Changes to buffers:
 - The `Subbuffer::{try_cast, try_cast_slice, try_from_bytes}` functions were replaced by `Subbuffer::reinterpret[_ref]`.
@@ -96,6 +98,9 @@ Changes to samplers:
 - Added a `domain_origin` field to `TessellationState`.
 - Added the trait `InstanceOwned`.
 - Debug formatting of Vulkan objects no longer follows references to other objects, instead only printing their handles, in order to alleviate the spam.
+- Added `ImageCreateFlags::EXTENDED_USAGE` from the `khr_maintenance2` extension.
+- Support for the `ext_image_drm_format_modifier` extension.
+- Support for the `ext_image_2d_view_of_3d` extension.
 
 ### Bugs fixed
 
