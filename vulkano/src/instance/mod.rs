@@ -90,8 +90,8 @@ use crate::{
     },
     instance::debug::trampoline,
     macros::{impl_id_counter, vulkan_bitflags},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, VulkanError,
-    VulkanLibrary, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanLibrary,
+    VulkanObject,
 };
 pub use crate::{fns::InstanceFunctions, version::Version};
 use ash::vk::Handle;
@@ -291,7 +291,7 @@ impl Instance {
     pub fn new(
         library: Arc<VulkanLibrary>,
         create_info: InstanceCreateInfo,
-    ) -> Result<Arc<Instance>, VulkanError> {
+    ) -> Result<Arc<Instance>, Validated<VulkanError>> {
         unsafe { Self::with_debug_utils_messengers(library, create_info, []) }
     }
 
@@ -313,7 +313,7 @@ impl Instance {
         library: Arc<VulkanLibrary>,
         mut create_info: InstanceCreateInfo,
         debug_utils_messengers: impl IntoIterator<Item = DebugUtilsMessengerCreateInfo>,
-    ) -> Result<Arc<Instance>, VulkanError> {
+    ) -> Result<Arc<Instance>, Validated<VulkanError>> {
         create_info.max_api_version.get_or_insert_with(|| {
             let api_version = library.api_version();
             if api_version < Version::V1_1 {
@@ -337,7 +337,7 @@ impl Instance {
         library: &VulkanLibrary,
         create_info: &InstanceCreateInfo,
         debug_utils_messengers: &[DebugUtilsMessengerCreateInfo],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateInstance-pCreateInfo-parameter
         create_info
             .validate(library)
@@ -373,14 +373,14 @@ impl Instance {
 
         if !debug_utils_messengers.is_empty() {
             if !create_info.enabled_extensions.ext_debug_utils {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "debug_utils_messengers".into(),
                     problem: "is not empty".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                         Requires::InstanceExtension("ext_debug_utils"),
                     ])]),
                     vuids: &["VUID-VkInstanceCreateInfo-pNext-04926"],
-                });
+                }));
             }
 
             for (index, messenger_create_info) in debug_utils_messengers.iter().enumerate() {
@@ -397,7 +397,7 @@ impl Instance {
     pub unsafe fn new_unchecked(
         library: Arc<VulkanLibrary>,
         create_info: InstanceCreateInfo,
-    ) -> Result<Arc<Instance>, RuntimeError> {
+    ) -> Result<Arc<Instance>, VulkanError> {
         Self::with_debug_utils_messengers_unchecked(library, create_info, [])
     }
 
@@ -406,7 +406,7 @@ impl Instance {
         library: Arc<VulkanLibrary>,
         mut create_info: InstanceCreateInfo,
         debug_utils_messengers: impl IntoIterator<Item = DebugUtilsMessengerCreateInfo>,
-    ) -> Result<Arc<Instance>, RuntimeError> {
+    ) -> Result<Arc<Instance>, VulkanError> {
         create_info.max_api_version.get_or_insert_with(|| {
             let api_version = library.api_version();
             if api_version < Version::V1_1 {
@@ -572,7 +572,7 @@ impl Instance {
             let fns = library.fns();
             (fns.v1_0.create_instance)(&create_info_vk, ptr::null(), output.as_mut_ptr())
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -711,7 +711,7 @@ impl Instance {
     /// ```
     pub fn enumerate_physical_devices(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, RuntimeError> {
+    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, VulkanError> {
         let fns = self.fns();
 
         unsafe {
@@ -719,7 +719,7 @@ impl Instance {
                 let mut count = 0;
                 (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, ptr::null_mut())
                     .result()
-                    .map_err(RuntimeError::from)?;
+                    .map_err(VulkanError::from)?;
 
                 let mut handles = Vec::with_capacity(count as usize);
                 let result = (fns.v1_0.enumerate_physical_devices)(
@@ -734,7 +734,7 @@ impl Instance {
                         break handles;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(RuntimeError::from(err)),
+                    err => return Err(VulkanError::from(err)),
                 }
             };
 
@@ -769,23 +769,24 @@ impl Instance {
     #[inline]
     pub fn enumerate_physical_device_groups(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties>, VulkanError> {
+    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties>, Validated<VulkanError>>
+    {
         self.validate_enumerate_physical_device_groups()?;
 
         unsafe { Ok(self.enumerate_physical_device_groups_unchecked()?) }
     }
 
-    fn validate_enumerate_physical_device_groups(&self) -> Result<(), ValidationError> {
+    fn validate_enumerate_physical_device_groups(&self) -> Result<(), Box<ValidationError>> {
         if !(self.api_version() >= Version::V1_1
             || self.enabled_extensions().khr_device_group_creation)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
                     RequiresAllOf(&[Requires::InstanceExtension("khr_device_group_creation")]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -794,7 +795,7 @@ impl Instance {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn enumerate_physical_device_groups_unchecked(
         self: &Arc<Self>,
-    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties>, RuntimeError> {
+    ) -> Result<impl ExactSizeIterator<Item = PhysicalDeviceGroupProperties>, VulkanError> {
         let fns = self.fns();
         let enumerate_physical_device_groups = if self.api_version() >= Version::V1_1 {
             fns.v1_1.enumerate_physical_device_groups
@@ -808,7 +809,7 @@ impl Instance {
 
             enumerate_physical_device_groups(self.handle, &mut count, ptr::null_mut())
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
 
             let mut properties = Vec::with_capacity(count as usize);
             let result =
@@ -820,7 +821,7 @@ impl Instance {
                     break properties;
                 }
                 ash::vk::Result::INCOMPLETE => (),
-                err => return Err(RuntimeError::from(err)),
+                err => return Err(VulkanError::from(err)),
             }
         };
 
@@ -1068,7 +1069,7 @@ impl InstanceCreateInfo {
         }
     }
 
-    pub(crate) fn validate(&self, library: &VulkanLibrary) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, library: &VulkanLibrary) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             application_name: _,
@@ -1087,12 +1088,12 @@ impl InstanceCreateInfo {
         let api_version = std::cmp::min(max_api_version, library.api_version());
 
         if max_api_version < Version::V1_0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "max_api_version".into(),
                 problem: "is less than 1.0".into(),
                 vuids: &["VUID-VkApplicationInfo-apiVersion-04010"],
                 ..Default::default()
-            });
+            }));
         }
 
         flags
@@ -1105,14 +1106,14 @@ impl InstanceCreateInfo {
 
         if !enabled_validation_features.is_empty() {
             if !enabled_extensions.ext_validation_features {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_validation_features".into(),
                     problem: "is not empty".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                         Requires::InstanceExtension("ext_validation_features"),
                     ])]),
                     ..Default::default()
-                });
+                }));
             }
 
             for (index, enabled) in enabled_validation_features.iter().enumerate() {
@@ -1131,7 +1132,7 @@ impl InstanceCreateInfo {
                 .contains(&ValidationFeatureEnable::GpuAssistedReserveBindingSlot)
                 && !enabled_validation_features.contains(&ValidationFeatureEnable::GpuAssisted)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_validation_features".into(),
                     problem: "contains `ValidationFeatureEnable::GpuAssistedReserveBindingSlot`, \
                         but does not also contain \
@@ -1139,33 +1140,33 @@ impl InstanceCreateInfo {
                         .into(),
                     vuids: &["VUID-VkValidationFeaturesEXT-pEnabledValidationFeatures-02967"],
                     ..Default::default()
-                });
+                }));
             }
 
             if enabled_validation_features.contains(&ValidationFeatureEnable::DebugPrintf)
                 && enabled_validation_features.contains(&ValidationFeatureEnable::GpuAssisted)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_validation_features".into(),
                     problem: "contains both `ValidationFeatureEnable::DebugPrintf` and \
                         `ValidationFeatureEnable::GpuAssisted`"
                         .into(),
                     vuids: &["VUID-VkValidationFeaturesEXT-pEnabledValidationFeatures-02968"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if !disabled_validation_features.is_empty() {
             if !enabled_extensions.ext_validation_features {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "disabled_validation_features".into(),
                     problem: "is not empty".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                         Requires::InstanceExtension("ext_validation_features"),
                     ])]),
                     ..Default::default()
-                });
+                }));
             }
 
             for (index, disabled) in disabled_validation_features.iter().enumerate() {

@@ -367,7 +367,7 @@ impl WriteDescriptorSet {
         &self,
         layout: &DescriptorSetLayout,
         variable_descriptor_count: u32,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         fn provided_element_type(elements: &WriteDescriptorSetElements) -> &'static str {
             match elements {
                 WriteDescriptorSetElements::None(_) => "none",
@@ -392,12 +392,12 @@ impl WriteDescriptorSet {
         let layout_binding = match layout.bindings().get(&binding) {
             Some(layout_binding) => layout_binding,
             None => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "binding".into(),
                     problem: "does not exist in the descriptor set layout".into(),
                     vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
                     ..Default::default()
-                });
+                }));
             }
         };
 
@@ -415,34 +415,34 @@ impl WriteDescriptorSet {
 
         // VUID-VkWriteDescriptorSet-dstArrayElement-00321
         if first_array_element + array_element_count > max_descriptor_count {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`first_array_element` + the number of provided elements is greater than \
                     the number of descriptors in the descriptor set binding"
                     .into(),
                 vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
                 ..Default::default()
-            });
+            }));
         }
 
         let validate_image_view =
-            |image_view: &ImageView, index: usize| -> Result<(), ValidationError> {
+            |image_view: &ImageView, index: usize| -> Result<(), Box<ValidationError>> {
                 if image_view.image().image_type() == ImageType::Dim3d {
                     if image_view.view_type() == ImageViewType::Dim2dArray {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the image view's type is `ImageViewType::Dim2dArray`, and \
                                 was created from a 3D image"
                                 .into(),
                             vuids: &["VUID-VkDescriptorImageInfo-imageView-00343"],
                             ..Default::default()
-                        });
+                        }));
                     } else if image_view.view_type() == ImageViewType::Dim2d {
                         if !image_view
                             .image()
                             .flags()
                             .intersects(ImageCreateFlags::DIM2D_VIEW_COMPATIBLE)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the image view's type is `ImageViewType::Dim2d`, and \
                                     was created from a 3D image, but the image's flags do not \
@@ -450,13 +450,13 @@ impl WriteDescriptorSet {
                                     .into(),
                                 vuids: &["VUID-VkDescriptorImageInfo-imageView-07796"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         match layout_binding.descriptor_type {
                             DescriptorType::StorageImage => {
                                 if !device.enabled_features().image2_d_view_of3_d {
-                                    return Err(ValidationError {
+                                    return Err(Box::new(ValidationError {
                                         context: format!("elements[{}]", index).into(),
                                         problem: format!(
                                             "the descriptor type is `DescriptorType::{:?}`, and \
@@ -469,12 +469,12 @@ impl WriteDescriptorSet {
                                             Requires::Feature("image2_d_view_of3_d"),
                                         ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06713"],
-                                    });
+                                    }));
                                 }
                             }
                             DescriptorType::SampledImage | DescriptorType::CombinedImageSampler => {
                                 if !device.enabled_features().sampler2_d_view_of3_d {
-                                    return Err(ValidationError {
+                                    return Err(Box::new(ValidationError {
                                         context: format!("elements[{}]", index).into(),
                                         problem: format!(
                                             "the descriptor type is `DescriptorType::{:?}`, and \
@@ -487,11 +487,11 @@ impl WriteDescriptorSet {
                                             Requires::Feature("sampler2_d_view_of3_d"),
                                         ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06714"],
-                                    });
+                                    }));
                                 }
                             }
                             _ => {
-                                return Err(ValidationError {
+                                return Err(Box::new(ValidationError {
                                     context: format!("elements[{}]", index).into(),
                                     problem: "the descriptor type is not \
                                         `DescriptorType::StorageImage`, \
@@ -502,7 +502,7 @@ impl WriteDescriptorSet {
                                         .into(),
                                     vuids: &["VUID-VkDescriptorImageInfo-imageView-07795"],
                                     ..Default::default()
-                                });
+                                }));
                             }
                         }
                     }
@@ -513,14 +513,14 @@ impl WriteDescriptorSet {
                     .aspects
                     .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: format!("elements[{}]", index).into(),
                         problem: "the image view's aspects include both a depth and a \
                             stencil component"
                             .into(),
                         vuids: &["VUID-VkDescriptorImageInfo-imageView-01976"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 Ok(())
@@ -539,7 +539,7 @@ impl WriteDescriptorSet {
                         if let WriteDescriptorSetElements::None(_) = elements {
                             // Do nothing
                         } else {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "elements".into(),
                                 problem: format!(
                                     "contains `{}` elements, but the descriptor set \
@@ -549,25 +549,25 @@ impl WriteDescriptorSet {
                                 .into(),
                                 // vuids?
                                 ..Default::default()
-                            });
+                            }));
                         }
                     } else {
                         // For regular descriptors, no element must be written.
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: "binding".into(),
                             problem: "no descriptors must be written to this \
                                 descriptor set binding"
                                 .into(),
                             // vuids?
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
 
                 let elements = if let WriteDescriptorSetElements::Sampler(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -577,14 +577,14 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, sampler) in elements.iter().enumerate() {
                     assert_eq!(device, sampler.device());
 
                     if sampler.sampler_ycbcr_conversion().is_some() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is not \
                                 `DescriptorType::CombinedImageSampler`, and the sampler has a \
@@ -592,14 +592,14 @@ impl WriteDescriptorSet {
                                 .into(),
                             // vuids?
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if device.enabled_extensions().khr_portability_subset
                         && !device.enabled_features().mutable_comparison_samplers
                         && sampler.compare().is_some()
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "this device is a portability subset device, and \
                                 the sampler has depth comparison enabled"
@@ -608,7 +608,7 @@ impl WriteDescriptorSet {
                                 "mutable_comparison_samplers",
                             )])]),
                             vuids: &["VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450"],
-                        });
+                        }));
                     }
                 }
             }
@@ -619,7 +619,7 @@ impl WriteDescriptorSet {
                         if let WriteDescriptorSetElements::ImageViewSampler(elements) = elements {
                             elements
                         } else {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "elements".into(),
                                 problem: format!(
                                     "contains `{}` elements, but the descriptor set \
@@ -629,7 +629,7 @@ impl WriteDescriptorSet {
                                 .into(),
                                 // vuids?
                                 ..Default::default()
-                            });
+                            }));
                         };
 
                     for (index, (image_view_info, sampler)) in elements.iter().enumerate() {
@@ -648,7 +648,7 @@ impl WriteDescriptorSet {
                         validate_image_view(image_view.as_ref(), index)?;
 
                         if !image_view.usage().intersects(ImageUsage::SAMPLED) {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::SampledImage` or \
@@ -657,7 +657,7 @@ impl WriteDescriptorSet {
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if !matches!(
@@ -670,7 +670,7 @@ impl WriteDescriptorSet {
                                 | ImageLayout::DepthReadOnlyOptimal
                                 | ImageLayout::StencilReadOnlyOptimal,
                         ) {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::CombinedImageSampler`, and the image layout \
@@ -678,14 +678,14 @@ impl WriteDescriptorSet {
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04150"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if device.enabled_extensions().khr_portability_subset
                             && !device.enabled_features().mutable_comparison_samplers
                             && sampler.compare().is_some()
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "this device is a portability subset device, and \
                                     the sampler has depth comparison enabled"
@@ -696,27 +696,27 @@ impl WriteDescriptorSet {
                                 vuids: &[
                                     "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
                                 ],
-                            });
+                            }));
                         }
 
                         if image_view.sampler_ycbcr_conversion().is_some() {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the image view has a sampler YCbCr conversion, and the \
                                     descriptor set layout was not created with immutable samplers"
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02738"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if sampler.sampler_ycbcr_conversion().is_some() {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the sampler has a sampler YCbCr conversion".into(),
                                 // vuids?
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         sampler
@@ -728,7 +728,7 @@ impl WriteDescriptorSet {
                     {
                         elements
                     } else {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: "elements".into(),
                             problem: format!(
                                 "contains `{}` elements, but the descriptor set \
@@ -737,7 +737,7 @@ impl WriteDescriptorSet {
                             )
                             .into(),
                             ..Default::default()
-                        });
+                        }));
                     };
 
                     let immutable_samplers = &layout_binding.immutable_samplers
@@ -760,7 +760,7 @@ impl WriteDescriptorSet {
                         validate_image_view(image_view.as_ref(), index)?;
 
                         if !image_view.usage().intersects(ImageUsage::SAMPLED) {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::SampledImage` or \
@@ -769,7 +769,7 @@ impl WriteDescriptorSet {
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if !matches!(
@@ -782,7 +782,7 @@ impl WriteDescriptorSet {
                                 | ImageLayout::DepthReadOnlyOptimal
                                 | ImageLayout::StencilReadOnlyOptimal,
                         ) {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("elements[{}]", index).into(),
                                 problem: "the descriptor type is \
                                     `DescriptorType::CombinedImageSampler`, and the image layout \
@@ -790,7 +790,7 @@ impl WriteDescriptorSet {
                                     .into(),
                                 vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04150"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         sampler
@@ -804,7 +804,7 @@ impl WriteDescriptorSet {
                 let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -814,7 +814,7 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, image_view_info) in elements.iter().enumerate() {
@@ -832,7 +832,7 @@ impl WriteDescriptorSet {
                     validate_image_view(image_view.as_ref(), index)?;
 
                     if !image_view.usage().intersects(ImageUsage::SAMPLED) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::SampledImage` or \
@@ -841,7 +841,7 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00337"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if !matches!(
@@ -854,7 +854,7 @@ impl WriteDescriptorSet {
                             | ImageLayout::DepthReadOnlyOptimal
                             | ImageLayout::StencilReadOnlyOptimal,
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::SampledImage`, and the image layout is \
@@ -862,18 +862,18 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04149"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if image_view.sampler_ycbcr_conversion().is_some() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::SampledImage`, and \
                                 the image view has a sampler YCbCr conversion"
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-01946"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -882,7 +882,7 @@ impl WriteDescriptorSet {
                 let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -892,7 +892,7 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, image_view_info) in elements.iter().enumerate() {
@@ -910,7 +910,7 @@ impl WriteDescriptorSet {
                     validate_image_view(image_view.as_ref(), index)?;
 
                     if !image_view.usage().intersects(ImageUsage::STORAGE) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::StorageImage`, and the image was not \
@@ -918,11 +918,11 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00339"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if !matches!(image_layout, ImageLayout::General) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::StorageImage`, and the image layout is \
@@ -930,11 +930,11 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04152"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if !image_view.component_mapping().is_identity() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::StorageImage` or \
                                 `DescriptorType::InputAttachment`, and the image view is not \
@@ -942,16 +942,16 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00336"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if image_view.sampler_ycbcr_conversion().is_some() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the image view has a sampler YCbCr conversion".into(),
                             // vuids?
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -960,7 +960,7 @@ impl WriteDescriptorSet {
                 let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -970,7 +970,7 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, buffer_view) in elements.iter().enumerate() {
@@ -982,7 +982,7 @@ impl WriteDescriptorSet {
                         .usage()
                         .intersects(BufferUsage::UNIFORM_TEXEL_BUFFER)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::UniformTexelBuffer`, and the buffer was not \
@@ -990,7 +990,7 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00334"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -999,7 +999,7 @@ impl WriteDescriptorSet {
                 let elements = if let WriteDescriptorSetElements::BufferView(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -1009,7 +1009,7 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, buffer_view) in elements.iter().enumerate() {
@@ -1022,7 +1022,7 @@ impl WriteDescriptorSet {
                         .usage()
                         .intersects(BufferUsage::STORAGE_TEXEL_BUFFER)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::StorageTexelBuffer`, and the buffer was not \
@@ -1030,7 +1030,7 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00335"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -1039,7 +1039,7 @@ impl WriteDescriptorSet {
                 let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -1049,7 +1049,7 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, buffer_info) in elements.iter().enumerate() {
@@ -1062,7 +1062,7 @@ impl WriteDescriptorSet {
                         .usage()
                         .intersects(BufferUsage::UNIFORM_BUFFER)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::UniformBuffer` or \
                                 `DescriptorType::UniformBufferDynamic`, and the buffer was not \
@@ -1070,19 +1070,19 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00330"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     assert!(!range.is_empty());
 
                     if range.end > buffer.size() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the end of the range is greater than the size of the buffer"
                                 .into(),
                             vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -1091,7 +1091,7 @@ impl WriteDescriptorSet {
                 let elements = if let WriteDescriptorSetElements::Buffer(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -1101,7 +1101,7 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, buffer_info) in elements.iter().enumerate() {
@@ -1114,7 +1114,7 @@ impl WriteDescriptorSet {
                         .usage()
                         .intersects(BufferUsage::STORAGE_BUFFER)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::StorageBuffer` or \
                                 `DescriptorType::StorageBufferDynamic`, and the buffer was not \
@@ -1122,19 +1122,19 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00331"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     assert!(!range.is_empty());
 
                     if range.end > buffer.size() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the end of the range is greater than the size of the buffer"
                                 .into(),
                             vuids: &["VUID-VkDescriptorBufferInfo-range-00342"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -1143,7 +1143,7 @@ impl WriteDescriptorSet {
                 let elements = if let WriteDescriptorSetElements::ImageView(elements) = elements {
                     elements
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -1153,7 +1153,7 @@ impl WriteDescriptorSet {
                         .into(),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 for (index, image_view_info) in elements.iter().enumerate() {
@@ -1171,7 +1171,7 @@ impl WriteDescriptorSet {
                     validate_image_view(image_view.as_ref(), index)?;
 
                     if !image_view.usage().intersects(ImageUsage::INPUT_ATTACHMENT) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::InputAttachment`, and the image was not \
@@ -1179,7 +1179,7 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00338"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if !matches!(
@@ -1192,7 +1192,7 @@ impl WriteDescriptorSet {
                             | ImageLayout::DepthReadOnlyOptimal
                             | ImageLayout::StencilReadOnlyOptimal,
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is \
                                 `DescriptorType::InputAttachment`, and the image layout is \
@@ -1200,11 +1200,11 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-04151"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if !image_view.component_mapping().is_identity() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::StorageImage` or \
                                 `DescriptorType::InputAttachment`, and the image view is not \
@@ -1212,18 +1212,18 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSet-descriptorType-00336"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if image_view.sampler_ycbcr_conversion().is_some() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the descriptor type is `DescriptorType::InputAttachment`, \
                                 and the image view has a sampler YCbCr conversion"
                                 .into(),
                             // vuids?
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -1232,7 +1232,7 @@ impl WriteDescriptorSet {
                 let data = if let WriteDescriptorSetElements::InlineUniformBlock(data) = elements {
                     data
                 } else {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
                             "contains `{}` elements, but the descriptor set \
@@ -1241,11 +1241,11 @@ impl WriteDescriptorSet {
                         )
                         .into(),
                         ..Default::default()
-                    });
+                    }));
                 };
 
                 if data.is_empty() {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "data".into(),
                         problem: "is empty".into(),
                         vuids: &[
@@ -1253,11 +1253,11 @@ impl WriteDescriptorSet {
                             "VUID-VkWriteDescriptorSet-descriptorCount-arraylength",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if data.len() % 4 != 0 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "data".into(),
                         problem: "the length is not a multiple of 4".into(),
                         vuids: &[
@@ -1265,16 +1265,16 @@ impl WriteDescriptorSet {
                             "VUID-VkWriteDescriptorSet-descriptorType-02220",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if first_array_element % 4 != 0 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "offset".into(),
                         problem: "is not a multiple of 4".into(),
                         vuids: &["VUID-VkWriteDescriptorSet-descriptorType-02219"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
 
@@ -1283,7 +1283,7 @@ impl WriteDescriptorSet {
                     if let WriteDescriptorSetElements::AccelerationStructure(elements) = elements {
                         elements
                     } else {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: "elements".into(),
                             problem: format!(
                                 "contains `{}` elements, but the descriptor set \
@@ -1292,7 +1292,7 @@ impl WriteDescriptorSet {
                             )
                             .into(),
                             ..Default::default()
-                        });
+                        }));
                     };
 
                 for (index, acceleration_structure) in elements.iter().enumerate() {
@@ -1302,7 +1302,7 @@ impl WriteDescriptorSet {
                         acceleration_structure.ty(),
                         AccelerationStructureType::TopLevel | AccelerationStructureType::Generic
                     ) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("elements[{}]", index).into(),
                             problem: "the acceleration structure's type is not \
                                 `AccelerationStructureType::TopLevel` or \
@@ -1310,7 +1310,7 @@ impl WriteDescriptorSet {
                                 .into(),
                             vuids: &["VUID-VkWriteDescriptorSetAccelerationStructureKHR-pAccelerationStructures-03579"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -1620,7 +1620,7 @@ impl CopyDescriptorSet {
         &self,
         dst_set_layout: &DescriptorSetLayout,
         dst_set_variable_descriptor_count: u32,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_set,
             src_binding,
@@ -1637,13 +1637,13 @@ impl CopyDescriptorSet {
         let src_layout_binding = match src_set.layout().bindings().get(&src_binding) {
             Some(layout_binding) => layout_binding,
             None => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`src_binding` does not exist in the descriptor set layout of \
                         `src_set`"
                         .into(),
                     vuids: &["VUID-VkCopyDescriptorSet-srcBinding-00345"],
                     ..Default::default()
-                });
+                }));
             }
         };
 
@@ -1657,25 +1657,25 @@ impl CopyDescriptorSet {
         };
 
         if src_first_array_element + descriptor_count > src_max_descriptor_count {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`src_first_array_element` + `descriptor_count` is greater than \
                     the number of descriptors in `src_set`'s descriptor set binding"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-srcArrayElement-00346"],
                 ..Default::default()
-            });
+            }));
         }
 
         let dst_layout_binding = match dst_set_layout.bindings().get(&dst_binding) {
             Some(layout_binding) => layout_binding,
             None => {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`dst_binding` does not exist in the descriptor set layout of \
                         `dst_set`"
                         .into(),
                     vuids: &["VUID-VkCopyDescriptorSet-dstBinding-00347"],
                     ..Default::default()
-                });
+                }));
             }
         };
 
@@ -1689,70 +1689,70 @@ impl CopyDescriptorSet {
         };
 
         if dst_first_array_element + descriptor_count > dst_max_descriptor_count {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`dst_first_array_element` + `descriptor_count` is greater than \
                     the number of descriptors in `dst_set`'s descriptor set binding"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-dstArrayElement-00348"],
                 ..Default::default()
-            });
+            }));
         }
 
         if src_layout_binding.descriptor_type != dst_layout_binding.descriptor_type {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the descriptor type of `src_binding` within `src_set` does not equal \
                     the descriptor type of `dst_binding` within `dst_set`"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02632"],
                 ..Default::default()
-            });
+            }));
         }
 
         if dst_layout_binding.descriptor_type == DescriptorType::Sampler
             && !dst_layout_binding.immutable_samplers.is_empty()
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the descriptor type of `dst_binding` within `dst_set` is \
                     `DescriptorType::Sampler`, and the layout was created with immutable samplers \
                     for `dst_binding`"
                     .into(),
                 vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02753"],
                 ..Default::default()
-            });
+            }));
         }
 
         if dst_layout_binding.descriptor_type == DescriptorType::InlineUniformBlock {
             if src_first_array_element % 4 != 0 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the descriptor type of `src_binding` within `src_set` is \
                         `DescriptorType::InlineUniformBlock`, and `src_first_array_element` is \
                         not a multiple of 4"
                         .into(),
                     vuids: &["VUID-VkCopyDescriptorSet-srcBinding-02223"],
                     ..Default::default()
-                });
+                }));
             }
 
             if dst_first_array_element % 4 != 0 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the descriptor type of `dst_binding` within `dst_set` is \
                         `DescriptorType::InlineUniformBlock`, and `dst_first_array_element` is \
                         not a multiple of 4"
                         .into(),
                     vuids: &["VUID-VkCopyDescriptorSet-dstBinding-02224"],
                     ..Default::default()
-                });
+                }));
             }
 
             if descriptor_count % 4 != 0 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the descriptor type of `dst_binding` within `dst_set` is \
                         `DescriptorType::InlineUniformBlock`, and `descriptor_count` is \
                         not a multiple of 4"
                         .into(),
                     vuids: &["VUID-VkCopyDescriptorSet-srcBinding-02225"],
                     ..Default::default()
-                });
+                }));
             }
         }
 

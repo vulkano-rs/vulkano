@@ -766,14 +766,14 @@ where
         pipeline_layout: &PipelineLayout,
         set_num: u32,
         descriptor_writes: &[WriteDescriptorSet],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_extensions().khr_push_descriptor {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_push_descriptor",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         pipeline_bind_point
@@ -792,7 +792,7 @@ where
                     .queue_flags
                     .intersects(QueueFlags::COMPUTE)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "self".into(),
                         problem: "`pipeline_bind_point` is `PipelineBindPoint::Compute`, and the \
                             queue family does not support compute operations"
@@ -802,7 +802,7 @@ where
                             "VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             PipelineBindPoint::Graphics => {
@@ -810,7 +810,7 @@ where
                     .queue_flags
                     .intersects(QueueFlags::GRAPHICS)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "self".into(),
                         problem: "`pipeline_bind_point` is `PipelineBindPoint::Graphics`, and the \
                             queue family does not support graphics operations"
@@ -820,7 +820,7 @@ where
                             "VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -829,13 +829,13 @@ where
         assert_eq!(self.device(), pipeline_layout.device());
 
         if set_num as usize > pipeline_layout.set_layouts().len() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`set_num` is greater than the number of descriptor set layouts in \
                     `pipeline_layout`"
                     .into(),
                 vuids: &["VUID-vkCmdPushDescriptorSetKHR-set-00364"],
                 ..Default::default()
-            });
+            }));
         }
 
         let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
@@ -844,14 +844,14 @@ where
             .flags()
             .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the descriptor set layout with the number `set_num` in \
                     `pipeline_layout` was not created with the \
                     `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR` flag"
                     .into(),
                 vuids: &["VUID-vkCmdPushDescriptorSetKHR-set-00365"],
                 ..Default::default()
-            });
+            }));
         }
 
         for (index, write) in descriptor_writes.iter().enumerate() {

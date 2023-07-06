@@ -29,7 +29,7 @@
 #![allow(unused_variables)] // TODO: this module isn't finished
 
 use crate::{
-    device::physical::PhysicalDevice, swapchain::SurfaceTransforms, OomError, RuntimeError,
+    device::physical::PhysicalDevice, swapchain::SurfaceTransforms, OomError, VulkanError,
     VulkanObject,
 };
 use std::{
@@ -71,7 +71,7 @@ impl DisplayPlane {
                     ptr::null_mut(),
                 )
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
                 let result = (fns
@@ -88,7 +88,7 @@ impl DisplayPlane {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(RuntimeError::from(err).into()),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -107,7 +107,7 @@ impl DisplayPlane {
                             ptr::null_mut(),
                         )
                         .result()
-                        .map_err(RuntimeError::from)
+                        .map_err(VulkanError::from)
                         .unwrap(); // TODO: shouldn't unwrap
 
                         let mut displays = Vec::with_capacity(count as usize);
@@ -202,7 +202,7 @@ impl Display {
                     ptr::null_mut(),
                 )
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
                 let result = (fns.khr_display.get_physical_device_display_properties_khr)(
@@ -217,7 +217,7 @@ impl Display {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(RuntimeError::from(err).into()),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -308,7 +308,7 @@ impl Display {
                     ptr::null_mut(),
                 )
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
                 let result = (fns.khr_display.get_display_mode_properties_khr)(
@@ -324,7 +324,7 @@ impl Display {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(RuntimeError::from(err).into()),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -390,7 +390,7 @@ impl DisplayMode {
             let mut output = mem::uninitialized();
             (fns.v1_0.CreateDisplayModeKHR)(display.device.handle(),
                                                       display.display, &infos, ptr::null(),
-                                                      &mut output).result().map_err(RuntimeError::from)?;
+                                                      &mut output).result().map_err(VulkanError::from)?;
             output
         };
 

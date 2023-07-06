@@ -97,8 +97,8 @@ use crate::{
     format::{Format, FormatFeatures},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    DeviceSize, NonZeroDeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf,
-    RuntimeError, ValidationError, VulkanError, VulkanObject,
+    DeviceSize, NonZeroDeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf, Validated,
+    ValidationError, VulkanError, VulkanObject,
 };
 use bytemuck::{Pod, Zeroable};
 use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -130,7 +130,7 @@ impl AccelerationStructure {
     pub unsafe fn new(
         device: Arc<Device>,
         create_info: AccelerationStructureCreateInfo,
-    ) -> Result<Arc<Self>, VulkanError> {
+    ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         Ok(Self::new_unchecked(device, create_info)?)
@@ -139,24 +139,24 @@ impl AccelerationStructure {
     fn validate_new(
         device: &Device,
         create_info: &AccelerationStructureCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_extensions().khr_acceleration_structure {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_acceleration_structure",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if !device.enabled_features().acceleration_structure {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "acceleration_structure",
                 )])]),
                 vuids: &["VUID-vkCreateAccelerationStructureKHR-accelerationStructure-03611"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkCreateAccelerationStructureKHR-pCreateInfo-parameter
@@ -171,7 +171,7 @@ impl AccelerationStructure {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: AccelerationStructureCreateInfo,
-    ) -> Result<Arc<Self>, RuntimeError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         let &AccelerationStructureCreateInfo {
             create_flags,
             ref buffer,
@@ -200,7 +200,7 @@ impl AccelerationStructure {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -370,7 +370,7 @@ impl AccelerationStructureCreateInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             create_flags,
             ref buffer,
@@ -397,26 +397,26 @@ impl AccelerationStructureCreateInfo {
             .usage()
             .intersects(BufferUsage::ACCELERATION_STRUCTURE_STORAGE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "buffer".into(),
                 problem: "the buffer was not created with the `ACCELERATION_STRUCTURE_STORAGE` \
                     usage"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-buffer-03614"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-VkAccelerationStructureCreateInfoKHR-offset-03616
         // Ensured by the definition of `Subbuffer`.
 
         if buffer.offset() % 256 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "buffer".into(),
                 problem: "the offset of the buffer is not a multiple of 256".into(),
                 vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-offset-03734"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -503,7 +503,7 @@ impl AccelerationStructureBuildGeometryInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref mode,
@@ -537,12 +537,12 @@ impl AccelerationStructureBuildGeometryInfo {
                 }
 
                 if geometries.len() as u64 > max_geometry_count {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "geometries".into(),
                         problem: "the length exceeds the `max_geometry_count` limit".into(),
                         vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 // VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795
@@ -558,12 +558,12 @@ impl AccelerationStructureBuildGeometryInfo {
                 }
 
                 if geometries.len() as u64 > max_geometry_count {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "geometries".into(),
                         problem: "the length exceeds the `max_geometry_count` limit".into(),
                         vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03793"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 // VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794
@@ -589,14 +589,14 @@ impl AccelerationStructureBuildGeometryInfo {
             BuildAccelerationStructureFlags::PREFER_FAST_TRACE
                 | BuildAccelerationStructureFlags::PREFER_FAST_BUILD,
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "flags".into(),
                 problem: "contains both `BuildAccelerationStructureFlags::PREFER_FAST_TRACE` and \
                     `BuildAccelerationStructureFlags::PREFER_FAST_BUILD`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-03796"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -997,7 +997,7 @@ impl AccelerationStructureGeometryTrianglesData {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             vertex_format,
@@ -1034,14 +1034,14 @@ impl AccelerationStructureGeometryTrianglesData {
                 .buffer_features
                 .intersects(FormatFeatures::ACCELERATION_STRUCTURE_VERTEX_BUFFER)
         } {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "vertex_format".into(),
                 problem: "format features do not contain \
                     `FormatFeature::ACCELERATION_STRUCTURE_VERTEX_BUFFER`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexFormat-03797"],
                 ..Default::default()
-            });
+            }));
         }
 
         let smallest_component_bits = vertex_format
@@ -1053,25 +1053,25 @@ impl AccelerationStructureGeometryTrianglesData {
         let smallest_component_bytes = (smallest_component_bits + 7) & !7;
 
         if vertex_stride % smallest_component_bytes != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`vertex_stride` is not a multiple of the byte size of the \
                     smallest component of `vertex_format`"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexStride-03735"],
                 ..Default::default()
-            });
+            }));
         }
 
         if let Some(index_data) = index_data.as_ref() {
             if !matches!(index_data, IndexBuffer::U16(_) | IndexBuffer::U32(_)) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "index_data".into(),
                     problem: "is not `IndexBuffer::U16` or `IndexBuffer::U32`".into(),
                     vuids: &[
                         "VUID-VkAccelerationStructureGeometryTrianglesDataKHR-indexType-03798",
                     ],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -1119,7 +1119,7 @@ impl AccelerationStructureGeometryAabbsData {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             data: _,
@@ -1136,12 +1136,12 @@ impl AccelerationStructureGeometryAabbsData {
             })?;
 
         if stride % 8 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "is not a multiple of 8".into(),
                 vuids: &["VUID-VkAccelerationStructureGeometryAabbsDataKHR-stride-03545"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1192,7 +1192,7 @@ impl AccelerationStructureGeometryInstancesData {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             data: _,
@@ -1390,7 +1390,7 @@ impl CopyAccelerationStructureInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src,
             ref dst,
@@ -1413,22 +1413,22 @@ impl CopyAccelerationStructureInfo {
             mode,
             CopyAccelerationStructureMode::Compact | CopyAccelerationStructureMode::Clone
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "mode".into(),
                 problem: "is not `CopyAccelerationStructureMode::Compact` or \
                     `CopyAccelerationStructureMode::Clone`"
                     .into(),
                 vuids: &["VUID-VkCopyAccelerationStructureInfoKHR-mode-03410"],
                 ..Default::default()
-            });
+            }));
         }
 
         if src.buffer() == dst.buffer() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`src` and `dst` share the same buffer".into(),
                 vuids: &["VUID-VkCopyAccelerationStructureInfoKHR-dst-07791"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-VkCopyAccelerationStructureInfoKHR-src-04963
@@ -1474,7 +1474,7 @@ impl CopyAccelerationStructureToMemoryInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src,
             ref dst,
@@ -1493,12 +1493,12 @@ impl CopyAccelerationStructureToMemoryInfo {
             })?;
 
         if !matches!(mode, CopyAccelerationStructureMode::Serialize) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "mode".into(),
                 problem: "is not `CopyAccelerationStructureMode::Serialize`".into(),
                 vuids: &["VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-03412"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-VkCopyAccelerationStructureToMemoryInfoKHR-src-04959
@@ -1544,7 +1544,7 @@ impl CopyMemoryToAccelerationStructureInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src,
             ref dst,
@@ -1563,12 +1563,12 @@ impl CopyMemoryToAccelerationStructureInfo {
             })?;
 
         if !matches!(mode, CopyAccelerationStructureMode::Deserialize) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "mode".into(),
                 problem: "is not `CopyAccelerationStructureMode::Deserialize`".into(),
                 vuids: &["VUID-VkCopyMemoryToAccelerationStructureInfoKHR-mode-03413"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-VkCopyMemoryToAccelerationStructureInfoKHR-src-04960

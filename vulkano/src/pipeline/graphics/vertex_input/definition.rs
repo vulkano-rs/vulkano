@@ -18,12 +18,18 @@ use crate::{
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {
     /// Builds the `VertexInputState` for the provided `interface`.
-    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError>;
+    fn definition(
+        &self,
+        interface: &ShaderInterface,
+    ) -> Result<VertexInputState, Box<ValidationError>>;
 }
 
 unsafe impl VertexDefinition for &[VertexBufferDescription] {
     #[inline]
-    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
+    fn definition(
+        &self,
+        interface: &ShaderInterface,
+    ) -> Result<VertexInputState, Box<ValidationError>> {
         let bindings = self.iter().enumerate().map(|(binding, buffer)| {
             (
                 binding as u32,
@@ -47,14 +53,16 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
                         .get(name.as_ref())
                         .map(|infos| (infos.clone(), binding as u32))
                 })
-                .ok_or_else(|| ValidationError {
-                    problem: format!(
-                        "the shader interface contains a variable named \"{}\", \
+                .ok_or_else(|| {
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "the shader interface contains a variable named \"{}\", \
                         but no such attribute exists in the vertex definition",
-                        name,
-                    )
-                    .into(),
-                    ..Default::default()
+                            name,
+                        )
+                        .into(),
+                        ..Default::default()
+                    })
                 })?;
 
             // TODO: ShaderInterfaceEntryType does not properly support 64bit.
@@ -63,7 +71,7 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
             if infos.num_components() != element.ty.num_components
                 || infos.num_elements != element.ty.num_locations()
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "for the variable \"{}\", the number of locations and components \
                         required by the shader don't match the number of locations and components \
@@ -72,7 +80,7 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
                     )
                     .into(),
                     ..Default::default()
-                });
+                }));
             }
 
             let mut offset = infos.offset as DeviceSize;
@@ -106,21 +114,30 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
 
 unsafe impl<const N: usize> VertexDefinition for [VertexBufferDescription; N] {
     #[inline]
-    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
+    fn definition(
+        &self,
+        interface: &ShaderInterface,
+    ) -> Result<VertexInputState, Box<ValidationError>> {
         self.as_slice().definition(interface)
     }
 }
 
 unsafe impl VertexDefinition for Vec<VertexBufferDescription> {
     #[inline]
-    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
+    fn definition(
+        &self,
+        interface: &ShaderInterface,
+    ) -> Result<VertexInputState, Box<ValidationError>> {
         self.as_slice().definition(interface)
     }
 }
 
 unsafe impl VertexDefinition for VertexBufferDescription {
     #[inline]
-    fn definition(&self, interface: &ShaderInterface) -> Result<VertexInputState, ValidationError> {
+    fn definition(
+        &self,
+        interface: &ShaderInterface,
+    ) -> Result<VertexInputState, Box<ValidationError>> {
         std::slice::from_ref(self).definition(interface)
     }
 }

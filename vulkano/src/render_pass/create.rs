@@ -11,7 +11,7 @@ use super::{AttachmentDescription, AttachmentReference, RenderPass, RenderPassCr
 use crate::{
     device::Device,
     render_pass::{SubpassDependency, SubpassDescription},
-    RuntimeError, Version, VulkanObject,
+    Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, ptr};
@@ -20,7 +20,7 @@ impl RenderPass {
     pub(super) unsafe fn create_v2(
         device: &Device,
         create_info: &RenderPassCreateInfo,
-    ) -> Result<ash::vk::RenderPass, RuntimeError> {
+    ) -> Result<ash::vk::RenderPass, VulkanError> {
         let &RenderPassCreateInfo {
             flags,
             ref attachments,
@@ -522,7 +522,7 @@ impl RenderPass {
                 )
             }
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
             output.assume_init()
         })
@@ -531,7 +531,7 @@ impl RenderPass {
     pub(super) unsafe fn create_v1(
         device: &Device,
         create_info: &RenderPassCreateInfo,
-    ) -> Result<ash::vk::RenderPass, RuntimeError> {
+    ) -> Result<ash::vk::RenderPass, VulkanError> {
         let &RenderPassCreateInfo {
             flags,
             ref attachments,
@@ -891,7 +891,7 @@ impl RenderPass {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         })
     }

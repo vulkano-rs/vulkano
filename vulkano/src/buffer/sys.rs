@@ -24,7 +24,7 @@ use crate::{
         MemoryPropertyFlags, MemoryRequirements,
     },
     sync::Sharing,
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -60,7 +60,10 @@ impl RawBuffer {
     /// - Panics if `create_info.size` is zero.
     /// - Panics if `create_info.usage` is empty.
     #[inline]
-    pub fn new(device: Arc<Device>, create_info: BufferCreateInfo) -> Result<Self, VulkanError> {
+    pub fn new(
+        device: Arc<Device>,
+        create_info: BufferCreateInfo,
+    ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
@@ -69,7 +72,7 @@ impl RawBuffer {
     fn validate_new(
         device: &Device,
         create_info: &BufferCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
@@ -81,7 +84,7 @@ impl RawBuffer {
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: BufferCreateInfo,
-    ) -> Result<Self, RuntimeError> {
+    ) -> Result<Self, VulkanError> {
         let &BufferCreateInfo {
             flags,
             ref sharing,
@@ -133,7 +136,7 @@ impl RawBuffer {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -274,7 +277,7 @@ impl RawBuffer {
     pub fn bind_memory(
         self,
         allocation: MemoryAlloc,
-    ) -> Result<Buffer, (VulkanError, RawBuffer, MemoryAlloc)> {
+    ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, MemoryAlloc)> {
         if let Err(err) = self.validate_bind_memory(&allocation) {
             return Err((err.into(), self, allocation));
         }
@@ -283,7 +286,7 @@ impl RawBuffer {
             .map_err(|(err, buffer, allocation)| (err.into(), buffer, allocation))
     }
 
-    fn validate_bind_memory(&self, allocation: &MemoryAlloc) -> Result<(), ValidationError> {
+    fn validate_bind_memory(&self, allocation: &MemoryAlloc) -> Result<(), Box<ValidationError>> {
         assert_ne!(allocation.allocation_type(), AllocationType::NonLinear);
 
         let memory_requirements = &self.memory_requirements;
@@ -309,58 +312,58 @@ impl RawBuffer {
         // Assume that `allocation` was created correctly.
 
         if memory_requirements.memory_type_bits & (1 << memory.memory_type_index()) == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`allocation.device_memory().memory_type_index()` is not a bit set in \
                     `self.memory_requirements().memory_type_bits`"
                     .into(),
                 vuids: &["VUID-VkBindBufferMemoryInfo-memory-01035"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !is_aligned(memory_offset, memory_requirements.layout.alignment()) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`allocation.offset()` is not aligned according to \
                     `self.memory_requirements().layout.alignment()`"
                     .into(),
                 vuids: &["VUID-VkBindBufferMemoryInfo-memoryOffset-01036"],
                 ..Default::default()
-            });
+            }));
         }
 
         if allocation.size() < memory_requirements.layout.size() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`allocation.size()` is less than \
                     `self.memory_requirements().layout.size()`"
                     .into(),
                 vuids: &["VUID-VkBindBufferMemoryInfo-size-01037"],
                 ..Default::default()
-            });
+            }));
         }
 
         if let Some(dedicated_to) = memory.dedicated_to() {
             match dedicated_to {
                 DedicatedTo::Buffer(id) if id == self.id => {}
                 _ => {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`allocation.device_memory()` is a dedicated allocation, but \
                             it is not dedicated to this buffer"
                             .into(),
                         vuids: &["VUID-VkBindBufferMemoryInfo-memory-01508"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             debug_assert!(memory_offset == 0); // This should be ensured by the allocator
         } else {
             if memory_requirements.requires_dedicated_allocation {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`self.memory_requirements().requires_dedicated_allocation` is \
                         `true`, but `allocation.device_memory()` is not a dedicated allocation"
                         .into(),
                     vuids: &["VUID-VkBindBufferMemoryInfo-buffer-01444"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -368,13 +371,13 @@ impl RawBuffer {
             .property_flags
             .intersects(MemoryPropertyFlags::PROTECTED)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the `property_flags` of the memory type of \
                     `allocation.device_memory()` contains `MemoryPropertyFlags::PROTECTED`"
                     .into(),
                 vuids: &["VUID-VkBindBufferMemoryInfo-None-01899"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !memory.export_handle_types().is_empty()
@@ -382,26 +385,26 @@ impl RawBuffer {
                 .external_memory_handle_types
                 .intersects(memory.export_handle_types())
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`allocation.device_memory().export_handle_types()` is not empty, but \
                     it does not share at least one memory type with \
                     `self.external_memory_handle_types()`"
                     .into(),
                 vuids: &["VUID-VkBindBufferMemoryInfo-memory-02726"],
                 ..Default::default()
-            });
+            }));
         }
 
         if let Some(handle_type) = memory.imported_handle_type() {
             if !self.external_memory_handle_types.contains_enum(handle_type) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`allocation.device_memory()` is imported, but \
                         `self.external_memory_handle_types()` does not contain the imported \
                         handle type"
                         .into(),
                     vuids: &["VUID-VkBindBufferMemoryInfo-memory-02985"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -411,14 +414,14 @@ impl RawBuffer {
                 .flags()
                 .intersects(MemoryAllocateFlags::DEVICE_ADDRESS)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`self.usage()` contains `BufferUsage::SHADER_DEVICE_ADDRESS`, but \
                     `allocation.device_memory().flags()` does not contain \
                     `MemoryAllocateFlags::DEVICE_ADDRESS`"
                     .into(),
                 vuids: &["VUID-VkBindBufferMemoryInfo-bufferDeviceAddress-03339"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -428,7 +431,7 @@ impl RawBuffer {
     pub unsafe fn bind_memory_unchecked(
         self,
         allocation: MemoryAlloc,
-    ) -> Result<Buffer, (RuntimeError, RawBuffer, MemoryAlloc)> {
+    ) -> Result<Buffer, (VulkanError, RawBuffer, MemoryAlloc)> {
         let memory = allocation.device_memory();
         let memory_offset = allocation.offset();
 
@@ -468,7 +471,7 @@ impl RawBuffer {
         .result();
 
         if let Err(err) = result {
-            return Err((RuntimeError::from(err), self, allocation));
+            return Err((VulkanError::from(err), self, allocation));
         }
 
         Ok(Buffer::from_raw(self, BufferMemory::Normal(allocation)))
@@ -594,7 +597,7 @@ impl Default for BufferCreateInfo {
 }
 
 impl BufferCreateInfo {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref sharing,
@@ -621,56 +624,56 @@ impl BufferCreateInfo {
             })?;
 
         if usage.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "usage".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkBufferCreateInfo-usage-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         if size == 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is zero".into(),
                 vuids: &["VUID-VkBufferCreateInfo-size-00912"],
                 ..Default::default()
-            });
+            }));
         }
 
         /* Enable when sparse binding is properly handled
         if let Some(sparse_level) = sparse {
             if !device.enabled_features().sparse_binding {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "sparse".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "sparse_binding",
                     )])]),
                     vuids: &["VUID-VkBufferCreateInfo-flags-00915"],
-                });
+                }));
             }
 
             if sparse_level.sparse_residency && !device.enabled_features().sparse_residency_buffer {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "sparse".into(),
                     problem: "contains `BufferCreateFlags::SPARSE_RESIDENCY`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "sparse_residency_buffer",
                     )])]),
                     vuids: &["VUID-VkBufferCreateInfo-flags-00916"],
-                });
+                }));
             }
 
             if sparse_level.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "sparse".into(),
                     problem: "contains `BufferCreateFlags::SPARSE_ALIASED`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "sparse_residency_aliased",
                     )])]),
                     vuids: &["VUID-VkBufferCreateInfo-flags-00917"],
-                });
+                }));
             }
 
             // TODO:
@@ -681,13 +684,13 @@ impl BufferCreateInfo {
             Sharing::Exclusive => (),
             Sharing::Concurrent(queue_family_indices) => {
                 if queue_family_indices.len() < 2 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "sharing".into(),
                         problem: "is `Sharing::Concurrent`, but contains less than 2 elements"
                             .into(),
                         vuids: &["VUID-VkBufferCreateInfo-sharingMode-00914"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 let queue_family_count =
@@ -695,7 +698,7 @@ impl BufferCreateInfo {
 
                 for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
                     if queue_family_indices[..index].contains(&queue_family_index) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: "queue_family_indices".into(),
                             problem: format!(
                                 "the queue family index in the list at index {} is contained in \
@@ -705,17 +708,17 @@ impl BufferCreateInfo {
                             .into(),
                             vuids: &["VUID-VkBufferCreateInfo-sharingMode-01419"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if queue_family_index >= queue_family_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("sharing[{}]", index).into(),
                             problem: "is not less than the number of queue families in the device"
                                 .into(),
                             vuids: &["VUID-VkBufferCreateInfo-sharingMode-01419"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -723,12 +726,12 @@ impl BufferCreateInfo {
 
         if let Some(max_buffer_size) = device.physical_device().properties().max_buffer_size {
             if size > max_buffer_size {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "size".into(),
                     problem: "exceeds the `max_buffer_size` limit".into(),
                     vuids: &["VUID-VkBufferCreateInfo-size-06409"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -736,7 +739,7 @@ impl BufferCreateInfo {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_memory)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "external_memory_handle_types".into(),
                     problem: "is not empty".into(),
                     requires_one_of: RequiresOneOf(&[
@@ -744,7 +747,7 @@ impl BufferCreateInfo {
                         RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
                     ]),
                     ..Default::default()
-                });
+                }));
             }
 
             external_memory_handle_types

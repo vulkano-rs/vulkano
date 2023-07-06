@@ -75,7 +75,7 @@ use crate::{
     range_map::RangeMap,
     swapchain::Swapchain,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -146,15 +146,18 @@ impl Image {
     /// Creates a new uninitialized `Image`.
     pub fn new(
         allocator: &(impl MemoryAllocator + ?Sized),
-        image_info: ImageCreateInfo,
+        create_info: ImageCreateInfo,
         allocation_info: AllocationCreateInfo,
-    ) -> Result<Arc<Self>, ImageAllocateError> {
+    ) -> Result<Arc<Self>, Validated<ImageAllocateError>> {
         // TODO: adjust the code below to make this safe
-        assert!(!image_info.flags.intersects(ImageCreateFlags::DISJOINT));
+        assert!(!create_info.flags.intersects(ImageCreateFlags::DISJOINT));
 
-        let allocation_type = image_info.tiling.into();
-        let raw_image = RawImage::new(allocator.device().clone(), image_info)
-            .map_err(ImageAllocateError::CreateImage)?;
+        let allocation_type = create_info.tiling.into();
+        let raw_image =
+            RawImage::new(allocator.device().clone(), create_info).map_err(|err| match err {
+                Validated::Error(err) => Validated::Error(ImageAllocateError::CreateImage(err)),
+                Validated::ValidationError(err) => err.into(),
+            })?;
         let requirements = raw_image.memory_requirements()[0];
 
         let allocation = unsafe {
@@ -207,7 +210,7 @@ impl Image {
         handle: ash::vk::Image,
         swapchain: Arc<Swapchain>,
         image_index: u32,
-    ) -> Result<Self, RuntimeError> {
+    ) -> Result<Self, VulkanError> {
         let create_info = ImageCreateInfo {
             flags: ImageCreateFlags::empty(),
             image_type: ImageType::Dim2d,
@@ -381,7 +384,7 @@ impl Image {
         aspect: ImageAspect,
         mip_level: u32,
         array_layer: u32,
-    ) -> Result<SubresourceLayout, ValidationError> {
+    ) -> Result<SubresourceLayout, Box<ValidationError>> {
         self.inner
             .subresource_layout(aspect, mip_level, array_layer)
     }
@@ -570,7 +573,7 @@ impl Hash for Image {
 pub enum ImageAllocateError {
     CreateImage(VulkanError),
     AllocateMemory(MemoryAllocatorError),
-    BindMemory(RuntimeError),
+    BindMemory(VulkanError),
 }
 
 impl Error for ImageAllocateError {
@@ -590,6 +593,12 @@ impl Display for ImageAllocateError {
             Self::AllocateMemory(_) => write!(f, "allocating memory for the image failed"),
             Self::BindMemory(_) => write!(f, "binding memory to the image failed"),
         }
+    }
+}
+
+impl From<ImageAllocateError> for Validated<ImageAllocateError> {
+    fn from(err: ImageAllocateError) -> Self {
+        Self::Error(err)
     }
 }
 
@@ -1378,7 +1387,7 @@ impl ImageSubresourceLayers {
 }
 
 impl ImageSubresourceLayers {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             aspects,
             mip_level: _,
@@ -1394,34 +1403,34 @@ impl ImageSubresourceLayers {
             })?;
 
         if aspects.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "aspects".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         if aspects.intersects(ImageAspects::COLOR)
             && aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "aspects".into(),
                 problem: "contains both `ImageAspects::COLOR`, and either `ImageAspects::DEPTH` \
                     or `ImageAspects::STENCIL`"
                     .into(),
                 vuids: &["VUID-VkImageSubresourceLayers-aspectMask-00167"],
                 ..Default::default()
-            });
+            }));
         }
 
         if aspects.intersects(ImageAspects::METADATA) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "aspects".into(),
                 problem: "contains `ImageAspects::METADATA`".into(),
                 vuids: &["VUID-VkImageSubresourceLayers-aspectMask-00168"],
                 ..Default::default()
-            });
+            }));
         }
 
         if aspects.intersects(
@@ -1430,7 +1439,7 @@ impl ImageSubresourceLayers {
                 | ImageAspects::MEMORY_PLANE_2
                 | ImageAspects::MEMORY_PLANE_3,
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "aspects".into(),
                 problem: "contains `ImageAspects::MEMORY_PLANE_0`, \
                     `ImageAspects::MEMORY_PLANE_1`, `ImageAspects::MEMORY_PLANE_2` or \
@@ -1438,16 +1447,16 @@ impl ImageSubresourceLayers {
                     .into(),
                 vuids: &["VUID-VkImageSubresourceLayers-aspectMask-02247"],
                 ..Default::default()
-            });
+            }));
         }
 
         if array_layers.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "array_layers".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkImageSubresourceLayers-layerCount-01700"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1511,7 +1520,7 @@ impl ImageSubresourceRange {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             aspects,
             ref mip_levels,
@@ -1527,44 +1536,44 @@ impl ImageSubresourceRange {
             })?;
 
         if aspects.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "aspects".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkImageSubresourceRange-aspectMask-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         if mip_levels.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "mip_levels".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkImageSubresourceRange-levelCount-01720"],
                 ..Default::default()
-            });
+            }));
         }
 
         if array_layers.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "array_layers".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkImageSubresourceRange-layerCount-01721"],
                 ..Default::default()
-            });
+            }));
         }
 
         if aspects.intersects(ImageAspects::COLOR)
             && aspects
                 .intersects(ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "aspects".into(),
                 problem: "contains both `ImageAspects::COLOR`, and one of \
                     `ImageAspects::PLANE_0`, `ImageAspects::PLANE_1` or `ImageAspects::PLANE_2`"
                     .into(),
                 vuids: &["VUID-VkImageSubresourceRange-aspectMask-01670"],
                 ..Default::default()
-            });
+            }));
         }
 
         if aspects.intersects(
@@ -1573,7 +1582,7 @@ impl ImageSubresourceRange {
                 | ImageAspects::MEMORY_PLANE_2
                 | ImageAspects::MEMORY_PLANE_3,
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "aspects".into(),
                 problem: "contains `ImageAspects::MEMORY_PLANE_0`, \
                     `ImageAspects::MEMORY_PLANE_1`, `ImageAspects::MEMORY_PLANE_2` or \
@@ -1581,7 +1590,7 @@ impl ImageSubresourceRange {
                     .into(),
                 vuids: &["VUID-VkImageSubresourceLayers-aspectMask-02247"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1733,7 +1742,10 @@ impl Default for ImageFormatInfo {
 }
 
 impl ImageFormatInfo {
-    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+    pub(crate) fn validate(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             format,
@@ -1796,12 +1808,12 @@ impl ImageFormatInfo {
             })?;
 
         if usage.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "usage".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-usage-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         let has_separate_stencil_usage = if aspects
@@ -1820,7 +1832,7 @@ impl ImageFormatInfo {
                     .supported_extensions()
                     .ext_separate_stencil_usage)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`stencil_usage` is `Some`, and `format` has both a depth and a \
                         stencil aspect"
                         .into(),
@@ -1829,7 +1841,7 @@ impl ImageFormatInfo {
                         RequiresAllOf(&[Requires::DeviceExtension("ext_separate_stencil_usage")]),
                     ]),
                     ..Default::default()
-                });
+                }));
             }
 
             stencil_usage
@@ -1841,12 +1853,12 @@ impl ImageFormatInfo {
                 })?;
 
             if stencil_usage.is_empty() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "stencil_usage".into(),
                     problem: "is empty".into(),
                     vuids: &["VUID-VkImageStencilUsageCreateInfo-usage-requiredbitmask"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -1857,7 +1869,7 @@ impl ImageFormatInfo {
                     .enabled_extensions()
                     .khr_external_memory_capabilities)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`external_memory_handle_type` is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[
                         RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
@@ -1866,7 +1878,7 @@ impl ImageFormatInfo {
                         )]),
                     ]),
                     ..Default::default()
-                });
+                }));
             }
 
             handle_type
@@ -1880,13 +1892,13 @@ impl ImageFormatInfo {
 
         if let Some(image_view_type) = image_view_type {
             if !physical_device.supported_extensions().ext_filter_cubic {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`image_view_type` is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_filter_cubic",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             image_view_type
@@ -1905,14 +1917,14 @@ impl ImageFormatInfo {
                 .supported_extensions()
                 .ext_image_drm_format_modifier
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "drm_format_modifier_info".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_image_drm_format_modifier",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             drm_format_modifier_info
@@ -1920,32 +1932,32 @@ impl ImageFormatInfo {
                 .map_err(|err| err.add_context("drm_format_modifier_info"))?;
 
             if tiling != ImageTiling::DrmFormatModifier {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`drm_format_modifier_info` is `Some` but \
                         `tiling` is not `ImageTiling::DrmFormatModifier`"
                         .into(),
                     vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
                     ..Default::default()
-                });
+                }));
             }
 
             if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
                         `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`"
                         .into(),
                     vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313"],
                     ..Default::default()
-                });
+                }));
             }
         } else if tiling == ImageTiling::DrmFormatModifier {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
                     `drm_format_modifier_info` is `None`"
                     .into(),
                 vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1981,7 +1993,10 @@ impl Default for ImageDrmFormatModifierInfo {
 }
 
 impl ImageDrmFormatModifierInfo {
-    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+    pub(crate) fn validate(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             drm_format_modifier: _,
             ref sharing,
@@ -1992,7 +2007,7 @@ impl ImageDrmFormatModifierInfo {
             Sharing::Exclusive => (),
             Sharing::Concurrent(queue_family_indices) => {
                 if queue_family_indices.len() < 2 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "sharing".into(),
                         problem: "is `Sharing::Concurrent`, but contains less than 2 elements"
                             .into(),
@@ -2000,14 +2015,14 @@ impl ImageDrmFormatModifierInfo {
                             "VUID-VkPhysicalDeviceImageDrmFormatModifierInfoEXT-sharingMode-02315",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 let queue_family_count = physical_device.queue_family_properties().len() as u32;
 
                 for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
                     if queue_family_indices[..index].contains(&queue_family_index) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: "queue_family_indices".into(),
                             problem: format!(
                                 "the queue family index in the list at index {} is contained in \
@@ -2017,17 +2032,17 @@ impl ImageDrmFormatModifierInfo {
                             .into(),
                             vuids: &[" VUID-VkPhysicalDeviceImageDrmFormatModifierInfoEXT-sharingMode-02316"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if queue_family_index >= queue_family_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("sharing[{}]", index).into(),
                             problem: "is not less than the number of queue families in the device"
                                 .into(),
                             vuids: &[" VUID-VkPhysicalDeviceImageDrmFormatModifierInfoEXT-sharingMode-02316"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -2139,7 +2154,10 @@ impl Default for SparseImageFormatInfo {
 }
 
 impl SparseImageFormatInfo {
-    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+    pub(crate) fn validate(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             format,
             image_type,
@@ -2189,12 +2207,12 @@ impl SparseImageFormatInfo {
             })?;
 
         if usage.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "usage".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-requiredbitmask"],
                 ..Default::default()
-            });
+            }));
         }
 
         tiling

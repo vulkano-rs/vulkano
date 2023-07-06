@@ -25,7 +25,7 @@ pub use self::{
         MemoryBarrier, PipelineStage, PipelineStages, QueueFamilyOwnershipTransfer,
     },
 };
-use crate::{device::Queue, RuntimeError, ValidationError};
+use crate::{device::Queue, ValidationError, VulkanError};
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -103,7 +103,7 @@ pub(crate) enum CurrentAccess {
 #[derive(Clone, Debug)]
 pub enum HostAccessError {
     AccessConflict(AccessConflict),
-    Invalidate(RuntimeError),
+    Invalidate(VulkanError),
     ValidationError(ValidationError),
 }
 

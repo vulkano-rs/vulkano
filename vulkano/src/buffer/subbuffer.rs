@@ -134,7 +134,7 @@ impl<T: ?Sized> Subbuffer<T> {
     }
 
     /// Returns the device address for this subbuffer.
-    pub fn device_address(&self) -> Result<NonZeroDeviceSize, ValidationError> {
+    pub fn device_address(&self) -> Result<NonZeroDeviceSize, Box<ValidationError>> {
         self.buffer().device_address().map(|ptr| {
             // SAFETY: The original address came from the Vulkan implementation, and allocation
             // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be

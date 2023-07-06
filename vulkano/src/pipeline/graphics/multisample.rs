@@ -75,7 +75,7 @@ impl MultisampleState {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             rasterization_samples,
             sample_shading,
@@ -97,35 +97,35 @@ impl MultisampleState {
 
         if let Some(min_sample_shading) = sample_shading {
             if !device.enabled_features().sample_rate_shading {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "min_sample_shading".into(),
                     problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "sample_rate_shading",
                     )])]),
                     vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-sampleShadingEnable-00784"],
-                });
+                }));
             }
 
             if !(0.0..=1.0).contains(&min_sample_shading) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "min_sample_shading".into(),
                     problem: "is not between 0.0 and 1.0 inclusive".into(),
                     vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-minSampleShading-00786"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if alpha_to_one_enable && !device.enabled_features().alpha_to_one {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "alpha_to_one_enable".into(),
                 problem: "is `true`".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "alpha_to_one",
                 )])]),
                 vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-alphaToOneEnable-00785"],
-            });
+            }));
         }
 
         Ok(())

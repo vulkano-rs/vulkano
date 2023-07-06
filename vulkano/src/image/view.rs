@@ -26,7 +26,7 @@ use crate::{
         ImageAspects, ImageCreateFlags, ImageTiling, ImageType, SampleCount,
     },
     macros::{impl_id_counter, vulkan_enum},
-    Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version, VulkanError,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
@@ -61,7 +61,7 @@ impl ImageView {
     pub fn new(
         image: Arc<Image>,
         create_info: ImageViewCreateInfo,
-    ) -> Result<Arc<ImageView>, VulkanError> {
+    ) -> Result<Arc<ImageView>, Validated<VulkanError>> {
         Self::validate_new(&image, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(image, create_info)?) }
@@ -70,7 +70,7 @@ impl ImageView {
     fn validate_new(
         image: &Image,
         create_info: &ImageViewCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         let device = image.device();
 
         create_info
@@ -91,47 +91,47 @@ impl ImageView {
         let format_features = unsafe { get_format_features(format, image) };
 
         if format_features.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "create_info.format".into(),
                 problem: "the format features are empty".into(),
                 vuids: &["VUID-VkImageViewCreateInfo-None-02273"],
                 ..Default::default()
-            });
+            }));
         }
 
         let image_type = image.image_type();
 
         if !view_type.is_compatible_with(image_type) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.view_type` is not compatible with \
                     `image.image_type()`"
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-subResourceRange-01021"],
                 ..Default::default()
-            });
+            }));
         }
 
         if subresource_range.mip_levels.end > image.mip_levels() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.subresource_range.mip_levels.end` is greater than \
                     `image.mip_levels()`"
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-subresourceRange-01718"],
                 ..Default::default()
-            });
+            }));
         }
 
         if matches!(view_type, ImageViewType::Cube | ImageViewType::CubeArray)
             && !image.flags().intersects(ImageCreateFlags::CUBE_COMPATIBLE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.view_type` is `ImageViewType::Cube` or \
                     `ImageViewType::CubeArray`, but \
                     `image.flags()` does not contain `ImageCreateFlags::CUBE_COMPATIBLE`"
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-image-01003"],
                 ..Default::default()
-            });
+            }));
         }
 
         if matches!(view_type, ImageViewType::Dim2d | ImageViewType::Dim2dArray)
@@ -143,7 +143,7 @@ impl ImageView {
                         .flags()
                         .intersects(ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`create_info.view_type` is `ImageViewType::Dim2d`, and \
                                 `image.image_type()` is `ImageType::Dim3d`, but \
                                 `image.flags()` does not contain \
@@ -152,7 +152,7 @@ impl ImageView {
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-image-06728"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
                 ImageViewType::Dim2dArray => {
@@ -160,7 +160,7 @@ impl ImageView {
                         .flags()
                         .intersects(ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`create_info.view_type` is `ImageViewType::Dim2dArray`, and \
                                 `image.image_type()` is `ImageType::Dim3d`, but \
                                 `image.flags()` does not contain \
@@ -168,14 +168,14 @@ impl ImageView {
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-image-06723"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
                 _ => unreachable!(),
             }
 
             if subresource_range.mip_levels.len() != 1 {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`create_info.view_type` is `ImageViewType::Dim2d` or \
                         `ImageViewType::Dim2dArray`, and \
                         `image.image_type()` is `ImageType::Dim3d`, but \
@@ -183,7 +183,7 @@ impl ImageView {
                         .into(),
                     vuids: &["VUID-VkImageViewCreateInfo-image-04970"],
                     ..Default::default()
-                });
+                }));
             }
 
             // We're using the depth dimension as array layers, but because of mip scaling, the
@@ -193,7 +193,7 @@ impl ImageView {
                 mip_level_extent(image.extent(), subresource_range.mip_levels.start).unwrap();
 
             if subresource_range.array_layers.end > mip_level_extent[2] {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`create_info.view_type` is `ImageViewType::Dim2d` or \
                         `ImageViewType::Dim2dArray`, and \
                         `image.image_type()` is `ImageType::Dim3d`, but \
@@ -206,11 +206,11 @@ impl ImageView {
                         "VUID-VkImageViewCreateInfo-subresourceRange-02725",
                     ],
                     ..Default::default()
-                });
+                }));
             }
         } else {
             if subresource_range.array_layers.end > image.array_layers() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`create_info.subresource_range.array_layers.end` is greater than \
                         `image.array_layers()`"
                         .into(),
@@ -219,21 +219,21 @@ impl ImageView {
                         "VUID-VkImageViewCreateInfo-subresourceRange-06725",
                     ],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if image.samples() != SampleCount::Sample1
             && !matches!(view_type, ImageViewType::Dim2d | ImageViewType::Dim2dArray)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`image.samples()` is not `SampleCount::Sample1`, but \
                     `create_info.view_type` is not `ImageViewType::Dim2d` or \
                     `ImageViewType::Dim2dArray`"
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-image-04972"],
                 ..Default::default()
-            });
+            }));
         }
 
         /* Check usage requirements */
@@ -251,7 +251,7 @@ impl ImageView {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_maintenance2)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`create_info.usage` is not the implicit default usage \
                         (calculated from `image` and `create_info.subresource_range.aspects`)"
                         .into(),
@@ -260,7 +260,7 @@ impl ImageView {
                         RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance2")]),
                     ]),
                     ..Default::default()
-                });
+                }));
             }
 
             // VUID-VkImageViewUsageCreateInfo-usage-requiredbitmask
@@ -268,7 +268,7 @@ impl ImageView {
             // (which is already validated to not be empty).
 
             if !implicit_default_usage.contains(usage) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`create_info.usage` is not a subset of the implicit default usage \
                         (calculated from `image` and `create_info.subresource_range.aspects`)"
                         .into(),
@@ -278,7 +278,7 @@ impl ImageView {
                         "VUID-VkImageViewCreateInfo-pNext-02664",
                     ],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -290,7 +290,7 @@ impl ImageView {
                 | ImageUsage::INPUT_ATTACHMENT
                 | ImageUsage::TRANSIENT_ATTACHMENT,
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "image.usage()".into(),
                 problem: "does not contain one of `ImageUsage::SAMPLED`, `ImageUsage::STORAGE`, \
                     `ImageUsage::COLOR_ATTACHMENT`, `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, \
@@ -298,13 +298,13 @@ impl ImageView {
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-image-04441"],
                 ..Default::default()
-            });
+            }));
         }
 
         if usage.intersects(ImageUsage::SAMPLED)
             && !format_features.intersects(FormatFeatures::SAMPLED_IMAGE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.usage` or the implicit default usage \
                     (calculated from `image` and `create_info.subresource_range.aspects`) \
                     contains `ImageUsage::SAMPLED`, but \
@@ -313,13 +313,13 @@ impl ImageView {
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-usage-02274"],
                 ..Default::default()
-            });
+            }));
         }
 
         if usage.intersects(ImageUsage::STORAGE)
             && !format_features.intersects(FormatFeatures::STORAGE_IMAGE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.usage` or the implicit default usage \
                     (calculated from `image` and `create_info.subresource_range.aspects`) \
                     contains `ImageUsage::STORAGE`, but \
@@ -328,13 +328,13 @@ impl ImageView {
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-usage-02275"],
                 ..Default::default()
-            });
+            }));
         }
 
         if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
             && !format_features.intersects(FormatFeatures::COLOR_ATTACHMENT)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.usage` or the implicit default usage \
                     (calculated from `image` and `create_info.subresource_range.aspects`) \
                     contains `ImageUsage::COLOR_ATTACHMENT`, but \
@@ -343,13 +343,13 @@ impl ImageView {
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-usage-02276"],
                 ..Default::default()
-            });
+            }));
         }
 
         if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
             && !format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.usage` or the implicit default usage \
                     (calculated from `image` and `create_info.subresource_range.aspects`) \
                     contains `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, but \
@@ -358,7 +358,7 @@ impl ImageView {
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-usage-02277"],
                 ..Default::default()
-            });
+            }));
         }
 
         if usage.intersects(ImageUsage::INPUT_ATTACHMENT)
@@ -366,7 +366,7 @@ impl ImageView {
                 FormatFeatures::COLOR_ATTACHMENT | FormatFeatures::DEPTH_STENCIL_ATTACHMENT,
             )
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.usage` or the implicit default usage \
                     (calculated from `image` and `create_info.subresource_range.aspects`) \
                     contains `ImageUsage::INPUT_ATTACHMENT`, but \
@@ -376,7 +376,7 @@ impl ImageView {
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-usage-02652"],
                 ..Default::default()
-            });
+            }));
         }
 
         /* Check flags requirements */
@@ -385,24 +385,24 @@ impl ImageView {
             if !image.format().unwrap().planes().is_empty()
                 && subresource_range.aspects.intersects(ImageAspects::COLOR)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`image.format()` is a multi-planar format, and \
                         `create_info.subresource_range.aspects` contains `ImageAspects::COLOR`, \
                         but `create_info.format` does not equal `image.format()`"
                         .into(),
                     vuids: &["VUID-VkImageViewCreateInfo-image-01762"],
                     ..Default::default()
-                });
+                }));
             }
 
             if !image.flags().intersects(ImageCreateFlags::MUTABLE_FORMAT) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`create_info.format` does not equal `image.format()`, but \
                         `image.flags()` does not contain `ImageCreateFlags::MUTABLE_FORMAT`"
                         .into(),
                     vuids: &["VUID-VkImageViewCreateInfo-image-01762"],
                     ..Default::default()
-                });
+                }));
             }
 
             // TODO: it is unclear what the number of bits is for compressed formats.
@@ -411,7 +411,7 @@ impl ImageView {
                 && !device.enabled_features().image_view_format_reinterpretation
                 && format.components() != image.format().unwrap().components()
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "this device is a portability subset device, and \
                         `create_info.format` does not have the same components and \
                         number of bits per component as `image.format()`"
@@ -421,7 +421,7 @@ impl ImageView {
                     )])]),
                     vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatReinterpretation-04466"],
                     ..Default::default()
-                });
+                }));
             }
 
             if image
@@ -431,7 +431,7 @@ impl ImageView {
                 if !(format.compatibility() == image.format().unwrap().compatibility()
                     || format.block_size() == image.format().unwrap().block_size())
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`image.flags()` contains \
                             `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, but \
                             `create_info.format` is not compatible with `image.format()`, or \
@@ -439,12 +439,12 @@ impl ImageView {
                             .into(),
                         vuids: &["VUID-VkImageViewCreateInfo-image-01583"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if format.compression().is_none() {
                     if subresource_range.array_layers.len() != 1 {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`image.flags()` contains \
                                 `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
                                 `create_info.format` is not a compressed format, but \
@@ -453,11 +453,11 @@ impl ImageView {
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if subresource_range.mip_levels.len() != 1 {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`image.flags()` contains \
                                 `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
                                 `create_info.format` is not a compressed format, but \
@@ -466,13 +466,13 @@ impl ImageView {
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             } else {
                 if image.format().unwrap().planes().is_empty() {
                     if format.compatibility() != image.format().unwrap().compatibility() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`image.flags()` does not contain \
                                 `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
                                 `image.format()` is not a multi-planar format, but \
@@ -480,7 +480,7 @@ impl ImageView {
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-image-01761"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 } else if subresource_range.aspects.intersects(
                     ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2,
@@ -497,7 +497,7 @@ impl ImageView {
                     let plane_format = image.format().unwrap().planes()[plane];
 
                     if format.compatibility() != plane_format.compatibility() {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`image.flags()` does not contain \
                                 `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
                                 `image.format()` is a multi-planar format, but \
@@ -506,7 +506,7 @@ impl ImageView {
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-image-01586"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -517,7 +517,7 @@ impl ImageView {
                 ChromaSampling::Mode444 => (),
                 ChromaSampling::Mode422 => {
                     if image.extent()[0] % 2 != 0 {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`create_info.format` is a YCbCr format with horizontal \
                                 chroma subsampling, but \
                                 `image.extent()[0]` is not \
@@ -525,12 +525,12 @@ impl ImageView {
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-format-04714"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
                 ChromaSampling::Mode420 => {
                     if !(image.extent()[0] % 2 == 0 && image.extent()[1] % 2 == 0) {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: "`create_info.format` is a YCbCr format with horizontal \
                                 and vertical chroma subsampling, but \
                                 `image.extent()[0]` and `image.extent()[1]` \
@@ -541,7 +541,7 @@ impl ImageView {
                                 "VUID-VkImageViewCreateInfo-format-04715",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -554,7 +554,7 @@ impl ImageView {
     pub unsafe fn new_unchecked(
         image: Arc<Image>,
         create_info: ImageViewCreateInfo,
-    ) -> Result<Arc<Self>, RuntimeError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         let &ImageViewCreateInfo {
             view_type,
             format,
@@ -618,7 +618,7 @@ impl ImageView {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -627,7 +627,7 @@ impl ImageView {
 
     /// Creates a default `ImageView`. Equivalent to
     /// `ImageView::new(image, ImageViewCreateInfo::from_image(image))`.
-    pub fn new_default(image: Arc<Image>) -> Result<Arc<ImageView>, VulkanError> {
+    pub fn new_default(image: Arc<Image>) -> Result<Arc<ImageView>, Validated<VulkanError>> {
         let create_info = ImageViewCreateInfo::from_image(&image);
 
         Self::new(image, create_info)
@@ -643,7 +643,7 @@ impl ImageView {
         image: Arc<Image>,
         handle: ash::vk::ImageView,
         create_info: ImageViewCreateInfo,
-    ) -> Result<Arc<Self>, RuntimeError> {
+    ) -> Result<Arc<Self>, VulkanError> {
         let ImageViewCreateInfo {
             view_type,
             format,
@@ -921,7 +921,7 @@ impl ImageViewCreateInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             view_type,
             format,
@@ -973,48 +973,48 @@ impl ImageViewCreateInfo {
         match view_type {
             ImageViewType::Dim1d | ImageViewType::Dim2d | ImageViewType::Dim3d => {
                 if subresource_range.array_layers.len() != 1 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`view_type` is `ImageViewType::Dim1d`, \
                             `ImageViewType::Dim2d` or `ImageViewType::Dim3d`, but \
                             the length of `subresource_range.array_layers` is not 1"
                             .into(),
                         vuids: &["VUID-VkImageViewCreateInfo-imageViewType-04973"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             ImageViewType::Cube => {
                 if subresource_range.array_layers.len() != 6 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`view_type` is `ImageViewType::Cube`, but \
                             the length of `subresource_range.array_layers` is not 6"
                             .into(),
                         vuids: &["VUID-VkImageViewCreateInfo-viewType-02960"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             ImageViewType::CubeArray => {
                 if !device.enabled_features().image_cube_array {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "view_type".into(),
                         problem: "is `ImageViewType::CubeArray`".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                             "image_cube_array",
                         )])]),
                         vuids: &["VUID-VkImageViewCreateInfo-viewType-01004"],
-                    });
+                    }));
                 }
 
                 if subresource_range.array_layers.len() % 6 != 0 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`view_type` is `ImageViewType::CubeArray`, but \
                             the length of `subresource_range.array_layers` is not \
                             a multiple of 6"
                             .into(),
                         vuids: &["VUID-VkImageViewCreateInfo-viewType-02961"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             _ => (),
@@ -1026,21 +1026,21 @@ impl ImageViewCreateInfo {
             .count()
             > 1
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "subresource_range.aspects".into(),
                 problem: "contains more than one of `ImageAspects::PLANE_0`, \
                     `ImageAspects::PLANE_1` and `ImageAspects::PLANE_2`"
                     .into(),
                 vuids: &["VUID-VkImageViewCreateInfo-subresourceRange-07818"],
                 ..Default::default()
-            });
+            }));
         }
 
         if device.enabled_extensions().khr_portability_subset
             && !device.enabled_features().image_view_format_swizzle
             && !component_mapping.is_identity()
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "this device is a portability subset device, and \
                     `component_mapping` is not the identity mapping"
                     .into(),
@@ -1049,7 +1049,7 @@ impl ImageViewCreateInfo {
                 )])]),
                 vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatSwizzle-04465"],
                 ..Default::default()
-            });
+            }));
         }
 
         // Don't need to check features because you can't create a conversion object without the
@@ -1058,23 +1058,23 @@ impl ImageViewCreateInfo {
             assert_eq!(device, conversion.device().as_ref());
 
             if !component_mapping.is_identity() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`sampler_ycbcr_conversion` is `Some`, but \
                         `component_mapping` is not the identity mapping"
                         .into(),
                     vuids: &["VUID-VkImageViewCreateInfo-pNext-01970"],
                     ..Default::default()
-                });
+                }));
             }
         } else {
             if format.ycbcr_chroma_sampling().is_some() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "`sampler_ycbcr_conversion` is `None`, but \
                         `format.ycbcr_chroma_sampling()` is `Some`"
                         .into(),
                     vuids: &["VUID-VkImageViewCreateInfo-format-06415"],
                     ..Default::default()
-                });
+                }));
             }
         }
 

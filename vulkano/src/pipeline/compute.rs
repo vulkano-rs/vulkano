@@ -29,7 +29,7 @@ use crate::{
     macros::impl_id_counter,
     pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
     shader::{DescriptorBindingRequirements, ShaderExecution, ShaderStage},
-    RuntimeError, ValidationError, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use std::{ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -59,7 +59,7 @@ impl ComputePipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
-    ) -> Result<Arc<ComputePipeline>, VulkanError> {
+    ) -> Result<Arc<ComputePipeline>, Validated<VulkanError>> {
         Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
@@ -69,7 +69,7 @@ impl ComputePipeline {
         device: &Device,
         cache: Option<&PipelineCache>,
         create_info: &ComputePipelineCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateComputePipelines-pipelineCache-parent
         if let Some(cache) = &cache {
             assert_eq!(device, cache.device().as_ref());
@@ -87,7 +87,7 @@ impl ComputePipeline {
         device: Arc<Device>,
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
-    ) -> Result<Arc<ComputePipeline>, RuntimeError> {
+    ) -> Result<Arc<ComputePipeline>, VulkanError> {
         let &ComputePipelineCreateInfo {
             flags,
             ref stage,
@@ -170,7 +170,7 @@ impl ComputePipeline {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -312,7 +312,7 @@ impl ComputePipelineCreateInfo {
         }
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             ref stage,
@@ -342,12 +342,12 @@ impl ComputePipelineCreateInfo {
         let entry_point_info = entry_point.info();
 
         if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "stage.entry_point".into(),
                 problem: "is not a `ShaderStage::Compute` entry point".into(),
                 vuids: &["VUID-VkComputePipelineCreateInfo-stage-00701"],
                 ..Default::default()
-            });
+            }));
         }
 
         // TODO: Make sure that all VUIDs are indeed checked.

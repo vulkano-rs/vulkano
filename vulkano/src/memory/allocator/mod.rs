@@ -235,7 +235,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanError,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -525,7 +525,7 @@ pub enum MemoryAllocatePreference {
 /// [memory allocator]: MemoryAllocator
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MemoryAllocatorError {
-    RuntimeError(RuntimeError),
+    VulkanError(VulkanError),
 
     /// There is not enough memory in the pool.
     ///
@@ -555,7 +555,7 @@ pub enum MemoryAllocatorError {
 impl Error for MemoryAllocatorError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::RuntimeError(err) => Some(err),
+            Self::VulkanError(err) => Some(err),
             _ => None,
         }
     }
@@ -564,7 +564,7 @@ impl Error for MemoryAllocatorError {
 impl Display for MemoryAllocatorError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::RuntimeError(_) => write!(f, "a runtime error occurred"),
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
             Self::OutOfPoolMemory => write!(f, "the pool doesn't have enough free space"),
             Self::DedicatedAllocationRequired => write!(
                 f,
@@ -583,9 +583,9 @@ impl Display for MemoryAllocatorError {
     }
 }
 
-impl From<RuntimeError> for MemoryAllocatorError {
-    fn from(err: RuntimeError) -> Self {
-        MemoryAllocatorError::RuntimeError(err)
+impl From<VulkanError> for MemoryAllocatorError {
+    fn from(err: VulkanError) -> Self {
+        MemoryAllocatorError::VulkanError(err)
     }
 }
 
@@ -695,7 +695,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     pub fn new(
         device: Arc<Device>,
         create_info: GenericMemoryAllocatorCreateInfo<'_, '_>,
-    ) -> Result<Self, ValidationError> {
+    ) -> Result<Self, Box<ValidationError>> {
         Self::validate_new(&device, &create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, create_info) })
@@ -704,7 +704,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     fn validate_new(
         device: &Device,
         create_info: &GenericMemoryAllocatorCreateInfo<'_, '_>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         let &GenericMemoryAllocatorCreateInfo {
             block_sizes,
             allocation_type: _,
@@ -727,7 +727,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             if !(device.api_version() >= Version::V1_1
                 && device.enabled_extensions().khr_external_memory)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "create_info.export_handle_types".into(),
                     problem: "is not empty".into(),
                     requires_one_of: RequiresOneOf(&[
@@ -735,7 +735,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
                         RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
                     ]),
                     ..Default::default()
-                });
+                }));
             }
 
             assert!(
@@ -977,7 +977,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     /// [`protected_memory`]: crate::device::Features::protected_memory
     /// [`DEVICE_COHERENT`]: MemoryPropertyFlags::DEVICE_COHERENT
     /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
-    /// [`TooManyObjects`]: RuntimeError::TooManyObjects
+    /// [`TooManyObjects`]: VulkanError::TooManyObjects
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
     /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
@@ -1134,9 +1134,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                         break S::new(MemoryAlloc::new(device_memory)?);
                     }
                     // Retry up to 3 times, halving the allocation size each time.
-                    Err(RuntimeError::OutOfHostMemory | RuntimeError::OutOfDeviceMemory)
-                        if i < 3 =>
-                    {
+                    Err(VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory) if i < 3 => {
                         i += 1;
                     }
                     Err(err) => return Err(err.into()),
@@ -1151,8 +1149,8 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             Ok(allocation) => Ok(allocation),
             // This can happen if the block ended up smaller than advertised because there wasn't
             // enough memory.
-            Err(SuballocatorError::OutOfRegionMemory) => Err(MemoryAllocatorError::RuntimeError(
-                RuntimeError::OutOfDeviceMemory,
+            Err(SuballocatorError::OutOfRegionMemory) => Err(MemoryAllocatorError::VulkanError(
+                VulkanError::OutOfDeviceMemory,
             )),
             // This can not happen as the block is fresher than Febreze and we're still holding an
             // exclusive lock.
@@ -1195,7 +1193,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
     ///   created.
     ///
-    /// [`TooManyObjects`]: RuntimeError::TooManyObjects
+    /// [`TooManyObjects`]: VulkanError::TooManyObjects
     /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
     /// [`DedicatedAllocationRequired`]: MemoryAllocatorError::DedicatedAllocationRequired
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded

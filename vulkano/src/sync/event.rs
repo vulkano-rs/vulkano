@@ -28,7 +28,7 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -86,7 +86,7 @@ impl Event {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -114,7 +114,7 @@ impl Event {
                     let fns = device.fns();
                     (fns.v1_0.reset_event)(device.handle(), handle)
                         .result()
-                        .map_err(RuntimeError::from)?;
+                        .map_err(VulkanError::from)?;
                 }
                 Event {
                     handle,
@@ -163,7 +163,7 @@ impl Event {
             match result {
                 ash::vk::Result::EVENT_SET => Ok(true),
                 ash::vk::Result::EVENT_RESET => Ok(false),
-                err => Err(RuntimeError::from(err).into()),
+                err => Err(VulkanError::from(err).into()),
             }
         }
     }
@@ -175,7 +175,7 @@ impl Event {
             let fns = self.device.fns();
             (fns.v1_0.set_event)(self.device.handle(), self.handle)
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
             Ok(())
         }
     }
@@ -199,7 +199,7 @@ impl Event {
             let fns = self.device.fns();
             (fns.v1_0.reset_event)(self.device.handle(), self.handle)
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
             Ok(())
         }
     }
@@ -299,10 +299,10 @@ impl Display for EventError {
     }
 }
 
-impl From<RuntimeError> for EventError {
-    fn from(err: RuntimeError) -> Self {
+impl From<VulkanError> for EventError {
+    fn from(err: VulkanError) -> Self {
         match err {
-            e @ RuntimeError::OutOfHostMemory | e @ RuntimeError::OutOfDeviceMemory => {
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
                 Self::OomError(e.into())
             }
             _ => panic!("unexpected error: {:?}", err),

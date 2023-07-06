@@ -94,7 +94,7 @@ where
         &mut self,
         info: AccelerationStructureBuildGeometryInfo,
         build_range_infos: SmallVec<[AccelerationStructureBuildRangeInfo; 8]>,
-    ) -> Result<&mut Self, ValidationError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_build_acceleration_structure(&info, &build_range_infos)?;
 
         Ok(self.build_acceleration_structure_unchecked(info, build_range_infos))
@@ -104,27 +104,27 @@ where
         &self,
         info: &AccelerationStructureBuildGeometryInfo,
         build_range_infos: &[AccelerationStructureBuildRangeInfo],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
             .queue_flags
             .intersects(QueueFlags::COMPUTE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "queue family does not support compute operations".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-commandBuffer-cmdpool"],
                 ..Default::default()
-            });
+            }));
         }
 
         if self.builder_state.render_pass.is_some() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "a render pass instance is active".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-renderpass"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-parameter
@@ -165,13 +165,13 @@ where
             .usage()
             .intersects(BufferUsage::STORAGE_BUFFER)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.scratch_data".into(),
                 problem: "the buffer was not created with the `BufferUsage::STORAGE_BUFFER` usage"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03674"],
                 ..Default::default()
-            });
+            }));
         }
 
         let min_acceleration_structure_scratch_offset_alignment = self
@@ -185,20 +185,20 @@ where
             % min_acceleration_structure_scratch_offset_alignment as u64
             != 0
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.scratch_data".into(),
                 problem: "the device address of the buffer is not a multiple of the \
                     `min_acceleration_structure_scratch_offset_alignment` device property"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03710"],
                 ..Default::default()
-            });
+            }));
         }
 
         match dst_acceleration_structure.ty() {
             AccelerationStructureType::TopLevel => {
                 if !matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info".into(),
                         problem: "`dst_acceleration_structure` is a top-level \
                             acceleration structure, but `geometries` is not \
@@ -209,12 +209,12 @@ where
                             "VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03699",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             AccelerationStructureType::BottomLevel => {
                 if matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info".into(),
                         problem: "`dst_acceleration_structure` is a bottom-level \
                             acceleration structure, but `geometries` is \
@@ -225,19 +225,19 @@ where
                             "VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03700",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             AccelerationStructureType::Generic => (),
         }
 
         if geometries.len() != build_range_infos.len() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`info.geometries` and `build_range_infos` do not have the same length"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-ppBuildRangeInfos-03676"],
                 ..Default::default()
-            });
+            }));
         }
 
         let max_primitive_count = self
@@ -277,7 +277,7 @@ where
                     } = build_range_info;
 
                     if primitive_count as u64 > max_primitive_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!(
                                 "build_range_infos[{}].primitive_count",
                                 geometry_index
@@ -286,7 +286,7 @@ where
                             problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if !vertex_data
@@ -294,7 +294,7 @@ where
                         .usage()
                         .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer was not created with the \
@@ -302,7 +302,7 @@ where
                                 .into(),
                             vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     let smallest_component_bits = vertex_format
@@ -316,7 +316,7 @@ where
                     if vertex_data.device_address().unwrap().get() % smallest_component_bytes as u64
                         != 0
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer's device address is not a multiple of the byte \
@@ -324,7 +324,7 @@ where
                                 .into(),
                             vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03711"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if let Some(index_data) = index_data {
@@ -334,7 +334,7 @@ where
                             .usage()
                             .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("info.geometries[{}].index_data", geometry_index)
                                     .into(),
                                 problem: "the buffer was not created with the \
@@ -343,14 +343,14 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if index_data.as_bytes().device_address().unwrap().get()
                             % index_data.index_type().size()
                             != 0
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("info.geometries[{}].index_data", geometry_index)
                                     .into(),
                                 problem: "the buffer's device address is not a multiple \
@@ -358,11 +358,11 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03712"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if primitive_offset as u64 % index_data.index_type().size() != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`info.geometries` is \
                                     `AccelerationStructureGeometries::Triangles`, and \
@@ -374,7 +374,7 @@ where
                                 .into(),
                                 vuids: &["VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03656"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if primitive_offset as DeviceSize
@@ -382,7 +382,7 @@ where
                                 * index_data.index_type().size() as DeviceSize
                             > vertex_data.size()
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`infos.geometries` is \
                                     `AccelerationStructureGeometries::Triangles`, \
@@ -395,11 +395,11 @@ where
                                 )
                                 .into(),
                                 ..Default::default()
-                            });
+                            }));
                         }
                     } else {
                         if primitive_offset % smallest_component_bytes != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`info.geometries` is \
                                     `AccelerationStructureGeometries::Triangles`, and
@@ -411,7 +411,7 @@ where
                                 .into(),
                                 vuids: &["VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03657"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if primitive_offset as DeviceSize
@@ -419,7 +419,7 @@ where
                                 * vertex_stride as DeviceSize
                             > vertex_data.size()
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`infos.geometries` is \
                                     `AccelerationStructureGeometries::Triangles`, \
@@ -433,7 +433,7 @@ where
                                 )
                                 .into(),
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
 
@@ -443,7 +443,7 @@ where
                             .usage()
                             .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!(
                                     "info.geometries[{}].transform_data",
                                     geometry_index
@@ -455,11 +455,11 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if transform_data.device_address().unwrap().get() % 16 != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!(
                                     "info.geometries[{}].transform_data",
                                     geometry_index
@@ -469,11 +469,11 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03810"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if transform_offset % 16 != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`info.geometries` is \
                                     `AccelerationStructureGeometries::Triangles`, and \
@@ -484,14 +484,14 @@ where
                                 .into(),
                                 vuids: &["VUID-VkAccelerationStructureBuildRangeInfoKHR-transformOffset-03658"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if transform_offset as DeviceSize
                             + size_of::<TransformMatrix>() as DeviceSize
                             > transform_data.size()
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "`infos.geometries` is \
                                     `AccelerationStructureGeometries::Triangles`, and \
@@ -502,7 +502,7 @@ where
                                 )
                                 .into(),
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
                 }
@@ -526,12 +526,12 @@ where
                     } = build_range_info;
 
                     if primitive_count as u64 > max_primitive_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("build_range_infos[{}]", geometry_index).into(),
                             problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if !data
@@ -539,7 +539,7 @@ where
                         .usage()
                         .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].data", geometry_index).into(),
                             problem: "the buffer was not created with the \
                                 `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
@@ -547,20 +547,20 @@ where
                                 .into(),
                             vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if data.device_address().unwrap().get() % 8 != 0 {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].data", geometry_index).into(),
                             problem: "the buffer's device address is not a multiple of 8".into(),
                             vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03714"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if primitive_offset % 8 != 0 {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`info.geometries` is \
                                 `AccelerationStructureGeometries::Aabbs`, and \
@@ -570,14 +570,14 @@ where
                             .into(),
                             vuids: &["VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03659"],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if primitive_offset as DeviceSize
                         + primitive_count as DeviceSize * stride as DeviceSize
                         > data.size()
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`infos.geometries` is `AccelerationStructureGeometries::Aabbs`,
                                 and `build_range_infos[{0}].primitive_offset` + \
@@ -588,7 +588,7 @@ where
                             )
                             .into(),
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
             }
@@ -607,16 +607,16 @@ where
                 } = &build_range_infos[0];
 
                 if primitive_count as u64 > max_instance_count {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "build_range_infos[0]".into(),
                         problem: "exceeds the the `max_instance_count` limit".into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03801"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 if primitive_offset % 16 != 0 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         problem: "`info.geometries is` \
                             `AccelerationStructureGeometries::Instances`, and \
                             `build_range_infos[0].primitive_offset` is not a multiple of 16"
@@ -625,13 +625,13 @@ where
                             "VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03660",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 let data_buffer = match data {
                     AccelerationStructureGeometryInstancesDataType::Values(data) => {
                         if data.device_address().unwrap().get() % 16 != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "is `AccelerationStructureGeometryInstancesDataType::\
                                     Values`, and the buffer's device address is not a multiple of \
@@ -639,7 +639,7 @@ where
                                 .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03715"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if primitive_offset as DeviceSize
@@ -647,7 +647,7 @@ where
                                 * size_of::<AccelerationStructureInstance>() as DeviceSize
                             > data.size()
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "`infos.geometries` is \
                                     `AccelerationStructureGeometries::Instances`, \
                                     `infos.geometries.data` is \
@@ -658,7 +658,7 @@ where
                                     the size of `infos.geometries.data`"
                                     .into(),
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         data.buffer()
@@ -669,7 +669,7 @@ where
                             .usage()
                             .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "the buffer was not created with the \
                                     `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
@@ -677,11 +677,11 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if data.device_address().unwrap().get() % 8 != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "is `AccelerationStructureGeometryInstancesDataType::\
                                     Pointers` and the buffer's device address is not a multiple \
@@ -689,14 +689,14 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03716"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if primitive_offset as DeviceSize
                             + primitive_count as DeviceSize * size_of::<DeviceSize>() as DeviceSize
                             > data.size()
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "`infos.geometries` is \
                                     `AccelerationStructureGeometries::Instances`, \
                                     `infos.geometries.data` is \
@@ -707,7 +707,7 @@ where
                                     size of `infos.geometries.data`"
                                     .into(),
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         // VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03717
@@ -721,14 +721,14 @@ where
                     .usage()
                     .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info.geometries.data".into(),
                         problem: "the buffer was not created with the \
                             `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
                             .into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-geometry-03673"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 // VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-06707
@@ -748,34 +748,34 @@ where
         };
 
         if dst_acceleration_structure.size() < build_size_info.acceleration_structure_size {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.dst_acceleration_structure".into(),
                 problem: "size is too small to hold the resulting acceleration structure data"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03675"],
                 ..Default::default()
-            });
+            }));
         }
 
         match mode {
             BuildAccelerationStructureMode::Build => {
                 if scratch_data.size() < build_size_info.build_scratch_size {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info.scratch_data".into(),
                         problem: "size is too small for the build operation".into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03671"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             BuildAccelerationStructureMode::Update(_src_acceleration_structure) => {
                 if scratch_data.size() < build_size_info.update_scratch_size {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info.scratch_data".into(),
                         problem: "size is too small for the update operation".into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03672"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 // VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-03667
@@ -873,7 +873,7 @@ where
         indirect_buffer: Subbuffer<[u8]>,
         stride: u32,
         max_primitive_counts: SmallVec<[u32; 8]>,
-    ) -> Result<&mut Self, ValidationError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_build_acceleration_structure_indirect(
             &info,
             &indirect_buffer,
@@ -895,17 +895,17 @@ where
         indirect_buffer: &Subbuffer<[u8]>,
         stride: u32,
         max_primitive_counts: &[u32],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .device()
             .enabled_features()
             .acceleration_structure_indirect_build
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("acceleration_structure_indirect_build")])]),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-accelerationStructureIndirectBuild-03650"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !self
@@ -913,21 +913,21 @@ where
             .queue_flags
             .intersects(QueueFlags::COMPUTE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "queue family does not support compute operations".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-commandBuffer-cmdpool"],
                 ..Default::default()
-            });
+            }));
         }
 
         if self.builder_state.render_pass.is_some() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "a render pass instance is active".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-renderpass"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-parameter
@@ -968,13 +968,13 @@ where
             .usage()
             .intersects(BufferUsage::STORAGE_BUFFER)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.scratch_data".into(),
                 problem: "the buffer was not created with the `BufferUsage::STORAGE_BUFFER` usage"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03674"],
                 ..Default::default()
-            });
+            }));
         }
 
         let min_acceleration_structure_scratch_offset_alignment = self
@@ -988,20 +988,20 @@ where
             % min_acceleration_structure_scratch_offset_alignment as u64
             != 0
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.scratch_data".into(),
                 problem: "the device address of the buffer is not a multiple of the \
                     `min_acceleration_structure_scratch_offset_alignment` device property"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03710"],
                 ..Default::default()
-            });
+            }));
         }
 
         match dst_acceleration_structure.ty() {
             AccelerationStructureType::TopLevel => {
                 if !matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info".into(),
                         problem: "`dst_acceleration_structure` is a top-level \
                             acceleration structure, but `geometries` is not \
@@ -1012,12 +1012,12 @@ where
                             "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03699",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             AccelerationStructureType::BottomLevel => {
                 if matches!(geometries, AccelerationStructureGeometries::Instances(_)) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info".into(),
                         problem: "`dst_acceleration_structure` is a bottom-level \
                             acceleration structure, but `geometries` is \
@@ -1028,21 +1028,21 @@ where
                             "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03700",
                         ],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             AccelerationStructureType::Generic => (),
         }
 
         if geometries.len() != max_primitive_counts.len() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`info.geometries` and `max_primitive_counts` do not have the same length"
                     .into(),
                 vuids: &[
                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-ppMaxPrimitiveCounts-parameter",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         match geometries {
@@ -1067,7 +1067,7 @@ where
                         .usage()
                         .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer was not created with the \
@@ -1077,7 +1077,7 @@ where
                                 "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     let smallest_component_bits = vertex_format
@@ -1091,7 +1091,7 @@ where
                     if vertex_data.device_address().unwrap().get() % smallest_component_bytes as u64
                         != 0
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].vertex_data", geometry_index)
                                 .into(),
                             problem: "the buffer's device address is not a multiple of the byte \
@@ -1101,7 +1101,7 @@ where
                                 "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03711",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if let Some(index_data) = index_data {
@@ -1111,7 +1111,7 @@ where
                             .usage()
                             .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("info.geometries[{}].index_data", geometry_index)
                                     .into(),
                                 problem: "the buffer was not created with the \
@@ -1120,14 +1120,14 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if index_data.as_bytes().device_address().unwrap().get()
                             % index_data.index_type().size()
                             != 0
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!("info.geometries[{}].index_data", geometry_index)
                                     .into(),
                                 problem: "the buffer's device address is not a multiple \
@@ -1137,7 +1137,7 @@ where
                                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03712",
                                 ],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         // VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03656
@@ -1153,7 +1153,7 @@ where
                             .usage()
                             .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!(
                                     "info.geometries[{}].transform_data",
                                     geometry_index
@@ -1165,11 +1165,11 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if transform_data.device_address().unwrap().get() % 16 != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: format!(
                                     "info.geometries[{}].transform_data",
                                     geometry_index
@@ -1181,7 +1181,7 @@ where
                                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03810",
                                 ],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         // VUID-VkAccelerationStructureBuildRangeInfoKHR-transformOffset-03658
@@ -1206,7 +1206,7 @@ where
                         .usage()
                         .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                     {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].data", geometry_index).into(),
                             problem: "the buffer was not created with the \
                                 `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
@@ -1215,18 +1215,18 @@ where
                                 "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     if data.device_address().unwrap().get() % 8 != 0 {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("info.geometries[{}].data", geometry_index).into(),
                             problem: "the buffer's device address is not a multiple of 8".into(),
                             vuids: &[
                                 "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03714",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
 
                     // VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03659
@@ -1246,7 +1246,7 @@ where
                 let data_buffer = match data {
                     AccelerationStructureGeometryInstancesDataType::Values(data) => {
                         if data.device_address().unwrap().get() % 16 != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "is `AccelerationStructureGeometryInstancesDataType::\
                                     Values` and the buffer's device address is not a multiple of \
@@ -1256,7 +1256,7 @@ where
                                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03715",
                                 ],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         data.buffer()
@@ -1267,7 +1267,7 @@ where
                             .usage()
                             .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "the buffer was not created with the \
                                     `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` \
@@ -1275,11 +1275,11 @@ where
                                     .into(),
                                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         if data.device_address().unwrap().get() % 8 != 0 {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
                                 problem: "is `AccelerationStructureGeometryInstancesDataType::\
                                     Pointers` and the buffer's device address is not a multiple \
@@ -1289,7 +1289,7 @@ where
                                     "VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03716",
                                 ],
                                 ..Default::default()
-                            });
+                            }));
                         }
 
                         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03717
@@ -1303,14 +1303,14 @@ where
                     .usage()
                     .intersects(BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info.geometries.data".into(),
                         problem: "the buffer was not created with the \
                             `BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage"
                             .into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-geometry-03673"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 // VUID-VkAccelerationStructureBuildRangeInfoKHR-primitiveOffset-03660
@@ -1330,34 +1330,34 @@ where
         };
 
         if dst_acceleration_structure.size() < build_size_info.acceleration_structure_size {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.dst_acceleration_structure".into(),
                 problem: "size is too small to hold the resulting acceleration structure data"
                     .into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03652"],
                 ..Default::default()
-            });
+            }));
         }
 
         match mode {
             BuildAccelerationStructureMode::Build => {
                 if scratch_data.size() < build_size_info.build_scratch_size {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info.scratch_data".into(),
                         problem: "size is too small for the build operation".into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03671"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             BuildAccelerationStructureMode::Update(_src_acceleration_structure) => {
                 if scratch_data.size() < build_size_info.update_scratch_size {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "info.scratch_data".into(),
                         problem: "size is too small for the update operation".into(),
                         vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03672"],
                         ..Default::default()
-                    });
+                    }));
                 }
 
                 // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pInfos-03667
@@ -1366,12 +1366,12 @@ where
         }
 
         if geometries.len() as DeviceSize * stride as DeviceSize > indirect_buffer.size() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`info.geometries.len()` * `stride` is greater than the size of \
                     `indirect_buffer`".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03646"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !indirect_buffer
@@ -1379,30 +1379,30 @@ where
             .usage()
             .intersects(BufferUsage::INDIRECT_BUFFER)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "indirect_buffer".into(),
                 problem: "the buffer was not created with the `BufferUsage::INDIRECT_BUFFER` usage".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03647"],
                 ..Default::default()
-            });
+            }));
         }
 
         if indirect_buffer.device_address().unwrap().get() % 4 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "indirect_buffer".into(),
                 problem: "the buffer's device address is not a multiple of 4".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03648"],
                 ..Default::default()
-            });
+            }));
         }
 
         if stride % 4 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "is not a multiple of 4".into(),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectStrides-03787"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-pIndirectDeviceAddresses-03651
@@ -1456,7 +1456,7 @@ where
     pub unsafe fn copy_acceleration_structure(
         &mut self,
         info: CopyAccelerationStructureInfo,
-    ) -> Result<&mut Self, ValidationError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure(&info)?;
 
         Ok(self.copy_acceleration_structure_unchecked(info))
@@ -1465,27 +1465,27 @@ where
     fn validate_copy_acceleration_structure(
         &self,
         info: &CopyAccelerationStructureInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
             .queue_flags
             .intersects(QueueFlags::COMPUTE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "queue family does not support compute operations".into(),
                 vuids: &["VUID-vkCmdCopyAccelerationStructureKHR-commandBuffer-cmdpool"],
                 ..Default::default()
-            });
+            }));
         }
 
         if self.builder_state.render_pass.is_some() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "a render pass instance is active".into(),
                 vuids: &["VUID-vkCmdCopyAccelerationStructureKHR-renderpass"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkCmdCopyAccelerationStructureKHR-pInfo-parameter
@@ -1555,7 +1555,7 @@ where
     pub unsafe fn copy_acceleration_structure_to_memory(
         &mut self,
         info: CopyAccelerationStructureToMemoryInfo,
-    ) -> Result<&mut Self, ValidationError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure_to_memory(&info)?;
 
         Ok(self.copy_acceleration_structure_to_memory_unchecked(info))
@@ -1564,36 +1564,36 @@ where
     fn validate_copy_acceleration_structure_to_memory(
         &self,
         info: &CopyAccelerationStructureToMemoryInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
             .queue_flags
             .intersects(QueueFlags::COMPUTE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "queue family does not support compute operations".into(),
                 vuids: &["VUID-vkCmdCopyAccelerationStructureToMemoryKHR-commandBuffer-cmdpool"],
                 ..Default::default()
-            });
+            }));
         }
 
         if self.builder_state.render_pass.is_some() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "a render pass instance is active".into(),
                 vuids: &["VUID-vkCmdCopyAccelerationStructureToMemoryKHR-renderpass"],
                 ..Default::default()
-            });
+            }));
         }
 
         if info.dst.device_address().unwrap().get() % 256 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.dst".into(),
                 problem: "the device address of the buffer is not a multiple of 256".into(),
                 vuids: &["VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-03740"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-parameter
@@ -1665,7 +1665,7 @@ where
     pub unsafe fn copy_memory_to_acceleration_structure(
         &mut self,
         info: CopyMemoryToAccelerationStructureInfo,
-    ) -> Result<&mut Self, ValidationError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_memory_to_acceleration_structure(&info)?;
 
         Ok(self.copy_memory_to_acceleration_structure_unchecked(info))
@@ -1674,36 +1674,36 @@ where
     fn validate_copy_memory_to_acceleration_structure(
         &self,
         info: &CopyMemoryToAccelerationStructureInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .queue_family_properties()
             .queue_flags
             .intersects(QueueFlags::COMPUTE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "queue family does not support compute operations".into(),
                 vuids: &["VUID-vkCmdCopyMemoryToAccelerationStructureKHR-commandBuffer-cmdpool"],
                 ..Default::default()
-            });
+            }));
         }
 
         if self.builder_state.render_pass.is_some() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "a render pass instance is active".into(),
                 vuids: &["VUID-vkCmdCopyMemoryToAccelerationStructureKHR-renderpass"],
                 ..Default::default()
-            });
+            }));
         }
 
         if info.src.device_address().unwrap().get() % 256 != 0 {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "info.src".into(),
                 problem: "the device address of the buffer is not a multiple of 256".into(),
                 vuids: &["VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-03743"],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-parameter
@@ -1780,7 +1780,7 @@ where
         acceleration_structures: SmallVec<[Arc<AccelerationStructure>; 4]>,
         query_pool: Arc<QueryPool>,
         first_query: u32,
-    ) -> Result<&mut Self, ValidationError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_write_acceleration_structures_properties(
             &acceleration_structures,
             &query_pool,
@@ -1799,7 +1799,7 @@ where
         acceleration_structures: &[Arc<AccelerationStructure>],
         query_pool: &QueryPool,
         first_query: u32,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if acceleration_structures.is_empty() {
             return Ok(());
         }
@@ -1809,23 +1809,23 @@ where
             .queue_flags
             .intersects(QueueFlags::COMPUTE)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "queue family does not support compute operations".into(),
                 vuids: &[
                     "VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-commandBuffer-cmdpool",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         if self.builder_state.render_pass.is_some() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "self".into(),
                 problem: "a render pass instance is active".into(),
                 vuids: &["VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-renderpass"],
                 ..Default::default()
-            });
+            }));
         }
 
         for acs in acceleration_structures {
@@ -1847,13 +1847,13 @@ where
 
         if first_query as usize + acceleration_structures.len() > query_pool.query_count() as usize
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`first_query` + `acceleration_structures.len()` is greater than \
                     `query_pool.query_count`"
                     .into(),
                 vuids: &["VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-query-04880"],
                 ..Default::default()
-            });
+            }));
         }
 
         if !matches!(
@@ -1863,12 +1863,12 @@ where
                 | QueryType::AccelerationStructureCompactedSize
                 | QueryType::AccelerationStructureSerializationSize,
         ) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "query_pool.query_type()".into(),
                 problem: "is not an acceleration structure query".into(),
                 vuids: &["VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-queryType-06742"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())

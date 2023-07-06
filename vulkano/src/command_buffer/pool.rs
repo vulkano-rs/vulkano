@@ -20,7 +20,7 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, Version, VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -170,7 +170,7 @@ impl CommandPool {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -196,7 +196,7 @@ impl CommandPool {
         let fns = self.device.fns();
         (fns.v1_0.reset_command_pool)(self.device.handle(), self.handle, flags)
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -233,7 +233,7 @@ impl CommandPool {
                     out.as_mut_ptr(),
                 )
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
                 out.set_len(command_buffer_count as usize);
                 out
             }
@@ -390,10 +390,10 @@ impl Display for CommandPoolCreationError {
     }
 }
 
-impl From<RuntimeError> for CommandPoolCreationError {
-    fn from(err: RuntimeError) -> Self {
+impl From<VulkanError> for CommandPoolCreationError {
+    fn from(err: VulkanError) -> Self {
         match err {
-            err @ RuntimeError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -522,8 +522,8 @@ impl Display for CommandPoolTrimError {
     }
 }
 
-impl From<RuntimeError> for CommandPoolTrimError {
-    fn from(err: RuntimeError) -> CommandPoolTrimError {
+impl From<VulkanError> for CommandPoolTrimError {
+    fn from(err: VulkanError) -> CommandPoolTrimError {
         panic!("unexpected error: {:?}", err)
     }
 }

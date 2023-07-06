@@ -179,7 +179,7 @@ impl VertexInputState {
         self
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self {
             bindings,
             attributes,
@@ -189,14 +189,14 @@ impl VertexInputState {
         let properties = device.physical_device().properties();
 
         if bindings.len() > properties.max_vertex_input_bindings as usize {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "bindings".into(),
                 problem: "the length exceeds the `max_vertex_input_bindings` limit".into(),
                 vuids: &[
                     "VUID-VkPipelineVertexInputStateCreateInfo-vertexBindingDescriptionCount-00613",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-VkPipelineVertexInputStateCreateInfo-pVertexBindingDescriptions-00616
@@ -209,14 +209,14 @@ impl VertexInputState {
         }
 
         if attributes.len() > properties.max_vertex_input_attributes as usize {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "attributes".into(),
                 problem: "the length exceeds the `max_vertex_input_attributes` limit".into(),
                 vuids: &[
                     "VUID-VkPipelineVertexInputStateCreateInfo-vertexAttributeDescriptionCount-00614",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         for (&location, attribute_desc) in attributes {
@@ -231,7 +231,7 @@ impl VertexInputState {
             } = attribute_desc;
 
             if location > properties.max_vertex_input_attributes {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "attributes".into(),
                     problem: format!(
                         "the location {} exceeds the `max_vertex_input_attributes` limit",
@@ -240,7 +240,7 @@ impl VertexInputState {
                     .into(),
                     vuids: &["VUID-VkVertexInputAttributeDescription-location-00620"],
                     ..Default::default()
-                });
+                }));
             }
 
             let binding_desc = bindings.get(&binding).ok_or(ValidationError {
@@ -260,7 +260,7 @@ impl VertexInputState {
                 && offset as DeviceSize + format.block_size().unwrap()
                     > binding_desc.stride as DeviceSize
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "this device is a portability subset device, and \
                         `attributes[{0}].offset + attributes[{0}].format.block_size()` \
@@ -273,7 +273,7 @@ impl VertexInputState {
                     )])]),
                     vuids: &["VUID-VkVertexInputAttributeDescription-vertexAttributeAccessBeyondStride-04457"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -286,7 +286,7 @@ impl VertexInputState {
 
         for location in unassigned_locations {
             if !attributes.get(&location).is_none() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "`attributes[{}].format` takes up two locations, but \
                         `attributes` also contains a description for location {}",
@@ -295,7 +295,7 @@ impl VertexInputState {
                     .into(),
                     vuids: &["VUID-VkPipelineVertexInputStateCreateInfo-pVertexAttributeDescriptions-00617"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -327,18 +327,18 @@ pub struct VertexInputBindingDescription {
 }
 
 impl VertexInputBindingDescription {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { stride, input_rate } = self;
 
         let properties = device.physical_device().properties();
 
         if stride > properties.max_vertex_input_binding_stride {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "exceeds the `max_vertex_input_binding_stride` limit".into(),
                 vuids: &["VUID-VkVertexInputBindingDescription-stride-00619"],
                 ..Default::default()
-            });
+            }));
         }
 
         if device.enabled_extensions().khr_portability_subset
@@ -349,14 +349,14 @@ impl VertexInputBindingDescription {
                         .unwrap()
                     != 0)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "this device is a portability subset device, and \
                     `stride` is not a multiple of, and at least as large as, the \
                     `min_vertex_input_binding_stride_alignment` limit"
                     .into(),
                 vuids: &["VUID-VkVertexInputBindingDescription-stride-04456"],
                 ..Default::default()
-            });
+            }));
         }
 
         match input_rate {
@@ -365,7 +365,7 @@ impl VertexInputBindingDescription {
                     .enabled_features()
                     .vertex_attribute_instance_rate_divisor
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "input_rate".into(),
                         problem: "is `VertexInputRate::Instance`, and \
                             its `divisor` value is not 1".into(),
@@ -373,7 +373,7 @@ impl VertexInputBindingDescription {
                                 "vertex_attribute_instance_rate_divisor",
                             )])]),
                         vuids: &["VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateDivisor-02229"],
-                    });
+                    }));
                 }
 
                 if divisor == 0
@@ -381,7 +381,7 @@ impl VertexInputBindingDescription {
                         .enabled_features()
                         .vertex_attribute_instance_rate_zero_divisor
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "input_rate".into(),
                         problem: "is `VertexInputRate::Instance`, and \
                             its `divisor` value is 0".into(),
@@ -389,18 +389,18 @@ impl VertexInputBindingDescription {
                                 "vertex_attribute_instance_rate_zero_divisor",
                             )])]),
                         vuids: &["VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateZeroDivisor-02228"],
-                    });
+                    }));
                 }
 
                 if divisor > properties.max_vertex_attrib_divisor.unwrap() {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "input_rate".into(),
                         problem: "is `VertexInputRate::Instance`, and \
                             its `divisor` value exceeds the `max_vertex_attrib_divisor` limit"
                             .into(),
                         vuids: &["VUID-VkVertexInputBindingDivisorDescriptionEXT-divisor-01870"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
             _ => (),
@@ -430,7 +430,7 @@ pub struct VertexInputAttributeDescription {
 }
 
 impl VertexInputAttributeDescription {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             binding,
             format,
@@ -448,21 +448,21 @@ impl VertexInputAttributeDescription {
             })?;
 
         if binding > properties.max_vertex_input_bindings {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "binding".into(),
                 problem: "exceeds the `max_vertex_input_bindings` limit".into(),
                 vuids: &["VUID-VkVertexInputAttributeDescription-binding-00621"],
                 ..Default::default()
-            });
+            }));
         }
 
         if offset > properties.max_vertex_input_attribute_offset {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "exceeds the `max_vertex_input_attribute_offset` limit".into(),
                 vuids: &["VUID-VkVertexInputAttributeDescription-offset-00622"],
                 ..Default::default()
-            });
+            }));
         }
 
         let format_features = unsafe {
@@ -473,13 +473,13 @@ impl VertexInputAttributeDescription {
         };
 
         if !format_features.intersects(FormatFeatures::VERTEX_BUFFER) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "format".into(),
                 problem: "the format features do not include `FormatFeatures::VERTEX_BUFFER`"
                     .into(),
                 vuids: &["VUID-VkVertexInputAttributeDescription-format-00623"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())

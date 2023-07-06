@@ -1862,7 +1862,7 @@ impl Default for MemoryBarrier {
 }
 
 impl MemoryBarrier {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             src_stages,
             src_access,
@@ -1905,71 +1905,71 @@ impl MemoryBarrier {
 
         if !device.enabled_features().synchronization2 {
             if src_stages.contains_flags2() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             if dst_stages.contains_flags2() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             if src_access.contains_flags2() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
 
             if dst_access.contains_flags2() {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if !device.enabled_features().geometry_shader {
             if src_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03929"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03929"],
-                });
+                }));
             }
         }
 
@@ -1978,7 +1978,7 @@ impl MemoryBarrier {
                 PipelineStages::TESSELLATION_CONTROL_SHADER
                     | PipelineStages::TESSELLATION_EVALUATION_SHADER,
             ) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
@@ -1987,14 +1987,14 @@ impl MemoryBarrier {
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03930"],
-                });
+                }));
             }
 
             if dst_stages.intersects(
                 PipelineStages::TESSELLATION_CONTROL_SHADER
                     | PipelineStages::TESSELLATION_EVALUATION_SHADER,
             ) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
@@ -2003,127 +2003,127 @@ impl MemoryBarrier {
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03930"],
-                });
+                }));
             }
         }
 
         if !device.enabled_features().conditional_rendering {
             if src_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03931"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03931"],
-                });
+                }));
             }
         }
 
         if !device.enabled_features().fragment_density_map {
             if src_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03932"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03932"],
-                });
+                }));
             }
         }
 
         if !device.enabled_features().transform_feedback {
             if src_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03933"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03933"],
-                });
+                }));
             }
         }
 
         if !device.enabled_features().mesh_shader {
             if src_stages.intersects(PipelineStages::MESH_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03934"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::MESH_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03934"],
-                });
+                }));
             }
         }
 
         if !device.enabled_features().task_shader {
             if src_stages.intersects(PipelineStages::TASK_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03935"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::TASK_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03935"],
-                });
+                }));
             }
         }
 
@@ -2131,7 +2131,7 @@ impl MemoryBarrier {
             || device.enabled_features().shading_rate_image)
         {
             if src_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
@@ -2139,11 +2139,11 @@ impl MemoryBarrier {
                         RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
@@ -2151,55 +2151,55 @@ impl MemoryBarrier {
                         RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
-                });
+                }));
             }
         }
 
         if !device.enabled_features().subpass_shading {
             if src_stages.intersects(PipelineStages::SUBPASS_SHADING) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04957"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::SUBPASS_SHADING) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04957"],
-                });
+                }));
             }
         }
 
         if !device.enabled_features().invocation_mask {
             if src_stages.intersects(PipelineStages::INVOCATION_MASK) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04995"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::INVOCATION_MASK) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04995"],
-                });
+                }));
             }
         }
 
@@ -2207,30 +2207,30 @@ impl MemoryBarrier {
             || device.enabled_features().ray_tracing_pipeline)
         {
             if src_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-07946"],
-                });
+                }));
             }
 
             if dst_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-07946"],
-                });
+                }));
             }
         }
 
         if !AccessFlags::from(src_stages).contains(src_access) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`src_access` contains one or more access types that are not performed \
                     by any stage in `src_stages`"
                     .into(),
@@ -2278,11 +2278,11 @@ impl MemoryBarrier {
                     "VUID-VkMemoryBarrier2-srcAccessMask-08118",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         if !AccessFlags::from(dst_stages).contains(dst_access) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`dst_access` contains one or more access types that are not performed \
                     by any stage in `dst_stages`"
                     .into(),
@@ -2330,7 +2330,7 @@ impl MemoryBarrier {
                     "VUID-VkMemoryBarrier2-dstAccessMask-08118",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())

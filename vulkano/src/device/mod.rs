@@ -119,7 +119,7 @@ use crate::{
     instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
     memory::ExternalMemoryHandleType,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, RuntimeError, ValidationError, Version,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
@@ -178,7 +178,8 @@ impl Device {
     pub fn new(
         physical_device: Arc<PhysicalDevice>,
         create_info: DeviceCreateInfo,
-    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), VulkanError> {
+    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), Validated<VulkanError>>
+    {
         Self::validate_new(&physical_device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(physical_device, create_info)?) }
@@ -187,7 +188,7 @@ impl Device {
     fn validate_new(
         physical_device: &PhysicalDevice,
         create_info: &DeviceCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         create_info
             .validate(physical_device)
             .map_err(|err| err.add_context("create_info"))?;
@@ -205,13 +206,13 @@ impl Device {
                 .iter()
                 .any(|p| p.as_ref() == physical_device)
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`create_info.physical_devices` is not empty, but does not contain \
                     `physical_device`"
                     .into(),
                 vuids: &["VUID-VkDeviceGroupDeviceCreateInfo-physicalDeviceCount-00377"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -221,7 +222,7 @@ impl Device {
     pub unsafe fn new_unchecked(
         physical_device: Arc<PhysicalDevice>,
         mut create_info: DeviceCreateInfo,
-    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), RuntimeError> {
+    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), VulkanError> {
         // VUID-vkCreateDevice-ppEnabledExtensionNames-01387
         create_info.enabled_extensions.enable_dependencies(
             physical_device.api_version(),
@@ -377,7 +378,7 @@ impl Device {
                 output.as_mut_ptr(),
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -574,7 +575,7 @@ impl Device {
         build_type: AccelerationStructureBuildType,
         build_info: &AccelerationStructureBuildGeometryInfo,
         max_primitive_counts: &[u32],
-    ) -> Result<AccelerationStructureBuildSizesInfo, ValidationError> {
+    ) -> Result<AccelerationStructureBuildSizesInfo, Box<ValidationError>> {
         self.validate_acceleration_structure_build_sizes(
             build_type,
             build_info,
@@ -595,18 +596,18 @@ impl Device {
         build_type: AccelerationStructureBuildType,
         build_info: &AccelerationStructureBuildGeometryInfo,
         max_primitive_counts: &[u32],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.enabled_extensions().khr_acceleration_structure {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_acceleration_structure",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if !self.enabled_features().acceleration_structure {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "acceleration_structure",
                 )])]),
@@ -614,7 +615,7 @@ impl Device {
                     "VUID-vkGetAccelerationStructureBuildSizesKHR-accelerationStructure-08933",
                 ],
                 ..Default::default()
-            });
+            }));
         }
 
         build_type
@@ -645,12 +646,12 @@ impl Device {
             AccelerationStructureGeometries::Triangles(geometries) => {
                 for (index, &primitive_count) in max_primitive_counts.iter().enumerate() {
                     if primitive_count as u64 > max_primitive_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("max_primitive_counts[{}]", index).into(),
                             problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
 
@@ -659,12 +660,12 @@ impl Device {
             AccelerationStructureGeometries::Aabbs(geometries) => {
                 for (index, &primitive_count) in max_primitive_counts.iter().enumerate() {
                     if primitive_count as u64 > max_primitive_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("max_primitive_counts[{}]", index).into(),
                             problem: "exceeds the `max_primitive_count` limit".into(),
                             vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794"],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
 
@@ -673,14 +674,14 @@ impl Device {
             AccelerationStructureGeometries::Instances(_) => {
                 for (index, &instance_count) in max_primitive_counts.iter().enumerate() {
                     if instance_count as u64 > max_instance_count {
-                        return Err(ValidationError {
+                        return Err(Box::new(ValidationError {
                             context: format!("max_primitive_counts[{}]", index).into(),
                             problem: "exceeds the `max_instance_count` limit".into(),
                             vuids: &[
                                 "VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03785",
                             ],
                             ..Default::default()
-                        });
+                        }));
                     }
                 }
 
@@ -689,13 +690,13 @@ impl Device {
         };
 
         if max_primitive_counts.len() != geometry_count {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`build_info.geometries` and `max_primitive_counts` \
                     do not have the same length"
                     .into(),
                 vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-03619"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -741,7 +742,7 @@ impl Device {
     pub fn acceleration_structure_is_compatible(
         &self,
         version_data: &[u8; 2 * ash::vk::UUID_SIZE],
-    ) -> Result<bool, ValidationError> {
+    ) -> Result<bool, Box<ValidationError>> {
         self.validate_acceleration_structure_is_compatible(version_data)?;
 
         unsafe { Ok(self.acceleration_structure_is_compatible_unchecked(version_data)) }
@@ -750,24 +751,24 @@ impl Device {
     fn validate_acceleration_structure_is_compatible(
         &self,
         _version_data: &[u8; 2 * ash::vk::UUID_SIZE],
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.enabled_extensions().khr_acceleration_structure {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_acceleration_structure",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         if !self.enabled_features().acceleration_structure {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::Feature("acceleration_structure")]),
                 ]),
                 vuids: &["VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-accelerationStructure-08928"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -812,7 +813,7 @@ impl Device {
     pub fn descriptor_set_layout_support(
         &self,
         create_info: &DescriptorSetLayoutCreateInfo,
-    ) -> Result<Option<DescriptorSetLayoutSupport>, ValidationError> {
+    ) -> Result<Option<DescriptorSetLayoutSupport>, Box<ValidationError>> {
         self.validate_descriptor_set_layout_support(create_info)?;
 
         unsafe { Ok(self.descriptor_set_layout_support_unchecked(create_info)) }
@@ -821,15 +822,15 @@ impl Device {
     fn validate_descriptor_set_layout_support(
         &self,
         create_info: &DescriptorSetLayoutCreateInfo,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !(self.api_version() >= Version::V1_1 || self.enabled_extensions().khr_maintenance3) {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
                     RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance3")]),
                 ]),
                 ..Default::default()
-            });
+            }));
         }
 
         // VUID-vkGetDescriptorSetLayoutSupport-pCreateInfo-parameter
@@ -957,7 +958,7 @@ impl Device {
         &self,
         handle_type: ExternalMemoryHandleType,
         file: File,
-    ) -> Result<MemoryFdProperties, VulkanError> {
+    ) -> Result<MemoryFdProperties, Validated<VulkanError>> {
         self.validate_memory_fd_properties(handle_type, &file)?;
 
         Ok(self.memory_fd_properties_unchecked(handle_type, file)?)
@@ -967,14 +968,14 @@ impl Device {
         &self,
         handle_type: ExternalMemoryHandleType,
         _file: &File,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.enabled_extensions().khr_external_memory_fd {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_memory_fd",
                 )])]),
                 ..Default::default()
-            });
+            }));
         }
 
         handle_type
@@ -986,12 +987,12 @@ impl Device {
             })?;
 
         if handle_type == ExternalMemoryHandleType::OpaqueFd {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "handle_type".into(),
                 problem: "is `ExternalMemoryHandleType::OpaqueFd`".into(),
                 vuids: &["VUID-vkGetMemoryFdPropertiesKHR-handleType-00674"],
                 ..Default::default()
-            });
+            }));
         }
 
         Ok(())
@@ -1003,7 +1004,7 @@ impl Device {
         &self,
         handle_type: ExternalMemoryHandleType,
         file: File,
-    ) -> Result<MemoryFdProperties, RuntimeError> {
+    ) -> Result<MemoryFdProperties, VulkanError> {
         #[cfg(not(unix))]
         unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
 
@@ -1021,7 +1022,7 @@ impl Device {
                 &mut memory_fd_properties,
             )
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
             Ok(MemoryFdProperties {
                 memory_type_bits: memory_fd_properties.memory_type_bits,
@@ -1056,7 +1057,7 @@ impl Device {
             let fns = self.instance().fns();
             (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info)
                 .result()
-                .map_err(RuntimeError::from)?;
+                .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -1077,7 +1078,7 @@ impl Device {
         let fns = self.fns();
         (fns.v1_0.device_wait_idle)(self.handle)
             .result()
-            .map_err(RuntimeError::from)?;
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -1230,7 +1231,10 @@ impl Default for DeviceCreateInfo {
 }
 
 impl DeviceCreateInfo {
-    pub(crate) fn validate(&self, physical_device: &PhysicalDevice) -> Result<(), ValidationError> {
+    pub(crate) fn validate(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref queue_create_infos,
             ref enabled_extensions,
@@ -1240,12 +1244,12 @@ impl DeviceCreateInfo {
         } = self;
 
         if queue_create_infos.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queue_create_infos".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkDeviceCreateInfo-queueCreateInfoCount-arraylength"],
                 ..Default::default()
-            });
+            }));
         }
 
         for (index, queue_create_info) in queue_create_infos.iter().enumerate() {
@@ -1266,7 +1270,7 @@ impl DeviceCreateInfo {
                 .count()
                 != 1
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: format!(
                         "`queue_create_infos[{}].queue_family_index` occurs more than once in \
                         `queue_create_infos`",
@@ -1275,7 +1279,7 @@ impl DeviceCreateInfo {
                     .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-queueFamilyIndex-02802"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -1312,175 +1316,175 @@ impl DeviceCreateInfo {
 
         if enabled_extensions.ext_buffer_device_address {
             if enabled_extensions.khr_buffer_device_address {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_extensions".into(),
                     problem: "contains `khr_buffer_device_address`, \
                         but also contains `ext_buffer_device_address`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328"],
                     ..Default::default()
-                });
+                }));
             } else if dependency_extensions.khr_buffer_device_address {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_extensions".into(),
                     problem: "contains an extension that requires `khr_buffer_device_address`, \
                         but also contains `ext_buffer_device_address`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328"],
                     ..Default::default()
-                });
+                }));
             }
 
             if physical_device.api_version() >= Version::V1_2
                 && enabled_features.buffer_device_address
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     problem: "the physical device API version is at least 1.2, \
                     `enabled_features` contains `buffer_device_address`, and \
                     `enabled_extensions` contains `ext_buffer_device_address`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-pNext-04748"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if enabled_features.shading_rate_image {
             if enabled_features.pipeline_fragment_shading_rate {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_features".into(),
                     problem: "contains both `shading_rate_image` and \
                         `pipeline_fragment_shading_rate`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-shadingRateImage-04478"],
                     ..Default::default()
-                });
+                }));
             }
 
             if enabled_features.primitive_fragment_shading_rate {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_features".into(),
                     problem: "contains both `shading_rate_image` and \
                         `primitive_fragment_shading_rate`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-shadingRateImage-04479"],
                     ..Default::default()
-                });
+                }));
             }
 
             if enabled_features.attachment_fragment_shading_rate {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_features".into(),
                     problem: "contains both `shading_rate_image` and \
                         `attachment_fragment_shading_rate`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-shadingRateImage-04480"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if enabled_features.fragment_density_map {
             if enabled_features.pipeline_fragment_shading_rate {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_features".into(),
                     problem: "contains both `fragment_density_map` and \
                         `pipeline_fragment_shading_rate`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-shadingRateImage-04481"],
                     ..Default::default()
-                });
+                }));
             }
 
             if enabled_features.primitive_fragment_shading_rate {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_features".into(),
                     problem: "contains both `fragment_density_map` and \
                         `primitive_fragment_shading_rate`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-shadingRateImage-04482"],
                     ..Default::default()
-                });
+                }));
             }
 
             if enabled_features.attachment_fragment_shading_rate {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "enabled_features".into(),
                     problem: "contains both `fragment_density_map` and \
                         `attachment_fragment_shading_rate`"
                         .into(),
                     vuids: &["VUID-VkDeviceCreateInfo-shadingRateImage-04483"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
         if enabled_features.sparse_image_int64_atomics
             && !enabled_features.shader_image_int64_atomics
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "enabled_features".into(),
                 problem: "contains `sparse_image_int64_atomics`, but does not contain \
                     `shader_image_int64_atomics`"
                     .into(),
                 vuids: &["VUID-VkDeviceCreateInfo-None-04896"],
                 ..Default::default()
-            });
+            }));
         }
 
         if enabled_features.sparse_image_float32_atomics
             && !enabled_features.shader_image_float32_atomics
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "enabled_features".into(),
                 problem: "contains `sparse_image_float32_atomics`, but does not contain \
                     `shader_image_float32_atomics`"
                     .into(),
                 vuids: &["VUID-VkDeviceCreateInfo-None-04897"],
                 ..Default::default()
-            });
+            }));
         }
 
         if enabled_features.sparse_image_float32_atomic_add
             && !enabled_features.shader_image_float32_atomic_add
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "enabled_features".into(),
                 problem: "contains `sparse_image_float32_atomic_add`, but does not contain \
                     `shader_image_float32_atomic_add`"
                     .into(),
                 vuids: &["VUID-VkDeviceCreateInfo-None-04898"],
                 ..Default::default()
-            });
+            }));
         }
 
         if enabled_features.sparse_image_float32_atomic_min_max
             && !enabled_features.shader_image_float32_atomic_min_max
         {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "enabled_features".into(),
                 problem: "contains `sparse_image_float32_atomic_min_max`, but does not contain \
                     `shader_image_float32_atomic_min_max`"
                     .into(),
                 vuids: &["VUID-VkDeviceCreateInfo-sparseImageFloat32AtomicMinMax-04975"],
                 ..Default::default()
-            });
+            }));
         }
 
         if enabled_features.descriptor_buffer && enabled_extensions.amd_shader_fragment_mask {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "`enabled_features` contains `descriptor_buffer`, and \
                     `enabled_extensions` contains `amd_shader_fragment_mask`"
                     .into(),
                 vuids: &["VUID-VkDeviceCreateInfo-None-08095"],
                 ..Default::default()
-            });
+            }));
         }
 
         if physical_devices.len() > 1 {
             for (index, group_physical_device) in physical_devices.iter().enumerate() {
                 if physical_devices[..index].contains(group_physical_device) {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "physical_devices".into(),
                         problem: format!(
                             "the physical device at index {} is contained in the list more than \
@@ -1490,7 +1494,7 @@ impl DeviceCreateInfo {
                         .into(),
                         vuids: &["VUID-VkDeviceGroupDeviceCreateInfo-pPhysicalDevices-00375"],
                         ..Default::default()
-                    });
+                    }));
                 }
             }
 
@@ -1500,7 +1504,7 @@ impl DeviceCreateInfo {
                     .enabled_extensions()
                     .khr_device_group_creation)
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "physical_devices".into(),
                     problem: "the length is greater than 1".into(),
                     requires_one_of: RequiresOneOf(&[
@@ -1508,20 +1512,20 @@ impl DeviceCreateInfo {
                         RequiresAllOf(&[Requires::InstanceExtension("khr_device_group_creation")]),
                     ]),
                     ..Default::default()
-                });
+                }));
             }
 
             if !physical_device
                 .instance()
                 .is_same_device_group(physical_devices.iter().map(AsRef::as_ref))
             {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: "physical_devices".into(),
                     problem: "the physical devices do not all belong to the same device group"
                         .into(),
                     vuids: &["VUID-VkDeviceGroupDeviceCreateInfo-pPhysicalDevices-00376"],
                     ..Default::default()
-                });
+                }));
             }
         }
 
@@ -1573,7 +1577,7 @@ impl QueueCreateInfo {
         physical_device: &PhysicalDevice,
         device_extensions: &DeviceExtensions,
         device_features: &Features,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             queue_family_index,
@@ -1606,32 +1610,32 @@ impl QueueCreateInfo {
             })?;
 
         if queues.is_empty() {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 context: "queues".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkDeviceQueueCreateInfo-queueCount-arraylength"],
                 ..Default::default()
-            });
+            }));
         }
 
         if queues.len() > queue_family_properties.queue_count as usize {
-            return Err(ValidationError {
+            return Err(Box::new(ValidationError {
                 problem: "the length of `queues` is greater than the number of queues in the
                     queue family indicated by `queue_family_index`"
                     .into(),
                 vuids: &["VUID-VkDeviceQueueCreateInfo-queueCount-00382"],
                 ..Default::default()
-            });
+            }));
         }
 
         for (index, &priority) in queues.iter().enumerate() {
             if !(0.0..=1.0).contains(&priority) {
-                return Err(ValidationError {
+                return Err(Box::new(ValidationError {
                     context: format!("queues[{}]", index).into(),
                     problem: "is not between 0.0 and 1.0 inclusive".into(),
                     vuids: &["VUID-VkDeviceQueueCreateInfo-pQueuePriorities-00383"],
                     ..Default::default()
-                });
+                }));
             }
         }
 

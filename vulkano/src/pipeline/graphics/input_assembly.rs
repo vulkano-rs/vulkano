@@ -84,7 +84,7 @@ impl InputAssemblyState {
         self
     }
 
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), ValidationError> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             topology,
             primitive_restart_enable,
@@ -106,7 +106,7 @@ impl InputAssemblyState {
                         if device.enabled_extensions().khr_portability_subset
                             && !device.enabled_features().triangle_fans
                         {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 problem: "this device is a portability subset device, and \
                                     `topology` is `PrimitiveTopology::TriangleFan`"
                                     .into(),
@@ -115,7 +115,7 @@ impl InputAssemblyState {
                                 ])]),
                                 vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-triangleFans-04452"],
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
                     PrimitiveTopology::LineListWithAdjacency
@@ -123,7 +123,7 @@ impl InputAssemblyState {
                     | PrimitiveTopology::TriangleListWithAdjacency
                     | PrimitiveTopology::TriangleStripWithAdjacency => {
                         if !device.enabled_features().geometry_shader {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "topology".into(),
                                 problem: "is `PrimitiveTopology::*WithAdjacency`".into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
@@ -132,12 +132,12 @@ impl InputAssemblyState {
                                 vuids: &[
                                     "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429",
                                 ],
-                            });
+                            }));
                         }
                     }
                     PrimitiveTopology::PatchList => {
                         if !device.enabled_features().tessellation_shader {
-                            return Err(ValidationError {
+                            return Err(Box::new(ValidationError {
                                 context: "topology".into(),
                                 problem: "is `PrimitiveTopology::PatchList`".into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
@@ -146,7 +146,7 @@ impl InputAssemblyState {
                                 vuids: &[
                                     "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430",
                                 ],
-                            });
+                            }));
                         }
                     }
                     _ => (),
@@ -165,7 +165,7 @@ impl InputAssemblyState {
                 if !(device.api_version() >= Version::V1_3
                     || device.enabled_features().extended_dynamic_state)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "topology".into(),
                         problem: "is dynamic".into(),
                         requires_one_of: RequiresOneOf(&[
@@ -174,7 +174,7 @@ impl InputAssemblyState {
                         ]),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }
@@ -191,7 +191,7 @@ impl InputAssemblyState {
                             | PrimitiveTopology::TriangleListWithAdjacency,
                         ) => {
                             if !device.enabled_features().primitive_topology_list_restart {
-                                return Err(ValidationError {
+                                return Err(Box::new(ValidationError {
                                     problem: "`topology` is `PrimitiveTopology::*List`, and \
                                         `primitive_restart_enable` is `true`"
                                         .into(),
@@ -200,7 +200,7 @@ impl InputAssemblyState {
                                     ])]),
                                     vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252"],
                                     ..Default::default()
-                                });
+                                }));
                             }
                         }
                         PartialStateMode::Fixed(PrimitiveTopology::PatchList) => {
@@ -208,7 +208,7 @@ impl InputAssemblyState {
                                 .enabled_features()
                                 .primitive_topology_patch_list_restart
                             {
-                                return Err(ValidationError {
+                                return Err(Box::new(ValidationError {
                                     problem: "`topology` is `PrimitiveTopology::PatchList`, and \
                                         `primitive_restart_enable` is `true`"
                                         .into(),
@@ -217,7 +217,7 @@ impl InputAssemblyState {
                                     ])]),
                                     vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06253"],
                                     ..Default::default()
-                                });
+                                }));
                             }
                         }
                         _ => (),
@@ -228,7 +228,7 @@ impl InputAssemblyState {
                 if !(device.api_version() >= Version::V1_3
                     || device.enabled_features().extended_dynamic_state2)
                 {
-                    return Err(ValidationError {
+                    return Err(Box::new(ValidationError {
                         context: "primitive_restart_enable".into(),
                         problem: "is dynamic".into(),
                         requires_one_of: RequiresOneOf(&[
@@ -237,7 +237,7 @@ impl InputAssemblyState {
                         ]),
                         // vuids?
                         ..Default::default()
-                    });
+                    }));
                 }
             }
         }

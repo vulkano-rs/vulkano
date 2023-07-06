@@ -169,7 +169,7 @@ impl DescriptorSetInner {
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
         descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
-    ) -> Result<Self, ValidationError> {
+    ) -> Result<Self, Box<ValidationError>> {
         assert!(
             !layout
                 .flags()
