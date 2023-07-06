@@ -65,9 +65,7 @@
 //! queue. If not possible, the queue will be entirely flushed and the command added to a fresh new
 //! queue with a fresh new barrier prototype.
 
-pub use self::builder::{
-    AutoCommandBufferBuilder, CommandBufferBeginError, CommandBufferBuildError,
-};
+pub use self::builder::*;
 pub(in crate::command_buffer) use self::builder::{
     BeginRenderPassState, BeginRenderingState, QueryState, RenderPassState,
     RenderPassStateAttachments, RenderPassStateType, SetOrPush,

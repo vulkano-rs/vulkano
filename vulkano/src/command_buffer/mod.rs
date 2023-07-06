@@ -117,7 +117,6 @@ pub use self::{
             CopyBufferToImageInfo, CopyError, CopyErrorResource, CopyImageInfo,
             CopyImageToBufferInfo, ImageBlit, ImageCopy, ImageResolve, ResolveImageInfo,
         },
-        debug::DebugUtilsError,
         pipeline::PipelineExecutionError,
         query::QueryError,
         render_pass::{
@@ -133,14 +132,15 @@ pub use self::{
 };
 use crate::{
     buffer::{Buffer, Subbuffer},
-    format::Format,
-    image::{Image, ImageLayout, ImageSubresourceRange, SampleCount},
+    device::{Device, DeviceOwned},
+    format::{Format, FormatFeatures},
+    image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange, SampleCount},
     macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,
     render_pass::{Framebuffer, Subpass},
     sync::{semaphore::Semaphore, PipelineStageAccessFlags, PipelineStages},
-    DeviceSize,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
 use bytemuck::{Pod, Zeroable};
@@ -265,6 +265,93 @@ impl Default for CommandBufferInheritanceInfo {
     }
 }
 
+impl CommandBufferInheritanceInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref render_pass,
+            occlusion_query,
+            query_statistics_flags,
+            _ne: _,
+        } = self;
+
+        if let Some(render_pass) = render_pass {
+            // VUID-VkCommandBufferBeginInfo-flags-06000
+            // VUID-VkCommandBufferBeginInfo-flags-06002
+            // Ensured by the definition of the `CommandBufferInheritanceRenderPassType` enum.
+
+            match render_pass {
+                CommandBufferInheritanceRenderPassType::BeginRenderPass(render_pass_info) => {
+                    render_pass_info
+                        .validate(device)
+                        .map_err(|err| err.add_context("render_pass"))?;
+                }
+                CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
+                    rendering_info
+                        .validate(device)
+                        .map_err(|err| err.add_context("render_pass"))?;
+                }
+            }
+        }
+
+        if let Some(control_flags) = occlusion_query {
+            control_flags
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "occlusion_query".into(),
+                    vuids: &["VUID-VkCommandBufferInheritanceInfo-queryFlags-00057"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            if !device.enabled_features().inherited_queries {
+                return Err(Box::new(ValidationError {
+                    context: "occlusion_query".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "inherited_queries",
+                    )])]),
+                    vuids: &["VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056"],
+                }));
+            }
+
+            if control_flags.intersects(QueryControlFlags::PRECISE)
+                && !device.enabled_features().occlusion_query_precise
+            {
+                return Err(Box::new(ValidationError {
+                    context: "occlusion_query".into(),
+                    problem: "contains `QueryControlFlags::PRECISE`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "occlusion_query_precise",
+                    )])]),
+                    vuids: &["VUID-vkBeginCommandBuffer-commandBuffer-00052"],
+                }));
+            }
+        }
+
+        query_statistics_flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "query_statistics_flags".into(),
+                vuids: &["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(Box::new(ValidationError {
+                context: "query_statistics_flags".into(),
+                problem: "is not empty".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "pipeline_statistics_query",
+                )])]),
+                vuids: &["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058"],
+            }));
+        }
+
+        Ok(())
+    }
+}
+
 /// Selects the type of render pass for command buffer inheritance.
 #[derive(Clone, Debug)]
 pub enum CommandBufferInheritanceRenderPassType {
@@ -321,6 +408,37 @@ impl CommandBufferInheritanceRenderPassInfo {
             subpass,
             framebuffer: None,
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref subpass,
+            ref framebuffer,
+        } = self;
+
+        // VUID-VkCommandBufferInheritanceInfo-commonparent
+        assert_eq!(device, subpass.render_pass().device().as_ref());
+
+        // VUID-VkCommandBufferBeginInfo-flags-06001
+        // Ensured by how the `Subpass` type is constructed.
+
+        if let Some(framebuffer) = framebuffer {
+            // VUID-VkCommandBufferInheritanceInfo-commonparent
+            assert_eq!(device, framebuffer.device().as_ref());
+
+            if !framebuffer
+                .render_pass()
+                .is_compatible_with(subpass.render_pass())
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`framebuffer` is not compatible with `subpass.render_pass()`".into(),
+                    vuids: &["VUID-VkCommandBufferBeginInfo-flags-00055"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -385,6 +503,177 @@ impl Default for CommandBufferInheritanceRenderingInfo {
             stencil_attachment_format: None,
             rasterization_samples: SampleCount::Sample1,
         }
+    }
+}
+
+impl CommandBufferInheritanceRenderingInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            view_mask,
+            ref color_attachment_formats,
+            depth_attachment_format,
+            stencil_attachment_format,
+            rasterization_samples,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        if view_mask != 0 && !device.enabled_features().multiview {
+            return Err(Box::new(ValidationError {
+                context: "view_mask".into(),
+                problem: "is not zero".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008"],
+            }));
+        }
+
+        let view_count = u32::BITS - view_mask.leading_zeros();
+
+        if view_count > properties.max_multiview_view_count.unwrap_or(0) {
+            return Err(Box::new(ValidationError {
+                context: "view_mask".into(),
+                problem: "the number of views exceeds the \
+                    `max_multiview_view_count` limit"
+                    .into(),
+                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-viewMask-06009"],
+                ..Default::default()
+            }));
+        }
+
+        for (index, format) in color_attachment_formats
+            .iter()
+            .enumerate()
+            .flat_map(|(i, f)| f.map(|f| (i, f)))
+        {
+            format.validate_device(device).map_err(|err| ValidationError {
+                context: format!("color_attachment_formats[{}]", index).into(),
+                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+            let potential_format_features = unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(format)
+                    .potential_format_features()
+            };
+
+            if !potential_format_features.intersects(FormatFeatures::COLOR_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: format!("color_attachment_formats[{}]", index).into(),
+                    problem: "the potential format features do not contain \
+                        `FormatFeatures::COLOR_ATTACHMENT`".into(),
+                    vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-06006"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if let Some(format) = depth_attachment_format {
+            format.validate_device(device).map_err(|err| ValidationError {
+                context: "depth_attachment_format".into(),
+                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+            if !format.aspects().intersects(ImageAspects::DEPTH) {
+                return Err(Box::new(ValidationError {
+                    context: "depth_attachment_format".into(),
+                    problem: "does not have a depth aspect".into(),
+                    vuids: &[
+                        "VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06540",
+                    ],
+                    ..Default::default()
+                }));
+            }
+
+            let potential_format_features = unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(format)
+                    .potential_format_features()
+            };
+
+            if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: "depth_attachment_format".into(),
+                    problem: "the potential format features do not contain \
+                        `FormatFeatures::DEPTH_STENCIL_ATTACHMENT`"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06007",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if let Some(format) = stencil_attachment_format {
+            format.validate_device(device).map_err(|err| ValidationError {
+                context: "stencil_attachment_format".into(),
+                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+            if !format.aspects().intersects(ImageAspects::STENCIL) {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_attachment_format".into(),
+                    problem: "does not have a stencil aspect".into(),
+                    vuids: &[
+                        "VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06541",
+                    ],
+                    ..Default::default()
+                }));
+            }
+
+            let potential_format_features = unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(format)
+                    .potential_format_features()
+            };
+
+            if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_attachment_format".into(),
+                    problem: "the potential format features do not contain \
+                        `FormatFeatures::DEPTH_STENCIL_ATTACHMENT`"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06199",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if let (Some(depth_format), Some(stencil_format)) =
+            (depth_attachment_format, stencil_attachment_format)
+        {
+            if depth_format != stencil_format {
+                return Err(Box::new(ValidationError {
+                    problem: "`depth_attachment_format` and `stencil_attachment_format` are both \
+                        `Some`, but are not equal"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06200",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        rasterization_samples
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "rasterization_samples".into(),
+                vuids: &[
+                    "VUID-VkCommandBufferInheritanceRenderingInfo-rasterizationSamples-parameter",
+                ],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
     }
 }
 

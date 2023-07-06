@@ -19,20 +19,12 @@ use crate::{
     command_buffer::CommandBufferLevel,
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    macros::impl_id_counter,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanError, VulkanObject,
+    macros::{impl_id_counter, vulkan_bitflags},
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{
-    cell::Cell,
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    marker::PhantomData,
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
-    sync::Arc,
-};
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Represents a Vulkan command pool.
 ///
@@ -47,9 +39,9 @@ pub struct CommandPool {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
+    flags: CommandPoolCreateFlags,
     queue_family_index: u32,
-    _transient: bool,
-    _reset_command_buffer: bool,
+
     // Unimplement `Sync`, as Vulkan command pools are not thread-safe.
     _marker: PhantomData<Cell<ash::vk::CommandPool>>,
 }
@@ -58,30 +50,59 @@ impl CommandPool {
     /// Creates a new `CommandPool`.
     pub fn new(
         device: Arc<Device>,
-        mut create_info: CommandPoolCreateInfo,
-    ) -> Result<CommandPool, CommandPoolCreationError> {
-        Self::validate(&device, &mut create_info)?;
-        let handle = unsafe { Self::create(&device, &create_info)? };
+        create_info: CommandPoolCreateInfo,
+    ) -> Result<CommandPool, Validated<VulkanError>> {
+        Self::validate_new(&device, &create_info)?;
 
-        let CommandPoolCreateInfo {
-            queue_family_index,
-            transient,
-            reset_command_buffer,
-            _ne: _,
-        } = create_info;
-
-        Ok(CommandPool {
-            handle,
-            device: InstanceOwnedDebugWrapper(device),
-            id: Self::next_id(),
-            queue_family_index,
-            _transient: transient,
-            _reset_command_buffer: reset_command_buffer,
-            _marker: PhantomData,
-        })
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
-    /// Creates a new `UnsafeCommandPool` from a raw object handle.
+    fn validate_new(
+        device: &Device,
+        create_info: &CommandPoolCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: CommandPoolCreateInfo,
+    ) -> Result<Self, VulkanError> {
+        let &CommandPoolCreateInfo {
+            flags,
+            queue_family_index,
+            _ne: _,
+        } = &create_info;
+
+        let create_info_vk = ash::vk::CommandPoolCreateInfo {
+            flags: flags.into(),
+            queue_family_index,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.v1_0.create_command_pool)(
+                device.handle(),
+                &create_info_vk,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Self::from_handle(device, handle, create_info))
+    }
+
+    /// Creates a new `CommandPool` from a raw object handle.
     ///
     /// # Safety
     ///
@@ -94,9 +115,8 @@ impl CommandPool {
         create_info: CommandPoolCreateInfo,
     ) -> CommandPool {
         let CommandPoolCreateInfo {
+            flags,
             queue_family_index,
-            transient,
-            reset_command_buffer,
             _ne: _,
         } = create_info;
 
@@ -104,97 +124,54 @@ impl CommandPool {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
+
+            flags,
             queue_family_index,
-            _transient: transient,
-            _reset_command_buffer: reset_command_buffer,
+
             _marker: PhantomData,
         }
     }
 
-    fn validate(
-        device: &Device,
-        create_info: &mut CommandPoolCreateInfo,
-    ) -> Result<(), CommandPoolCreationError> {
-        let &mut CommandPoolCreateInfo {
-            queue_family_index,
-            transient: _,
-            reset_command_buffer: _,
-            _ne: _,
-        } = create_info;
-
-        // VUID-vkCreateCommandPool-queueFamilyIndex-01937
-        if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
-            return Err(CommandPoolCreationError::QueueFamilyIndexOutOfRange {
-                queue_family_index,
-                queue_family_count: device.physical_device().queue_family_properties().len() as u32,
-            });
-        }
-
-        Ok(())
+    /// Returns the flags that the command pool was created with.
+    #[inline]
+    pub fn flags(&self) -> CommandPoolCreateFlags {
+        self.flags
     }
 
-    unsafe fn create(
-        device: &Device,
-        create_info: &CommandPoolCreateInfo,
-    ) -> Result<ash::vk::CommandPool, CommandPoolCreationError> {
-        let &CommandPoolCreateInfo {
-            queue_family_index,
-            transient,
-            reset_command_buffer,
-            _ne: _,
-        } = create_info;
-
-        let mut flags = ash::vk::CommandPoolCreateFlags::empty();
-
-        if transient {
-            flags |= ash::vk::CommandPoolCreateFlags::TRANSIENT;
-        }
-
-        if reset_command_buffer {
-            flags |= ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
-        }
-
-        let create_info = ash::vk::CommandPoolCreateInfo {
-            flags,
-            queue_family_index,
-            ..Default::default()
-        };
-
-        let handle = {
-            let fns = device.fns();
-            let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_command_pool)(
-                device.handle(),
-                &create_info,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
-            .result()
-            .map_err(VulkanError::from)?;
-            output.assume_init()
-        };
-
-        Ok(handle)
+    /// Returns the queue family on which command buffers of this pool can be executed.
+    #[inline]
+    pub fn queue_family_index(&self) -> u32 {
+        self.queue_family_index
     }
 
     /// Resets the pool, which resets all the command buffers that were allocated from it.
     ///
-    /// If `release_resources` is true, it is a hint to the implementation that it should free all
-    /// the memory internally allocated for this pool.
-    ///
     /// # Safety
     ///
-    /// - The command buffers allocated from this pool jump to the initial state.
+    /// - The command buffers allocated from this pool must not be in the pending state.
     #[inline]
-    pub unsafe fn reset(&self, release_resources: bool) -> Result<(), OomError> {
-        let flags = if release_resources {
-            ash::vk::CommandPoolResetFlags::RELEASE_RESOURCES
-        } else {
-            ash::vk::CommandPoolResetFlags::empty()
-        };
+    pub unsafe fn reset(&self, flags: CommandPoolResetFlags) -> Result<(), Validated<VulkanError>> {
+        self.validate_reset(flags)?;
 
+        Ok(self.reset_unchecked(flags)?)
+    }
+
+    fn validate_reset(&self, flags: CommandPoolResetFlags) -> Result<(), Box<ValidationError>> {
+        flags
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-vkResetCommandPool-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reset_unchecked(&self, flags: CommandPoolResetFlags) -> Result<(), VulkanError> {
         let fns = self.device.fns();
-        (fns.v1_0.reset_command_pool)(self.device.handle(), self.handle, flags)
+        (fns.v1_0.reset_command_pool)(self.device.handle(), self.handle, flags.into())
             .result()
             .map_err(VulkanError::from)?;
 
@@ -206,7 +183,7 @@ impl CommandPool {
     pub fn allocate_command_buffers(
         &self,
         allocate_info: CommandBufferAllocateInfo,
-    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc>, OomError> {
+    ) -> Result<impl ExactSizeIterator<Item = CommandPoolAlloc>, VulkanError> {
         let CommandBufferAllocateInfo {
             level,
             command_buffer_count,
@@ -258,15 +235,39 @@ impl CommandPool {
     pub unsafe fn free_command_buffers(
         &self,
         command_buffers: impl IntoIterator<Item = CommandPoolAlloc>,
+    ) -> Result<(), Box<ValidationError>> {
+        let command_buffers: SmallVec<[_; 4]> = command_buffers.into_iter().collect();
+        self.validate_free_command_buffers(&command_buffers)?;
+
+        self.free_command_buffers_unchecked(command_buffers);
+        Ok(())
+    }
+
+    fn validate_free_command_buffers(
+        &self,
+        _command_buffers: &[CommandPoolAlloc],
+    ) -> Result<(), Box<ValidationError>> {
+        // VUID-vkFreeCommandBuffers-pCommandBuffers-00047
+        // VUID-vkFreeCommandBuffers-pCommandBuffers-parent
+        // Unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn free_command_buffers_unchecked(
+        &self,
+        command_buffers: impl IntoIterator<Item = CommandPoolAlloc>,
     ) {
-        let command_buffers: SmallVec<[_; 4]> =
+        let command_buffers_vk: SmallVec<[_; 4]> =
             command_buffers.into_iter().map(|cb| cb.handle).collect();
+
         let fns = self.device.fns();
         (fns.v1_0.free_command_buffers)(
             self.device.handle(),
             self.handle,
-            command_buffers.len() as u32,
-            command_buffers.as_ptr(),
+            command_buffers_vk.len() as u32,
+            command_buffers_vk.as_ptr(),
         )
     }
 
@@ -281,44 +282,46 @@ impl CommandPool {
     /// Since this operation is purely an optimization it is legitimate to call this function and
     /// simply ignore any possible error.
     #[inline]
-    pub fn trim(&self) -> Result<(), CommandPoolTrimError> {
+    pub fn trim(&self) -> Result<(), Box<ValidationError>> {
+        self.validate_trim()?;
+
+        unsafe { self.trim_unchecked() }
+        Ok(())
+    }
+
+    fn validate_trim(&self) -> Result<(), Box<ValidationError>> {
         if !(self.device.api_version() >= Version::V1_1
             || self.device.enabled_extensions().khr_maintenance1)
         {
-            return Err(CommandPoolTrimError::RequirementNotMet {
-                required_for: "`CommandPool::trim`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
                     RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance1")]),
                 ]),
-            });
+                ..Default::default()
+            }));
         }
 
-        unsafe {
-            let fns = self.device.fns();
-
-            if self.device.api_version() >= Version::V1_1 {
-                (fns.v1_1.trim_command_pool)(
-                    self.device.handle(),
-                    self.handle,
-                    ash::vk::CommandPoolTrimFlags::empty(),
-                );
-            } else {
-                (fns.khr_maintenance1.trim_command_pool_khr)(
-                    self.device.handle(),
-                    self.handle,
-                    ash::vk::CommandPoolTrimFlagsKHR::empty(),
-                );
-            }
-
-            Ok(())
-        }
+        Ok(())
     }
 
-    /// Returns the queue family on which command buffers of this pool can be executed.
-    #[inline]
-    pub fn queue_family_index(&self) -> u32 {
-        self.queue_family_index
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn trim_unchecked(&self) {
+        let fns = self.device.fns();
+
+        if self.device.api_version() >= Version::V1_1 {
+            (fns.v1_1.trim_command_pool)(
+                self.device.handle(),
+                self.handle,
+                ash::vk::CommandPoolTrimFlags::empty(),
+            );
+        } else {
+            (fns.khr_maintenance1.trim_command_pool_khr)(
+                self.device.handle(),
+                self.handle,
+                ash::vk::CommandPoolTrimFlagsKHR::empty(),
+            );
+        }
     }
 }
 
@@ -350,74 +353,19 @@ unsafe impl DeviceOwned for CommandPool {
 
 impl_id_counter!(CommandPool);
 
-/// Error that can happen when creating a `CommandPool`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CommandPoolCreationError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// The provided `queue_family_index` was not less than the number of queue families in the
-    /// physical device.
-    QueueFamilyIndexOutOfRange {
-        queue_family_index: u32,
-        queue_family_count: u32,
-    },
-}
-
-impl Error for CommandPoolCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for CommandPoolCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory",),
-            Self::QueueFamilyIndexOutOfRange {
-                queue_family_index,
-                queue_family_count,
-            } => write!(
-                f,
-                "the provided `queue_family_index` ({}) was not less than the number of queue \
-                families in the physical device ({})",
-                queue_family_index, queue_family_count,
-            ),
-        }
-    }
-}
-
-impl From<VulkanError> for CommandPoolCreationError {
-    fn from(err: VulkanError) -> Self {
-        match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
 /// Parameters to create an `CommandPool`.
 #[derive(Clone, Debug)]
 pub struct CommandPoolCreateInfo {
+    /// Additional properties of the command pool.
+    ///
+    /// The default value is empty.
+    pub flags: CommandPoolCreateFlags,
+
     /// The index of the queue family that this pool is created for. All command buffers allocated
     /// from this pool must be submitted on a queue belonging to that family.
     ///
     /// The default value is `u32::MAX`, which must be overridden.
     pub queue_family_index: u32,
-
-    /// A hint to the implementation that the command buffers allocated from this pool will be
-    /// short-lived.
-    ///
-    /// The default value is `false`.
-    pub transient: bool,
-
-    /// Whether the command buffers allocated from this pool can be reset individually.
-    ///
-    /// The default value is `false`.
-    pub reset_command_buffer: bool,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -426,15 +374,76 @@ impl Default for CommandPoolCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: CommandPoolCreateFlags::empty(),
             queue_family_index: u32::MAX,
-            transient: false,
-            reset_command_buffer: false,
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-/// Parameters to allocate an `UnsafeCommandPoolAlloc`.
+impl CommandPoolCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            flags,
+            queue_family_index,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkCommandPoolCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
+            return Err(Box::new(ValidationError {
+                context: "queue_family_index".into(),
+                problem: "is not less than the number of queue families in the physical device"
+                    .into(),
+                vuids: &["VUID-vkCreateCommandPool-queueFamilyIndex-01937"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Additional properties of the command pool.
+    CommandPoolCreateFlags = CommandPoolCreateFlags(u32);
+
+    /// A hint to the implementation that the command buffers allocated from this pool will be
+    /// short-lived.
+    TRANSIENT = TRANSIENT,
+
+    /// Command buffers allocated from this pool can be reset individually.
+    RESET_COMMAND_BUFFER = RESET_COMMAND_BUFFER,
+
+    /* TODO: enable
+    // TODO: document
+    PROTECTED = PROTECTED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)])
+    ]), */
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Additional properties of the command pool reset operation.
+    CommandPoolResetFlags = CommandPoolResetFlags(u32);
+
+    /// A hint to the implementation that it should free all the memory internally allocated
+    /// for this pool.
+    RELEASE_RESOURCES = RELEASE_RESOURCES,
+}
+
+/// Parameters to allocate a `CommandPoolAlloc`.
 #[derive(Clone, Debug)]
 pub struct CommandBufferAllocateInfo {
     /// The level of command buffer to allocate.
@@ -496,46 +505,12 @@ unsafe impl DeviceOwned for CommandPoolAlloc {
 
 impl_id_counter!(CommandPoolAlloc);
 
-/// Error that can happen when trimming command pools.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum CommandPoolTrimError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
-
-impl Error for CommandPoolTrimError {}
-
-impl Display for CommandPoolTrimError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
-
-impl From<VulkanError> for CommandPoolTrimError {
-    fn from(err: VulkanError) -> CommandPoolTrimError {
-        panic!("unexpected error: {:?}", err)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        CommandPool, CommandPoolCreateInfo, CommandPoolCreationError, CommandPoolTrimError,
-    };
+    use super::{CommandPool, CommandPoolCreateInfo};
     use crate::{
         command_buffer::{pool::CommandBufferAllocateInfo, CommandBufferLevel},
-        Requires, RequiresAllOf, RequiresOneOf, Version,
+        Validated,
     };
 
     #[test]
@@ -575,47 +550,8 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(CommandPoolCreationError::QueueFamilyIndexOutOfRange { .. }) => (),
+            Err(Validated::ValidationError(_)) => (),
             _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn check_maintenance_when_trim() {
-        let (device, queue) = gfx_dev_and_queue!();
-        let pool = CommandPool::new(
-            device.clone(),
-            CommandPoolCreateInfo {
-                queue_family_index: queue.queue_family_index(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        if device.api_version() >= Version::V1_1 {
-            if matches!(
-                pool.trim(),
-                Err(CommandPoolTrimError::RequirementNotMet {
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf([Requires::DeviceExtension(
-                        "khr_maintenance1"
-                    )]),]),
-                    ..
-                })
-            ) {
-                panic!()
-            }
-        } else {
-            if !matches!(
-                pool.trim(),
-                Err(CommandPoolTrimError::RequirementNotMet {
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf([Requires::DeviceExtension(
-                        "khr_maintenance1"
-                    )]),]),
-                    ..
-                })
-            ) {
-                panic!()
-            }
         }
     }
 
