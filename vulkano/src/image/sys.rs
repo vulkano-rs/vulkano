@@ -780,7 +780,7 @@ impl RawImage {
                     if self.tiling() != ImageTiling::Linear {
                         return Err(Box::new(ValidationError {
                             problem: format!(
-                                "`allocations[{}].allocation_type()` is `AllocationType::Linear` \
+                                "`allocations[{}].allocation_type()` is `AllocationType::Linear`, \
                                 but `self.tiling()` is not `ImageTiling::Linear`",
                                 index
                             )
@@ -794,7 +794,7 @@ impl RawImage {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`allocations[{}].allocation_type()` is \
-                                `AllocationType::NonLinear` but `self.tiling()` is not \
+                                `AllocationType::NonLinear`, but `self.tiling()` is not \
                                 `ImageTiling::Optimal`",
                                 index
                             )
