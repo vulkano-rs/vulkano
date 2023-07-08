@@ -162,6 +162,8 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_external_memory_dma_buf`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_external_memory_dma_buf.html)
 - [`VK_EXT_filter_cubic`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_filter_cubic.html)
 - [`VK_EXT_headless_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_headless_surface.html)
+- [`VK_EXT_image_2d_view_of_3d`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_2d_view_of_3d.html)
+- [`VK_EXT_image_drm_format_modifier`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_drm_format_modifier.html)
 - [`VK_EXT_index_type_uint8`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_index_type_uint8.html)
 - [`VK_EXT_line_rasterization`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_line_rasterization.html)
 - [`VK_EXT_metal_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_metal_surface.html)
@@ -207,11 +209,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `VkDebugUtilsObjectNameInfoEXT` extending `VkPipelineShaderStageCreateInfo`
 - [`VK_EXT_full_screen_exclusive`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_full_screen_exclusive.html)
 	- `vkGetPhysicalDeviceSurfacePresentModes2EXT`
-- [`VK_EXT_image_drm_format_modifier`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_drm_format_modifier.html)
-	- `vkGetImageDrmFormatModifierPropertiesEXT` / `VkDrmFormatModifierPropertiesEXT` / `VkDrmFormatModifierProperties2EXT` / `VkImageDrmFormatModifierPropertiesEXT`
-	- `VkDrmFormatModifierPropertiesListEXT` / `VkDrmFormatModifierPropertiesList2EXT`
-	- `VkImageDrmFormatModifierListCreateInfoEXT`
-	- `VkPhysicalDeviceImageDrmFormatModifierInfoEXT`
 - [`VK_EXT_swapchain_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_swapchain_maintenance1.html)
 	- `vkReleaseSwapchainImagesEXT` / `VkReleaseSwapchainImagesInfoEXT`
 	- `VkSwapchainPresentFenceInfoEXT`
@@ -276,7 +273,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_global_priority_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_global_priority_query.html) (promoted)
 - [`VK_EXT_graphics_pipeline_library`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_graphics_pipeline_library.html)
 - [`VK_EXT_hdr_metadata`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_hdr_metadata.html)
-- [`VK_EXT_image_2d_view_of_3d`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_2d_view_of_3d.html)
 - [`VK_EXT_image_compression_control`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_compression_control.html)
 - [`VK_EXT_image_compression_control_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_compression_control_swapchain.html)
 - [`VK_EXT_image_sliced_view_of_3d`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_sliced_view_of_3d.html)
