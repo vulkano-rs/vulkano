@@ -737,9 +737,8 @@ impl RawImage {
                         return Err(Box::new(ValidationError {
                             problem: "`self.flags()` contains `ImageCreateFlags::DISJOINT`, and \
                                 `self.tiling()` is `ImageTiling::Optimal` or \
-                                `ImageTiling::Linear`, but \
-                                the length of `allocations` does not equal \
-                                the number of planes in the format of the image"
+                                `ImageTiling::Linear`, but the length of `allocations` does not \
+                                equal the number of planes in the format of the image"
                                 .into(),
                             ..Default::default()
                         }));
@@ -749,10 +748,9 @@ impl RawImage {
                     if allocations.len() != self.drm_format_modifier.unwrap().1 as usize {
                         return Err(Box::new(ValidationError {
                             problem: "`self.flags()` contains `ImageCreateFlags::DISJOINT`, and \
-                                `self.tiling()` is `ImageTiling::DrmFormatModifier`, but \
-                                the length of `allocations` does not equal \
-                                the number of memory planes of the DRM format modifier of the \
-                                image"
+                                `self.tiling()` is `ImageTiling::DrmFormatModifier`, but the \
+                                length of `allocations` does not equal the number of memory planes \
+                                of the DRM format modifier of the image"
                                 .into(),
                             ..Default::default()
                         }));
@@ -774,15 +772,37 @@ impl RawImage {
             .zip(self.memory_requirements.iter())
             .enumerate()
         {
-            if allocation.allocation_type() == AllocationType::Linear {
-                return Err(Box::new(ValidationError {
-                    problem: format!(
-                        "`allocations[{}].allocation_type()` is `AllocationType::Linear`",
-                        index
-                    )
-                    .into(),
-                    ..Default::default()
-                }));
+            match allocation.allocation_type() {
+                AllocationType::Unknown => {
+                    // This allocation type is suitable for all image tilings by definition.
+                }
+                AllocationType::Linear => {
+                    if self.tiling() != ImageTiling::Linear {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`allocations[{}].allocation_type()` is `AllocationType::Linear` \
+                                but `self.tiling()` is not `ImageTiling::Linear`",
+                                index
+                            )
+                            .into(),
+                            ..Default::default()
+                        }));
+                    }
+                }
+                AllocationType::NonLinear => {
+                    if self.tiling() != ImageTiling::Optimal {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`allocations[{}].allocation_type()` is \
+                                `AllocationType::NonLinear` but `self.tiling()` is not \
+                                `ImageTiling::Optimal`",
+                                index
+                            )
+                            .into(),
+                            ..Default::default()
+                        }));
+                    }
+                }
             }
 
             let memory = allocation.device_memory();
