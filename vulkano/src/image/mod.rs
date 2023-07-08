@@ -1300,7 +1300,7 @@ vulkan_enum! {
 /// ```
 #[inline]
 pub fn max_mip_levels(extent: [u32; 3]) -> u32 {
-    // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#resources-image-miplevel-sizing
+    // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#resources-image-mip-level-sizing
     //
     // This calculates `floor(log2(max(width, height, depth))) + 1` using fast integer operations.
     32 - (extent[0] | extent[1] | extent[2]).leading_zeros()
