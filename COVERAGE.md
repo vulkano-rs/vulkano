@@ -30,6 +30,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_external_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore.html)
 - [`VK_KHR_external_semaphore_capabilities`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
 - [`VK_KHR_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance1.html)
+- [`VK_KHR_maintenance2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance2.html)
 - [`VK_KHR_maintenance3`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance3.html)
 - [`VK_KHR_multiview`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_multiview.html)
 - [`VK_KHR_relaxed_block_layout`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_relaxed_block_layout.html)
@@ -41,8 +42,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Partially supported
 
-- [`VK_KHR_maintenance2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance2.html)
-	- `VK_IMAGE_CREATE_EXTENDED_USAGE_BIT`
 - [`VK_KHR_sampler_ycbcr_conversion`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_sampler_ycbcr_conversion.html)
 	- `VkSamplerYcbcrConversionImageFormatPropertiesKHR`
 
