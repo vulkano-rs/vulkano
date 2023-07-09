@@ -743,9 +743,8 @@ impl<'d> MemoryAllocateInfo<'d> {
 
             // VUID-VkMemoryAllocateInfo-pNext-00639
             // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
-            // TODO: how do you fullfill this when you don't know the image or buffer parameters?
-            // Does exporting memory require specifying these parameters up front, and does it tie
-            // the allocation to only images or buffers of that type?
+            // Impossible to validate here, instead this is validated in `RawBuffer::bind_memory`
+            // and `RawImage::bind_memory`.
         }
 
         if !flags.is_empty() {

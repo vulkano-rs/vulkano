@@ -538,14 +538,14 @@ impl PhysicalDevice {
             /* Input */
 
             let &ExternalBufferInfo {
-                handle_type,
+                flags,
                 usage,
-                sparse,
+                handle_type,
                 _ne: _,
             } = info;
 
             let external_buffer_info = ash::vk::PhysicalDeviceExternalBufferInfo {
-                flags: sparse.map(Into::into).unwrap_or_default(),
+                flags: flags.into(),
                 usage: usage.into(),
                 handle_type: handle_type.into(),
                 ..Default::default()

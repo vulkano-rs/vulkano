@@ -730,6 +730,8 @@ impl RawImage {
         &self,
         allocations: &[MemoryAlloc],
     ) -> Result<(), Box<ValidationError>> {
+        let physical_device = self.device().physical_device();
+
         if self.flags.intersects(ImageCreateFlags::DISJOINT) {
             match self.tiling {
                 ImageTiling::Optimal | ImageTiling::Linear => {
@@ -770,7 +772,8 @@ impl RawImage {
             }
         }
 
-        for (index, (allocation, memory_requirements)) in (allocations.iter())
+        for (index, (allocation, memory_requirements)) in allocations
+            .iter()
             .zip(self.memory_requirements.iter())
             .enumerate()
         {
@@ -787,11 +790,8 @@ impl RawImage {
 
             let memory = allocation.device_memory();
             let memory_offset = allocation.offset();
-            let memory_type = &self
-                .device
-                .physical_device()
-                .memory_properties()
-                .memory_types[memory.memory_type_index() as usize];
+            let memory_type = &physical_device.memory_properties().memory_types
+                [memory.memory_type_index() as usize];
 
             // VUID-VkBindImageMemoryInfo-commonparent
             assert_eq!(self.device(), memory.device());
@@ -904,22 +904,106 @@ impl RawImage {
                 }));
             }
 
-            if !memory.export_handle_types().is_empty()
-                && !memory
-                    .export_handle_types()
-                    .intersects(self.external_memory_handle_types)
-            {
-                return Err(Box::new(ValidationError {
-                    problem: format!(
-                        "`allocations[{}].device_memory().export_handle_types()` is not empty, \
-                        but it does not share at least one memory type with \
-                        `self.external_memory_handle_types()`",
-                        index
-                    )
-                    .into(),
-                    vuids: &["VUID-VkBindImageMemoryInfo-memory-02728"],
-                    ..Default::default()
-                }));
+            if !memory.export_handle_types().is_empty() {
+                if !self
+                    .external_memory_handle_types
+                    .intersects(memory.export_handle_types())
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`allocations[{}].device_memory().export_handle_types()` is not empty, \
+                            but it does not share at least one memory type with \
+                            `self.external_memory_handle_types()`",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkBindImageMemoryInfo-memory-02728"],
+                        ..Default::default()
+                    }));
+                }
+
+                for handle_type in memory.export_handle_types() {
+                    let image_format_properties = unsafe {
+                        physical_device.image_format_properties_unchecked(ImageFormatInfo {
+                            flags: self.flags,
+                            format: self.format,
+                            image_type: self.image_type,
+                            tiling: self.tiling,
+                            usage: self.usage,
+                            stencil_usage: self.stencil_usage,
+                            external_memory_handle_type: Some(handle_type),
+                            image_view_type: None,
+                            drm_format_modifier_info: self.drm_format_modifier().map(
+                                |(drm_format_modifier, _)| ImageDrmFormatModifierInfo {
+                                    drm_format_modifier,
+                                    sharing: self.sharing.clone(),
+                                    _ne: crate::NonExhaustive(()),
+                                },
+                            ),
+                            _ne: crate::NonExhaustive(()),
+                        })
+                    }
+                    .map_err(|_| ValidationError {
+                        problem: "`PhysicalDevice::image_format_properties` returned an error"
+                            .into(),
+                        ..Default::default()
+                    })?
+                    .unwrap();
+
+                    if image_format_properties
+                        .external_memory_properties
+                        .dedicated_only
+                        && !memory.is_dedicated()
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`allocations[{}].device_memory().export_handle_types()` has the \
+                                `{:?}` flag set, which requires a dedicated allocation as returned \
+                                by `PhysicalDevice::external_buffer_properties`, but \
+                                `allocations[{}].device_memory()` is not a dedicated allocation",
+                                index, handle_type, index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkMemoryAllocateInfo-pNext-00639"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if !image_format_properties
+                        .external_memory_properties
+                        .exportable
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`allocations[{}].device_memory().export_handle_types()` has the \
+                                `{:?}` flag set, but the flag is not supported for exporting, as \
+                                returned by `PhysicalDevice::image_format_properties`",
+                                index, handle_type,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkExportMemoryAllocateInfo-handleTypes-00656"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if !image_format_properties
+                        .external_memory_properties
+                        .compatible_handle_types
+                        .contains(memory.export_handle_types())
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`allocation.device_memory().export_handle_types()` has the `{:?}` \
+                                flag set, but the flag is not compatible with the other flags set, \
+                                as returned by `PhysicalDevice::image_format_properties`",
+                                handle_type,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkExportMemoryAllocateInfo-handleTypes-00656"],
+                            ..Default::default()
+                        }));
+                    }
+                }
             }
 
             if let Some(handle_type) = memory.imported_handle_type() {
@@ -2377,8 +2461,7 @@ impl ImageCreateInfo {
                     }));
                 }
 
-                let queue_family_count =
-                    device.physical_device().queue_family_properties().len() as u32;
+                let queue_family_count = physical_device.queue_family_properties().len() as u32;
 
                 for (index, &queue_family_index) in queue_family_indices.iter().enumerate() {
                     if queue_family_indices[..index].contains(&queue_family_index) {
@@ -2591,8 +2674,7 @@ impl ImageCreateInfo {
         for drm_format_modifier in iter_or_none(drm_format_modifiers.iter().copied()) {
             for external_memory_handle_type in iter_or_none(external_memory_handle_types) {
                 let image_format_properties = unsafe {
-                    device
-                        .physical_device()
+                    physical_device
                         .image_format_properties_unchecked(ImageFormatInfo {
                             flags,
                             format: Some(format),
