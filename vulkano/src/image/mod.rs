@@ -69,7 +69,7 @@ use crate::{
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{
         allocator::{AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryAllocatorError},
-        is_aligned, DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
         ExternalMemoryProperties, MemoryRequirements,
     },
     range_map::RangeMap,
@@ -171,14 +171,10 @@ impl Image {
                 .map_err(ImageAllocateError::AllocateMemory)?
         };
 
-        debug_assert!(is_aligned(
-            allocation.offset(),
-            requirements.layout.alignment(),
-        ));
-        debug_assert!(allocation.size() == requirements.layout.size());
-
-        let image = unsafe { raw_image.bind_memory_unchecked([allocation]) }
-            .map_err(|(err, _, _)| ImageAllocateError::BindMemory(err))?;
+        let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
+            err.map(ImageAllocateError::BindMemory)
+                .map_validation(|err| err.add_context("RawImage::bind_memory"))
+        })?;
 
         Ok(Arc::new(image))
     }
