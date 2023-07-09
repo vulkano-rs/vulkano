@@ -959,7 +959,7 @@ impl RawImage {
                             problem: format!(
                                 "`allocations[{}].device_memory().export_handle_types()` has the \
                                 `{:?}` flag set, which requires a dedicated allocation as returned \
-                                by `PhysicalDevice::external_buffer_properties`, but \
+                                by `PhysicalDevice::image_format_properties`, but \
                                 `allocations[{}].device_memory()` is not a dedicated allocation",
                                 index, handle_type, index,
                             )
