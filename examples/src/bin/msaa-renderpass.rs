@@ -373,7 +373,7 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            usage: MemoryUsage::Upload,
+            usage: MemoryUsage::Download,
             ..Default::default()
         },
         (0..1024 * 1024 * 4).map(|_| 0u8),

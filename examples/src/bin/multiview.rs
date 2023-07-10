@@ -318,7 +318,7 @@ fn main() {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                usage: MemoryUsage::Download,
                 ..Default::default()
             },
             (0..image.extent()[0] * image.extent()[1] * 4).map(|_| 0u8),
