@@ -39,6 +39,7 @@ Changes to buffers:
 - The `Subbuffer::{try_cast, try_cast_slice, try_from_bytes}` functions were replaced by `Subbuffer::reinterpret[_ref]`.
 - The `buffer_with_range(_array)` constructor of `WriteDescriptorSet` now takes `DescriptorBufferInfo` structs.
 - Index buffers are now specified using the `IndexBuffer` enum instead of the `Index` trait.
+- `ExternalBufferInfo::sparse` was replaced by a `flags` field.
 
 Changes to errors:
 - Added new types `ValidationError` and `Validated` (enum of `ValidationError` + something else) to return errors from any function. Some existing functions have been converted to use these types, others will follow later.
