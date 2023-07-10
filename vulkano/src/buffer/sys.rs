@@ -15,6 +15,7 @@
 
 use super::{Buffer, BufferCreateFlags, BufferMemory, BufferUsage};
 use crate::{
+    buffer::ExternalBufferInfo,
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
@@ -289,14 +290,13 @@ impl RawBuffer {
     fn validate_bind_memory(&self, allocation: &MemoryAlloc) -> Result<(), Box<ValidationError>> {
         assert_ne!(allocation.allocation_type(), AllocationType::NonLinear);
 
+        let physical_device = self.device().physical_device();
+
         let memory_requirements = &self.memory_requirements;
         let memory = allocation.device_memory();
         let memory_offset = allocation.offset();
-        let memory_type = &self
-            .device
-            .physical_device()
-            .memory_properties()
-            .memory_types[memory.memory_type_index() as usize];
+        let memory_type =
+            &physical_device.memory_properties().memory_types[memory.memory_type_index() as usize];
 
         // VUID-VkBindBufferMemoryInfo-commonparent
         assert_eq!(self.device(), memory.device());
@@ -380,19 +380,86 @@ impl RawBuffer {
             }));
         }
 
-        if !memory.export_handle_types().is_empty()
-            && !self
+        if !memory.export_handle_types().is_empty() {
+            if !self
                 .external_memory_handle_types
                 .intersects(memory.export_handle_types())
-        {
-            return Err(Box::new(ValidationError {
-                problem: "`allocation.device_memory().export_handle_types()` is not empty, but \
-                    it does not share at least one memory type with \
-                    `self.external_memory_handle_types()`"
-                    .into(),
-                vuids: &["VUID-VkBindBufferMemoryInfo-memory-02726"],
-                ..Default::default()
-            }));
+            {
+                return Err(Box::new(ValidationError {
+                    problem:
+                        "`allocation.device_memory().export_handle_types()` is not empty, but \
+                        it does not share at least one handle type with \
+                        `self.external_memory_handle_types()`"
+                            .into(),
+                    vuids: &["VUID-VkBindBufferMemoryInfo-memory-02726"],
+                    ..Default::default()
+                }));
+            }
+
+            for handle_type in memory.export_handle_types() {
+                let external_buffer_properties = unsafe {
+                    physical_device.external_buffer_properties_unchecked(ExternalBufferInfo {
+                        flags: self.flags,
+                        usage: self.usage,
+                        handle_type,
+                        _ne: crate::NonExhaustive(()),
+                    })
+                };
+
+                if external_buffer_properties
+                    .external_memory_properties
+                    .dedicated_only
+                    && !memory.is_dedicated()
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`allocation.device_memory().export_handle_types()` has the `{:?}` \
+                            flag set, which requires a dedicated allocation as returned by \
+                            `PhysicalDevice::external_buffer_properties`, but \
+                            `allocation.device_memory()` is not a dedicated allocation",
+                            handle_type,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkMemoryAllocateInfo-pNext-00639"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !external_buffer_properties
+                    .external_memory_properties
+                    .exportable
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`allocation.device_memory().export_handle_types()` has the `{:?}` \
+                            flag set, but the flag is not supported for exporting, as returned by \
+                            `PhysicalDevice::external_buffer_properties`",
+                            handle_type,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkExportMemoryAllocateInfo-handleTypes-00656"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !external_buffer_properties
+                    .external_memory_properties
+                    .compatible_handle_types
+                    .contains(memory.export_handle_types())
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`allocation.device_memory().export_handle_types()` has the `{:?}` \
+                            flag set, but the flag is not compatible with the other flags set, as \
+                            returned by `PhysicalDevice::external_buffer_properties`",
+                            handle_type,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkExportMemoryAllocateInfo-handleTypes-00656"],
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         if let Some(handle_type) = memory.imported_handle_type() {

@@ -890,18 +890,19 @@ vulkan_bitflags! {
     },*/
 }
 
-/// The buffer configuration to query in
-/// [`PhysicalDevice::external_buffer_properties`](crate::device::physical::PhysicalDevice::external_buffer_properties).
+/// The buffer configuration to query in [`PhysicalDevice::external_buffer_properties`].
+///
+/// [`PhysicalDevice::external_buffer_properties`]: crate::device::physical::PhysicalDevice::external_buffer_properties
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalBufferInfo {
-    /// The external handle type that will be used with the buffer.
-    pub handle_type: ExternalMemoryHandleType,
+    /// The flags that will be used.
+    pub flags: BufferCreateFlags,
 
     /// The usage that the buffer will have.
     pub usage: BufferUsage,
 
-    /// The sparse binding parameters that will be used.
-    pub sparse: Option<BufferCreateFlags>,
+    /// The external handle type that will be used with the buffer.
+    pub handle_type: ExternalMemoryHandleType,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -911,9 +912,9 @@ impl ExternalBufferInfo {
     #[inline]
     pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
         Self {
-            handle_type,
+            flags: BufferCreateFlags::empty(),
             usage: BufferUsage::empty(),
-            sparse: None,
+            handle_type,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -923,11 +924,19 @@ impl ExternalBufferInfo {
         physical_device: &PhysicalDevice,
     ) -> Result<(), Box<ValidationError>> {
         let &Self {
-            handle_type,
+            flags,
             usage,
-            sparse: _,
+            handle_type,
             _ne: _,
         } = self;
+
+        flags
+            .validate_physical_device(physical_device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
         usage
             .validate_physical_device(physical_device)
