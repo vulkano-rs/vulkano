@@ -429,7 +429,7 @@ impl Buffer {
         let mut requirements = *raw_buffer.memory_requirements();
         requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
 
-        let mut allocation = unsafe {
+        let allocation = unsafe {
             allocator
                 .allocate_unchecked(
                     requirements,
@@ -439,10 +439,6 @@ impl Buffer {
                 )
                 .map_err(BufferAllocateError::AllocateMemory)?
         };
-
-        // The implementation might require a larger size than we wanted. With this it is easier to
-        // invalidate and flush the whole buffer. It does not affect the allocation in any way.
-        allocation.shrink(layout.size());
 
         let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
             err.map(BufferAllocateError::BindMemory)
