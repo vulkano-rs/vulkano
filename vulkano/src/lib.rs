@@ -411,6 +411,22 @@ pub enum Validated<E> {
 }
 
 impl<E> Validated<E> {
+    /// Maps the inner `Error` value using the provided function, or does nothing if the value is
+    /// `ValidationError`.
+    pub fn map<F>(self, f: impl FnOnce(E) -> F) -> Validated<F> {
+        match self {
+            Self::Error(err) => Validated::Error(f(err)),
+            Self::ValidationError(err) => Validated::ValidationError(err),
+        }
+    }
+
+    fn map_validation(self, f: impl FnOnce(Box<ValidationError>) -> Box<ValidationError>) -> Self {
+        match self {
+            Self::Error(err) => Self::Error(err),
+            Self::ValidationError(err) => Self::ValidationError(f(err)),
+        }
+    }
+
     /// Returns the inner `Error` value, or panics if it contains `ValidationError`.
     pub fn unwrap(self) -> E {
         match self {

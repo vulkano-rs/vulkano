@@ -111,7 +111,7 @@ use crate::{
             AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocator,
             MemoryAllocatorError,
         },
-        is_aligned, DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
         ExternalMemoryProperties, MemoryRequirements,
     },
     range_map::RangeMap,
@@ -429,7 +429,7 @@ impl Buffer {
         let mut requirements = *raw_buffer.memory_requirements();
         requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
 
-        let mut allocation = unsafe {
+        let allocation = unsafe {
             allocator
                 .allocate_unchecked(
                     requirements,
@@ -439,19 +439,13 @@ impl Buffer {
                 )
                 .map_err(BufferAllocateError::AllocateMemory)?
         };
-        debug_assert!(is_aligned(
-            allocation.offset(),
-            requirements.layout.alignment(),
-        ));
-        debug_assert!(allocation.size() == requirements.layout.size());
 
-        // The implementation might require a larger size than we wanted. With this it is easier to
-        // invalidate and flush the whole buffer. It does not affect the allocation in any way.
-        allocation.shrink(layout.size());
+        let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
+            err.map(BufferAllocateError::BindMemory)
+                .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
+        })?;
 
-        unsafe { raw_buffer.bind_memory_unchecked(allocation) }
-            .map(Arc::new)
-            .map_err(|(err, _, _)| BufferAllocateError::BindMemory(err).into())
+        Ok(Arc::new(buffer))
     }
 
     fn from_raw(inner: RawBuffer, memory: BufferMemory) -> Self {
