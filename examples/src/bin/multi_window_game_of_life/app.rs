@@ -12,10 +12,7 @@ use crate::{
     WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use std::{collections::HashMap, sync::Arc};
-use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue, format::Format,
-};
+use vulkano::prelude::*;
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
     window::{VulkanoWindows, WindowDescriptor},

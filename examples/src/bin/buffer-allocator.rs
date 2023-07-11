@@ -13,43 +13,7 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use vulkano::{
-    buffer::{
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        BufferContents, BufferUsage,
-    },
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    image::{view::ImageView, Image, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},

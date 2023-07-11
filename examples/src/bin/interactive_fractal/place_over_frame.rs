@@ -9,19 +9,7 @@
 
 use crate::pixels_draw_pipeline::PixelsDrawPipeline;
 use std::sync::Arc;
-use vulkano::{
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
-    },
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
-    device::Queue,
-    format::Format,
-    image::view::ImageView,
-    memory::allocator::MemoryAllocator,
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    sync::GpuFuture,
-};
+use vulkano::prelude::*;
 
 /// A render pass which places an incoming image over frame filling it.
 pub struct RenderPassPlaceOverFrame {

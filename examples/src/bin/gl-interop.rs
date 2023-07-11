@@ -14,63 +14,17 @@ mod linux {
         time::Instant,
     };
     use vulkano::{
-        buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-        command_buffer::{
-            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-            CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
-            SubpassContents,
-        },
-        descriptor_set::{
-            allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-        },
-        device::{
-            physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-            QueueCreateInfo, QueueFlags,
-        },
-        format::Format,
-        image::{
-            sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
-            sys::RawImage,
-            view::ImageView,
-            Image, ImageCreateFlags, ImageCreateInfo, ImageType, ImageUsage,
-        },
-        instance::{
-            debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
-            Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
-        },
-        memory::{
-            allocator::{
-                AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryUsage,
-                StandardMemoryAllocator,
-            },
-            DedicatedAllocation, DeviceMemory, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-            MemoryAllocateInfo,
-        },
-        pipeline::{
-            graphics::{
-                color_blend::ColorBlendState,
-                input_assembly::{InputAssemblyState, PrimitiveTopology},
-                multisample::MultisampleState,
-                rasterization::RasterizationState,
-                vertex_input::{Vertex, VertexDefinition},
-                viewport::{Viewport, ViewportState},
-                GraphicsPipelineCreateInfo,
-            },
-            layout::PipelineDescriptorSetLayoutCreateInfo,
-            GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-            PipelineShaderStageCreateInfo,
-        },
-        render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-        swapchain::{AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
+        command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
+        instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
+        memory::{allocator::MemoryAlloc, ExternalMemoryHandleType, ExternalMemoryHandleTypes},
+        prelude::*,
         sync::{
-            now,
+            self,
             semaphore::{
                 ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, Semaphore,
                 SemaphoreCreateInfo,
             },
-            FlushError, GpuFuture,
         },
-        VulkanLibrary,
     };
     use winit::{
         event::{Event, WindowEvent},
@@ -277,7 +231,7 @@ mod linux {
 
         let mut recreate_swapchain = false;
         let mut previous_frame_end: Option<Box<dyn GpuFuture>> =
-            Some(Box::new(now(device.clone())));
+            Some(Box::new(sync::now(device.clone())));
 
         event_loop.run(move |event, _, control_flow| {
             match event {

@@ -14,43 +14,8 @@
 
 use std::{sync::Arc, time::SystemTime};
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    image::{view::ImageView, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        compute::ComputePipelineCreateInfo,
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::{InputAssemblyState, PrimitiveTopology},
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    swapchain::{
-        acquire_next_image, PresentMode, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
-    sync::{self, future::FenceSignalFuture, GpuFuture},
-    VulkanLibrary,
+    prelude::*,
+    sync::{self, future::FenceSignalFuture},
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -429,6 +394,7 @@ fn main() {
                 .expect("failed to create descriptor set layouts"),
         )
         .expect("failed to create pipeline layout");
+
         ComputePipeline::new(
             device.clone(),
             None,
@@ -438,7 +404,6 @@ fn main() {
     };
 
     // Create a new descriptor set for binding vertices as a storage buffer.
-    use vulkano::pipeline::Pipeline; // Required to access the `layout` method of pipeline.
     let descriptor_set = PersistentDescriptorSet::new(
         &descriptor_set_allocator,
         compute_pipeline
@@ -488,6 +453,7 @@ fn main() {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass, 0).unwrap();
+
         GraphicsPipeline::new(
             device.clone(),
             None,

@@ -12,11 +12,7 @@ use crate::{
 };
 use cgmath::Vector2;
 use std::{sync::Arc, time::Instant};
-use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue,
-    image::view::ImageView, memory::allocator::StandardMemoryAllocator, sync::GpuFuture,
-};
+use vulkano::prelude::*;
 use vulkano_util::{renderer::VulkanoWindowRenderer, window::WindowDescriptor};
 use winit::{
     dpi::PhysicalPosition,

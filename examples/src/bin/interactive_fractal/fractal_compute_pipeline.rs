@@ -10,25 +10,7 @@
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
-use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryCommandBufferAbstract,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::Queue,
-    image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    sync::GpuFuture,
-};
+use vulkano::prelude::*;
 
 pub struct FractalComputePipeline {
     queue: Arc<Queue>,
@@ -87,6 +69,7 @@ impl FractalComputePipeline {
                     .unwrap(),
             )
             .unwrap();
+
             ComputePipeline::new(
                 device.clone(),
                 None,

@@ -11,26 +11,7 @@ use crate::app::App;
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
-use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryAutoCommandBuffer,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::Queue,
-    format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
-    pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    sync::GpuFuture,
-};
+use vulkano::prelude::*;
 
 /// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and
 /// color image is used to show the output. Because on each step we determine state in parallel, we

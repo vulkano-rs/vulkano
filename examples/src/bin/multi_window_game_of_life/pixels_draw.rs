@@ -9,37 +9,7 @@
 
 use crate::app::App;
 use std::sync::Arc;
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::Queue,
-    image::{
-        sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
-        view::ImageView,
-    },
-    memory::allocator::{AllocationCreateInfo, MemoryUsage},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    render_pass::Subpass,
-};
+use vulkano::prelude::*;
 
 /// Vertex for textured quads.
 #[derive(BufferContents, Vertex)]

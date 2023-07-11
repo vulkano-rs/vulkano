@@ -8,25 +8,7 @@
 // according to those terms.
 
 use std::sync::Arc;
-use vulkano::{
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, ClearAttachment,
-        ClearRect, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    image::{view::ImageView, Image, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
-    swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},

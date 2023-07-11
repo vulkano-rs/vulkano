@@ -14,31 +14,7 @@
 // achieve the maximal performance that particular device can provide.
 
 use std::{fs::File, io::BufWriter, path::Path};
-use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyImageToBufferInfo,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    sync::{self, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -201,6 +177,7 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
+
         ComputePipeline::new(
             device.clone(),
             None,

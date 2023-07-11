@@ -14,29 +14,7 @@
 // without having to rebind descriptor sets.
 
 use std::{iter::repeat, mem::size_of};
-use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorBufferInfo,
-        DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    sync::{self, GpuFuture},
-    DeviceSize, VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();

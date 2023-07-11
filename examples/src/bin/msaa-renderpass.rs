@@ -63,37 +63,7 @@
 // an error), instead it is called *resolving* the image.
 
 use std::{fs::File, io::BufWriter, path::Path};
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyImageToBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    sync::GpuFuture,
-    VulkanLibrary,
-};
+use vulkano::prelude::*;
 
 fn main() {
     // The usual Vulkan initialization.

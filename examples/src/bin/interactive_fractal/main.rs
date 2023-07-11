@@ -20,7 +20,7 @@
 // - A simple `InputState` to interact with the application.
 
 use crate::app::FractalApp;
-use vulkano::{image::ImageUsage, swapchain::PresentMode, sync::GpuFuture};
+use vulkano::prelude::*;
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
     renderer::{VulkanoWindowRenderer, DEFAULT_IMAGE_FORMAT},

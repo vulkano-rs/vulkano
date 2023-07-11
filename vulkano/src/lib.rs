@@ -190,6 +190,7 @@ mod macros;
 pub mod memory;
 pub mod padded;
 pub mod pipeline;
+pub mod prelude;
 pub mod query;
 mod range_map;
 pub mod range_set;

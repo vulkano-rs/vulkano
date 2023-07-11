@@ -14,20 +14,7 @@ use super::{
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
 use std::sync::Arc;
-use vulkano::{
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBufferAbstract,
-        SubpassContents,
-    },
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
-    device::Queue,
-    format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
-    memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    sync::GpuFuture,
-};
+use vulkano::prelude::*;
 
 /// System that contains the necessary facilities for rendering a single frame.
 pub struct FrameSystem {

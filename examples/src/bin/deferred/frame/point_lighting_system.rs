@@ -7,38 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::LightingVertex;
 use cgmath::{Matrix4, Vector3};
 use std::sync::Arc;
-use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::Queue,
-    image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
-    pipeline::{
-        graphics::{
-            color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    render_pass::Subpass,
-};
-
-use super::LightingVertex;
+use vulkano::prelude::*;
 
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,

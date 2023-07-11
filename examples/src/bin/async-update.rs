@@ -47,50 +47,7 @@ use std::{
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
-        ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
-        PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-        QueueCreateInfo, QueueFlags,
-    },
-    format::Format,
-    image::{
-        sampler::{Sampler, SamplerCreateInfo},
-        view::ImageView,
-        Image, ImageCreateInfo, ImageType, ImageUsage,
-    },
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::{InputAssemblyState, PrimitiveTopology},
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},

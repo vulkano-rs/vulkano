@@ -9,28 +9,7 @@
 
 // TODO: Give a paragraph about what specialization are and what problems they solve.
 
-use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    sync::{self, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -132,6 +111,7 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
+
         ComputePipeline::new(
             device.clone(),
             None,

@@ -13,28 +13,7 @@
 // been more or more used for general-purpose operations as well. This is called "General-Purpose
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
-use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    sync::{self, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -150,6 +129,7 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
+
         ComputePipeline::new(
             device.clone(),
             None,

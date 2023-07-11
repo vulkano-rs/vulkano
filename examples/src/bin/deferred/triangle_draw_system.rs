@@ -8,30 +8,7 @@
 // according to those terms.
 
 use std::sync::Arc;
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
-    },
-    device::Queue,
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            depth_stencil::DepthStencilState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-    },
-    render_pass::Subpass,
-};
+use vulkano::prelude::*;
 
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,

@@ -13,44 +13,7 @@
 // stereoscopic rendering where the left and right eye only differ in a small position offset.
 
 use std::{fs::File, io::BufWriter, path::Path};
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
-        CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
-        QueueCreateInfo, QueueFlags,
-    },
-    format::Format,
-    image::{
-        view::ImageView, Image, ImageCreateInfo, ImageLayout, ImageSubresourceLayers, ImageType,
-        ImageUsage, SampleCount,
-    },
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-    },
-    render_pass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentReference, AttachmentStoreOp,
-        Framebuffer, FramebufferCreateInfo, RenderPass, RenderPassCreateInfo, Subpass,
-        SubpassDescription,
-    },
-    sync::{self, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();

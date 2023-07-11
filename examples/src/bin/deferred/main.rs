@@ -31,22 +31,7 @@ use crate::{
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
 use std::sync::Arc;
-use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    image::{view::ImageView, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
-    swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},

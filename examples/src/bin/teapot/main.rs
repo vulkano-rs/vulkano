@@ -10,50 +10,7 @@
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
 use examples::{Normal, Position, INDICES, NORMALS, POSITIONS};
 use std::{sync::Arc, time::Instant};
-use vulkano::{
-    buffer::{
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-        Buffer, BufferCreateInfo, BufferUsage,
-    },
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
-        QueueCreateInfo, QueueFlags,
-    },
-    format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            depth_stencil::DepthStencilState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::EntryPoint,
-    swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
-};
+use vulkano::{prelude::*, sync};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},

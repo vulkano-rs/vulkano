@@ -22,7 +22,7 @@
 use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Error as FmtError, Formatter};
-use vulkano::padded::Padded;
+use vulkano::prelude::*;
 
 vulkano_shaders::shader! {
     ty: "compute",

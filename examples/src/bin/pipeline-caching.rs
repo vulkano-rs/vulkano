@@ -28,20 +28,7 @@ use std::{
     fs::{remove_file, rename, File},
     io::{Read, Write},
 };
-use vulkano::{
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    pipeline::{
-        cache::{PipelineCache, PipelineCacheCreateInfo},
-        compute::ComputePipelineCreateInfo,
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        ComputePipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-    },
-    VulkanLibrary,
-};
+use vulkano::prelude::*;
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -144,6 +131,7 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
+
         ComputePipeline::new(
             device.clone(),
             Some(pipeline_cache.clone()),

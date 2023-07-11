@@ -9,17 +9,11 @@
 
 use std::sync::Arc;
 use vulkano::{
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    instance::debug::{
+        DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+        DebugUtilsMessengerCreateInfo,
     },
-    instance::{
-        debug::{
-            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
-            DebugUtilsMessengerCreateInfo,
-        },
-        Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
-    },
-    VulkanLibrary,
+    prelude::*,
 };
 
 fn main() {
