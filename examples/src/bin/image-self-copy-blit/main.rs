@@ -133,13 +133,11 @@ fn main() {
             .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
-        let image_format = Some(
-            device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0]
-                .0,
-        );
+        let image_format = device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0]
+            .0;
 
         Swapchain::new(
             device.clone(),
@@ -252,7 +250,7 @@ fn main() {
         let image = Image::new(
             &memory_allocator,
             ImageCreateInfo {
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 extent,
                 usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                 ..Default::default()

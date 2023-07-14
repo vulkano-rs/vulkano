@@ -101,26 +101,26 @@ where
             }
         }
 
-        let image_aspects = image.format().unwrap().aspects();
+        let image_aspects = image.format().aspects();
 
         // VUID-vkCmdClearColorImage-image-00007
         if image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             return Err(ClearError::FormatNotSupported {
-                format: image.format().unwrap(),
+                format: image.format(),
             });
         }
 
         // VUID-vkCmdClearColorImage-image-00007
-        if image.format().unwrap().compression().is_some() {
+        if image.format().compression().is_some() {
             return Err(ClearError::FormatNotSupported {
-                format: image.format().unwrap(),
+                format: image.format(),
             });
         }
 
         // VUID-vkCmdClearColorImage-image-01545
-        if image.format().unwrap().ycbcr_chroma_sampling().is_some() {
+        if image.format().ycbcr_chroma_sampling().is_some() {
             return Err(ClearError::FormatNotSupported {
-                format: image.format().unwrap(),
+                format: image.format(),
             });
         }
 
@@ -278,12 +278,12 @@ where
             }
         }
 
-        let image_aspects = image.format().unwrap().aspects();
+        let image_aspects = image.format().aspects();
 
         // VUID-vkCmdClearDepthStencilImage-image-00014
         if !image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             return Err(ClearError::FormatNotSupported {
-                format: image.format().unwrap(),
+                format: image.format(),
             });
         }
 

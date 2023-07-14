@@ -257,8 +257,7 @@ impl VertexInputState {
                 && !device
                     .enabled_features()
                     .vertex_attribute_access_beyond_stride
-                && offset as DeviceSize + format.block_size().unwrap()
-                    > binding_desc.stride as DeviceSize
+                && offset as DeviceSize + format.block_size() > binding_desc.stride as DeviceSize
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -281,7 +280,7 @@ impl VertexInputState {
         // the location following it needs to be empty.
         let unassigned_locations = attributes
             .iter()
-            .filter(|&(_, attribute_desc)| attribute_desc.format.block_size().unwrap() > 16)
+            .filter(|&(_, attribute_desc)| attribute_desc.format.block_size() > 16)
             .map(|(location, _)| location + 1);
 
         for location in unassigned_locations {

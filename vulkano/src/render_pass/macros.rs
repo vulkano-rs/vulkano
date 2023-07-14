@@ -225,7 +225,7 @@ macro_rules! ordered_passes_renderpass {
                     $(layouts.final_layout = Some($final_layout);)*
 
                     $crate::render_pass::AttachmentDescription {
-                        format: Some($format),
+                        format: $format,
                         samples: $crate::image::SampleCount::try_from($samples).unwrap(),
                         load_op: $crate::render_pass::AttachmentLoadOp::$load_op,
                         store_op: $crate::render_pass::AttachmentStoreOp::$store_op,

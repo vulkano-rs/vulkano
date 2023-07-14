@@ -84,7 +84,7 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
             }
 
             let mut offset = infos.offset as DeviceSize;
-            let block_size = infos.format.block_size().unwrap();
+            let block_size = infos.format.block_size();
             // Double precision formats can exceed a single location.
             // R64B64G64A64_SFLOAT requires two locations, so we need to adapt how we bind
             let location_range = if block_size > 16 {

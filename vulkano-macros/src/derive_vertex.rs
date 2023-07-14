@@ -72,9 +72,7 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
 
                     let field_size = ::std::mem::size_of::<#field_ty>();
                     let format = #format;
-                    let format_size = format
-                        .block_size()
-                        .expect("no block size for format") as usize;
+                    let format_size = format.block_size() as usize;
                     let num_elements = field_size / format_size;
                     let remainder = field_size % format_size;
                     ::std::assert!(

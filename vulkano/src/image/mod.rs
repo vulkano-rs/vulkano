@@ -180,7 +180,7 @@ impl Image {
     }
 
     fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
-        let aspects = inner.format().unwrap().aspects();
+        let aspects = inner.format().aspects();
         let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.into_iter().collect();
         let mip_level_size = inner.array_layers() as DeviceSize;
         let aspect_size = mip_level_size * inner.mip_levels() as DeviceSize;
@@ -210,7 +210,7 @@ impl Image {
         let create_info = ImageCreateInfo {
             flags: ImageCreateFlags::empty(),
             image_type: ImageType::Dim2d,
-            format: Some(swapchain.image_format()),
+            format: swapchain.image_format(),
             extent: [swapchain.image_extent()[0], swapchain.image_extent()[1], 1],
             array_layers: swapchain.image_array_layers(),
             mip_levels: 1,
@@ -249,7 +249,7 @@ impl Image {
     /// - If the image is a swapchain image, this returns a slice with a length of 0.
     /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
     /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
-    ///   `self.format().unwrap().planes().len()`.
+    ///   `self.format().planes().len()`.
     #[inline]
     pub fn memory_requirements(&self) -> &[MemoryRequirements] {
         self.inner.memory_requirements()
@@ -269,7 +269,7 @@ impl Image {
 
     /// Returns the image's format.
     #[inline]
-    pub fn format(&self) -> Option<Format> {
+    pub fn format(&self) -> Format {
         self.inner.format()
     }
 
@@ -410,11 +410,7 @@ impl Image {
         &self,
         subresource_range: ImageSubresourceRange,
     ) -> SubresourceRangeIterator {
-        assert!(self
-            .format()
-            .unwrap()
-            .aspects()
-            .contains(subresource_range.aspects));
+        assert!(self.format().aspects().contains(subresource_range.aspects));
         assert!(subresource_range.mip_levels.end <= self.mip_levels());
         assert!(subresource_range.array_layers.end <= self.array_layers());
 
@@ -1654,8 +1650,8 @@ pub struct ImageFormatInfo {
 
     /// The `format` that the image will have.
     ///
-    /// The default value is `None`, which must be overridden.
-    pub format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub format: Format,
 
     /// The dimension type that the image will have.
     ///
@@ -1724,7 +1720,7 @@ impl Default for ImageFormatInfo {
     fn default() -> Self {
         Self {
             flags: ImageCreateFlags::empty(),
-            format: None,
+            format: Format::UNDEFINED,
             image_type: ImageType::Dim2d,
             tiling: ImageTiling::Optimal,
             usage: ImageUsage::empty(),
@@ -1762,14 +1758,6 @@ impl ImageFormatInfo {
                 vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-flags-parameter"],
                 ..ValidationError::from_requirement(err)
             })?;
-
-        let format = format.ok_or(ValidationError {
-            context: "format".into(),
-            problem: "is `None`".into(),
-            vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter"],
-            ..Default::default()
-        })?;
-        let aspects = format.aspects();
 
         format
             .validate_physical_device(physical_device)
@@ -1811,6 +1799,8 @@ impl ImageFormatInfo {
                 ..Default::default()
             }));
         }
+
+        let aspects = format.aspects();
 
         let has_separate_stencil_usage = if aspects
             .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
@@ -2109,8 +2099,8 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
 pub struct SparseImageFormatInfo {
     /// The `format` that the image will have.
     ///
-    /// The default value is `None`, which must be overridden.
-    pub format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub format: Format,
 
     /// The dimension type that the image will have.
     ///
@@ -2139,7 +2129,7 @@ impl Default for SparseImageFormatInfo {
     #[inline]
     fn default() -> Self {
         Self {
-            format: None,
+            format: Format::UNDEFINED,
             image_type: ImageType::Dim2d,
             samples: SampleCount::Sample1,
             usage: ImageUsage::empty(),
@@ -2162,13 +2152,6 @@ impl SparseImageFormatInfo {
             tiling,
             _ne: _,
         } = self;
-
-        let format = format.ok_or(ValidationError {
-            context: "format".into(),
-            problem: "is `None`".into(),
-            vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter"],
-            ..Default::default()
-        })?;
 
         format
             .validate_physical_device(physical_device)

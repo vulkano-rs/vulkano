@@ -129,13 +129,11 @@ fn main() {
             .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
-        let image_format = Some(
-            device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0]
-                .0,
-        );
+        let image_format = device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0]
+            .0;
 
         let (swapchain, images) = Swapchain::new(
             device.clone(),

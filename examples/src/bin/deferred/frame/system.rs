@@ -158,7 +158,7 @@ impl FrameSystem {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::A2B10G10R10_UNORM_PACK32),
+                    format: Format::A2B10G10R10_UNORM_PACK32,
                     extent: [1, 1, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT
                         | ImageUsage::TRANSIENT_ATTACHMENT
@@ -175,7 +175,7 @@ impl FrameSystem {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R16G16B16A16_SFLOAT),
+                    format: Format::R16G16B16A16_SFLOAT,
                     extent: [1, 1, 1],
                     usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
                     ..Default::default()
@@ -190,7 +190,7 @@ impl FrameSystem {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::D16_UNORM),
+                    format: Format::D16_UNORM,
                     extent: [1, 1, 1],
                     usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
                     ..Default::default()
@@ -284,7 +284,7 @@ impl FrameSystem {
                     &self.memory_allocator,
                     ImageCreateInfo {
                         extent,
-                        format: Some(Format::A2B10G10R10_UNORM_PACK32),
+                        format: Format::A2B10G10R10_UNORM_PACK32,
                         usage: ImageUsage::COLOR_ATTACHMENT
                             | ImageUsage::TRANSIENT_ATTACHMENT
                             | ImageUsage::INPUT_ATTACHMENT,
@@ -300,7 +300,7 @@ impl FrameSystem {
                     &self.memory_allocator,
                     ImageCreateInfo {
                         extent,
-                        format: Some(Format::R16G16B16A16_SFLOAT),
+                        format: Format::R16G16B16A16_SFLOAT,
                         usage: ImageUsage::COLOR_ATTACHMENT
                             | ImageUsage::TRANSIENT_ATTACHMENT
                             | ImageUsage::INPUT_ATTACHMENT,
@@ -316,7 +316,7 @@ impl FrameSystem {
                     &self.memory_allocator,
                     ImageCreateInfo {
                         extent,
-                        format: Some(Format::D16_UNORM),
+                        format: Format::D16_UNORM,
                         usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
                             | ImageUsage::TRANSIENT_ATTACHMENT
                             | ImageUsage::INPUT_ATTACHMENT,

@@ -161,7 +161,7 @@ fn main() {
             &memory_allocator,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 extent: [1024, 1024, 1],
                 usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
                 samples: SampleCount::Sample4,
@@ -178,7 +178,7 @@ fn main() {
         &memory_allocator,
         ImageCreateInfo {
             image_type: ImageType::Dim2d,
-            format: Some(Format::R8G8B8A8_UNORM),
+            format: Format::R8G8B8A8_UNORM,
             extent: [1024, 1024, 1],
             usage: ImageUsage::TRANSFER_SRC
                 | ImageUsage::TRANSFER_DST

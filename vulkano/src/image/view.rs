@@ -44,7 +44,7 @@ pub struct ImageView {
     id: NonZeroU64,
 
     view_type: ImageViewType,
-    format: Option<Format>,
+    format: Format,
     component_mapping: ComponentMapping,
     subresource_range: ImageSubresourceRange,
     usage: ImageUsage,
@@ -87,7 +87,6 @@ impl ImageView {
             _ne: _,
         } = create_info;
 
-        let format = format.unwrap();
         let format_features = unsafe { get_format_features(format, image) };
 
         if format_features.is_empty() {
@@ -381,8 +380,8 @@ impl ImageView {
 
         /* Check flags requirements */
 
-        if Some(format) != image.format() {
-            if !image.format().unwrap().planes().is_empty()
+        if format != image.format() {
+            if !image.format().planes().is_empty()
                 && subresource_range.aspects.intersects(ImageAspects::COLOR)
             {
                 return Err(Box::new(ValidationError {
@@ -409,7 +408,7 @@ impl ImageView {
             // See https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2361
             if device.enabled_extensions().khr_portability_subset
                 && !device.enabled_features().image_view_format_reinterpretation
-                && format.components() != image.format().unwrap().components()
+                && format.components() != image.format().components()
             {
                 return Err(Box::new(ValidationError {
                     problem: "this device is a portability subset device, and \
@@ -428,8 +427,8 @@ impl ImageView {
                 .flags()
                 .intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
             {
-                if !(format.compatibility() == image.format().unwrap().compatibility()
-                    || format.block_size() == image.format().unwrap().block_size())
+                if !(format.compatibility() == image.format().compatibility()
+                    || format.block_size() == image.format().block_size())
                 {
                     return Err(Box::new(ValidationError {
                         problem: "`image.flags()` contains \
@@ -470,8 +469,8 @@ impl ImageView {
                     }
                 }
             } else {
-                if image.format().unwrap().planes().is_empty() {
-                    if format.compatibility() != image.format().unwrap().compatibility() {
+                if image.format().planes().is_empty() {
+                    if format.compatibility() != image.format().compatibility() {
                         return Err(Box::new(ValidationError {
                             problem: "`image.flags()` does not contain \
                                 `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
@@ -494,7 +493,7 @@ impl ImageView {
                     } else {
                         unreachable!()
                     };
-                    let plane_format = image.format().unwrap().planes()[plane];
+                    let plane_format = image.format().planes()[plane];
 
                     if format.compatibility() != plane_format.compatibility() {
                         return Err(Box::new(ValidationError {
@@ -579,7 +578,7 @@ impl ImageView {
             flags: ash::vk::ImageViewCreateFlags::empty(),
             image: image.handle(),
             view_type: view_type.into(),
-            format: format.unwrap().into(),
+            format: format.into(),
             components: component_mapping.into(),
             subresource_range: subresource_range.clone().into(),
             ..Default::default()
@@ -660,7 +659,7 @@ impl ImageView {
             usage = get_implicit_default_usage(subresource_range.aspects, &image);
         }
 
-        let format_features = get_format_features(format.unwrap(), &image);
+        let format_features = get_format_features(format, &image);
 
         let mut filter_cubic = false;
         let mut filter_cubic_minmax = false;
@@ -721,7 +720,7 @@ impl ImageView {
 
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
-    pub fn format(&self) -> Option<Format> {
+    pub fn format(&self) -> Format {
         self.format
     }
 
@@ -823,8 +822,8 @@ pub struct ImageViewCreateInfo {
     /// [`image_view_format_reinterpretation`](crate::device::Features::image_view_format_reinterpretation)
     /// feature must be enabled on the device.
     ///
-    /// The default value is `None`, which must be overridden.
-    pub format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub format: Format,
 
     /// How to map components of each pixel.
     ///
@@ -877,7 +876,7 @@ impl Default for ImageViewCreateInfo {
     fn default() -> Self {
         Self {
             view_type: ImageViewType::Dim2d,
-            format: None,
+            format: Format::UNDEFINED,
             component_mapping: ComponentMapping::identity(),
             subresource_range: ImageSubresourceRange {
                 aspects: ImageAspects::empty(),
@@ -939,12 +938,6 @@ impl ImageViewCreateInfo {
                 vuids: &["VUID-VkImageViewCreateInfo-viewType-parameter"],
                 ..ValidationError::from_requirement(err)
             })?;
-
-        let format = format.ok_or(ValidationError {
-            context: "format".into(),
-            problem: "is `None`".into(),
-            ..Default::default()
-        })?;
 
         format
             .validate_device(device)

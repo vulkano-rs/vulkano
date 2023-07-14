@@ -40,7 +40,7 @@
 //! let view = BufferView::new(
 //!     buffer,
 //!     BufferViewCreateInfo {
-//!         format: Some(Format::R32_UINT),
+//!         format: Format::R32_UINT,
 //!         ..Default::default()
 //!     },
 //! )
@@ -65,7 +65,7 @@ pub struct BufferView {
     subbuffer: Subbuffer<[u8]>,
     id: NonZeroU64,
 
-    format: Option<Format>,
+    format: Format,
     format_features: FormatFeatures,
     range: Range<DeviceSize>,
 }
@@ -93,12 +93,11 @@ impl BufferView {
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
 
-        let BufferViewCreateInfo { format, _ne: _ } = create_info;
+        let &BufferViewCreateInfo { format, _ne: _ } = create_info;
 
         let buffer = subbuffer.buffer();
         let properties = device.physical_device().properties();
 
-        let format = format.unwrap();
         let format_features = unsafe {
             device
                 .physical_device()
@@ -146,7 +145,7 @@ impl BufferView {
             }));
         }
 
-        let block_size = format.block_size().unwrap();
+        let block_size = format.block_size();
         let texels_per_block = format.texels_per_block();
 
         if subbuffer.size() % block_size != 0 {
@@ -304,7 +303,7 @@ impl BufferView {
         let create_info_vk = ash::vk::BufferViewCreateInfo {
             flags: ash::vk::BufferViewCreateFlags::empty(),
             buffer: subbuffer.buffer().handle(),
-            format: format.unwrap().into(),
+            format: format.into(),
             offset: subbuffer.offset(),
             range: subbuffer.size(),
             ..Default::default()
@@ -339,7 +338,6 @@ impl BufferView {
         create_info: BufferViewCreateInfo,
     ) -> Arc<BufferView> {
         let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
-        let format = format.unwrap();
         let size = subbuffer.size();
         let format_features = unsafe {
             subbuffer
@@ -353,7 +351,7 @@ impl BufferView {
             handle,
             subbuffer: subbuffer.into_bytes(),
             id: Self::next_id(),
-            format: Some(format),
+            format,
             format_features,
             range: 0..size,
         })
@@ -367,7 +365,7 @@ impl BufferView {
 
     /// Returns the format of this view.
     #[inline]
-    pub fn format(&self) -> Option<Format> {
+    pub fn format(&self) -> Format {
         self.format
     }
 
@@ -421,8 +419,8 @@ impl_id_counter!(BufferView);
 pub struct BufferViewCreateInfo {
     /// The format of the buffer view.
     ///
-    /// The default value is `None`, which must be overridden.
-    pub format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub format: Format,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -431,7 +429,7 @@ impl Default for BufferViewCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
-            format: None,
+            format: Format::UNDEFINED,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -440,12 +438,6 @@ impl Default for BufferViewCreateInfo {
 impl BufferViewCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self { format, _ne: _ } = self;
-
-        let format = format.ok_or(ValidationError {
-            context: "format".into(),
-            problem: "is `None`".into(),
-            ..Default::default()
-        })?;
 
         format
             .validate_device(device)
@@ -490,7 +482,7 @@ mod tests {
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 ..Default::default()
             },
         )
@@ -516,7 +508,7 @@ mod tests {
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 ..Default::default()
             },
         )
@@ -542,7 +534,7 @@ mod tests {
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
-                format: Some(Format::R32_UINT),
+                format: Format::R32_UINT,
                 ..Default::default()
             },
         )
@@ -569,7 +561,7 @@ mod tests {
         match BufferView::new(
             buffer,
             BufferViewCreateInfo {
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 ..Default::default()
             },
         ) {
@@ -598,7 +590,7 @@ mod tests {
         match BufferView::new(
             buffer,
             BufferViewCreateInfo {
-                format: Some(Format::R64G64B64A64_SFLOAT),
+                format: Format::R64G64B64A64_SFLOAT,
                 ..Default::default()
             },
         ) {

@@ -924,7 +924,7 @@ impl GraphicsPipeline {
                 }
             };
 
-            let mut color_blend_state_vk =
+            let color_blend_state_vk =
                 color_blend_state_vk.insert(ash::vk::PipelineColorBlendStateCreateInfo {
                     flags: flags.into(),
                     logic_op_enable,
@@ -2888,7 +2888,6 @@ impl GraphicsPipelineCreateInfo {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
                                 .format
-                                .unwrap()
                                 .aspects()
                                 .intersects(ImageAspects::DEPTH)
                         }),
@@ -2923,7 +2922,6 @@ impl GraphicsPipelineCreateInfo {
                                     subpass.render_pass().attachments()
                                         [depth_stencil_attachment.attachment as usize]
                                         .format
-                                        .unwrap()
                                         .aspects()
                                         .intersects(ImageAspects::DEPTH)
                                 })
@@ -2955,7 +2953,6 @@ impl GraphicsPipelineCreateInfo {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
                                 .format
-                                .unwrap()
                                 .aspects()
                                 .intersects(ImageAspects::STENCIL)
                         }),
@@ -3006,7 +3003,7 @@ impl GraphicsPipelineCreateInfo {
                         PipelineSubpassType::BeginRenderPass(subpass) => {
                             subpass.subpass_desc().color_attachments[attachment_index]
                                 .as_ref()
-                                .and_then(|color_attachment| {
+                                .map(|color_attachment| {
                                     subpass.render_pass().attachments()
                                         [color_attachment.attachment as usize]
                                         .format

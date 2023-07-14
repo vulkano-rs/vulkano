@@ -313,7 +313,7 @@ where
             .enumerate()
         {
             let attachment_index = attachment_index as u32;
-            let attachment_format = attachment_desc.format.unwrap();
+            let attachment_format = attachment_desc.format;
 
             if attachment_desc.load_op == AttachmentLoadOp::Clear
                 || attachment_desc
@@ -877,7 +877,7 @@ where
 
                 let resolve_image = resolve_image_view.image();
 
-                match image_view.format().unwrap().type_color().unwrap() {
+                match image_view.format().type_color().unwrap() {
                     NumericType::SFLOAT
                     | NumericType::UFLOAT
                     | NumericType::SNORM
@@ -987,7 +987,7 @@ where
             // VUID-VkRenderingAttachmentInfo-storeOp-parameter
             store_op.validate_device(device)?;
 
-            let image_aspects = image_view.format().unwrap().aspects();
+            let image_aspects = image_view.format().aspects();
 
             // VUID-VkRenderingInfo-pDepthAttachment-06547
             if !image_aspects.intersects(ImageAspects::DEPTH) {
@@ -1127,7 +1127,7 @@ where
             // VUID-VkRenderingAttachmentInfo-storeOp-parameter
             store_op.validate_device(device)?;
 
-            let image_aspects = image_view.format().unwrap().aspects();
+            let image_aspects = image_view.format().aspects();
 
             // VUID-VkRenderingInfo-pStencilAttachment-06548
             if !image_aspects.intersects(ImageAspects::STENCIL) {
@@ -2380,7 +2380,7 @@ impl RenderingAttachmentInfo {
     /// Returns a `RenderingAttachmentInfo` with the specified `image_view`.
     #[inline]
     pub fn image_view(image_view: Arc<ImageView>) -> Self {
-        let aspects = image_view.format().unwrap().aspects();
+        let aspects = image_view.format().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
         } else {
@@ -2424,7 +2424,7 @@ impl RenderingAttachmentResolveInfo {
     /// Returns a `RenderingAttachmentResolveInfo` with the specified `image_view`.
     #[inline]
     pub fn image_view(image_view: Arc<ImageView>) -> Self {
-        let aspects = image_view.format().unwrap().aspects();
+        let aspects = image_view.format().aspects();
         let image_layout = if aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
             ImageLayout::DepthStencilAttachmentOptimal
         } else {

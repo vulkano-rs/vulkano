@@ -912,7 +912,7 @@ where
 
                 // The SPIR-V Image Format is not compatible with the image view’s format.
                 if let Some(format) = binding_reqs.image_format {
-                    if image_view.format() != Some(format) {
+                    if image_view.format() != format {
                         return Err(DescriptorResourceInvalidError::ImageViewFormatMismatch {
                             required: format,
                             provided: image_view.format(),
@@ -959,11 +959,11 @@ where
                                 | ImageAspects::PLANE_1
                                 | ImageAspects::PLANE_2,
                         ) {
-                            image_view.format().unwrap().type_color().unwrap()
+                            image_view.format().type_color().unwrap()
                         } else if aspects.intersects(ImageAspects::DEPTH) {
-                            image_view.format().unwrap().type_depth().unwrap()
+                            image_view.format().type_depth().unwrap()
                         } else if aspects.intersects(ImageAspects::STENCIL) {
-                            image_view.format().unwrap().type_stencil().unwrap()
+                            image_view.format().type_stencil().unwrap()
                         } else {
                             // Per `ImageViewBuilder::aspects` and
                             // VUID-VkDescriptorImageInfo-imageView-01976
@@ -2652,7 +2652,7 @@ impl Display for PipelineExecutionError {
 pub enum DescriptorResourceInvalidError {
     ImageViewFormatMismatch {
         required: Format,
-        provided: Option<Format>,
+        provided: Format,
     },
     ImageViewMultisampledMismatch {
         required: bool,

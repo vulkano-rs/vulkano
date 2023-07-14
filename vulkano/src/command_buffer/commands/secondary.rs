@@ -183,7 +183,7 @@ where
                         .enumerate()
                         .filter_map(|(i, (a, f))| a.as_ref().map(|a| (i as u32, &a.image_view, f)))
                     {
-                        let required_format = image_view.format().unwrap();
+                        let required_format = image_view.format();
 
                         // VUID-vkCmdExecuteCommands-imageView-06028
                         if Some(required_format) != inherited_format {
@@ -216,11 +216,11 @@ where
                         .map(|a| (&a.image_view, inheritance_info.depth_attachment_format))
                     {
                         // VUID-vkCmdExecuteCommands-pDepthAttachment-06029
-                        if Some(image_view.format().unwrap()) != format {
+                        if Some(image_view.format()) != format {
                             return Err(
                                 ExecuteCommandsError::RenderPassDepthAttachmentFormatMismatch {
                                     command_buffer_index,
-                                    required_format: image_view.format().unwrap(),
+                                    required_format: image_view.format(),
                                     inherited_format: format,
                                 },
                             );
@@ -244,11 +244,11 @@ where
                         .map(|a| (&a.image_view, inheritance_info.stencil_attachment_format))
                     {
                         // VUID-vkCmdExecuteCommands-pStencilAttachment-06030
-                        if Some(image_view.format().unwrap()) != format {
+                        if Some(image_view.format()) != format {
                             return Err(
                                 ExecuteCommandsError::RenderPassStencilAttachmentFormatMismatch {
                                     command_buffer_index,
-                                    required_format: image_view.format().unwrap(),
+                                    required_format: image_view.format(),
                                     inherited_format: format,
                                 },
                             );

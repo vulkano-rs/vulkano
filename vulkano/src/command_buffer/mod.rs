@@ -551,6 +551,14 @@ impl CommandBufferInheritanceRenderingInfo {
                 ..ValidationError::from_requirement(err)
             })?;
 
+            if format == Format::UNDEFINED {
+                return Err(Box::new(ValidationError {
+                    context: format!("color_attachment_formats[{}]", index).into(),
+                    problem: "is `Format::UNDEFINED`".into(),
+                    ..Default::default()
+                }));
+            }
+
             let potential_format_features = unsafe {
                 device
                     .physical_device()
@@ -575,6 +583,14 @@ impl CommandBufferInheritanceRenderingInfo {
                 vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-parameter"],
                 ..ValidationError::from_requirement(err)
             })?;
+
+            if format == Format::UNDEFINED {
+                return Err(Box::new(ValidationError {
+                    context: "depth_attachment_format".into(),
+                    problem: "is `Format::UNDEFINED`".into(),
+                    ..Default::default()
+                }));
+            }
 
             if !format.aspects().intersects(ImageAspects::DEPTH) {
                 return Err(Box::new(ValidationError {
@@ -614,6 +630,14 @@ impl CommandBufferInheritanceRenderingInfo {
                 vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-parameter"],
                 ..ValidationError::from_requirement(err)
             })?;
+
+            if format == Format::UNDEFINED {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_attachment_format".into(),
+                    problem: "is `Format::UNDEFINED`".into(),
+                    ..Default::default()
+                }));
+            }
 
             if !format.aspects().intersects(ImageAspects::STENCIL) {
                 return Err(Box::new(ValidationError {

@@ -52,7 +52,7 @@
 //! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
 //! #
 //! let conversion = SamplerYcbcrConversion::new(device.clone(), SamplerYcbcrConversionCreateInfo {
-//!     format: Some(Format::G8_B8_R8_3PLANE_420_UNORM),
+//!     format: Format::G8_B8_R8_3PLANE_420_UNORM,
 //!     ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
 //!     ..Default::default()
 //! })
@@ -85,7 +85,7 @@
 //!     &memory_allocator,
 //!     ImageCreateInfo {
 //!         image_type: ImageType::Dim2d,
-//!         format: Some(Format::G8_B8_R8_3PLANE_420_UNORM),
+//!         format: Format::G8_B8_R8_3PLANE_420_UNORM,
 //!         extent: [1920, 1080, 1],
 //!         usage: ImageUsage::SAMPLED,
 //!         ..Default::default()
@@ -127,7 +127,7 @@ pub struct SamplerYcbcrConversion {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
-    format: Option<Format>,
+    format: Format,
     ycbcr_model: SamplerYcbcrModelConversion,
     ycbcr_range: SamplerYcbcrRange,
     component_mapping: ComponentMapping,
@@ -189,7 +189,7 @@ impl SamplerYcbcrConversion {
         } = &create_info;
 
         let create_info_vk = ash::vk::SamplerYcbcrConversionCreateInfo {
-            format: format.unwrap().into(),
+            format: format.into(),
             ycbcr_model: ycbcr_model.into(),
             ycbcr_range: ycbcr_range.into(),
             components: component_mapping.into(),
@@ -287,7 +287,7 @@ impl SamplerYcbcrConversion {
 
     /// Returns the format that the conversion was created for.
     #[inline]
-    pub fn format(&self) -> Option<Format> {
+    pub fn format(&self) -> Format {
         self.format
     }
 
@@ -384,8 +384,8 @@ pub struct SamplerYcbcrConversionCreateInfo {
     /// Compatibility notice: currently, this value must be `Some`, but future additions may allow
     /// `None` as a valid value as well.
     ///
-    /// The default value is `None`.
-    pub format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub format: Format,
 
     /// The conversion between the input color model and the output RGB color model.
     ///
@@ -443,7 +443,7 @@ impl Default for SamplerYcbcrConversionCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
-            format: None,
+            format: Format::UNDEFINED,
             ycbcr_model: SamplerYcbcrModelConversion::RgbIdentity,
             ycbcr_range: SamplerYcbcrRange::ItuFull,
             component_mapping: ComponentMapping::identity(),
@@ -467,12 +467,6 @@ impl SamplerYcbcrConversionCreateInfo {
             force_explicit_reconstruction,
             _ne: _,
         } = self;
-
-        let format = format.ok_or(ValidationError {
-            context: "format".into(),
-            problem: "is `None`".into(),
-            ..Default::default()
-        })?;
 
         format
             .validate_device(device)

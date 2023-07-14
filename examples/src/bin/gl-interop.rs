@@ -121,7 +121,7 @@ mod linux {
             ImageCreateInfo {
                 flags: ImageCreateFlags::MUTABLE_FORMAT,
                 image_type: ImageType::Dim2d,
-                format: Some(Format::R16G16B16A16_UNORM),
+                format: Format::R16G16B16A16_UNORM,
                 extent: [200, 200, 1],
                 usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                 external_memory_handle_types: ExternalMemoryHandleTypes::OPAQUE_FD,
@@ -562,13 +562,11 @@ mod linux {
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
-            let image_format = Some(
-                device
-                    .physical_device()
-                    .surface_formats(&surface, Default::default())
-                    .unwrap()[0]
-                    .0,
-            );
+            let image_format = device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0;
 
             Swapchain::new(
                 device.clone(),
