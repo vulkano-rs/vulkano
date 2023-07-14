@@ -200,7 +200,7 @@
 //!         // How many images to use in the swapchain.
 //!         min_image_count,
 //!         // The format of the images.
-//!         image_format: Some(image_format),
+//!         image_format,
 //!         // The size of each image.
 //!         image_extent,
 //!         // The created swapchain images will be used as a color attachment for rendering.
@@ -649,19 +649,17 @@ impl Swapchain {
             }));
         }
 
-        if let Some(image_format) = image_format {
-            if !surface_formats
-                .iter()
-                .any(|&fc| fc == (image_format, image_color_space))
-            {
-                return Err(Box::new(ValidationError {
-                    problem: "the combination of `create_info.image_format` and \
-                        `create_info.image_color_space` is not supported for `surface`"
-                        .into(),
-                    vuids: &["VUID-VkSwapchainCreateInfoKHR-imageFormat-01273"],
-                    ..Default::default()
-                }));
-            }
+        if !surface_formats
+            .iter()
+            .any(|&fc| fc == (image_format, image_color_space))
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the combination of `create_info.image_format` and \
+                    `create_info.image_color_space` is not supported for `surface`"
+                    .into(),
+                vuids: &["VUID-VkSwapchainCreateInfoKHR-imageFormat-01273"],
+                ..Default::default()
+            }));
         }
 
         if image_array_layers > surface_capabilities.max_image_array_layers {
@@ -1017,7 +1015,7 @@ impl Swapchain {
             flags: flags.into(),
             surface: surface.handle(),
             min_image_count,
-            image_format: image_format.unwrap().into(),
+            image_format: image_format.into(),
             image_color_space: image_color_space.into(),
             image_extent: ash::vk::Extent2D {
                 width: image_extent[0],
@@ -1184,7 +1182,7 @@ impl Swapchain {
 
             flags,
             min_image_count,
-            image_format: image_format.unwrap(),
+            image_format,
             image_color_space,
             image_extent,
             image_array_layers,
@@ -1234,7 +1232,7 @@ impl Swapchain {
         SwapchainCreateInfo {
             flags: self.flags,
             min_image_count: self.min_image_count,
-            image_format: Some(self.image_format),
+            image_format: self.image_format,
             image_color_space: self.image_color_space,
             image_extent: self.image_extent,
             image_array_layers: self.image_array_layers,
@@ -1523,8 +1521,8 @@ pub struct SwapchainCreateInfo {
 
     /// The format of the created images.
     ///
-    /// The default value is `None`, which must be overridden.
-    pub image_format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub image_format: Format,
 
     /// The color space of the created images.
     ///
@@ -1641,7 +1639,7 @@ impl Default for SwapchainCreateInfo {
         Self {
             flags: SwapchainCreateFlags::empty(),
             min_image_count: 2,
-            image_format: None,
+            image_format: Format::UNDEFINED,
             image_color_space: ColorSpace::SrgbNonLinear,
             image_extent: [0, 0],
             image_array_layers: 1,
@@ -1691,13 +1689,6 @@ impl SwapchainCreateInfo {
                 vuids: &["VUID-VkSwapchainCreateInfoKHR-flags-parameter"],
                 ..ValidationError::from_requirement(err)
             })?;
-
-        let image_format = image_format.ok_or(ValidationError {
-            context: "image_format".into(),
-            problem: "is `None`".into(),
-            vuids: &["VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter"],
-            ..Default::default()
-        })?;
 
         image_format
             .validate_device(device)
@@ -1824,7 +1815,7 @@ impl SwapchainCreateInfo {
             device
                 .physical_device()
                 .image_format_properties_unchecked(ImageFormatInfo {
-                    format: Some(image_format),
+                    format: image_format,
                     image_type: ImageType::Dim2d,
                     tiling: ImageTiling::Optimal,
                     usage: image_usage,

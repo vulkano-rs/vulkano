@@ -97,24 +97,18 @@ impl PipelineRenderingCreateInfo {
             color_attachment_formats: (subpass_desc.color_attachments.iter())
                 .map(|color_attachment| {
                     color_attachment.as_ref().map(|color_attachment| {
-                        rp_attachments[color_attachment.attachment as usize]
-                            .format
-                            .unwrap()
+                        rp_attachments[color_attachment.attachment as usize].format
                     })
                 })
                 .collect(),
             depth_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
                 .map(|depth_stencil_attachment| {
-                    rp_attachments[depth_stencil_attachment.attachment as usize]
-                        .format
-                        .unwrap()
+                    rp_attachments[depth_stencil_attachment.attachment as usize].format
                 })
                 .filter(|format| format.aspects().intersects(ImageAspects::DEPTH)),
             stencil_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
                 .map(|depth_stencil_attachment| {
-                    rp_attachments[depth_stencil_attachment.attachment as usize]
-                        .format
-                        .unwrap()
+                    rp_attachments[depth_stencil_attachment.attachment as usize].format
                 })
                 .filter(|format| format.aspects().intersects(ImageAspects::STENCIL)),
             _ne: crate::NonExhaustive(()),
@@ -128,13 +122,13 @@ impl PipelineRenderingCreateInfo {
                 .map(|atch_info| {
                     atch_info
                         .as_ref()
-                        .map(|atch_info| atch_info.image_view.format().unwrap())
+                        .map(|atch_info| atch_info.image_view.format())
                 })
                 .collect(),
             depth_attachment_format: (info.depth_attachment.as_ref())
-                .map(|atch_info| atch_info.image_view.format().unwrap()),
+                .map(|atch_info| atch_info.image_view.format()),
             stencil_attachment_format: (info.stencil_attachment.as_ref())
-                .map(|atch_info| atch_info.image_view.format().unwrap()),
+                .map(|atch_info| atch_info.image_view.format()),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -194,10 +188,18 @@ impl PipelineRenderingCreateInfo {
             format
                 .validate_device(device)
                 .map_err(|err| ValidationError {
-                    context: "format".into(),
+                    context: format!("color_attachment_formats[{}]", attachment_index).into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06580"],
                     ..ValidationError::from_requirement(err)
                 })?;
+
+            if format == Format::UNDEFINED {
+                return Err(Box::new(ValidationError {
+                    context: format!("color_attachment_formats[{}]", attachment_index).into(),
+                    problem: "is `Format::UNDEFINED`".into(),
+                    ..Default::default()
+                }));
+            }
 
             if !unsafe { device.physical_device().format_properties_unchecked(format) }
                 .potential_format_features()
@@ -218,10 +220,18 @@ impl PipelineRenderingCreateInfo {
             format
                 .validate_device(device)
                 .map_err(|err| ValidationError {
-                    context: "format".into(),
+                    context: "depth_attachment_format".into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06583"],
                     ..ValidationError::from_requirement(err)
                 })?;
+
+            if format == Format::UNDEFINED {
+                return Err(Box::new(ValidationError {
+                    context: "depth_attachment_format".into(),
+                    problem: "is `Format::UNDEFINED`".into(),
+                    ..Default::default()
+                }));
+            }
 
             if !unsafe { device.physical_device().format_properties_unchecked(format) }
                 .potential_format_features()
@@ -251,17 +261,25 @@ impl PipelineRenderingCreateInfo {
             format
                 .validate_device(device)
                 .map_err(|err| ValidationError {
-                    context: "format".into(),
+                    context: "stencil_attachment_format".into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06584"],
                     ..ValidationError::from_requirement(err)
                 })?;
+
+            if format == Format::UNDEFINED {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_attachment_format".into(),
+                    problem: "is `Format::UNDEFINED`".into(),
+                    ..Default::default()
+                }));
+            }
 
             if !unsafe { device.physical_device().format_properties_unchecked(format) }
                 .potential_format_features()
                 .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
             {
                 return Err(Box::new(ValidationError {
-                    context: "render_pass.stencil_attachment_format".into(),
+                    context: "stencil_attachment_format".into(),
                     problem: "format features do not contain \
                         `FormatFeature::DEPTH_STENCIL_ATTACHMENT`"
                         .into(),
@@ -272,7 +290,7 @@ impl PipelineRenderingCreateInfo {
 
             if !format.aspects().intersects(ImageAspects::STENCIL) {
                 return Err(Box::new(ValidationError {
-                    context: "render_pass.stencil_attachment_format".into(),
+                    context: "stencil_attachment_format".into(),
                     problem: "does not have a stencil aspect".into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06588"],
                     ..Default::default()

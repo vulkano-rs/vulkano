@@ -61,7 +61,7 @@ pub struct RawImage {
 
     flags: ImageCreateFlags,
     image_type: ImageType,
-    format: Option<Format>,
+    format: Format,
     format_features: FormatFeatures,
     extent: [u32; 3],
     array_layers: u32,
@@ -128,7 +128,7 @@ impl RawImage {
             ref drm_format_modifier_plane_layouts,
         } = &create_info;
 
-        let aspects = format.map_or_else(Default::default, |format| format.aspects());
+        let aspects = format.aspects();
 
         let has_separate_stencil_usage = if stencil_usage.is_empty()
             || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
@@ -151,7 +151,7 @@ impl RawImage {
         let mut info_vk = ash::vk::ImageCreateInfo {
             flags: flags.into(),
             image_type: image_type.into(),
-            format: format.map(Into::into).unwrap_or_default(),
+            format: format.into(),
             extent: ash::vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
@@ -295,7 +295,6 @@ impl RawImage {
             drm_format_modifier_plane_layouts: _,
         } = create_info;
 
-        let format = format.unwrap();
         let format_properties =
             unsafe { device.physical_device().format_properties_unchecked(format) };
 
@@ -355,7 +354,7 @@ impl RawImage {
 
             flags,
             image_type,
-            format: Some(format),
+            format,
             format_features,
             extent,
             array_layers,
@@ -735,7 +734,7 @@ impl RawImage {
         if self.flags.intersects(ImageCreateFlags::DISJOINT) {
             match self.tiling {
                 ImageTiling::Optimal | ImageTiling::Linear => {
-                    if allocations.len() != self.format.unwrap().planes().len() {
+                    if allocations.len() != self.format.planes().len() {
                         return Err(Box::new(ValidationError {
                             problem: "`self.flags()` contains `ImageCreateFlags::DISJOINT`, and \
                                 `self.tiling()` is `ImageTiling::Optimal` or \
@@ -1086,10 +1085,7 @@ impl RawImage {
                     let plane_aspect = match self.tiling {
                         // VUID-VkBindImagePlaneMemoryInfo-planeAspect-02283
                         ImageTiling::Optimal | ImageTiling::Linear => {
-                            debug_assert_eq!(
-                                allocations.len(),
-                                self.format.unwrap().planes().len()
-                            );
+                            debug_assert_eq!(allocations.len(), self.format.planes().len());
                             match plane {
                                 0 => ash::vk::ImageAspectFlags::PLANE_0,
                                 1 => ash::vk::ImageAspectFlags::PLANE_1,
@@ -1209,7 +1205,7 @@ impl RawImage {
 
     /// Returns the image's format.
     #[inline]
-    pub fn format(&self) -> Option<Format> {
+    pub fn format(&self) -> Format {
         self.format
     }
 
@@ -1294,7 +1290,7 @@ impl RawImage {
     pub fn subresource_layers(&self) -> ImageSubresourceLayers {
         ImageSubresourceLayers {
             aspects: {
-                let aspects = self.format.unwrap().aspects();
+                let aspects = self.format.aspects();
 
                 if aspects.intersects(ImageAspects::PLANE_0) {
                     ImageAspects::PLANE_0
@@ -1312,7 +1308,7 @@ impl RawImage {
     #[inline]
     pub fn subresource_range(&self) -> ImageSubresourceRange {
         ImageSubresourceRange {
-            aspects: self.format.unwrap().aspects()
+            aspects: self.format.aspects()
                 - (ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2),
             mip_levels: 0..self.mip_levels,
             array_layers: 0..self.array_layers,
@@ -1388,7 +1384,7 @@ impl RawImage {
             }));
         }
 
-        let format = self.format.unwrap();
+        let format = self.format;
         let format_aspects = format.aspects();
 
         if let Some((_, drm_format_modifier_plane_count)) = self.drm_format_modifier {
@@ -1638,8 +1634,8 @@ pub struct ImageCreateInfo {
 
     /// The format used to store the image data.
     ///
-    /// The default value is `None`, which must be overridden.
-    pub format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub format: Format,
 
     /// The width, height and depth of the image.
     ///
@@ -1750,7 +1746,7 @@ impl Default for ImageCreateInfo {
         Self {
             flags: ImageCreateFlags::empty(),
             image_type: ImageType::Dim2d,
-            format: None,
+            format: Format::UNDEFINED,
             extent: [0; 3],
             array_layers: 1,
             mip_levels: 1,
@@ -1800,13 +1796,6 @@ impl ImageCreateInfo {
                 ..ValidationError::from_requirement(err)
             })?;
 
-        // Can be None for "external formats" but Vulkano doesn't support that yet
-        let format = format.ok_or(ValidationError {
-            context: "format".into(),
-            problem: "is `None`".into(),
-            ..Default::default()
-        })?;
-
         format
             .validate_device(device)
             .map_err(|err| ValidationError {
@@ -1844,6 +1833,15 @@ impl ImageCreateInfo {
                 context: "usage".into(),
                 problem: "is empty".into(),
                 vuids: &["VUID-VkImageCreateInfo-usage-requiredbitmask"],
+                ..Default::default()
+            }));
+        }
+
+        if format == Format::UNDEFINED {
+            return Err(Box::new(ValidationError {
+                context: "format".into(),
+                problem: "is `Format::UNDEFINED`".into(),
+                vuids: &["VUID-VkImageCreateInfo-pNext-01975"],
                 ..Default::default()
             }));
         }
@@ -2697,7 +2695,7 @@ impl ImageCreateInfo {
                     physical_device
                         .image_format_properties_unchecked(ImageFormatInfo {
                             flags,
-                            format: Some(format),
+                            format,
                             image_type,
                             tiling,
                             usage,
@@ -2850,7 +2848,7 @@ mod tests {
             device,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
                 usage: ImageUsage::SAMPLED,
                 ..Default::default()
@@ -2867,7 +2865,7 @@ mod tests {
             device,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
                 usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
@@ -2885,7 +2883,7 @@ mod tests {
                 device,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [32, 32, 1],
                     mip_levels: 0,
                     usage: ImageUsage::SAMPLED,
@@ -2904,7 +2902,7 @@ mod tests {
             device,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
                 mip_levels: u32::MAX,
                 usage: ImageUsage::SAMPLED,
@@ -2926,7 +2924,7 @@ mod tests {
             device,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 extent: [32, 32, 1],
                 samples: SampleCount::Sample2,
                 usage: ImageUsage::STORAGE,
@@ -2958,7 +2956,7 @@ mod tests {
             device,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: Some(Format::ASTC_5x4_UNORM_BLOCK),
+                format: Format::ASTC_5x4_UNORM_BLOCK,
                 extent: [32, 32, 1],
                 usage: ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
@@ -2980,7 +2978,7 @@ mod tests {
                 device,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [32, 32, 1],
                     usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::SAMPLED,
                     ..Default::default()
@@ -2999,7 +2997,7 @@ mod tests {
             ImageCreateInfo {
                 flags: ImageCreateFlags::CUBE_COMPATIBLE,
                 image_type: ImageType::Dim2d,
-                format: Some(Format::R8G8B8A8_UNORM),
+                format: Format::R8G8B8A8_UNORM,
                 extent: [32, 64, 1],
                 usage: ImageUsage::SAMPLED,
                 ..Default::default()

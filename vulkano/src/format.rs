@@ -310,6 +310,7 @@ pub struct FormatCompatibility(pub(crate) &'static FormatCompatibilityInner);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
 pub(crate) enum FormatCompatibilityInner {
+    Undefined,
     Class_8bit,
     Class_16bit,
     Class_24bit,

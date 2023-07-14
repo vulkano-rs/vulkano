@@ -13,6 +13,7 @@ use once_cell::sync::Lazy;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
+use std::iter;
 use vk_parse::{
     Enum, EnumSpec, Extension, ExtensionChild, Feature, Format, FormatChild, InterfaceItem,
 };
@@ -46,7 +47,7 @@ struct FormatMember {
     aspect_plane2: bool,
 
     block_extent: [u32; 3],
-    block_size: Option<u64>,
+    block_size: u64,
     compatibility: Ident,
     components: [u8; 4],
     compression: Option<Ident>,
@@ -64,11 +65,12 @@ struct FormatMember {
 
 fn formats_output(members: &[FormatMember]) -> TokenStream {
     let enum_items = members.iter().map(|FormatMember { name, ffi_name, .. }| {
-        quote! { #name = ash::vk::Format::#ffi_name.as_raw(), }
+        let default = (ffi_name == "UNDEFINED").then(|| quote! { #[default] });
+        quote! { #default #name = ash::vk::Format::#ffi_name.as_raw(), }
     });
     let aspects_items = members.iter().map(
-        |FormatMember {
-             name,
+        |&FormatMember {
+             ref name,
              aspect_color,
              aspect_depth,
              aspect_stencil,
@@ -77,19 +79,31 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              aspect_plane2,
              ..
          }| {
-            let aspect_items = [
-                aspect_color.then(|| quote! { crate::image::ImageAspects::COLOR }),
-                aspect_depth.then(|| quote! { crate::image::ImageAspects::DEPTH }),
-                aspect_stencil.then(|| quote! { crate::image::ImageAspects::STENCIL }),
-                aspect_plane0.then(|| quote! { crate::image::ImageAspects::PLANE_0 }),
-                aspect_plane1.then(|| quote! { crate::image::ImageAspects::PLANE_1 }),
-                aspect_plane2.then(|| quote! { crate::image::ImageAspects::PLANE_2 }),
-            ]
-            .into_iter()
-            .flatten();
+            if aspect_color
+                || aspect_depth
+                || aspect_stencil
+                || aspect_plane0
+                || aspect_plane1
+                || aspect_plane2
+            {
+                let aspect_items = [
+                    aspect_color.then(|| quote! { crate::image::ImageAspects::COLOR }),
+                    aspect_depth.then(|| quote! { crate::image::ImageAspects::DEPTH }),
+                    aspect_stencil.then(|| quote! { crate::image::ImageAspects::STENCIL }),
+                    aspect_plane0.then(|| quote! { crate::image::ImageAspects::PLANE_0 }),
+                    aspect_plane1.then(|| quote! { crate::image::ImageAspects::PLANE_1 }),
+                    aspect_plane2.then(|| quote! { crate::image::ImageAspects::PLANE_2 }),
+                ]
+                .into_iter()
+                .flatten();
 
-            quote! {
-                Self::#name => #(#aspect_items)|*,
+                quote! {
+                    Self::#name => #(#aspect_items)|*,
+                }
+            } else {
+                quote! {
+                    Self::#name => crate::image::ImageAspects::empty(),
+                }
             }
         },
     );
@@ -109,14 +123,12 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             }
         },
     );
-    let block_size_items = members.iter().filter_map(
+    let block_size_items = members.iter().map(
         |FormatMember {
              name, block_size, ..
          }| {
-            block_size.as_ref().map(|size| {
-                let size = Literal::u64_unsuffixed(*size);
-                quote! { Self::#name => Some(#size), }
-            })
+            let block_size = Literal::u64_unsuffixed(*block_size);
+            quote! { Self::#name => #block_size, }
         },
     );
     let compatibility_items = members.iter().map(
@@ -319,7 +331,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
     quote! {
         /// An enumeration of all the possible formats.
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
         #[repr(i32)]
         #[allow(non_camel_case_types)]
         #[non_exhaustive]
@@ -352,20 +364,17 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 }
             }
 
-            /// Returns the size in bytes of a single texel block of this format. Returns `None`
-            /// if the texel block size is not well-defined for this format.
+            /// Returns the size in bytes of a single texel block of this format.
             ///
             /// For regular formats, this is the size of a single texel, but for more specialized
             /// formats this may be the size of multiple texels.
             ///
-            /// Depth/stencil formats are considered to have an opaque memory representation, and do
-            /// not have a well-defined size. Multi-planar formats store the color components
-            /// disjointly in memory, and therefore do not have a well-defined size for all
-            /// components as a whole. The individual planes do have a well-defined size.
-            pub fn block_size(self) -> Option<DeviceSize> {
+            /// Multi-planar formats store the color components disjointly in memory, and therefore
+            /// the texels do not form a single texel block. The block size for such formats
+            /// indicates the sum of the block size of each plane.
+            pub fn block_size(self) -> DeviceSize {
                 match self {
                     #(#block_size_items)*
-                    _ => None,
                 }
             }
 
@@ -576,6 +585,36 @@ fn formats_members(
     static BLOCK_EXTENT_REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap());
 
+    iter::once(
+        FormatMember {
+            name: format_ident!("UNDEFINED"),
+            ffi_name: format_ident!("UNDEFINED"),
+            requires_all_of: Vec::new(),
+
+            aspect_color: false,
+            aspect_depth: false,
+            aspect_stencil: false,
+            aspect_plane0: false,
+            aspect_plane1: false,
+            aspect_plane2: false,
+
+            block_extent: [0; 3],
+            block_size: 0,
+            compatibility: format_ident!("Undefined"),
+            components: [0u8; 4],
+            compression: None,
+            planes: vec![],
+            texels_per_block: 0,
+            type_color: None,
+            type_depth: None,
+            type_stencil: None,
+            ycbcr_chroma_sampling: None,
+
+            type_std_array: None,
+            type_cgmath: None,
+            type_nalgebra: None,
+        }
+    ).chain(
     formats
         .iter()
         .map(|format| {
@@ -603,7 +642,7 @@ fn formats_members(
                 aspect_plane2: false,
 
                 block_extent: [1, 1, 1],
-                block_size: None,
+                block_size: format.blockSize as u64,
                 compatibility: format_ident!(
                     "Class_{}",
                     format.class.replace('-', "").replace(' ', "_")
@@ -712,10 +751,7 @@ fn formats_members(
                 }
             };
 
-            // Depth-stencil and multi-planar formats don't have well-defined block sizes.
             if let (Some(numeric_type), true) = (&member.type_color, member.planes.is_empty()) {
-                member.block_size = Some(format.blockSize as u64);
-
                 if format.compressed.is_some() {
                     member.type_std_array = Some({
                         let block_size = Literal::usize_unsuffixed(format.blockSize as usize);
@@ -868,6 +904,6 @@ fn formats_members(
             }
 
             member
-        })
+        }))
         .collect()
 }

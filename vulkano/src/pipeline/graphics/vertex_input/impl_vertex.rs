@@ -57,7 +57,7 @@ macro_rules! impl_vertex {
                             }
                             size_of_raw(p)
                         } as u32;
-                        let format_size = format.block_size().expect("no block size for format") as u32;
+                        let format_size = format.block_size() as u32;
                         let num_elements = field_size / format_size;
                         let remainder = field_size % format_size;
                         assert!(remainder == 0, "struct field `{}` size does not fit multiple of format size", stringify!($member));

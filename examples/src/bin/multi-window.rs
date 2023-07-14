@@ -152,13 +152,11 @@ fn main() {
 
     // The swapchain and framebuffer images for this particular window.
     let (swapchain, images) = {
-        let image_format = Some(
-            device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0]
-                .0,
-        );
+        let image_format = device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0]
+            .0;
         let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         Swapchain::new(
@@ -362,13 +360,11 @@ fn main() {
                     .into_iter()
                     .next()
                     .unwrap();
-                let image_format = Some(
-                    device
-                        .physical_device()
-                        .surface_formats(&surface, Default::default())
-                        .unwrap()[0]
-                        .0,
-                );
+                let image_format = device
+                    .physical_device()
+                    .surface_formats(&surface, Default::default())
+                    .unwrap()[0]
+                    .0;
 
                 Swapchain::new(
                     device.clone(),

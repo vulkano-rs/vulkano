@@ -1027,7 +1027,7 @@ impl PhysicalDevice {
                 ..
             } = &mut image_format_info;
 
-            let aspects = format.unwrap().aspects();
+            let aspects = format.aspects();
 
             if stencil_usage.is_empty()
                 || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
@@ -1055,7 +1055,7 @@ impl PhysicalDevice {
                 let has_separate_stencil_usage = stencil_usage != usage;
 
                 let mut info2_vk = ash::vk::PhysicalDeviceImageFormatInfo2 {
-                    format: format.unwrap().into(),
+                    format: format.into(),
                     ty: image_type.into(),
                     tiling: tiling.into(),
                     usage: usage.into(),
@@ -1330,7 +1330,7 @@ impl PhysicalDevice {
                 } = format_info;
 
                 let format_info2 = ash::vk::PhysicalDeviceSparseImageFormatInfo2 {
-                    format: format.unwrap().into(),
+                    format: format.into(),
                     ty: image_type.into(),
                     samples: samples.into(),
                     usage: usage.into(),

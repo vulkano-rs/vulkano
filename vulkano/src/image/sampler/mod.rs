@@ -402,11 +402,11 @@ impl Sampler {
                         | ImageAspects::PLANE_1
                         | ImageAspects::PLANE_2,
                 ) {
-                    image_view.format().unwrap().type_color().unwrap()
+                    image_view.format().type_color().unwrap()
                 } else if aspects.intersects(ImageAspects::DEPTH) {
-                    image_view.format().unwrap().type_depth().unwrap()
+                    image_view.format().type_depth().unwrap()
                 } else if aspects.intersects(ImageAspects::STENCIL) {
-                    image_view.format().unwrap().type_stencil().unwrap()
+                    image_view.format().type_stencil().unwrap()
                 } else {
                     // Per `ImageViewBuilder::aspects` and
                     // VUID-VkDescriptorImageInfo-imageView-01976
@@ -1077,7 +1077,7 @@ impl SamplerCreateInfo {
             let potential_format_features = unsafe {
                 device
                     .physical_device()
-                    .format_properties_unchecked(sampler_ycbcr_conversion.format().unwrap())
+                    .format_properties_unchecked(sampler_ycbcr_conversion.format())
                     .potential_format_features()
             };
 

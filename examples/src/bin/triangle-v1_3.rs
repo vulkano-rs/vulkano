@@ -239,13 +239,11 @@ fn main() {
             .unwrap();
 
         // Choosing the internal format that the images will have.
-        let image_format = Some(
-            device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0]
-                .0,
-        );
+        let image_format = device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0]
+            .0;
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(

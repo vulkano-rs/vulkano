@@ -1028,7 +1028,6 @@ impl AutoSyncState {
             .separate_depth_stencil_layouts
             && image
                 .format()
-                .unwrap()
                 .aspects()
                 .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
         {
@@ -1604,11 +1603,9 @@ impl RenderPassStateAttachments {
                 .collect(),
             depth_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
                 .filter(|depth_stencil_attachment| {
-                    (rp_attachments[depth_stencil_attachment.attachment as usize]
-                        .format
-                        .unwrap())
-                    .aspects()
-                    .intersects(ImageAspects::DEPTH)
+                    (rp_attachments[depth_stencil_attachment.attachment as usize].format)
+                        .aspects()
+                        .intersects(ImageAspects::DEPTH)
                 })
                 .map(|depth_stencil_attachment| RenderPassStateAttachmentInfo {
                     image_view: fb_attachments[depth_stencil_attachment.attachment as usize]
@@ -1625,11 +1622,9 @@ impl RenderPassStateAttachments {
                 }),
             stencil_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
                 .filter(|depth_stencil_attachment| {
-                    (rp_attachments[depth_stencil_attachment.attachment as usize]
-                        .format
-                        .unwrap())
-                    .aspects()
-                    .intersects(ImageAspects::STENCIL)
+                    (rp_attachments[depth_stencil_attachment.attachment as usize].format)
+                        .aspects()
+                        .intersects(ImageAspects::STENCIL)
                 })
                 .map(|depth_stencil_attachment| RenderPassStateAttachmentInfo {
                     image_view: fb_attachments[depth_stencil_attachment.attachment as usize]

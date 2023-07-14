@@ -140,7 +140,7 @@ fn main() {
         &memory_allocator,
         ImageCreateInfo {
             image_type: ImageType::Dim2d,
-            format: Some(Format::B8G8R8A8_SRGB),
+            format: Format::B8G8R8A8_SRGB,
             extent: [512, 512, 1],
             array_layers: 2,
             usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,

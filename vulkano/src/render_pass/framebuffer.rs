@@ -558,7 +558,7 @@ impl FramebufferCreateInfo {
             match image_view.view_type() {
                 ImageViewType::Dim2d | ImageViewType::Dim2dArray => {
                     if image_view.image().image_type() == ImageType::Dim3d
-                        && (image_view.format().unwrap().aspects())
+                        && (image_view.format().aspects())
                             .intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(Box::new(ValidationError {
@@ -696,7 +696,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [1024, 768, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -777,7 +777,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8_UNORM),
+                    format: Format::R8_UNORM,
                     extent: [1024, 768, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -827,7 +827,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [600, 600, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -877,7 +877,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [512, 700, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -933,7 +933,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -948,7 +948,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [512, 128, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -1007,7 +1007,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -1055,7 +1055,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()
@@ -1070,7 +1070,7 @@ mod tests {
                 &memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [256, 512, 1],
                     usage: ImageUsage::COLOR_ATTACHMENT,
                     ..Default::default()

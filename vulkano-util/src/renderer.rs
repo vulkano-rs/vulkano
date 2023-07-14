@@ -99,13 +99,11 @@ impl VulkanoWindowRenderer {
             .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
-        let image_format = Some(
-            device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0]
-                .0,
-        );
+        let image_format = device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0]
+            .0;
         let (swapchain, images) = Swapchain::new(device, surface, {
             let mut create_info = SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count.max(2),
@@ -145,9 +143,7 @@ impl VulkanoWindowRenderer {
     /// Return swapchain image format.
     #[inline]
     pub fn swapchain_format(&self) -> Format {
-        self.final_views[self.image_index as usize]
-            .format()
-            .unwrap()
+        self.final_views[self.image_index as usize].format()
     }
 
     /// Returns the index of last swapchain image that is the next render target.
@@ -234,7 +230,7 @@ impl VulkanoWindowRenderer {
                 &self.memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(format),
+                    format,
                     extent: final_view_image.extent(),
                     usage,
                     ..Default::default()
@@ -368,7 +364,7 @@ impl VulkanoWindowRenderer {
             .map(|c| *c.0)
             .collect::<Vec<usize>>();
         for i in resizable_views {
-            let format = self.get_additional_image_view(i).format().unwrap();
+            let format = self.get_additional_image_view(i).format();
             let usage = self.get_additional_image_view(i).usage();
             self.remove_additional_image_view(i);
             self.add_additional_image_view(i, format, usage);

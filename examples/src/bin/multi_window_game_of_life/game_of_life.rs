@@ -96,7 +96,7 @@ impl GameOfLifeComputePipeline {
                 memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Some(Format::R8G8B8A8_UNORM),
+                    format: Format::R8G8B8A8_UNORM,
                     extent: [size[0], size[1], 1],
                     usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED | ImageUsage::STORAGE,
                     ..Default::default()

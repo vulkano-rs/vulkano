@@ -56,7 +56,7 @@ impl RenderPass {
                     (
                         ash::vk::AttachmentDescription2 {
                             flags: flags.into(),
-                            format: format.map_or(ash::vk::Format::UNDEFINED, |f| f.into()),
+                            format: format.into(),
                             samples: samples.into(),
                             load_op: load_op.into(),
                             store_op: store_op.into(),
@@ -561,7 +561,7 @@ impl RenderPass {
 
                 ash::vk::AttachmentDescription {
                     flags: flags.into(),
-                    format: format.map_or(ash::vk::Format::UNDEFINED, |f| f.into()),
+                    format: format.into(),
                     samples: samples.into(),
                     load_op: load_op.into(),
                     store_op: store_op.into(),

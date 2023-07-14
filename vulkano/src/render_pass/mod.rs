@@ -142,7 +142,7 @@ impl RenderPass {
                         .attachments
                         .get(input_attachment.attachment as usize)
                     {
-                        input_attachment.aspects = attachment_desc.format.unwrap().aspects();
+                        input_attachment.aspects = attachment_desc.format.aspects();
                     }
                 }
             }
@@ -177,7 +177,7 @@ impl RenderPass {
                         .attachments
                         .get(input_attachment.attachment as usize)
                     {
-                        input_attachment.aspects = attachment_desc.format.unwrap().aspects();
+                        input_attachment.aspects = attachment_desc.format.aspects();
                     }
                 }
             }
@@ -870,7 +870,7 @@ impl RenderPassCreateInfo {
             attachment_potential_format_features[attachment_index] = unsafe {
                 device
                     .physical_device()
-                    .format_properties_unchecked(format.unwrap())
+                    .format_properties_unchecked(format)
                     .potential_format_features()
             };
         }
@@ -1149,7 +1149,7 @@ impl RenderPassCreateInfo {
                             ..Default::default()
                         })?;
 
-                let format = attachment_desc.format.unwrap();
+                let format = attachment_desc.format;
 
                 if !attachment_potential_format_features[attachment as usize]
                     .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
@@ -1258,7 +1258,7 @@ impl RenderPassCreateInfo {
                             ..Default::default()
                         })?;
 
-                    let resolve_format = resolve_attachment_desc.format.unwrap();
+                    let resolve_format = resolve_attachment_desc.format;
 
                     if !(resolve_format.components()[0] == format.components()[0]
                         && resolve_format.type_depth() == format.type_depth())
@@ -1404,7 +1404,7 @@ impl RenderPassCreateInfo {
                             ..Default::default()
                         })?;
 
-                let format_aspects = attachment_desc.format.unwrap().aspects();
+                let format_aspects = attachment_desc.format.aspects();
                 let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
 
                 if is_first_use && attachment_desc.load_op == AttachmentLoadOp::Clear {
@@ -1652,8 +1652,8 @@ pub struct AttachmentDescription {
 
     /// The format of the image that is going to be bound.
     ///
-    /// The default value is `None`, which must be overridden.
-    pub format: Option<Format>,
+    /// The default value is `Format::UNDEFINED`.
+    pub format: Format,
 
     /// The number of samples of the image that is going to be bound.
     ///
@@ -1724,7 +1724,7 @@ impl Default for AttachmentDescription {
     fn default() -> Self {
         Self {
             flags: AttachmentDescriptionFlags::empty(),
-            format: None,
+            format: Format::UNDEFINED,
             samples: SampleCount::Sample1,
             load_op: AttachmentLoadOp::DontCare,
             store_op: AttachmentStoreOp::DontCare,
@@ -1763,13 +1763,6 @@ impl AttachmentDescription {
                 vuids: &["VUID-VkAttachmentDescription2-flags-parameter"],
                 ..ValidationError::from_requirement(err)
             })?;
-
-        let format = format.ok_or_else(|| ValidationError {
-            context: "format".into(),
-            problem: "is None".into(),
-            vuids: &["VUID-VkAttachmentDescription2-format-06698"],
-            ..Default::default()
-        })?;
 
         format
             .validate_device(device)
@@ -1994,6 +1987,15 @@ impl AttachmentDescription {
                     ..Default::default()
                 }));
             }
+        }
+
+        if format == Format::UNDEFINED {
+            return Err(Box::new(ValidationError {
+                context: "format".into(),
+                problem: "is `Format::UNDEFINED`".into(),
+                vuids: &["VUID-VkAttachmentDescription2-format-06698"],
+                ..Default::default()
+            }));
         }
 
         let format_aspects = format.aspects();
