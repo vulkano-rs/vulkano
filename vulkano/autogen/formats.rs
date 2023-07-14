@@ -364,8 +364,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 }
             }
 
-            /// Returns the size in bytes of a single texel block of this format. Returns `None`
-            /// if the texel block size is not well-defined for this format.
+            /// Returns the size in bytes of a single texel block of this format.
             ///
             /// For regular formats, this is the size of a single texel, but for more specialized
             /// formats this may be the size of multiple texels.
