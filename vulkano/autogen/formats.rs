@@ -13,7 +13,7 @@ use once_cell::sync::Lazy;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
-use std::iter::once;
+use std::iter;
 use vk_parse::{
     Enum, EnumSpec, Extension, ExtensionChild, Feature, Format, FormatChild, InterfaceItem,
 };
@@ -586,7 +586,7 @@ fn formats_members(
     static BLOCK_EXTENT_REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap());
 
-    once(
+    iter::once(
         FormatMember {
             name: format_ident!("UNDEFINED"),
             ffi_name: format_ident!("UNDEFINED"),
