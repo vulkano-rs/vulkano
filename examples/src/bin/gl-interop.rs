@@ -40,11 +40,11 @@ mod linux {
         },
         memory::{
             allocator::{
-                AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryUsage,
-                StandardMemoryAllocator,
+                AllocationCreateInfo, HostAccessType, MemoryAlloc, MemoryAllocator,
+                MemoryTypeFilter, StandardMemoryAllocator,
             },
             DedicatedAllocation, DeviceMemory, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-            MemoryAllocateInfo,
+            MemoryAllocateInfo, MemoryPropertyFlags,
         },
         pipeline::{
             graphics::{
@@ -139,7 +139,10 @@ mod linux {
                 memory_type_index: memory_allocator
                     .find_memory_type_index(
                         image_requirements.memory_type_bits,
-                        MemoryUsage::DeviceOnly.into(),
+                        MemoryTypeFilter {
+                            preferred_flags: MemoryPropertyFlags::DEVICE_LOCAL,
+                            ..Default::default()
+                        },
                     )
                     .unwrap(),
                 dedicated_allocation: Some(DedicatedAllocation::Image(&raw_image)),
@@ -612,7 +615,7 @@ mod linux {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                host_access: HostAccessType::SequentialWrite,
                 ..Default::default()
             },
             vertices,

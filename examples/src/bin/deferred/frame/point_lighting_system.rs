@@ -20,7 +20,7 @@ use vulkano::{
     },
     device::Queue,
     image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
+    memory::allocator::{AllocationCreateInfo, HostAccessType, MemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -78,7 +78,7 @@ impl PointLightingSystem {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                host_access: HostAccessType::SequentialWrite,
                 ..Default::default()
             },
             vertices,

@@ -30,7 +30,7 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -244,7 +244,7 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            usage: MemoryUsage::Download,
+            host_access: HostAccessType::RandomAccess,
             ..Default::default()
         },
         (0..1024 * 1024 * 4).map(|_| 0u8),

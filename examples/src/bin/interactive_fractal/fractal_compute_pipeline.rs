@@ -21,7 +21,7 @@ use vulkano::{
     },
     device::Queue,
     image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -65,7 +65,7 @@ impl FractalComputePipeline {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                host_access: HostAccessType::SequentialWrite,
                 ..Default::default()
             },
             colors,
@@ -124,7 +124,7 @@ impl FractalComputePipeline {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                host_access: HostAccessType::SequentialWrite,
                 ..Default::default()
             },
             colors,

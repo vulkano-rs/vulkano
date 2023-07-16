@@ -23,7 +23,7 @@ use vulkano::{
     device::Queue,
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
+    memory::allocator::{AllocationCreateInfo, HostAccessType, MemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -54,7 +54,7 @@ fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuff
             ..Default::default()
         },
         AllocationCreateInfo {
-            usage: MemoryUsage::Upload,
+            host_access: HostAccessType::SequentialWrite,
             ..Default::default()
         },
         (0..(size[0] * size[1])).map(|_| rand::thread_rng().gen_range(0u32..=1)),

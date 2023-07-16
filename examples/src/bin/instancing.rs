@@ -25,7 +25,7 @@ use vulkano::{
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -186,21 +186,19 @@ fn main() {
             position: [0.25, -0.1],
         },
     ];
-    let vertex_buffer = {
-        Buffer::from_iter(
-            &memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
-                ..Default::default()
-            },
-            vertices,
-        )
-        .unwrap()
-    };
+    let vertex_buffer = Buffer::from_iter(
+        &memory_allocator,
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            host_access: HostAccessType::SequentialWrite,
+            ..Default::default()
+        },
+        vertices,
+    )
+    .unwrap();
 
     // Now we create another buffer that will store the unique data per instance. For this example,
     // we'll have the instances form a 10x10 grid that slowly gets larger.
@@ -232,7 +230,7 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            usage: MemoryUsage::Upload,
+            host_access: HostAccessType::SequentialWrite,
             ..Default::default()
         },
         instances,

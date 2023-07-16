@@ -29,7 +29,7 @@ use vulkano::{
         ImageUsage, SampleCount,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -177,7 +177,7 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            usage: MemoryUsage::Upload,
+            host_access: HostAccessType::SequentialWrite,
             ..Default::default()
         },
         vertices,
@@ -318,7 +318,7 @@ fn main() {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Download,
+                host_access: HostAccessType::RandomAccess,
                 ..Default::default()
             },
             (0..image.extent()[0] * image.extent()[1] * 4).map(|_| 0u8),
