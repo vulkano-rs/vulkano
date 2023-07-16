@@ -51,13 +51,13 @@
 //! When allocating memory for a buffer, you have to specify a *memory usage*. This tells the
 //! memory allocator what memory type it should pick for the allocation.
 //!
-//! - [`MemoryUsage::DeviceOnly`] will allocate a buffer that's usually located in device-local
+//! - [`HostAccessType::DontCare`] will allocate a buffer that's usually located in device-local
 //!   memory and whose content can't be directly accessed by your application. Accessing this
 //!   buffer from the device is generally faster compared to accessing a buffer that's located in
 //!   host-visible memory.
-//! - [`MemoryUsage::Upload`] and [`MemoryUsage::Download`] both allocate from a host-visible
-//!   memory type, which means the buffer can be accessed directly from the host. Buffers allocated
-//!   with these memory usages are needed to get data to and from the device.
+//! - [`HostAccessType::SequentialWrite`] and [`HostAccessType::RandomAccess`] both allocate from a
+//!   host-visible memory type, which means the buffer can be accessed directly from the host.
+//!   Buffers allocated with these memory usages are needed to get data to and from the device.
 //!
 //! Take for example a buffer that is under constant access by the device but you need to read its
 //! content on the host from time to time, it may be a good idea to use a device-local buffer as
@@ -95,9 +95,9 @@
 //!
 //! [`RawBuffer`]: self::sys::RawBuffer
 //! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
-//! [`MemoryUsage::DeviceOnly`]: crate::memory::allocator::MemoryUsage::DeviceOnly
-//! [`MemoryUsage::Upload`]: crate::memory::allocator::MemoryUsage::Upload
-//! [`MemoryUsage::Download`]: crate::memory::allocator::MemoryUsage::Download
+//! [`HostAccessType::DontCare`]: crate::memory::allocator::HostAccessType::DontCare
+//! [`HostAccessType::SequentialWrite`]: crate::memory::allocator::HostAccessType::SequentialWrite
+//! [`HostAccessType::RandomAccess`]: crate::memory::allocator::HostAccessType::RandomAccess
 //! [the `view` module]: self::view
 //! [the `shader` module documentation]: crate::shader
 

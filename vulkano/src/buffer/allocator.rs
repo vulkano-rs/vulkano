@@ -17,8 +17,8 @@ use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     memory::{
         allocator::{
-            align_up, AllocationCreateInfo, DeviceLayout, MemoryAllocator, MemoryAllocatorError,
-            MemoryUsage, StandardMemoryAllocator,
+            align_up, AllocationCreateInfo, DeviceLayout, HostAccessType, MemoryAllocator,
+            MemoryAllocatorError, MemoryLocationPreference, StandardMemoryAllocator,
         },
         DeviceAlignment,
     },
@@ -132,7 +132,8 @@ where
         let SubbufferAllocatorCreateInfo {
             arena_size,
             buffer_usage,
-            memory_usage,
+            location_preference,
+            host_access,
             _ne: _,
         } = create_info;
 
@@ -157,7 +158,8 @@ where
             state: UnsafeCell::new(SubbufferAllocatorState {
                 memory_allocator,
                 buffer_usage,
-                memory_usage,
+                location_preference,
+                host_access,
                 buffer_alignment,
                 arena_size,
                 arena: None,
@@ -265,7 +267,8 @@ where
 struct SubbufferAllocatorState<A> {
     memory_allocator: A,
     buffer_usage: BufferUsage,
-    memory_usage: MemoryUsage,
+    location_preference: MemoryLocationPreference,
+    host_access: HostAccessType,
     // The alignment required for the subbuffers.
     buffer_alignment: DeviceAlignment,
     // The current size of the arenas.
@@ -349,7 +352,8 @@ where
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: self.memory_usage,
+                location_preference: self.location_preference,
+                host_access: self.host_access,
                 ..Default::default()
             },
             DeviceLayout::from_size_alignment(self.arena_size, 1).unwrap(),
@@ -413,10 +417,15 @@ pub struct SubbufferAllocatorCreateInfo {
     /// The default value is [`BufferUsage::TRANSFER_SRC`].
     pub buffer_usage: BufferUsage,
 
-    /// The memory usage that all buffers should be allocated with.
+    /// The preferred memory location the buffers should be allocated with.
     ///
-    /// The default value is [`MemoryUsage::Upload`].
-    pub memory_usage: MemoryUsage,
+    /// The default value is [`MemoryLocationPreference::Host`].
+    pub location_preference: MemoryLocationPreference,
+
+    /// The way the buffers are going to be accessed from the host.
+    ///
+    /// The default value is [`HostAccessType::SequentialWrite`].
+    pub host_access: HostAccessType,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -427,7 +436,8 @@ impl Default for SubbufferAllocatorCreateInfo {
         SubbufferAllocatorCreateInfo {
             arena_size: 0,
             buffer_usage: BufferUsage::TRANSFER_SRC,
-            memory_usage: MemoryUsage::Upload,
+            location_preference: MemoryLocationPreference::Host,
+            host_access: HostAccessType::SequentialWrite,
             _ne: crate::NonExhaustive(()),
         }
     }
