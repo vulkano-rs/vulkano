@@ -42,7 +42,7 @@ use vulkano::{
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{MemoryLocationPreference, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo,
         graphics::{
@@ -255,6 +255,7 @@ fn main() {
         memory_allocator.clone(),
         SubbufferAllocatorCreateInfo {
             buffer_usage: BufferUsage::INDIRECT_BUFFER | BufferUsage::STORAGE_BUFFER,
+            location_preference: MemoryLocationPreference::Device,
             ..Default::default()
         },
     );
@@ -262,6 +263,7 @@ fn main() {
         memory_allocator,
         SubbufferAllocatorCreateInfo {
             buffer_usage: BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
+            location_preference: MemoryLocationPreference::Device,
             ..Default::default()
         },
     );

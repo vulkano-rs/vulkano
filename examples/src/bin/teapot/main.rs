@@ -29,7 +29,9 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
+    memory::allocator::{
+        AllocationCreateInfo, HostAccessType, MemoryLocationPreference, StandardMemoryAllocator,
+    },
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -207,6 +209,7 @@ fn main() {
     let uniform_buffer = SubbufferAllocator::new(
         memory_allocator.clone(),
         SubbufferAllocatorCreateInfo {
+            location_preference: MemoryLocationPreference::Device,
             buffer_usage: BufferUsage::UNIFORM_BUFFER,
             ..Default::default()
         },
