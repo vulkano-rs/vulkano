@@ -209,8 +209,8 @@ fn main() {
     let uniform_buffer = SubbufferAllocator::new(
         memory_allocator.clone(),
         SubbufferAllocatorCreateInfo {
-            location_preference: MemoryLocationPreference::Device,
             buffer_usage: BufferUsage::UNIFORM_BUFFER,
+            location_preference: MemoryLocationPreference::Device,
             ..Default::default()
         },
     );
