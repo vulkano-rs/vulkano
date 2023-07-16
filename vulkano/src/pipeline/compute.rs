@@ -388,7 +388,7 @@ mod tests {
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
         },
-        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+        memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
         pipeline::{
             compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
             ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -467,7 +467,7 @@ mod tests {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                host_access: HostAccessType::RandomAccess,
                 ..Default::default()
             },
             0,

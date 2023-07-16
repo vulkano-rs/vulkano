@@ -157,7 +157,7 @@ pub mod view;
 ///         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo,
 ///         PrimaryCommandBufferAbstract,
 ///     },
-///     memory::allocator::{AllocationCreateInfo, MemoryUsage},
+///     memory::allocator::{AllocationCreateInfo, HostAccessType, MemoryLocationPreference},
 ///     sync::GpuFuture,
 ///     DeviceSize,
 /// };
@@ -179,14 +179,15 @@ pub mod view;
 ///     },
 ///     AllocationCreateInfo {
 ///         // Specify use for upload to the device.
-///         usage: MemoryUsage::Upload,
+///         location_preference: MemoryLocationPreference::Host,
+///         host_access: HostAccessType::SequentialWrite,
 ///         ..Default::default()
 ///     },
 ///     data,
 /// )
 /// .unwrap();
 ///
-/// // Create a buffer in device-local with enough space for a slice of `10_000` floats.
+/// // Create a buffer in device-local memory with enough space for a slice of `10_000` floats.
 /// let device_local_buffer = Buffer::new_slice::<f32>(
 ///     &memory_allocator,
 ///     BufferCreateInfo {
@@ -196,7 +197,8 @@ pub mod view;
 ///     },
 ///     AllocationCreateInfo {
 ///         // Specify use by the device only.
-///         usage: MemoryUsage::DeviceOnly,
+///         location_preference: MemoryLocationPreference::Device,
+///         host_access: HostAccessType::DontCare,
 ///         ..Default::default()
 ///     },
 ///     10_000 as DeviceSize,

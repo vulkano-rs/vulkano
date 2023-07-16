@@ -465,7 +465,7 @@ mod tests {
     use crate::{
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         format::Format,
-        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+        memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     };
 
     #[test]
@@ -480,13 +480,11 @@ mod tests {
                 usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
                 ..Default::default()
             },
-            AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
-                ..Default::default()
-            },
+            AllocationCreateInfo::default(),
             128,
         )
         .unwrap();
+
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
