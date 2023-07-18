@@ -76,9 +76,6 @@
 //!
 //! [`RawBuffer`]: self::sys::RawBuffer
 //! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
-//! [`HostAccessType::DontCare`]: crate::memory::allocator::HostAccessType::DontCare
-//! [`HostAccessType::SequentialWrite`]: crate::memory::allocator::HostAccessType::SequentialWrite
-//! [`HostAccessType::RandomAccess`]: crate::memory::allocator::HostAccessType::RandomAccess
 //! [the `view` module]: self::view
 //! [the `shader` module documentation]: crate::shader
 
