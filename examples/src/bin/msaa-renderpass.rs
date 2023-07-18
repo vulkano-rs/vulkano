@@ -76,7 +76,7 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -305,7 +305,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         vertices,
@@ -373,7 +374,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::RandomAccess,
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()
         },
         (0..1024 * 1024 * 4).map(|_| 0u8),

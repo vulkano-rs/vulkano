@@ -25,7 +25,7 @@ use vulkano::{
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -193,7 +193,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         vertices,
@@ -230,7 +231,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         instances,

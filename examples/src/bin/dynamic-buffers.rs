@@ -28,7 +28,7 @@ use vulkano::{
         QueueFlags,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -194,7 +194,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         aligned_data,
@@ -208,7 +209,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::RandomAccess,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()
         },
         (0..12).map(|_| 0u32),

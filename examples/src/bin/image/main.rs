@@ -28,9 +28,7 @@ use vulkano::{
         Image, ImageCreateInfo, ImageType, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{
-        AllocationCreateInfo, HostAccessType, MemoryLocationPreference, StandardMemoryAllocator,
-    },
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -190,7 +188,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         vertices,
@@ -238,8 +237,8 @@ fn main() {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                location_preference: MemoryLocationPreference::Host,
-                host_access: HostAccessType::SequentialWrite,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             (info.width * info.height * 4) as DeviceSize,

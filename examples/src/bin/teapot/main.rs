@@ -29,9 +29,7 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{
-        AllocationCreateInfo, HostAccessType, MemoryLocationPreference, StandardMemoryAllocator,
-    },
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -173,7 +171,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         POSITIONS,
@@ -186,7 +185,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         NORMALS,
@@ -199,7 +199,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            host_access: HostAccessType::SequentialWrite,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         INDICES,
@@ -210,7 +211,8 @@ fn main() {
         memory_allocator.clone(),
         SubbufferAllocatorCreateInfo {
             buffer_usage: BufferUsage::UNIFORM_BUFFER,
-            location_preference: MemoryLocationPreference::Device,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
     );

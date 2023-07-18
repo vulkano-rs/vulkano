@@ -17,8 +17,8 @@ use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     memory::{
         allocator::{
-            align_up, AllocationCreateInfo, DeviceLayout, HostAccessType, MemoryAllocator,
-            MemoryAllocatorError, MemoryLocationPreference, StandardMemoryAllocator,
+            align_up, AllocationCreateInfo, DeviceLayout, MemoryAllocator, MemoryAllocatorError,
+            MemoryTypeFilter, StandardMemoryAllocator,
         },
         DeviceAlignment,
     },
@@ -82,17 +82,32 @@ const MAX_ARENAS: usize = 32;
 /// # Examples
 ///
 /// ```
-/// use vulkano::buffer::allocator::SubbufferAllocator;
-/// use vulkano::command_buffer::{
-///     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
+/// use vulkano::{
+///     buffer::{
+///         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
+///         BufferUsage,
+///     },
+///     command_buffer::{
+///         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
+///     },
+///     memory::allocator::MemoryTypeFilter,
+///     sync::GpuFuture,
 /// };
-/// use vulkano::sync::GpuFuture;
+///
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 /// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
-///
+/// #
 /// // Create the buffer allocator.
-/// let buffer_allocator = SubbufferAllocator::new(memory_allocator.clone(), Default::default());
+/// let buffer_allocator = SubbufferAllocator::new(
+///     memory_allocator.clone(),
+///     SubbufferAllocatorCreateInfo {
+///         buffer_usage: BufferUsage::TRANSFER_SRC,
+///         memory_type_filter: MemoryTypeFilter::PREFER_HOST
+///             | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+///         ..Default::default()
+///     },
+/// );
 ///
 /// for n in 0..25u32 {
 ///     // Each loop allocates a new subbuffer and stores `data` in it.
@@ -132,8 +147,7 @@ where
         let SubbufferAllocatorCreateInfo {
             arena_size,
             buffer_usage,
-            location_preference,
-            host_access,
+            memory_type_filter,
             _ne: _,
         } = create_info;
 
@@ -158,8 +172,7 @@ where
             state: UnsafeCell::new(SubbufferAllocatorState {
                 memory_allocator,
                 buffer_usage,
-                location_preference,
-                host_access,
+                memory_type_filter,
                 buffer_alignment,
                 arena_size,
                 arena: None,
@@ -267,8 +280,7 @@ where
 struct SubbufferAllocatorState<A> {
     memory_allocator: A,
     buffer_usage: BufferUsage,
-    location_preference: MemoryLocationPreference,
-    host_access: HostAccessType,
+    memory_type_filter: MemoryTypeFilter,
     // The alignment required for the subbuffers.
     buffer_alignment: DeviceAlignment,
     // The current size of the arenas.
@@ -352,8 +364,7 @@ where
                 ..Default::default()
             },
             AllocationCreateInfo {
-                location_preference: self.location_preference,
-                host_access: self.host_access,
+                memory_type_filter: self.memory_type_filter,
                 ..Default::default()
             },
             DeviceLayout::from_size_alignment(self.arena_size, 1).unwrap(),
@@ -362,7 +373,7 @@ where
             Validated::Error(BufferAllocateError::AllocateMemory(err)) => err,
             // We don't use sparse-binding, concurrent sharing or external memory, therefore the
             // other errors can't happen.
-            _ => unreachable!(),
+            _ => unreachable!("{err:?}"),
         })
     }
 }
@@ -414,18 +425,13 @@ pub struct SubbufferAllocatorCreateInfo {
 
     /// The buffer usage that all allocated buffers should have.
     ///
-    /// The default value is [`BufferUsage::TRANSFER_SRC`].
+    /// The default value is empty, which must be overridden.
     pub buffer_usage: BufferUsage,
 
-    /// The preferred memory location the buffers should be allocated with.
+    /// The memory type filter all buffers should be allocated with.
     ///
-    /// The default value is [`MemoryLocationPreference::Host`].
-    pub location_preference: MemoryLocationPreference,
-
-    /// The way the buffers are going to be accessed from the host.
-    ///
-    /// The default value is [`HostAccessType::SequentialWrite`].
-    pub host_access: HostAccessType,
+    /// The default value is [`MemoryTypeFilter::PREFER_DEVICE`].
+    pub memory_type_filter: MemoryTypeFilter,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -435,9 +441,8 @@ impl Default for SubbufferAllocatorCreateInfo {
     fn default() -> Self {
         SubbufferAllocatorCreateInfo {
             arena_size: 0,
-            buffer_usage: BufferUsage::TRANSFER_SRC,
-            location_preference: MemoryLocationPreference::Host,
-            host_access: HostAccessType::SequentialWrite,
+            buffer_usage: BufferUsage::empty(),
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -452,7 +457,13 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer_allocator = SubbufferAllocator::new(memory_allocator, Default::default());
+        let buffer_allocator = SubbufferAllocator::new(
+            memory_allocator,
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+        );
         assert_eq!(buffer_allocator.arena_size(), 0);
 
         buffer_allocator.reserve(83).unwrap();
@@ -464,7 +475,13 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_allocator = StandardMemoryAllocator::new_default(device);
 
-        let buffer_allocator = SubbufferAllocator::new(memory_allocator, Default::default());
+        let buffer_allocator = SubbufferAllocator::new(
+            memory_allocator,
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+        );
         assert_eq!(buffer_allocator.arena_size(), 0);
 
         buffer_allocator.allocate_sized::<u32>().unwrap();

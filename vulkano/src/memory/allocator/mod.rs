@@ -242,6 +242,7 @@ use parking_lot::RwLock;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
+    ops::BitOr,
     sync::Arc,
 };
 
@@ -385,6 +386,121 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
 
 /// Describes what memory property flags are required, preferred and not preferred when picking a
 /// memory type index.
+///
+/// # Examples
+///
+/// For resources that the device frequently accesses, e.g. textures, render targets, or
+/// intermediary buffers, you want device-local memory without any host access:
+///
+/// ```
+/// # use vulkano::{
+/// #     image::{Image, ImageCreateInfo, ImageUsage},
+/// #     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
+/// # };
+/// #
+/// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+/// # let format = return;
+/// # let extent = return;
+/// #
+/// let texture = Image::new(
+///     &memory_allocator,
+///     ImageCreateInfo {
+///         format,
+///         extent,
+///         usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+///         ..Default::default()
+///     },
+///     AllocationCreateInfo {
+///         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+///         ..Default::default()
+///     },
+/// )
+/// .unwrap();
+/// ```
+///
+/// For staging, the resource is only ever written to sequentially. Also, since the device will
+/// only read the staging resourse once, it would yield no benefit to place it in device-local
+/// memory, in fact it would be wasteful. Therefore, it's best to put it in host-local memory:
+///
+/// ```
+/// # use vulkano::{
+/// #     buffer::{Buffer, BufferCreateInfo, BufferUsage},
+/// #     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
+/// # };
+/// #
+/// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+/// #
+/// let staging_buffer = Buffer::new_sized(
+///     &memory_allocator,
+///     BufferCreateInfo {
+///         usage: BufferUsage::TRANSFER_SRC,
+///         ..Default::default()
+///     },
+///     AllocationCreateInfo {
+///         memory_type_filter: MemoryTypeFilter::PREFER_HOST |
+///             MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+///         ..Default::default()
+///     },
+/// )
+/// .unwrap();
+/// #
+/// # let staging_buffer: vulkano::buffer::Subbuffer<u32> = staging_buffer;
+/// ```
+///
+/// For resources that the device accesses directly, aka a buffer/image used for anything other
+/// than transfers, it's probably best to put it in device-local memory:
+///
+/// ```
+/// # use vulkano::{
+/// #     buffer::{Buffer, BufferCreateInfo, BufferUsage},
+/// #     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
+/// # };
+/// #
+/// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+/// #
+/// let uniform_buffer = Buffer::new_sized(
+///     &memory_allocator,
+///     BufferCreateInfo {
+///         usage: BufferUsage::UNIFORM_BUFFER,
+///         ..Default::default()
+///     },
+///     AllocationCreateInfo {
+///         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE |
+///             MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+///         ..Default::default()
+///     },
+/// )
+/// .unwrap();
+/// #
+/// # let uniform_buffer: vulkano::buffer::Subbuffer<u32> = uniform_buffer;
+/// ```
+///
+/// For readback, e.g. getting the results of a compute shader back to the host:
+///
+/// ```
+/// # use vulkano::{
+/// #     buffer::{Buffer, BufferCreateInfo, BufferUsage},
+/// #     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
+/// # };
+/// #
+/// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+/// #
+/// let readback_buffer = Buffer::new_sized(
+///     &memory_allocator,
+///     BufferCreateInfo {
+///         usage: BufferUsage::TRANSFER_DST,
+///         ..Default::default()
+///     },
+///     AllocationCreateInfo {
+///         memory_type_filter: MemoryTypeFilter::PREFER_HOST |
+///             MemoryTypeFilter::HOST_RANDOM_ACCESS,
+///         ..Default::default()
+///     },
+/// )
+/// .unwrap();
+/// #
+/// # let readback_buffer: vulkano::buffer::Subbuffer<u32> = readback_buffer;
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MemoryTypeFilter {
     pub required_flags: MemoryPropertyFlags,
@@ -392,98 +508,14 @@ pub struct MemoryTypeFilter {
     pub not_preferred_flags: MemoryPropertyFlags,
 }
 
-fn find_memory_preferences(create_info: &AllocationCreateInfo) -> MemoryTypeFilter {
-    let AllocationCreateInfo {
-        location_preference,
-        host_access,
-        allocate_preference: _,
-        _ne: _,
-    } = create_info;
-
-    let mut filter = MemoryTypeFilter::default();
-
-    match location_preference {
-        MemoryLocationPreference::Device => {
-            filter.preferred_flags |= MemoryPropertyFlags::DEVICE_LOCAL;
-        }
-        MemoryLocationPreference::Host => {
-            filter.not_preferred_flags |= MemoryPropertyFlags::DEVICE_LOCAL;
-        }
-    }
-
-    match host_access {
-        HostAccessType::DontCare => {}
-        HostAccessType::SequentialWrite => {
-            filter.required_flags |=
-                MemoryPropertyFlags::HOST_VISIBLE | MemoryPropertyFlags::HOST_COHERENT;
-            filter.not_preferred_flags |= MemoryPropertyFlags::HOST_CACHED;
-        }
-        HostAccessType::RandomAccess => {
-            filter.required_flags |=
-                MemoryPropertyFlags::HOST_VISIBLE | MemoryPropertyFlags::HOST_CACHED;
-        }
-    }
-
-    filter
-}
-
-/// Parameters to create a new [allocation] using a [memory allocator].
-///
-/// [allocation]: MemoryAlloc
-/// [memory allocator]: MemoryAllocator
-#[derive(Clone, Debug)]
-pub struct AllocationCreateInfo {
-    /// The preferred memory location for the allocation.
-    ///
-    /// The default value is [`MemoryLocationPreference::Device`].
-    pub location_preference: MemoryLocationPreference,
-
-    /// The way the allocation is going to be accessed from the host.
-    ///
-    /// The default value is [`HostAccessType::DontCare`].
-    pub host_access: HostAccessType,
-
-    /// How eager the allocator should be to allocate [`DeviceMemory`].
-    ///
-    /// The default value is [`MemoryAllocatePreference::Unknown`].
-    pub allocate_preference: MemoryAllocatePreference,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl Default for AllocationCreateInfo {
-    #[inline]
-    fn default() -> Self {
-        AllocationCreateInfo {
-            location_preference: MemoryLocationPreference::Device,
-            host_access: HostAccessType::DontCare,
-            allocate_preference: MemoryAllocatePreference::Unknown,
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-/// Describes the preferred physical location of the memory.
-///
-/// Keep in mind that for implementations with unified memory, there's only system RAM. That means
-/// that even if the implementation reports a memory type that is not [`HOST_VISIBLE`] and is
-/// [`DEVICE_LOCAL`], its still the same unified memory as all other memory. However, it may still
-/// be faster to access. On the other hand, some such implementations don't report any memory types
-/// that are not `HOST_VISIBLE`, which makes sense since it's all system RAM. In that case you
-/// wouldn't need to do staging.
-///
-/// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-/// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum MemoryLocationPreference {
+impl MemoryTypeFilter {
     /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag.
     ///
     /// Memory being device-local means that it is fastest to access for the device. However,
     /// for dedicated GPUs, getting memory in and out of VRAM requires to go through the PCIe bus,
     /// which is very slow and should therefore only be done when necessary.
     ///
-    /// This option is best suited for anything that the host doesn't access, but the device
+    /// This filter is best suited for anything that the host doesn't access, but the device
     /// accesses frequently. For example textures, render targets, and intermediary buffers.
     ///
     /// For memory that the host does access but less frequently than the device, such as updating
@@ -497,9 +529,27 @@ pub enum MemoryLocationPreference {
     /// still prefer device-local memory if the memory is used regularly. For instance, an image
     /// that is swapped each frame.
     ///
+    /// Keep in mind that for implementations with unified memory, there's only system RAM. That
+    /// means that even if the implementation reports a memory type that is not `HOST_VISIBLE` and
+    /// is `DEVICE_LOCAL`, its still the same unified memory as all other memory. However, it may
+    /// still be faster to access. On the other hand, some such implementations don't report any
+    /// memory types that are not `HOST_VISIBLE`, which makes sense since it's all system RAM. In
+    /// that case you wouldn't need to do staging.
+    ///
+    /// Don't use this together with [`PREFER_HOST`], that makes no sense. If you need host access,
+    /// make sure you combine this with either the [`HOST_SEQUENTIAL_WRITE`] or
+    /// [`HOST_RANDOM_ACCESS`] filter.
+    ///
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-    Device,
+    /// [`PREFER_HOST`]: Self::PREFER_HOST
+    /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
+    /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
+    pub const PREFER_DEVICE: Self = Self {
+        required_flags: MemoryPropertyFlags::empty(),
+        preferred_flags: MemoryPropertyFlags::DEVICE_LOCAL,
+        not_preferred_flags: MemoryPropertyFlags::empty(),
+    };
 
     /// Prefers picking a memory type without the [`DEVICE_LOCAL`] flag.
     ///
@@ -516,70 +566,124 @@ pub enum MemoryLocationPreference {
     /// still prefer host-local memory if the memory is rarely used, such as for manually paging
     /// parts of device-local memory out in order to free up space on the device.
     ///
+    /// Don't use this together with [`PREFER_DEVICE`], that makes no sense. If you need host
+    /// access, make sure you combine this with either the [`HOST_SEQUENTIAL_WRITE`] or
+    /// [`HOST_RANDOM_ACCESS`] filter.
+    ///
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
-    Host,
-}
+    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
+    /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
+    /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
+    pub const PREFER_HOST: Self = Self {
+        required_flags: MemoryPropertyFlags::empty(),
+        preferred_flags: MemoryPropertyFlags::empty(),
+        not_preferred_flags: MemoryPropertyFlags::DEVICE_LOCAL,
+    };
 
-/// Describes how the memory is going to be accessed from the host, if at all.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum HostAccessType {
-    /// Indicates that the allocator should not impose any requirements or preferences for host
-    /// access on the memory type.
-    ///
-    /// As such, you are not guaranteed to get a memory type that has the [`HOST_VISIBLE`] flag.
-    /// However, in return this allows the allocator to pick a memory type that is only accessible
-    /// by the device, if such a memory type is reported by the device as the faster alternative.
-    ///
-    /// This option is what you will always want to use unless the memory needs to be accessed by
-    /// the host, because a memory type that can only be accessed by the device is going to give
-    /// the best performance. Example use cases would be textures and other maps which are written
-    /// to once and then never again, or resources that are only written and read by the device,
-    /// like render targets and intermediary buffers.
-    ///
-    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-    DontCare,
-
-    /// Indicates that the memory is only ever going to be written to sequentially and never read
-    /// nor accessed randomly.
-    ///
-    /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] and [`HOST_COHERENT`]
-    /// flags. Using this access type allows the allocator to pick a memory type that is uncached
-    /// and write-combined, which is ideal for sequential writes. However, this optimization might
-    /// lead to poor performance for anything else. What counts as a sequential write is any kind
-    /// of loop that writes memory locations in order, such as iterating over a slice while writing
-    /// each element in order, or equivalently using [`slice::copy_from_slice`]. Copying sized data
-    /// also counts, as rustc should write the memory locations in order. If you have a struct,
-    /// make sure you write it member-by-member.
-    ///
-    /// If you do both a sequential write and read or random access, then you should use
-    /// [`RandomAccess`] instead. However, you could also consider using different allocations for
-    /// the two purposes to get the most performance out, if that's possible.
+    /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] flag. Using this filter
+    /// allows the allocator to pick a memory type that is uncached and write-combined, which is
+    /// ideal for sequential writes. However, this optimization might lead to poor performance for
+    /// anything else. What counts as a sequential write is any kind of loop that writes memory
+    /// locations in order, such as iterating over a slice while writing each element in order, or
+    /// equivalently using [`slice::copy_from_slice`]. Copying sized data also counts, as rustc
+    /// should write the memory locations in order. If you have a struct, make sure you write it
+    /// member-by-member.
     ///
     /// Example use cases include staging buffers, as well as any other kind of buffer that you
     /// only write to from the host, like a uniform or vertex buffer.
     ///
+    /// Don't use this together with [`HOST_RANDOM_ACCESS`], that makes no sense. If you do both a
+    /// sequential write and read or random access, then you should use `HOST_RANDOM_ACCESS`
+    /// instead. However, you could also consider using different allocations for the two purposes
+    /// to get the most performance out, if that's possible.
+    ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
     /// [`HOST_COHERENT`]: MemoryPropertyFlags::HOST_COHERENT
-    /// [`RandomAccess`]: Self::RandomAccess
-    SequentialWrite,
+    /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
+    pub const HOST_SEQUENTIAL_WRITE: Self = Self {
+        required_flags: MemoryPropertyFlags::HOST_VISIBLE,
+        preferred_flags: MemoryPropertyFlags::empty(),
+        not_preferred_flags: MemoryPropertyFlags::HOST_CACHED,
+    };
 
-    /// Indicates that the memory is going to be read or accessed randomly.
-    ///
     /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] and [`HOST_CACHED`]
-    /// flags, which is best suited for such an access pattern.
-    ///
-    /// If you are sure you only ever need to sequentially write to the allocation, then using
-    /// [`SequentialWrite`] will yield better performance.
+    /// flags, which is best suited for readback and/or random access.
     ///
     /// Example use cases include using the device for things other than rendering and getting the
     /// results back to the host. That might be compute shading, or image or video manipulation, or
     /// screenshotting.
     ///
+    /// Don't use this together with [`HOST_SEQUENTIAL_WRITE`], that makes no sense. If you are
+    /// sure you only ever need to sequentially write to the allocation, then using
+    /// `HOST_SEQUENTIAL_WRITE` instead will yield better performance.
+    ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
     /// [`HOST_CACHED`]: MemoryPropertyFlags::HOST_CACHED
-    /// [`SequentialWrite`]: Self::SequentialWrite
-    RandomAccess,
+    /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
+    pub const HOST_RANDOM_ACCESS: Self = Self {
+        required_flags: MemoryPropertyFlags::HOST_VISIBLE.union(MemoryPropertyFlags::HOST_CACHED),
+        preferred_flags: MemoryPropertyFlags::empty(),
+        not_preferred_flags: MemoryPropertyFlags::empty(),
+    };
+
+    /// Returns a `MemoryTypeFilter` with none of the flags set.
+    #[inline]
+    pub const fn empty() -> Self {
+        Self {
+            required_flags: MemoryPropertyFlags::empty(),
+            preferred_flags: MemoryPropertyFlags::empty(),
+            not_preferred_flags: MemoryPropertyFlags::empty(),
+        }
+    }
+
+    /// Returns the union of `self` and `other`.
+    #[inline]
+    pub const fn union(self, other: Self) -> Self {
+        Self {
+            required_flags: self.required_flags.union(other.required_flags),
+            preferred_flags: self.preferred_flags.union(other.preferred_flags),
+            not_preferred_flags: self.not_preferred_flags.union(other.not_preferred_flags),
+        }
+    }
+}
+
+impl BitOr for MemoryTypeFilter {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
+    }
+}
+
+/// Parameters to create a new [allocation] using a [memory allocator].
+///
+/// [allocation]: MemoryAlloc
+/// [memory allocator]: MemoryAllocator
+#[derive(Clone, Debug)]
+pub struct AllocationCreateInfo {
+    /// Filter used to narrow down the memory type to be selected.
+    ///
+    /// The default value is [`MemoryTypeFilter::PREFER_DEVICE`].
+    pub memory_type_filter: MemoryTypeFilter,
+
+    /// How eager the allocator should be to allocate [`DeviceMemory`].
+    ///
+    /// The default value is [`MemoryAllocatePreference::Unknown`].
+    pub allocate_preference: MemoryAllocatePreference,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for AllocationCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+            allocate_preference: MemoryAllocatePreference::Unknown,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 /// Describes whether allocating [`DeviceMemory`] is desired.
@@ -1257,7 +1361,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   `create_info.requirements.size` doesn't match the memory requirements of the resource.
     /// - Panics if finding a suitable memory type failed. This only happens if the
     ///   `create_info.requirements` correspond to those of an optimal image but
-    ///   `create_info.host_access` is not [`HostAccessType::DontCare`].
+    ///   `create_info.memory_type_filter` requires host access.
     ///
     /// # Errors
     ///
@@ -1307,8 +1411,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         create_info: AllocationCreateInfo,
         mut dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        let filter = find_memory_preferences(&create_info);
-
         let MemoryRequirements {
             layout,
             mut memory_type_bits,
@@ -1317,8 +1419,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         } = requirements;
 
         let AllocationCreateInfo {
-            location_preference: _,
-            host_access: _,
+            memory_type_filter,
             allocate_preference,
             _ne: _,
         } = create_info;
@@ -1333,7 +1434,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         memory_type_bits &= self.memory_type_bits;
 
         let mut memory_type_index = self
-            .find_memory_type_index(memory_type_bits, filter)
+            .find_memory_type_index(memory_type_bits, memory_type_filter)
             .expect("couldn't find a suitable memory type");
 
         if !self.dedicated_allocation && !requires_dedicated_allocation {
@@ -1435,7 +1536,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                 Err(err) => {
                     memory_type_bits &= !(1 << memory_type_index);
                     memory_type_index = self
-                        .find_memory_type_index(memory_type_bits, filter)
+                        .find_memory_type_index(memory_type_bits, memory_type_filter)
                         .ok_or(err)?;
                 }
             }

@@ -15,7 +15,7 @@ use vulkano::{
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
     device::Queue,
-    memory::allocator::{AllocationCreateInfo, HostAccessType, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -67,7 +67,8 @@ impl TriangleDrawSystem {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                host_access: HostAccessType::SequentialWrite,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices,

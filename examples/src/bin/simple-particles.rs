@@ -28,9 +28,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{
-        AllocationCreateInfo, HostAccessType, MemoryLocationPreference, StandardMemoryAllocator,
-    },
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo,
         graphics::{
@@ -365,8 +363,8 @@ fn main() {
             },
             AllocationCreateInfo {
                 // Specify this buffer will be used for uploading to the GPU.
-                location_preference: MemoryLocationPreference::Host,
-                host_access: HostAccessType::SequentialWrite,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices,
@@ -386,8 +384,7 @@ fn main() {
             },
             AllocationCreateInfo {
                 // Specify this buffer will only be used by the device.
-                location_preference: MemoryLocationPreference::Device,
-                host_access: HostAccessType::DontCare,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
             PARTICLE_COUNT as vulkano::DeviceSize,

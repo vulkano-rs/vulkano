@@ -22,7 +22,7 @@ use vulkano::{
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
         view::ImageView,
     },
-    memory::allocator::{AllocationCreateInfo, HostAccessType, MemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -101,7 +101,8 @@ impl PixelsDrawPipeline {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                host_access: HostAccessType::SequentialWrite,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices,
@@ -114,7 +115,8 @@ impl PixelsDrawPipeline {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                host_access: HostAccessType::SequentialWrite,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             indices,

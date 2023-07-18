@@ -46,25 +46,6 @@
 //! once, or you can keep reusing the same buffer (because its size is unchanging) it's best to
 //! use a dedicated `Buffer` for that.
 //!
-//! # Memory usage
-//!
-//! When allocating memory for a buffer, you have to specify a *memory usage*. This tells the
-//! memory allocator what memory type it should pick for the allocation.
-//!
-//! - [`HostAccessType::DontCare`] will allocate a buffer that's usually located in device-local
-//!   memory and whose content can't be directly accessed by your application. Accessing this
-//!   buffer from the device is generally faster compared to accessing a buffer that's located in
-//!   host-visible memory.
-//! - [`HostAccessType::SequentialWrite`] and [`HostAccessType::RandomAccess`] both allocate from a
-//!   host-visible memory type, which means the buffer can be accessed directly from the host.
-//!   Buffers allocated with these memory usages are needed to get data to and from the device.
-//!
-//! Take for example a buffer that is under constant access by the device but you need to read its
-//! content on the host from time to time, it may be a good idea to use a device-local buffer as
-//! the main buffer and a host-visible buffer for when you need to read it. Then whenever you need
-//! to read the main buffer, ask the device to copy from the device-local buffer to the
-//! host-visible buffer, and read the host-visible buffer instead.
-//!
 //! # Buffer usage
 //!
 //! When you create a buffer, you have to specify its *usage*. In other words, you have to
@@ -157,7 +138,7 @@ pub mod view;
 ///         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo,
 ///         PrimaryCommandBufferAbstract,
 ///     },
-///     memory::allocator::{AllocationCreateInfo, HostAccessType, MemoryLocationPreference},
+///     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
 ///     sync::GpuFuture,
 ///     DeviceSize,
 /// };
@@ -166,6 +147,7 @@ pub mod view;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 /// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
 /// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+/// #
 /// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
 ///
@@ -179,8 +161,8 @@ pub mod view;
 ///     },
 ///     AllocationCreateInfo {
 ///         // Specify use for upload to the device.
-///         location_preference: MemoryLocationPreference::Host,
-///         host_access: HostAccessType::SequentialWrite,
+///         memory_type_filter: MemoryTypeFilter::PREFER_HOST
+///             | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
 ///         ..Default::default()
 ///     },
 ///     data,
@@ -197,8 +179,7 @@ pub mod view;
 ///     },
 ///     AllocationCreateInfo {
 ///         // Specify use by the device only.
-///         location_preference: MemoryLocationPreference::Device,
-///         host_access: HostAccessType::DontCare,
+///         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
 ///         ..Default::default()
 ///     },
 ///     10_000 as DeviceSize,

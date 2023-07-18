@@ -20,7 +20,7 @@ use vulkano::{
     },
     device::Queue,
     image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, HostAccessType, MemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -79,7 +79,8 @@ impl DirectionalLightingSystem {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                host_access: HostAccessType::SequentialWrite,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices,
