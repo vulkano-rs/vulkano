@@ -20,7 +20,7 @@ use vulkano::{
     },
     device::Queue,
     image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -72,21 +72,20 @@ impl DirectionalLightingSystem {
                 position: [3.0, -1.0],
             },
         ];
-        let vertex_buffer = {
-            Buffer::from_iter(
-                memory_allocator,
-                BufferCreateInfo {
-                    usage: BufferUsage::VERTEX_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    usage: MemoryUsage::Upload,
-                    ..Default::default()
-                },
-                vertices,
-            )
-            .expect("failed to create buffer")
-        };
+        let vertex_buffer = Buffer::from_iter(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertices,
+        )
+        .expect("failed to create buffer");
 
         let pipeline = {
             let device = gfx_queue.device();

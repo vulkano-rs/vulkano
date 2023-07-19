@@ -321,7 +321,7 @@ mod tests {
         },
         device::{Device, DeviceCreateInfo, QueueCreateInfo},
         image::sampler::{Sampler, SamplerCreateInfo},
-        memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+        memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
         pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
         shader::ShaderStages,
         sync::GpuFuture,
@@ -372,7 +372,8 @@ mod tests {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             [1_u32, 2].iter().copied(),
@@ -386,7 +387,8 @@ mod tests {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
             },
             [0_u32, 10, 20, 3, 4].iter().copied(),
@@ -509,7 +511,8 @@ mod tests {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
             },
             [0_u32, 1, 2, 3].iter().copied(),
@@ -563,7 +566,8 @@ mod tests {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
             },
             [0_u32, 1, 2, 3].iter().copied(),
@@ -619,7 +623,8 @@ mod tests {
                     ..Default::default()
                 },
                 AllocationCreateInfo {
-                    usage: MemoryUsage::Upload,
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
                 0u32,
@@ -716,7 +721,8 @@ mod tests {
                     ..Default::default()
                 },
                 AllocationCreateInfo {
-                    usage: MemoryUsage::Upload,
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
                 0u32,

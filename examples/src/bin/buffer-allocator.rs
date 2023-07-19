@@ -28,7 +28,7 @@ use vulkano::{
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
+    memory::allocator::{MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -169,6 +169,8 @@ fn main() {
         SubbufferAllocatorCreateInfo {
             // We want to use the allocated subbuffers as vertex buffers.
             buffer_usage: BufferUsage::VERTEX_BUFFER,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
     );

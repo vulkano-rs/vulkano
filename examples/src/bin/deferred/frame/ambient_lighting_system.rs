@@ -19,7 +19,7 @@ use vulkano::{
     },
     device::Queue,
     image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -78,7 +78,8 @@ impl AmbientLightingSystem {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices,

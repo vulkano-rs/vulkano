@@ -1119,7 +1119,7 @@ mod tests {
         },
         memory::{
             allocator::{
-                AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAllocator, MemoryUsage,
+                AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAllocator,
                 StandardMemoryAllocator,
             },
             MemoryRequirements,
@@ -1199,10 +1199,7 @@ mod tests {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
-            AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
-                ..Default::default()
-            },
+            AllocationCreateInfo::default(),
             6,
         )
         .unwrap();

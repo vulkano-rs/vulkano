@@ -868,14 +868,18 @@ impl Display for SuballocatorError {
 /// Basic usage as a global allocator for long-lived resources:
 ///
 /// ```
-/// use vulkano::format::Format;
-/// use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
-/// use vulkano::memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator};
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// use vulkano::{
+///     format::Format,
+///     image::{Image, ImageCreateInfo, ImageType, ImageUsage},
+///     memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
+/// };
 ///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// #
 /// let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
 ///
 /// # fn read_textures() -> Vec<Vec<u8>> { Vec::new() }
+/// #
 /// // Allocate some resources.
 /// let textures_data: Vec<Vec<u8>> = read_textures();
 /// let textures = textures_data.into_iter().map(|data| {
@@ -902,13 +906,27 @@ impl Display for SuballocatorError {
 ///
 /// ```
 /// use std::sync::Arc;
-/// use vulkano::buffer::allocator::SubbufferAllocator;
-/// use vulkano::memory::allocator::StandardMemoryAllocator;
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// use vulkano::{
+///     buffer::{
+///         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
+///         BufferUsage,
+///     },
+///     memory::allocator::{MemoryTypeFilter, StandardMemoryAllocator},
+/// };
 ///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// #
 /// // We need to wrap the allocator in an `Arc` so that we can share ownership of it.
 /// let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-/// let buffer_allocator = SubbufferAllocator::new(memory_allocator.clone(), Default::default());
+/// let buffer_allocator = SubbufferAllocator::new(
+///     memory_allocator.clone(),
+///     SubbufferAllocatorCreateInfo {
+///         buffer_usage: BufferUsage::TRANSFER_SRC,
+///         memory_type_filter: MemoryTypeFilter::PREFER_HOST
+///             | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+///         ..Default::default()
+///     },
+/// );
 ///
 /// // You can continue using `memory_allocator` for other things.
 /// ```
