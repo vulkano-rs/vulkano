@@ -22,7 +22,7 @@ use crate::{
         },
         PipelineStages,
     },
-    DeviceSize, SafeDeref, VulkanObject,
+    DeviceSize, SafeDeref, ValidationError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{
@@ -172,7 +172,7 @@ pub unsafe trait SecondaryCommandBufferAbstract:
     /// and if so locks it.
     ///
     /// If you call this function, then you should call `unlock` afterwards.
-    fn lock_record(&self) -> Result<(), CommandBufferExecError>;
+    fn lock_record(&self) -> Result<(), Box<ValidationError>>;
 
     /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
     ///
@@ -198,7 +198,7 @@ where
         (**self).inheritance_info()
     }
 
-    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+    fn lock_record(&self) -> Result<(), Box<ValidationError>> {
         (**self).lock_record()
     }
 

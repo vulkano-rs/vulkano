@@ -177,12 +177,14 @@ fn main() {
     .unwrap();
     builder
         .bind_pipeline_compute(pipeline.clone())
+        .unwrap()
         .bind_descriptor_sets(
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
             set,
         )
+        .unwrap()
         .dispatch([1024, 1, 1])
         .unwrap();
     let command_buffer = builder.build().unwrap();

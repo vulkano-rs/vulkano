@@ -24,7 +24,7 @@ use crate::{
         SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
-    device::{Device, DeviceOwned, QueueFamilyProperties},
+    device::{Device, DeviceOwned},
     image::{view::ImageView, Image, ImageAspects, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
@@ -42,7 +42,7 @@ use crate::{
     range_set::RangeSet,
     render_pass::{Framebuffer, Subpass},
     sync::{
-        AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier,
+        AccessFlags, BufferMemoryBarrier, DependencyFlags, DependencyInfo, ImageMemoryBarrier,
         PipelineStageAccessFlags, PipelineStages,
     },
     DeviceSize, Validated, ValidationError, VulkanError,
@@ -293,7 +293,13 @@ where
             if let Some(barriers) = barriers.remove(&command_index) {
                 for dependency_info in barriers {
                     unsafe {
-                        self.inner.pipeline_barrier(&dependency_info);
+                        #[cfg(debug_assertions)]
+                        self.inner
+                            .pipeline_barrier(&dependency_info)
+                            .expect("bug in Vulkano");
+
+                        #[cfg(not(debug_assertions))]
+                        self.inner.pipeline_barrier_unchecked(&dependency_info);
                     }
                 }
             }
@@ -305,7 +311,13 @@ where
         if let Some(final_barriers) = barriers.remove(&final_barrier_index) {
             for dependency_info in final_barriers {
                 unsafe {
-                    self.inner.pipeline_barrier(&dependency_info);
+                    #[cfg(debug_assertions)]
+                    self.inner
+                        .pipeline_barrier(&dependency_info)
+                        .expect("bug in Vulkano");
+
+                    #[cfg(not(debug_assertions))]
+                    self.inner.pipeline_barrier_unchecked(&dependency_info);
                 }
             }
         }
@@ -402,11 +414,6 @@ impl<L, A> AutoCommandBufferBuilder<L, A>
 where
     A: CommandBufferAllocator,
 {
-    #[inline]
-    pub(in crate::command_buffer) fn queue_family_properties(&self) -> &QueueFamilyProperties {
-        self.inner.queue_family_properties()
-    }
-
     pub(in crate::command_buffer) fn add_command(
         &mut self,
         name: &'static str,
@@ -490,7 +497,10 @@ impl AutoSyncState {
             level,
 
             command_index: 0,
-            pending_barrier: DependencyInfo::default(),
+            pending_barrier: DependencyInfo {
+                dependency_flags: DependencyFlags::BY_REGION,
+                ..DependencyInfo::default()
+            },
             barriers: Default::default(),
             first_unflushed: 0,
             latest_render_pass_enter: has_inherited_render_pass.then_some(0),
@@ -517,7 +527,10 @@ impl AutoSyncState {
 
         // Add one last barrier to transition images to their desired final layout.
         if self.level == CommandBufferLevel::Primary {
-            let mut final_barrier = DependencyInfo::default();
+            let mut final_barrier = DependencyInfo {
+                dependency_flags: DependencyFlags::BY_REGION,
+                ..DependencyInfo::default()
+            };
 
             for (image, range_map) in self.images.iter_mut() {
                 for (range, state) in range_map

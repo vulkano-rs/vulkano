@@ -73,8 +73,8 @@ pub(in crate::command_buffer) use self::builder::{
 use super::{
     allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
     sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
-    CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferResourcesUsage,
-    CommandBufferState, CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
+    CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
+    CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
     SecondaryCommandBufferAbstract, SecondaryCommandBufferResourcesUsage, SecondaryResourceUseRef,
 };
 use crate::{
@@ -82,7 +82,7 @@ use crate::{
     device::{Device, DeviceOwned},
     image::{Image, ImageLayout, ImageSubresourceRange},
     sync::PipelineStageAccessFlags,
-    DeviceSize, VulkanObject,
+    DeviceSize, ValidationError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{
@@ -187,20 +187,34 @@ where
         self.inner.inheritance_info().as_ref().unwrap()
     }
 
-    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+    fn lock_record(&self) -> Result<(), Box<ValidationError>> {
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
             } => {
                 let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
                 if was_already_submitted {
-                    return Err(CommandBufferExecError::OneTimeSubmitAlreadySubmitted);
+                    return Err(Box::new(ValidationError {
+                        problem: "the command buffer was created with the \
+                            `CommandBufferUsage::OneTimeSubmit` usage, but \
+                            it was already submitted before"
+                            .into(),
+                        // vuids?
+                        ..Default::default()
+                    }));
                 }
             }
             SubmitState::ExclusiveUse { ref in_use } => {
                 let already_in_use = in_use.swap(true, Ordering::SeqCst);
                 if already_in_use {
-                    return Err(CommandBufferExecError::ExclusiveAlreadyInUse);
+                    return Err(Box::new(ValidationError {
+                        problem: "the command buffer was created with the \
+                            `CommandBufferUsage::MultipleSubmit` usage, but \
+                            it is currently being executed"
+                            .into(),
+                        // vuids?
+                        ..Default::default()
+                    }));
                 }
             }
             SubmitState::Concurrent => (),
@@ -308,8 +322,7 @@ mod tests {
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferCopy,
-            CommandBufferExecError, CommandBufferUsage, CopyBufferInfoTyped, CopyError,
-            ExecuteCommandsError, PrimaryCommandBufferAbstract,
+            CommandBufferUsage, CopyBufferInfoTyped, PrimaryCommandBufferAbstract,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,
@@ -458,12 +471,7 @@ mod tests {
 
             // Recording the same non-concurrent secondary command buffer twice into the same
             // primary is an error.
-            assert!(matches!(
-                builder.execute_commands(secondary.clone()),
-                Err(ExecuteCommandsError::ExecError(
-                    CommandBufferExecError::ExclusiveAlreadyInUse
-                ))
-            ));
+            assert!(builder.execute_commands(secondary.clone()).is_err());
         }
 
         {
@@ -485,12 +493,7 @@ mod tests {
 
             // Recording the same non-concurrent secondary command buffer into multiple
             // primaries is an error.
-            assert!(matches!(
-                builder.execute_commands(secondary.clone()),
-                Err(ExecuteCommandsError::ExecError(
-                    CommandBufferExecError::ExclusiveAlreadyInUse
-                ))
-            ));
+            assert!(builder.execute_commands(secondary.clone()).is_err());
 
             std::mem::drop(cb1);
 
@@ -582,8 +585,8 @@ mod tests {
         )
         .unwrap();
 
-        assert!(matches!(
-            builder.copy_buffer(CopyBufferInfoTyped {
+        assert!(builder
+            .copy_buffer(CopyBufferInfoTyped {
                 regions: [BufferCopy {
                     src_offset: 0,
                     dst_offset: 1,
@@ -592,12 +595,8 @@ mod tests {
                 }]
                 .into(),
                 ..CopyBufferInfoTyped::buffers(source.clone(), source)
-            }),
-            Err(CopyError::OverlappingRegions {
-                src_region_index: 0,
-                dst_region_index: 0,
             })
-        ));
+            .is_err());
     }
 
     #[test]

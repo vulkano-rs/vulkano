@@ -91,11 +91,11 @@
 //!     queue.queue_family_index(),
 //!     CommandBufferUsage::MultipleSubmit
 //! ).unwrap()
-//! .begin_render_pass(render_pass_begin_info, SubpassContents::Inline).unwrap()
-//! .bind_pipeline_graphics(graphics_pipeline.clone())
-//! .bind_vertex_buffers(0, vertex_buffer.clone())
+//! .begin_render_pass(render_pass_begin_info, Default::default()).unwrap()
+//! .bind_pipeline_graphics(graphics_pipeline.clone()).unwrap()
+//! .bind_vertex_buffers(0, vertex_buffer.clone()).unwrap()
 //! .draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap()
-//! .end_render_pass().unwrap()
+//! .end_render_pass(Default::default()).unwrap()
 //! .build().unwrap();
 //!
 //! let _future = cb.execute(queue.clone());
@@ -111,19 +111,8 @@
 pub use self::{
     auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
     commands::{
-        clear::{ClearColorImageInfo, ClearDepthStencilImageInfo, ClearError},
-        copy::{
-            BlitImageInfo, BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped,
-            CopyBufferToImageInfo, CopyError, CopyErrorResource, CopyImageInfo,
-            CopyImageToBufferInfo, ImageBlit, ImageCopy, ImageResolve, ResolveImageInfo,
-        },
-        pipeline::PipelineExecutionError,
-        query::QueryError,
-        render_pass::{
-            ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError,
-            RenderingAttachmentInfo, RenderingAttachmentResolveInfo, RenderingInfo,
-        },
-        secondary::ExecuteCommandsError,
+        acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
+        query::*, render_pass::*, secondary::*, sync::*,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,

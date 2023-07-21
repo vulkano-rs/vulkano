@@ -74,7 +74,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
-    format::{FormatFeatures, NumericType},
+    format::FormatFeatures,
     image::{ImageAspect, ImageAspects},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
@@ -91,7 +91,7 @@ use crate::{
     },
     shader::{
         DescriptorBindingRequirements, FragmentShaderExecution, FragmentTestsStages,
-        ShaderExecution, ShaderScalarType, ShaderStage, ShaderStages,
+        ShaderExecution, ShaderStage, ShaderStages,
     },
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
@@ -2702,27 +2702,18 @@ impl GraphicsPipelineCreateInfo {
                     // same location but in different components.
 
                     let shader_type = element.ty.base_type;
-                    let attribute_type = attribute_desc.format.type_color().unwrap();
+                    let attribute_type = attribute_desc
+                        .format
+                        .numeric_format_color()
+                        .unwrap()
+                        .numeric_type();
 
                     // VUID?
-                    if !matches!(
-                        (shader_type, attribute_type),
-                        (
-                            ShaderScalarType::Float,
-                            NumericType::SFLOAT
-                                | NumericType::UFLOAT
-                                | NumericType::SNORM
-                                | NumericType::UNORM
-                                | NumericType::SSCALED
-                                | NumericType::USCALED
-                                | NumericType::SRGB,
-                        ) | (ShaderScalarType::Sint, NumericType::SINT)
-                            | (ShaderScalarType::Uint, NumericType::UINT)
-                    ) {
+                    if shader_type != attribute_type {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "`vertex_input_state.attributes[{}].format` has a different \
-                                scalar type than the vertex shader input variable with \
+                                numeric type than the vertex shader input variable with \
                                 location {0}",
                                 location,
                             )
