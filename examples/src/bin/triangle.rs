@@ -21,7 +21,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo,
+        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -618,10 +618,13 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        // The contents of the first (and only) subpass. This can be either
-                        // `Inline` or `SecondaryCommandBuffers`. The latter is a bit more advanced
-                        // and is not covered here.
-                        Default::default(),
+                        SubpassBeginInfo {
+                            // The contents of the first (and only) subpass.
+                            // This can be either `Inline` or `SecondaryCommandBuffers`.
+                            // The latter is a bit more advanced and is not covered here.
+                            contents: SubpassContents::Inline,
+                            ..Default::default()
+                        },
                     )
                     .unwrap()
                     // We are now inside the first subpass of the render pass.
