@@ -994,6 +994,7 @@ impl Fence {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_fence_win32",
                 )])]),
+                ..Default::default()
             }));
         }
 
