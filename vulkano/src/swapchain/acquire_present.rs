@@ -13,9 +13,9 @@ use crate::{
     device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     sync::{
-        fence::{Fence, FenceError},
+        fence::Fence,
         future::{AccessCheckError, AccessError, FlushError, GpuFuture, SubmitAnyBuilder},
-        semaphore::{Semaphore, SemaphoreError},
+        semaphore::Semaphore,
     },
     DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, VulkanError,
     VulkanObject,
@@ -186,10 +186,10 @@ impl SwapchainAcquireFuture {
     /// If timeout is `None`, will potentially block forever
     ///
     /// You still need to join with this future for present to work
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceError> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<bool, VulkanError> {
         match &self.fence {
             Some(fence) => fence.wait(timeout),
-            None => Ok(()),
+            None => Ok(true),
         }
     }
 }
@@ -330,12 +330,6 @@ pub enum AcquireError {
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
-
-    /// Error during fence creation.
-    FenceError(FenceError),
-
-    /// Error during semaphore creation.
-    SemaphoreError(SemaphoreError),
 }
 
 impl Error for AcquireError {
@@ -361,22 +355,8 @@ impl Display for AcquireError {
                 AcquireError::FullScreenExclusiveModeLost => {
                     "the swapchain no longer has full-screen exclusivity"
                 }
-                AcquireError::FenceError(_) => "error creating fence",
-                AcquireError::SemaphoreError(_) => "error creating semaphore",
             }
         )
-    }
-}
-
-impl From<FenceError> for AcquireError {
-    fn from(err: FenceError) -> Self {
-        AcquireError::FenceError(err)
-    }
-}
-
-impl From<SemaphoreError> for AcquireError {
-    fn from(err: SemaphoreError) -> Self {
-        AcquireError::SemaphoreError(err)
     }
 }
 

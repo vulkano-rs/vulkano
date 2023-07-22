@@ -14,15 +14,13 @@ use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
-    VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 #[cfg(unix)]
 use std::fs::File;
 use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -51,7 +49,7 @@ impl Semaphore {
     pub fn new(
         device: Arc<Device>,
         create_info: SemaphoreCreateInfo,
-    ) -> Result<Semaphore, SemaphoreError> {
+    ) -> Result<Semaphore, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
@@ -60,56 +58,15 @@ impl Semaphore {
     fn validate_new(
         device: &Device,
         create_info: &SemaphoreCreateInfo,
-    ) -> Result<(), SemaphoreError> {
-        let &SemaphoreCreateInfo {
-            export_handle_types,
-            _ne: _,
-        } = create_info;
-
-        if !export_handle_types.is_empty() {
-            if !(device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_external_semaphore)
-            {
-                return Err(SemaphoreError::RequirementNotMet {
-                    required_for: "`create_info.export_handle_types` is not empty",
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
-                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_semaphore")]),
-                    ]),
-                });
-            }
-
-            // VUID-VkExportSemaphoreCreateInfo-handleTypes-parameter
-            export_handle_types.validate_device(device)?;
-
-            // VUID-VkExportSemaphoreCreateInfo-handleTypes-01124
-            for handle_type in export_handle_types.into_iter() {
-                let external_semaphore_properties = unsafe {
-                    device
-                        .physical_device()
-                        .external_semaphore_properties_unchecked(
-                            ExternalSemaphoreInfo::handle_type(handle_type),
-                        )
-                };
-
-                if !external_semaphore_properties.exportable {
-                    return Err(SemaphoreError::HandleTypeNotExportable { handle_type });
-                }
-
-                if !external_semaphore_properties
-                    .compatible_handle_types
-                    .contains(export_handle_types)
-                {
-                    return Err(SemaphoreError::ExportHandleTypesNotCompatible);
-                }
-            }
-        }
+    ) -> Result<(), Box<ValidationError>> {
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
 
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
         create_info: SemaphoreCreateInfo,
@@ -151,14 +108,7 @@ impl Semaphore {
             output.assume_init()
         };
 
-        Ok(Semaphore {
-            handle,
-            device: InstanceOwnedDebugWrapper(device),
-            id: Self::next_id(),
-            must_put_in_pool: false,
-            export_handle_types,
-            state: Mutex::new(Default::default()),
-        })
+        Ok(Self::from_handle(device, handle, create_info))
     }
 
     /// Takes a semaphore from the vulkano-provided semaphore pool.
@@ -168,7 +118,7 @@ impl Semaphore {
     /// For most applications, using the pool should be preferred,
     /// in order to avoid creating new semaphores every frame.
     #[inline]
-    pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, SemaphoreError> {
+    pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, VulkanError> {
         let handle = device.semaphore_pool().lock().pop();
         let semaphore = match handle {
             Some(handle) => Semaphore {
@@ -181,7 +131,8 @@ impl Semaphore {
             },
             None => {
                 // Pool is empty, alloc new semaphore
-                let mut semaphore = Semaphore::new(device, Default::default())?;
+                let mut semaphore =
+                    unsafe { Semaphore::new_unchecked(device, Default::default())? };
                 semaphore.must_put_in_pool = true;
                 semaphore
             }
@@ -223,7 +174,7 @@ impl Semaphore {
     pub fn export_fd(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<File, SemaphoreError> {
+    ) -> Result<File, Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.validate_export_fd(handle_type, &state)?;
 
@@ -235,29 +186,56 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
         state: &SemaphoreState,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
-            return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`Semaphore::export_fd`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_semaphore_fd",
                 )])]),
-            });
+                ..Default::default()
+            }));
         }
 
-        // VUID-VkSemaphoreGetFdInfoKHR-handleType-parameter
-        handle_type.validate_device(&self.device)?;
+        handle_type
+            .validate_device(&self.device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkSemaphoreGetFdInfoKHR-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-        // VUID-VkSemaphoreGetFdInfoKHR-handleType-01132
+        if !matches!(
+            handle_type,
+            ExternalSemaphoreHandleType::OpaqueFd | ExternalSemaphoreHandleType::SyncFd
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "handle_type".into(),
+                problem: "is not `ExternalSemaphoreHandleType::OpaqueFd` or \
+                    `ExternalSemaphoreHandleType::SyncFd`"
+                    .into(),
+                vuids: &["VUID-VkSemaphoreGetFdInfoKHR-handleType-01136"],
+                ..Default::default()
+            }));
+        }
+
         if !self.export_handle_types.intersects(handle_type.into()) {
-            return Err(SemaphoreError::HandleTypeNotEnabled);
+            return Err(Box::new(ValidationError {
+                problem: "`self.export_handle_types()` does not contain `handle_type`".into(),
+                vuids: &["VUID-VkSemaphoreGetFdInfoKHR-handleType-01132"],
+                ..Default::default()
+            }));
         }
 
-        // VUID-VkSemaphoreGetFdInfoKHR-semaphore-01133
         if let Some(imported_handle_type) = state.current_import {
             match imported_handle_type {
                 ImportType::SwapchainAcquire => {
-                    return Err(SemaphoreError::ImportedForSwapchainAcquire)
+                    return Err(Box::new(ValidationError {
+                        problem: "the semaphore currently has an imported payload from a \
+                            swapchain acquire operation"
+                            .into(),
+                        vuids: &["VUID-VkSemaphoreGetFdInfoKHR-semaphore-01133"],
+                        ..Default::default()
+                    }));
                 }
                 ImportType::ExternalSemaphore(imported_handle_type) => {
                     let external_semaphore_properties = unsafe {
@@ -272,33 +250,43 @@ impl Semaphore {
                         .export_from_imported_handle_types
                         .intersects(imported_handle_type.into())
                     {
-                        return Err(SemaphoreError::ExportFromImportedNotSupported {
-                            imported_handle_type,
-                        });
+                        return Err(Box::new(ValidationError {
+                            problem: "the semaphore currently has an imported payload, whose type \
+                                does not allow re-exporting as `handle_type`, as \
+                                returned by `PhysicalDevice::external_semaphore_properties`"
+                                .into(),
+                            vuids: &["VUID-VkSemaphoreGetFdInfoKHR-semaphore-01133"],
+                            ..Default::default()
+                        }));
                     }
                 }
             }
         }
 
         if handle_type.has_copy_transference() {
-            // VUID-VkSemaphoreGetFdInfoKHR-handleType-01134
             if state.is_wait_pending() {
-                return Err(SemaphoreError::QueueIsWaiting);
+                return Err(Box::new(ValidationError {
+                    problem: "`handle_type` has copy transference, but \
+                        a wait operation on the semaphore is pending"
+                        .into(),
+                    vuids: &["VUID-VkSemaphoreGetFdInfoKHR-handleType-01134"],
+                    ..Default::default()
+                }));
             }
 
-            // VUID-VkSemaphoreGetFdInfoKHR-handleType-01135
-            // VUID-VkSemaphoreGetFdInfoKHR-handleType-03254
             if !(state.is_signaled().unwrap_or(false) || state.is_signal_pending()) {
-                return Err(SemaphoreError::HandleTypeCopyNotSignaled);
+                return Err(Box::new(ValidationError {
+                    problem: "`handle_type` has copy transference, but \
+                        the semaphore is not signaled, and \
+                        a signal operation on the semaphore is not pending"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkSemaphoreGetFdInfoKHR-handleType-01135",
+                        "VUID-VkSemaphoreGetFdInfoKHR-handleType-03254",
+                    ],
+                    ..Default::default()
+                }));
             }
-        }
-
-        // VUID-VkSemaphoreGetFdInfoKHR-handleType-01136
-        if !matches!(
-            handle_type,
-            ExternalSemaphoreHandleType::OpaqueFd | ExternalSemaphoreHandleType::SyncFd
-        ) {
-            return Err(SemaphoreError::HandleTypeNotFd);
         }
 
         Ok(())
@@ -353,7 +341,7 @@ impl Semaphore {
     pub fn export_win32_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<*mut std::ffi::c_void, SemaphoreError> {
+    ) -> Result<*mut std::ffi::c_void, Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.validate_export_win32_handle(handle_type, &state)?;
 
@@ -365,42 +353,78 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
         state: &SemaphoreState,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .device
             .enabled_extensions()
             .khr_external_semaphore_win32
         {
-            return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`Semaphore::export_win32_handle`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_semaphore_win32",
                 )])]),
-            });
+                ..Default::default()
+            }));
         }
 
-        // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-parameter
-        handle_type.validate_device(&self.device)?;
+        handle_type
+            .validate_device(&self.device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-        // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01126
+        if !matches!(
+            handle_type,
+            ExternalSemaphoreHandleType::OpaqueWin32
+                | ExternalSemaphoreHandleType::OpaqueWin32Kmt
+                | ExternalSemaphoreHandleType::D3D12Fence
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "handle_type".into(),
+                problem: "is not `ExternalSemaphoreHandleType::OpaqueWin32`, \
+                    `ExternalSemaphoreHandleType::OpaqueWin32Kmt` or \
+                    `ExternalSemaphoreHandleType::D3D12Fence`"
+                    .into(),
+                vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01131"],
+                ..Default::default()
+            }));
+        }
+
         if !self.export_handle_types.intersects(handle_type.into()) {
-            return Err(SemaphoreError::HandleTypeNotEnabled);
+            return Err(Box::new(ValidationError {
+                problem: "`self.export_handle_types()` does not contain `handle_type`".into(),
+                vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01126"],
+                ..Default::default()
+            }));
         }
 
-        // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01127
         if matches!(
             handle_type,
             ExternalSemaphoreHandleType::OpaqueWin32 | ExternalSemaphoreHandleType::D3D12Fence
         ) && state.is_exported(handle_type)
         {
-            return Err(SemaphoreError::AlreadyExported);
+            return Err(Box::new(ValidationError {
+                problem: "`handle_type` is `ExternalSemaphoreHandleType::OpaqueWin32` or \
+                    `ExternalSemaphoreHandleType::D3D12Fence`, but \
+                    a handle of this type has already been exported from this semaphore"
+                    .into(),
+                vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01127"],
+                ..Default::default()
+            }));
         }
 
-        // VUID-VkSemaphoreGetWin32HandleInfoKHR-semaphore-01128
         if let Some(imported_handle_type) = state.current_import {
             match imported_handle_type {
                 ImportType::SwapchainAcquire => {
-                    return Err(SemaphoreError::ImportedForSwapchainAcquire)
+                    return Err(Box::new(ValidationError {
+                        problem: "the semaphore currently has an imported payload from a \
+                            swapchain acquire operation"
+                            .into(),
+                        vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-semaphore-01128"],
+                        ..Default::default()
+                    }));
                 }
                 ImportType::ExternalSemaphore(imported_handle_type) => {
                     let external_semaphore_properties = unsafe {
@@ -415,34 +439,40 @@ impl Semaphore {
                         .export_from_imported_handle_types
                         .intersects(imported_handle_type.into())
                     {
-                        return Err(SemaphoreError::ExportFromImportedNotSupported {
-                            imported_handle_type,
-                        });
+                        return Err(Box::new(ValidationError {
+                            problem: "the semaphore currently has an imported payload, whose type \
+                                does not allow re-exporting as `handle_type`, as \
+                                returned by `PhysicalDevice::external_semaphore_properties`"
+                                .into(),
+                            vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-semaphore-01128"],
+                            ..Default::default()
+                        }));
                     }
                 }
             }
         }
 
         if handle_type.has_copy_transference() {
-            // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01129
             if state.is_wait_pending() {
-                return Err(SemaphoreError::QueueIsWaiting);
+                return Err(Box::new(ValidationError {
+                    problem: "`handle_type` has copy transference, but \
+                        a wait operation on the semaphore is pending"
+                        .into(),
+                    vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01129"],
+                    ..Default::default()
+                }));
             }
 
-            // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01130
             if !(state.is_signaled().unwrap_or(false) || state.is_signal_pending()) {
-                return Err(SemaphoreError::HandleTypeCopyNotSignaled);
+                return Err(Box::new(ValidationError {
+                    problem: "`handle_type` has copy transference, but \
+                        the semaphore is not signaled, and \
+                        a signal operation on the semaphore is not pending"
+                        .into(),
+                    vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01130"],
+                    ..Default::default()
+                }));
             }
-        }
-
-        // VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01131
-        if !matches!(
-            handle_type,
-            ExternalSemaphoreHandleType::OpaqueWin32
-                | ExternalSemaphoreHandleType::OpaqueWin32Kmt
-                | ExternalSemaphoreHandleType::D3D12Fence
-        ) {
-            return Err(SemaphoreError::HandleTypeNotWin32);
         }
 
         Ok(())
@@ -491,7 +521,7 @@ impl Semaphore {
     pub fn export_zircon_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<ash::vk::zx_handle_t, SemaphoreError> {
+    ) -> Result<ash::vk::zx_handle_t, Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.validate_export_zircon_handle(handle_type, &state)?;
 
@@ -503,29 +533,51 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
         state: &SemaphoreState,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
-            return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`Semaphore::export_zircon_handle`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "fuchsia_external_semaphore",
                 )])]),
-            });
+                ..Default::default()
+            }));
         }
 
-        // VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-parameter
-        handle_type.validate_device(&self.device)?;
+        handle_type
+            .validate_device(&self.device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-        // VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04758
+        if !matches!(handle_type, ExternalSemaphoreHandleType::ZirconEvent) {
+            return Err(Box::new(ValidationError {
+                context: "handle_type".into(),
+                problem: "is not `ExternalSemaphoreHandleType::ZirconEvent`".into(),
+                vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04762"],
+                ..Default::default()
+            }));
+        }
+
         if !self.export_handle_types.intersects(&handle_type.into()) {
-            return Err(SemaphoreError::HandleTypeNotEnabled);
+            return Err(Box::new(ValidationError {
+                problem: "`self.export_handle_types()` does not contain `handle_type`".into(),
+                vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04758"],
+                ..Default::default()
+            }));
         }
 
-        // VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-semaphore-04759
         if let Some(imported_handle_type) = state.current_import {
             match imported_handle_type {
                 ImportType::SwapchainAcquire => {
-                    return Err(SemaphoreError::ImportedForSwapchainAcquire)
+                    return Err(Box::new(ValidationError {
+                        problem: "the semaphore currently has an imported payload from a \
+                            swapchain acquire operation"
+                            .into(),
+                        vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-semaphore-04759"],
+                        ..Default::default()
+                    }));
                 }
                 ImportType::ExternalSemaphore(imported_handle_type) => {
                     let external_semaphore_properties = unsafe {
@@ -540,29 +592,40 @@ impl Semaphore {
                         .export_from_imported_handle_types
                         .intersects(&imported_handle_type.into())
                     {
-                        return Err(SemaphoreError::ExportFromImportedNotSupported {
-                            imported_handle_type,
-                        });
+                        return Err(Box::new(ValidationError {
+                            problem: "the semaphore currently has an imported payload, whose type \
+                                does not allow re-exporting as `handle_type`, as \
+                                returned by `PhysicalDevice::external_semaphore_properties`"
+                                .into(),
+                            vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-semaphore-04759"],
+                            ..Default::default()
+                        }));
                     }
                 }
             }
         }
 
         if handle_type.has_copy_transference() {
-            // VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04760
             if state.is_wait_pending() {
-                return Err(SemaphoreError::QueueIsWaiting);
+                return Err(Box::new(ValidationError {
+                    problem: "`handle_type` has copy transference, but \
+                        a wait operation on the semaphore is pending"
+                        .into(),
+                    vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04760"],
+                    ..Default::default()
+                }));
             }
 
-            // VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04761
             if !(state.is_signaled().unwrap_or(false) || state.is_signal_pending()) {
-                return Err(SemaphoreError::HandleTypeCopyNotSignaled);
+                return Err(Box::new(ValidationError {
+                    problem: "`handle_type` has copy transference, but \
+                        the semaphore is not signaled, and \
+                        a signal operation on the semaphore is not pending"
+                        .into(),
+                    vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04761"],
+                    ..Default::default()
+                }));
             }
-        }
-
-        // VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04762
-        if !matches!(handle_type, ExternalSemaphoreHandleType::ZirconEvent) {
-            return Err(SemaphoreError::HandleTypeNotZircon);
         }
 
         Ok(())
@@ -621,7 +684,7 @@ impl Semaphore {
     pub unsafe fn import_fd(
         &self,
         import_semaphore_fd_info: ImportSemaphoreFdInfo,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.validate_import_fd(&import_semaphore_fd_info, &state)?;
 
@@ -633,51 +696,27 @@ impl Semaphore {
         &self,
         import_semaphore_fd_info: &ImportSemaphoreFdInfo,
         state: &SemaphoreState,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
-            return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`Semaphore::import_fd`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_semaphore_fd",
                 )])]),
-            });
+                ..Default::default()
+            }));
         }
 
-        // VUID-vkImportSemaphoreFdKHR-semaphore-01142
         if state.is_in_queue() {
-            return Err(SemaphoreError::InQueue);
+            return Err(Box::new(ValidationError {
+                problem: "the semaphore is in use".into(),
+                vuids: &["VUID-vkImportSemaphoreFdKHR-semaphore-01142"],
+                ..Default::default()
+            }));
         }
 
-        let &ImportSemaphoreFdInfo {
-            flags,
-            handle_type,
-            file: _,
-            _ne: _,
-        } = import_semaphore_fd_info;
-
-        // VUID-VkImportSemaphoreFdInfoKHR-flags-parameter
-        flags.validate_device(&self.device)?;
-
-        // VUID-VkImportSemaphoreFdInfoKHR-handleType-parameter
-        handle_type.validate_device(&self.device)?;
-
-        // VUID-VkImportSemaphoreFdInfoKHR-handleType-01143
-        if !matches!(
-            handle_type,
-            ExternalSemaphoreHandleType::OpaqueFd | ExternalSemaphoreHandleType::SyncFd
-        ) {
-            return Err(SemaphoreError::HandleTypeNotFd);
-        }
-
-        // VUID-VkImportSemaphoreFdInfoKHR-fd-01544
-        // VUID-VkImportSemaphoreFdInfoKHR-handleType-03263
-        // Can't validate, therefore unsafe
-
-        // VUID-VkImportSemaphoreFdInfoKHR-handleType-07307
-        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
-        {
-            return Err(SemaphoreError::HandletypeCopyNotTemporary);
-        }
+        import_semaphore_fd_info
+            .validate(&self.device)
+            .map_err(|err| err.add_context("import_semaphore_fd_info"))?;
 
         Ok(())
     }
@@ -744,7 +783,7 @@ impl Semaphore {
     pub unsafe fn import_win32_handle(
         &self,
         import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.validate_import_win32_handle(&import_semaphore_win32_handle_info, &state)?;
 
@@ -757,56 +796,31 @@ impl Semaphore {
         &self,
         import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo,
         state: &SemaphoreState,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self
             .device
             .enabled_extensions()
             .khr_external_semaphore_win32
         {
-            return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`Semaphore::import_win32_handle`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_semaphore_win32",
                 )])]),
-            });
+                ..Default::default()
+            }));
         }
 
-        // VUID?
         if state.is_in_queue() {
-            return Err(SemaphoreError::InQueue);
+            return Err(Box::new(ValidationError {
+                problem: "the semaphore is in use".into(),
+                // vuids?
+                ..Default::default()
+            }));
         }
 
-        let &ImportSemaphoreWin32HandleInfo {
-            flags,
-            handle_type,
-            handle: _,
-            _ne: _,
-        } = import_semaphore_win32_handle_info;
-
-        // VUID-VkImportSemaphoreWin32HandleInfoKHR-flags-parameter
-        flags.validate_device(&self.device)?;
-
-        // VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01140
-        handle_type.validate_device(&self.device)?;
-
-        // VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01140
-        if !matches!(
-            handle_type,
-            ExternalSemaphoreHandleType::OpaqueWin32
-                | ExternalSemaphoreHandleType::OpaqueWin32Kmt
-                | ExternalSemaphoreHandleType::D3D12Fence
-        ) {
-            return Err(SemaphoreError::HandleTypeNotWin32);
-        }
-
-        // VUID-VkImportSemaphoreWin32HandleInfoKHR-handle-01542
-        // Can't validate, therefore unsafe
-
-        // VUID?
-        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
-        {
-            return Err(SemaphoreError::HandletypeCopyNotTemporary);
-        }
+        import_semaphore_win32_handle_info
+            .validate(&self.device)
+            .map_err(|err| err.add_context("import_semaphore_win32_handle_info"))?;
 
         Ok(())
     }
@@ -872,7 +886,7 @@ impl Semaphore {
     pub unsafe fn import_zircon_handle(
         &self,
         import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.validate_import_zircon_handle(&import_semaphore_zircon_handle_info, &state)?;
 
@@ -887,47 +901,27 @@ impl Semaphore {
         &self,
         import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo,
         state: &SemaphoreState,
-    ) -> Result<(), SemaphoreError> {
+    ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
-            return Err(SemaphoreError::RequirementNotMet {
-                required_for: "`Semaphore::import_zircon_handle`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "fuchsia_external_semaphore",
                 )])]),
-            });
+                ..Default::default()
+            }));
         }
 
-        // VUID-vkImportSemaphoreZirconHandleFUCHSIA-semaphore-04764
         if state.is_in_queue() {
-            return Err(SemaphoreError::InQueue);
+            return Err(Box::new(ValidationError {
+                problem: "the semaphore is in use".into(),
+                vuids: &["VUID-vkImportSemaphoreZirconHandleFUCHSIA-semaphore-04764"],
+                ..Default::default()
+            }));
         }
 
-        let &ImportSemaphoreZirconHandleInfo {
-            flags,
-            handle_type,
-            zircon_handle: _,
-            _ne: _,
-        } = import_semaphore_zircon_handle_info;
-
-        // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-flags-parameter
-        flags.validate_device(&self.device)?;
-
-        // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-handleType-parameter
-        handle_type.validate_device(&self.device)?;
-
-        // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-handleType-04765
-        if !matches!(handle_type, ExternalSemaphoreHandleType::ZirconEvent) {
-            return Err(SemaphoreError::HandleTypeNotFd);
-        }
-
-        // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-zirconHandle-04766
-        // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-zirconHandle-04767
-        // Can't validate, therefore unsafe
-
-        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
-        {
-            return Err(SemaphoreError::HandletypeCopyNotTemporary);
-        }
+        import_semaphore_zircon_handle_info
+            .validate(&self.device)
+            .map_err(|err| err.add_context("import_semaphore_zircon_handle_info"))?;
 
         Ok(())
     }
@@ -1167,6 +1161,84 @@ impl Default for SemaphoreCreateInfo {
     }
 }
 
+impl SemaphoreCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            export_handle_types,
+            _ne: _,
+        } = self;
+
+        if !export_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_semaphore)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "export_handle_types".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_semaphore")]),
+                    ]),
+                    ..Default::default()
+                }));
+            }
+
+            export_handle_types
+                .validate_device(device)
+                .map_err(|err| ValidationError {
+                    context: "export_handle_types".into(),
+                    vuids: &["VUID-VkExportSemaphoreCreateInfo-handleTypes-parameter"],
+                    ..ValidationError::from_requirement(err)
+                })?;
+
+            for handle_type in export_handle_types.into_iter() {
+                let external_semaphore_properties = unsafe {
+                    device
+                        .physical_device()
+                        .external_semaphore_properties_unchecked(
+                            ExternalSemaphoreInfo::handle_type(handle_type),
+                        )
+                };
+
+                if !external_semaphore_properties.exportable {
+                    return Err(Box::new(ValidationError {
+                        context: "export_handle_types".into(),
+                        problem: format!(
+                            "the handle type `ExternalSemaphoreHandleTypes::{:?}` is not \
+                            exportable, as returned by \
+                            `PhysicalDevice::external_semaphore_properties`",
+                            ExternalSemaphoreHandleTypes::from(handle_type)
+                        )
+                        .into(),
+                        vuids: &["VUID-VkExportSemaphoreCreateInfo-handleTypes-01124"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !external_semaphore_properties
+                    .compatible_handle_types
+                    .contains(export_handle_types)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "export_handle_types".into(),
+                        problem: format!(
+                            "the handle type `ExternalSemaphoreHandleTypes::{:?}` is not \
+                            compatible with the other specified handle types, as returned by \
+                            `PhysicalDevice::external_semaphore_properties`",
+                            ExternalSemaphoreHandleTypes::from(handle_type)
+                        )
+                        .into(),
+                        vuids: &["VUID-VkExportSemaphoreCreateInfo-handleTypes-01124"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 vulkan_bitflags_enum! {
     #[non_exhaustive]
 
@@ -1282,6 +1354,62 @@ impl ImportSemaphoreFdInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            flags,
+            handle_type,
+            file: _,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkImportSemaphoreFdInfoKHR-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        handle_type
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkImportSemaphoreFdInfoKHR-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !matches!(
+            handle_type,
+            ExternalSemaphoreHandleType::OpaqueFd | ExternalSemaphoreHandleType::SyncFd
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "handle_type".into(),
+                problem: "is not `ExternalSemaphoreHandleType::OpaqueFd` or \
+                    `ExternalSemaphoreHandleType::SyncFd`"
+                    .into(),
+                vuids: &["VUID-VkImportSemaphoreFdInfoKHR-handleType-01143"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-VkImportSemaphoreFdInfoKHR-fd-01544
+        // VUID-VkImportSemaphoreFdInfoKHR-handleType-03263
+        // Can't validate, therefore unsafe
+
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`handle_type` has copy transference, but \
+                    `flags` does not contain `SemaphoreImportFlags::TEMPORARY`"
+                    .into(),
+                vuids: &["VUID-VkImportSemaphoreFdInfoKHR-handleType-07307"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
@@ -1319,6 +1447,64 @@ impl ImportSemaphoreWin32HandleInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            flags,
+            handle_type,
+            handle: _,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkImportSemaphoreWin32HandleInfoKHR-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        handle_type
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01140"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !matches!(
+            handle_type,
+            ExternalSemaphoreHandleType::OpaqueWin32
+                | ExternalSemaphoreHandleType::OpaqueWin32Kmt
+                | ExternalSemaphoreHandleType::D3D12Fence
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "handle_type".into(),
+                problem: "is not `ExternalSemaphoreHandleType::OpaqueWin32`, \
+                    `ExternalSemaphoreHandleType::OpaqueWin32Kmt` or \
+                    `ExternalSemaphoreHandleType::D3D12Fence`"
+                    .into(),
+                vuids: &["VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01140"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-VkImportSemaphoreWin32HandleInfoKHR-handle-01542
+        // Can't validate, therefore unsafe
+
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`handle_type` has copy transference, but \
+                    `flags` does not contain `SemaphoreImportFlags::TEMPORARY`"
+                    .into(),
+                // vuids?
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "fuchsia")]
@@ -1355,6 +1541,57 @@ impl ImportSemaphoreZirconHandleInfo {
             zircon_handle: 0,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            flags,
+            handle_type,
+            zircon_handle: _,
+            _ne: _,
+        } = self;
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        handle_type
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "handle_type".into(),
+                vuids: &["VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-handleType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !matches!(handle_type, ExternalSemaphoreHandleType::ZirconEvent) {
+            return Err(Box::new(ValidationError {
+                context: "handle_type".into(),
+                problem: "is not `ExternalSemaphoreHandleType::ZirconEvent`".into(),
+                vuids: &["VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-handleType-04765"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-zirconHandle-04766
+        // VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-zirconHandle-04767
+        // Can't validate, therefore unsafe
+
+        if handle_type.has_copy_transference() && !flags.intersects(SemaphoreImportFlags::TEMPORARY)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`handle_type` has copy transference, but \
+                    `flags` does not contain `SemaphoreImportFlags::TEMPORARY`"
+                    .into(),
+                // vuids?
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 }
 
@@ -1419,170 +1656,6 @@ pub struct ExternalSemaphoreProperties {
     /// Which external handle types can be enabled along with the queried external handle type
     /// when creating the semaphore.
     pub compatible_handle_types: ExternalSemaphoreHandleTypes,
-}
-
-/// Error that can be returned from operations on a semaphore.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SemaphoreError {
-    /// Not enough memory available.
-    OomError(OomError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The provided handle type does not permit more than one export,
-    /// and a handle of this type was already exported previously.
-    AlreadyExported,
-
-    /// The provided handle type cannot be exported from the current import handle type.
-    ExportFromImportedNotSupported {
-        imported_handle_type: ExternalSemaphoreHandleType,
-    },
-
-    /// One of the export handle types is not compatible with the other provided handles.
-    ExportHandleTypesNotCompatible,
-
-    /// A handle type with copy transference was provided, but the semaphore is not signaled and
-    /// there is no pending queue operation that will signal it.
-    HandleTypeCopyNotSignaled,
-
-    /// A handle type with copy transference was provided,
-    /// but the `temporary` import flag was not set.
-    HandletypeCopyNotTemporary,
-
-    /// The provided export handle type was not set in `export_handle_types` when creating the
-    /// semaphore.
-    HandleTypeNotEnabled,
-
-    /// Exporting is not supported for the provided handle type.
-    HandleTypeNotExportable {
-        handle_type: ExternalSemaphoreHandleType,
-    },
-
-    /// The provided handle type is not a POSIX file descriptor handle.
-    HandleTypeNotFd,
-
-    /// The provided handle type is not a Win32 handle.
-    HandleTypeNotWin32,
-
-    /// The provided handle type is not a Zircon event handle.
-    HandleTypeNotZircon,
-
-    /// The semaphore currently has a temporary import for a swapchain acquire operation.
-    ImportedForSwapchainAcquire,
-
-    /// The semaphore is currently in use by a queue.
-    InQueue,
-
-    /// A queue is currently waiting on the semaphore.
-    QueueIsWaiting,
-}
-
-impl Error for SemaphoreError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for SemaphoreError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-
-            Self::AlreadyExported => write!(
-                f,
-                "the provided handle type does not permit more than one export, and a handle of \
-                this type was already exported previously",
-            ),
-            Self::ExportFromImportedNotSupported {
-                imported_handle_type,
-            } => write!(
-                f,
-                "the provided handle type cannot be exported from the current imported handle type \
-                {:?}",
-                imported_handle_type,
-            ),
-            Self::ExportHandleTypesNotCompatible => write!(
-                f,
-                "one of the export handle types is not compatible with the other provided handles",
-            ),
-            Self::HandleTypeCopyNotSignaled => write!(
-                f,
-                "a handle type with copy transference was provided, but the semaphore is not \
-                signaled and there is no pending queue operation that will signal it",
-            ),
-            Self::HandletypeCopyNotTemporary => write!(
-                f,
-                "a handle type with copy transference was provided, but the `temporary` \
-                import flag was not set",
-            ),
-            Self::HandleTypeNotEnabled => write!(
-                f,
-                "the provided export handle type was not set in `export_handle_types` when \
-                creating the semaphore",
-            ),
-            Self::HandleTypeNotExportable { handle_type } => write!(
-                f,
-                "exporting is not supported for handles of type {:?}",
-                handle_type,
-            ),
-            Self::HandleTypeNotFd => write!(
-                f,
-                "the provided handle type is not a POSIX file descriptor handle",
-            ),
-            Self::HandleTypeNotWin32 => {
-                write!(f, "the provided handle type is not a Win32 handle")
-            }
-            Self::HandleTypeNotZircon => {
-                write!(f, "the provided handle type is not a Zircon event handle")
-            }
-            Self::ImportedForSwapchainAcquire => write!(
-                f,
-                "the semaphore currently has a temporary import for a swapchain acquire operation",
-            ),
-            Self::InQueue => write!(f, "the semaphore is currently in use by a queue"),
-            Self::QueueIsWaiting => write!(f, "a queue is currently waiting on the semaphore"),
-        }
-    }
-}
-
-impl From<VulkanError> for SemaphoreError {
-    fn from(err: VulkanError) -> Self {
-        match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
-                Self::OomError(e.into())
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for SemaphoreError {
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<RequirementNotMet> for SemaphoreError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
 }
 
 #[cfg(test)]
