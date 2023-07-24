@@ -19,15 +19,9 @@
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    Requires, RequiresAllOf, RequiresOneOf, VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use std::{
-    error::Error,
-    fmt::{Display, Formatter},
-    mem::MaybeUninit,
-    ptr,
-    sync::Arc,
-};
+use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// An operation on the host that has been deferred.
 ///
@@ -46,20 +40,20 @@ impl DeferredOperation {
     ///
     /// [`khr_deferred_host_operations`]: crate::device::DeviceExtensions::khr_deferred_host_operations
     #[inline]
-    pub fn new(device: Arc<Device>) -> Result<Arc<Self>, DeferredOperationCreateError> {
+    pub fn new(device: Arc<Device>) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&device)?;
 
         unsafe { Ok(Self::new_unchecked(device)?) }
     }
 
-    fn validate_new(device: &Device) -> Result<(), DeferredOperationCreateError> {
+    fn validate_new(device: &Device) -> Result<(), Box<ValidationError>> {
         if !device.enabled_extensions().khr_deferred_host_operations {
-            return Err(DeferredOperationCreateError::RequirementNotMet {
-                required_for: "`DeferredOperation::new`",
+            return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_deferred_host_operations",
                 )])]),
-            });
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -204,48 +198,6 @@ unsafe impl DeviceOwned for DeferredOperation {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-}
-
-/// Error that can happen when creating a `DeferredOperation`.
-#[derive(Clone, Debug)]
-pub enum DeferredOperationCreateError {
-    VulkanError(VulkanError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
-
-impl Display for DeferredOperationCreateError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
-
-impl Error for DeferredOperationCreateError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::VulkanError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl From<VulkanError> for DeferredOperationCreateError {
-    fn from(err: VulkanError) -> Self {
-        Self::VulkanError(err)
     }
 }
 
