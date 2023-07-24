@@ -190,7 +190,7 @@ where
 
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
-                if fence.wait(Some(Duration::from_secs(0))) == Ok(true) {
+                if fence.wait(Some(Duration::from_secs(0))).is_ok() {
                     unsafe { prev.signal_finished() }
                     *state = FenceSignalFutureState::Cleaned;
                 } else {

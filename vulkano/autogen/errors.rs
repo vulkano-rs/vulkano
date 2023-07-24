@@ -66,8 +66,9 @@ fn errors_members(errors: &[&str]) -> Vec<ErrorsMember> {
 
             let mut parts = ffi_name.split('_').collect::<Vec<_>>();
 
-            assert!(parts[0] == "ERROR");
-            parts.remove(0);
+            if parts[0] == "ERROR" {
+                parts.remove(0);
+            }
 
             if ["EXT", "KHR", "NV"].contains(parts.last().unwrap()) {
                 parts.pop();

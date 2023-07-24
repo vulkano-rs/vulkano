@@ -270,16 +270,14 @@ impl Fence {
 
     /// Waits until the fence is signaled, or at least until the timeout duration has elapsed.
     ///
-    /// Returns `true` if the fence is now signaled, `false` if the timeout was reached instead.
-    ///
     /// If you pass a duration of 0, then the function will return without blocking.
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<bool, VulkanError> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
         let queue_to_signal = {
             let mut state = self.state.lock();
 
             // If the fence is already signaled, we don't need to wait.
             if state.is_signaled().unwrap_or(false) {
-                return Ok(true);
+                return Ok(());
             }
 
             let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
@@ -302,7 +300,7 @@ impl Fence {
 
             match result {
                 ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
-                ash::vk::Result::TIMEOUT => return Ok(false),
+                ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -315,7 +313,7 @@ impl Fence {
             }
         }
 
-        Ok(true)
+        Ok(())
     }
 
     /// Waits for multiple fences at once.
@@ -326,7 +324,7 @@ impl Fence {
     pub fn multi_wait<'a>(
         fences: impl IntoIterator<Item = &'a Fence>,
         timeout: Option<Duration>,
-    ) -> Result<bool, Validated<VulkanError>> {
+    ) -> Result<(), Validated<VulkanError>> {
         let fences: SmallVec<[_; 8]> = fences.into_iter().collect();
         Self::validate_multi_wait(&fences, timeout)?;
 
@@ -355,7 +353,7 @@ impl Fence {
     pub unsafe fn multi_wait_unchecked<'a>(
         fences: impl IntoIterator<Item = &'a Fence>,
         timeout: Option<Duration>,
-    ) -> Result<bool, VulkanError> {
+    ) -> Result<(), VulkanError> {
         let queues_to_signal: SmallVec<[_; 8]> = {
             let iter = fences.into_iter();
             let mut fences_vk: SmallVec<[_; 8]> = SmallVec::new();
@@ -376,7 +374,7 @@ impl Fence {
             // VUID-vkWaitForFences-fenceCount-arraylength
             // If there are no fences, or all the fences are signaled, we don't need to wait.
             if fences_vk.is_empty() {
-                return Ok(true);
+                return Ok(());
             }
 
             let device = &fences[0].device;
@@ -404,7 +402,7 @@ impl Fence {
                     .zip(&mut states)
                     .filter_map(|(fence, state)| state.set_signaled().map(|state| (state, fence)))
                     .collect(),
-                ash::vk::Result::TIMEOUT => return Ok(false),
+                ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -415,7 +413,7 @@ impl Fence {
             queue.with(|mut q| q.fence_signaled(fence));
         }
 
-        Ok(true)
+        Ok(())
     }
 
     /// Resets the fence.

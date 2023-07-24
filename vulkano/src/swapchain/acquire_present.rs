@@ -186,10 +186,10 @@ impl SwapchainAcquireFuture {
     /// If timeout is `None`, will potentially block forever
     ///
     /// You still need to join with this future for present to work
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<bool, VulkanError> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
         match &self.fence {
             Some(fence) => fence.wait(timeout),
-            None => Ok(true),
+            None => Ok(()),
         }
     }
 }
