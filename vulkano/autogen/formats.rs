@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{extensions::RequiresOneOf, write_file, IndexMap, VkRegistryData};
+use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
 use once_cell::sync::Lazy;
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -271,6 +271,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                      api_version,
                      device_extensions,
                      instance_extensions,
+                     features: _,
                  }| {
                     let condition_items = (api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
