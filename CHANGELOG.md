@@ -119,6 +119,7 @@ Changes to synchronization primitives:
 - Support for the `ext_image_drm_format_modifier` extension.
 - Support for the `ext_image_2d_view_of_3d` extension.
 - Added `Format::UNDEFINED`, and implemented `Default` which returns this value.
+- `ShaderModule` is now constructed with a `new` method, which takes a `ShaderModuleCreateInfo` struct. The old constructors `from_words` and `from_bytes` are deprecated.
 
 ### Bugs fixed
 
