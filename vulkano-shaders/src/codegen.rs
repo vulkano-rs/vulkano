@@ -275,20 +275,20 @@ pub(super) fn reflect(
             device: ::std::sync::Arc<::vulkano::device::Device>,
         ) -> ::std::result::Result<
             ::std::sync::Arc<::vulkano::shader::ShaderModule>,
-            ::vulkano::shader::ShaderModuleCreationError,
+            ::vulkano::Validated<::vulkano::VulkanError>,
         > {
             let _bytes = ( #( #include_bytes ),* );
 
             static WORDS: &[u32] = &[ #( #words ),* ];
 
             unsafe {
-                ::vulkano::shader::ShaderModule::from_words_with_data(
+                ::vulkano::shader::ShaderModule::new_with_data(
                     device,
-                    WORDS,
+                    ::vulkano::shader::ShaderModuleCreateInfo::new(&WORDS),
+                    [ #( #entry_points ),* ],
                     #spirv_version,
                     [ #( #spirv_capabilities ),* ],
                     [ #( #spirv_extensions ),* ],
-                    [ #( #entry_points ),* ],
                 )
             }
         }

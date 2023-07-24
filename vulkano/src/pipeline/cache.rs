@@ -400,7 +400,7 @@ mod tests {
             layout::PipelineDescriptorSetLayoutCreateInfo, ComputePipeline, PipelineLayout,
             PipelineShaderStageCreateInfo,
         },
-        shader::ShaderModule,
+        shader::{ShaderModule, ShaderModuleCreateInfo},
     };
 
     #[test]
@@ -431,7 +431,8 @@ mod tests {
                 196611, 2, 450, 262149, 4, 1852399981, 0, 131091, 2, 196641, 3, 2, 327734, 2, 4, 0,
                 3, 131320, 5, 65789, 65592,
             ];
-            let module = ShaderModule::from_words(device.clone(), &MODULE).unwrap();
+            let module =
+                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
             module.entry_point("main").unwrap()
         };
 
@@ -477,7 +478,9 @@ mod tests {
                     1, 196611, 2, 450, 262149, 4, 1852399981, 0, 131091, 2, 196641, 3, 2, 327734,
                     2, 4, 0, 3, 131320, 5, 65789, 65592,
                 ];
-                let module = ShaderModule::from_words(device.clone(), &MODULE).unwrap();
+                let module =
+                    ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
+                        .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -518,7 +521,9 @@ mod tests {
                     327734, 2, 4, 0, 3, 131320, 5, 262203, 7, 8, 7, 327745, 13, 14, 11, 12, 262205,
                     6, 15, 14, 196670, 8, 15, 65789, 65592,
                 ];
-                let module = ShaderModule::from_words(device.clone(), &MODULE).unwrap();
+                let module =
+                    ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
+                        .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -565,7 +570,8 @@ mod tests {
                 196611, 2, 450, 262149, 4, 1852399981, 0, 131091, 2, 196641, 3, 2, 327734, 2, 4, 0,
                 3, 131320, 5, 65789, 65592,
             ];
-            let module = ShaderModule::from_words(device.clone(), &MODULE).unwrap();
+            let module =
+                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
             module.entry_point("main").unwrap()
         };
 
