@@ -300,7 +300,6 @@ impl Fence {
 
             match result {
                 ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
-                ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
                 err => return Err(VulkanError::from(err)),
             }
         };
@@ -402,7 +401,6 @@ impl Fence {
                     .zip(&mut states)
                     .filter_map(|(fence, state)| state.set_signaled().map(|state| (state, fence)))
                     .collect(),
-                ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
                 err => return Err(VulkanError::from(err)),
             }
         };
