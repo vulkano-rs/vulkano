@@ -77,6 +77,7 @@ Changes to pipeline caches:
 
 Changes to `Swapchain`:
 - Swapchain creation no longer returns an error when the swapchain extent doesn't match the current surface extent. This requirement is ill-defined in the spec, as detailed here: [TOCTOU race condition on minImageExtent/maxImageExtent?](https://github.com/KhronosGroup/Vulkan-Docs/issues/1144).
+- Renamed `acquire_full_screen_exclusive` and `release_full_screen_exclusive` to `acquire_full_screen_exclusive_mode` and `release_full_screen_exclusive_mode` to match the Vulkan names.
 
 Changes to samplers:
 - The `sampler` module is now a submodule of `image`.
