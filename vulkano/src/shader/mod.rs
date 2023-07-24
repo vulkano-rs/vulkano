@@ -357,7 +357,7 @@ impl ShaderModule {
     /// - Panics if the length of `bytes` is not a multiple of 4.
     #[deprecated(
         since = "0.34.0",
-        note = "Read little-endian words yourself, and then use `new` instead."
+        note = "read little-endian words yourself, and then use `new` instead"
     )]
     #[inline]
     pub unsafe fn from_bytes(
