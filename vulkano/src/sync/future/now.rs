@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
+use super::{AccessCheckError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     swapchain::Swapchain,
-    DeviceSize,
+    DeviceSize, Validated, VulkanError,
 };
 use std::{ops::Range, sync::Arc};
 
@@ -33,12 +33,12 @@ unsafe impl GpuFuture for NowFuture {
     fn cleanup_finished(&mut self) {}
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         Ok(SubmitAnyBuilder::Empty)
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         Ok(())
     }
 

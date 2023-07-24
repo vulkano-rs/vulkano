@@ -45,11 +45,10 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{self, FlushError, GpuFuture},
-    DeviceSize, VulkanLibrary,
+    sync::{self, GpuFuture},
+    DeviceSize, Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -391,9 +390,9 @@ fn main() {
             }
 
             let (image_index, suboptimal, acquire_future) =
-                match acquire_next_image(swapchain.clone(), None) {
+                match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
                     Ok(r) => r,
-                    Err(AcquireError::OutOfDate) => {
+                    Err(VulkanError::OutOfDate) => {
                         recreate_swapchain = true;
                         return;
                     }
@@ -448,11 +447,11 @@ fn main() {
                 )
                 .then_signal_fence_and_flush();
 
-            match future {
+            match future.map_err(Validated::unwrap) {
                 Ok(future) => {
                     previous_frame_end = Some(future.boxed());
                 }
-                Err(FlushError::OutOfDate) => {
+                Err(VulkanError::OutOfDate) => {
                     recreate_swapchain = true;
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }

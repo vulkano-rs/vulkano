@@ -14,16 +14,15 @@ use crate::{
     image::{Image, ImageLayout},
     sync::{
         fence::Fence,
-        future::{AccessCheckError, AccessError, FlushError, GpuFuture, SubmitAnyBuilder},
+        future::{AccessCheckError, AccessError, GpuFuture, SubmitAnyBuilder},
         semaphore::Semaphore,
     },
-    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, VulkanError,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
 use smallvec::smallvec;
 use std::{
-    error::Error,
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    fmt::Debug,
     mem::MaybeUninit,
     num::NonZeroU64,
     ops::Range,
@@ -50,7 +49,7 @@ use std::{
 pub fn acquire_next_image(
     swapchain: Arc<Swapchain>,
     timeout: Option<Duration>,
-) -> Result<(u32, bool, SwapchainAcquireFuture), AcquireError> {
+) -> Result<(u32, bool, SwapchainAcquireFuture), Validated<VulkanError>> {
     let semaphore = Arc::new(Semaphore::from_pool(swapchain.device.clone())?);
     let fence = Fence::from_pool(swapchain.device.clone())?;
 
@@ -63,13 +62,16 @@ pub fn acquire_next_image(
         // > VkSwapchainCreateInfoKHR::oldSwapchain value to vkCreateSwapchainKHR
         let retired = swapchain.is_retired.lock();
         if *retired {
-            return Err(AcquireError::OutOfDate);
+            return Err(VulkanError::OutOfDate.into());
         }
 
         let acquire_result =
             unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
 
-        if let &Err(AcquireError::FullScreenExclusiveModeLost) = &acquire_result {
+        if matches!(
+            acquire_result,
+            Err(Validated::Error(VulkanError::FullScreenExclusiveModeLost))
+        ) {
             swapchain
                 .full_screen_exclusive_held
                 .store(false, Ordering::SeqCst);
@@ -103,7 +105,7 @@ pub unsafe fn acquire_next_image_raw(
     timeout: Option<Duration>,
     semaphore: Option<&Semaphore>,
     fence: Option<&Fence>,
-) -> Result<AcquiredImage, AcquireError> {
+) -> Result<AcquiredImage, Validated<VulkanError>> {
     let fns = swapchain.device.fns();
 
     let timeout_ns = if let Some(timeout) = timeout {
@@ -130,8 +132,8 @@ pub unsafe fn acquire_next_image_raw(
     let suboptimal = match result {
         ash::vk::Result::SUCCESS => false,
         ash::vk::Result::SUBOPTIMAL_KHR => true,
-        ash::vk::Result::NOT_READY => return Err(AcquireError::Timeout),
-        ash::vk::Result::TIMEOUT => return Err(AcquireError::Timeout),
+        ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
+        ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
         err => return Err(VulkanError::from(err).into()),
     };
 
@@ -197,7 +199,7 @@ impl SwapchainAcquireFuture {
 unsafe impl GpuFuture for SwapchainAcquireFuture {
     fn cleanup_finished(&mut self) {}
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         if let Some(ref semaphore) = self.semaphore {
             let sem = smallvec![semaphore.clone()];
             Ok(SubmitAnyBuilder::SemaphoresWait(sem))
@@ -206,7 +208,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
         }
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         Ok(())
     }
 
@@ -304,79 +306,6 @@ impl Drop for SwapchainAcquireFuture {
 unsafe impl DeviceOwned for SwapchainAcquireFuture {
     fn device(&self) -> &Arc<Device> {
         &self.swapchain.device
-    }
-}
-
-/// Error that can happen when calling `acquire_next_image`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum AcquireError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// The connection to the device has been lost.
-    DeviceLost,
-
-    /// The timeout of the function has been reached before an image was available.
-    Timeout,
-
-    /// The surface is no longer accessible and must be recreated.
-    SurfaceLost,
-
-    /// The swapchain has lost or doesn't have full-screen exclusivity possibly for
-    /// implementation-specific reasons outside of the application’s control.
-    FullScreenExclusiveModeLost,
-
-    /// The surface has changed in a way that makes the swapchain unusable. You must query the
-    /// surface's new properties and recreate a new swapchain if you want to continue drawing.
-    OutOfDate,
-}
-
-impl Error for AcquireError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            AcquireError::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for AcquireError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                AcquireError::OomError(_) => "not enough memory",
-                AcquireError::DeviceLost => "the connection to the device has been lost",
-                AcquireError::Timeout => "no image is available for acquiring yet",
-                AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
-                AcquireError::OutOfDate => "the swapchain needs to be recreated",
-                AcquireError::FullScreenExclusiveModeLost => {
-                    "the swapchain no longer has full-screen exclusivity"
-                }
-            }
-        )
-    }
-}
-
-impl From<OomError> for AcquireError {
-    fn from(err: OomError) -> AcquireError {
-        AcquireError::OomError(err)
-    }
-}
-
-impl From<VulkanError> for AcquireError {
-    fn from(err: VulkanError) -> AcquireError {
-        match err {
-            err @ VulkanError::OutOfHostMemory => AcquireError::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => AcquireError::OomError(OomError::from(err)),
-            VulkanError::DeviceLost => AcquireError::DeviceLost,
-            VulkanError::SurfaceLost => AcquireError::SurfaceLost,
-            VulkanError::OutOfDate => AcquireError::OutOfDate,
-            VulkanError::FullScreenExclusiveModeLost => AcquireError::FullScreenExclusiveModeLost,
-            _ => panic!("unexpected error: {:?}", err),
-        }
     }
 }
 
@@ -596,7 +525,7 @@ where
         self.previous.cleanup_finished();
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         if self.flushed.load(Ordering::SeqCst) {
             return Ok(SubmitAnyBuilder::Empty);
         }
@@ -673,7 +602,7 @@ where
         })
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         unsafe {
             // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
 
@@ -693,7 +622,6 @@ where
                         .first()
                         .map_or(false, |first| first.present_mode.is_some());
 
-                    // VUID-VkPresentIdKHR-presentIds-04999
                     for swapchain_info in swapchain_infos {
                         let &SwapchainPresentInfo {
                             ref swapchain,
@@ -707,15 +635,30 @@ where
                         if present_id.map_or(false, |present_id| {
                             !swapchain.try_claim_present_id(present_id)
                         }) {
-                            return Err(FlushError::PresentIdLessThanOrEqual);
+                            return Err(Box::new(ValidationError {
+                                problem: "the provided `present_id` was not greater than any \
+                                    `present`_id passed previously for the same swapchain"
+                                    .into(),
+                                vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
+                                ..Default::default()
+                            })
+                            .into());
                         }
 
                         if let Some(present_mode) = present_mode {
                             assert!(has_present_mode);
 
-                            // VUID-VkSwapchainPresentModeInfoEXT-pPresentModes-07761
                             if !swapchain.present_modes().contains(&present_mode) {
-                                return Err(FlushError::PresentModeNotValid);
+                                return Err(Box::new(ValidationError {
+                                    problem: "the requested present mode is not one of the modes \
+                                        in `swapchain.present_modes()`"
+                                        .into(),
+                                    vuids: &[
+                                        "VUID-VkSwapchainPresentModeInfoEXT-pPresentModes-07761",
+                                    ],
+                                    ..Default::default()
+                                })
+                                .into());
                             }
                         } else {
                             assert!(!has_present_mode);
@@ -729,9 +672,19 @@ where
                     ) {
                         Ok(_) => (),
                         Err(AccessCheckError::Unknown) => {
-                            return Err(AccessError::SwapchainImageNotAcquired.into())
+                            return Err(Box::new(ValidationError {
+                                problem: AccessError::SwapchainImageNotAcquired.to_string().into(),
+                                ..Default::default()
+                            })
+                            .into());
                         }
-                        Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                        Err(AccessCheckError::Denied(err)) => {
+                            return Err(Box::new(ValidationError {
+                                problem: err.to_string().into(),
+                                ..Default::default()
+                            })
+                            .into());
+                        }
                     }
 
                     Ok(self
@@ -862,24 +815,30 @@ pub fn wait_for_present(
     swapchain: Arc<Swapchain>,
     present_id: u64,
     timeout: Option<Duration>,
-) -> Result<bool, PresentWaitError> {
+) -> Result<bool, Validated<VulkanError>> {
+    if !swapchain.device.enabled_features().present_wait {
+        return Err(Box::new(ValidationError {
+            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("present_wait")])]),
+            vuids: &["VUID-vkWaitForPresentKHR-presentWait-06234"],
+            ..Default::default()
+        })
+        .into());
+    }
+
+    if present_id == 0 {
+        return Err(Box::new(ValidationError {
+            context: "present_id".into(),
+            problem: "is 0".into(),
+            ..Default::default()
+        })
+        .into());
+    }
+
     let retired = swapchain.is_retired.lock();
 
     // VUID-vkWaitForPresentKHR-swapchain-04997
     if *retired {
-        return Err(PresentWaitError::OutOfDate);
-    }
-
-    if present_id == 0 {
-        return Err(PresentWaitError::PresentIdZero);
-    }
-
-    // VUID-vkWaitForPresentKHR-presentWait-06234
-    if !swapchain.device.enabled_features().present_wait {
-        return Err(PresentWaitError::RequirementNotMet {
-            required_for: "`wait_for_present`",
-            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("present_wait")])]),
-        });
+        return Err(VulkanError::OutOfDate.into());
     }
 
     let timeout_ns = timeout.map(|dur| dur.as_nanos() as u64).unwrap_or(0);
@@ -896,112 +855,17 @@ pub fn wait_for_present(
     match result {
         ash::vk::Result::SUCCESS => Ok(false),
         ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
-        ash::vk::Result::TIMEOUT => Err(PresentWaitError::Timeout),
+        ash::vk::Result::TIMEOUT => Err(VulkanError::Timeout.into()),
         err => {
-            let err = VulkanError::from(err).into();
+            let err = VulkanError::from(err);
 
-            if let PresentWaitError::FullScreenExclusiveModeLost = &err {
+            if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
                 swapchain
                     .full_screen_exclusive_held
                     .store(false, Ordering::SeqCst);
             }
 
-            Err(err)
-        }
-    }
-}
-
-/// Error that can happen when calling `acquire_next_image`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum PresentWaitError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// The connection to the device has been lost.
-    DeviceLost,
-
-    /// The surface has changed in a way that makes the swapchain unusable. You must query the
-    /// surface's new properties and recreate a new swapchain if you want to continue drawing.
-    OutOfDate,
-
-    /// The surface is no longer accessible and must be recreated.
-    SurfaceLost,
-
-    /// The swapchain has lost or doesn't have full-screen exclusivity possibly for
-    /// implementation-specific reasons outside of the application’s control.
-    FullScreenExclusiveModeLost,
-
-    /// The timeout of the function has been reached before the present occured.
-    Timeout,
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// Present id of zero is invalid.
-    PresentIdZero,
-}
-
-impl Error for PresentWaitError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for PresentWaitError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(e) => write!(f, "{}", e),
-            Self::DeviceLost => write!(f, "the connection to the device has been lost"),
-            Self::Timeout => write!(f, "no image is available for acquiring yet"),
-            Self::SurfaceLost => write!(f, "the surface of this swapchain is no longer valid"),
-            Self::OutOfDate => write!(f, "the swapchain needs to be recreated"),
-            Self::FullScreenExclusiveModeLost => {
-                write!(f, "the swapchain no longer has full-screen exclusivity")
-            }
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::PresentIdZero => write!(f, "present id of zero is invalid"),
-        }
-    }
-}
-
-impl From<OomError> for PresentWaitError {
-    fn from(err: OomError) -> PresentWaitError {
-        Self::OomError(err)
-    }
-}
-
-impl From<RequirementNotMet> for PresentWaitError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-impl From<VulkanError> for PresentWaitError {
-    fn from(err: VulkanError) -> PresentWaitError {
-        match err {
-            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            VulkanError::DeviceLost => Self::DeviceLost,
-            VulkanError::SurfaceLost => Self::SurfaceLost,
-            VulkanError::OutOfDate => Self::OutOfDate,
-            VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
-            _ => panic!("unexpected error: {:?}", err),
+            Err(err.into())
         }
     }
 }

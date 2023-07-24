@@ -15,11 +15,9 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
-    swapchain::{
-        self, AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
-    sync::{self, FlushError, GpuFuture},
+    swapchain::{self, PresentMode, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
+    sync::{self, GpuFuture},
+    Validated, VulkanError,
 };
 use winit::window::Window;
 
@@ -261,7 +259,7 @@ impl VulkanoWindowRenderer {
     /// Execute your command buffers after calling this function and finish rendering by calling
     /// [`VulkanoWindowRenderer::present`].
     #[inline]
-    pub fn acquire(&mut self) -> Result<Box<dyn GpuFuture>, AcquireError> {
+    pub fn acquire(&mut self) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {
@@ -270,11 +268,13 @@ impl VulkanoWindowRenderer {
 
         // Acquire next image in the swapchain
         let (image_index, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
+            match swapchain::acquire_next_image(self.swapchain.clone(), None)
+                .map_err(Validated::unwrap)
+            {
                 Ok(r) => r,
-                Err(AcquireError::OutOfDate) => {
+                Err(VulkanError::OutOfDate) => {
                     self.recreate_swapchain = true;
-                    return Err(AcquireError::OutOfDate);
+                    return Err(VulkanError::OutOfDate);
                 }
                 Err(e) => panic!("failed to acquire next image: {e}"),
             };
@@ -306,7 +306,7 @@ impl VulkanoWindowRenderer {
                 ),
             )
             .then_signal_fence_and_flush();
-        match future {
+        match future.map_err(Validated::unwrap) {
             Ok(mut future) => {
                 if wait_future {
                     match future.wait(None) {
@@ -320,7 +320,7 @@ impl VulkanoWindowRenderer {
 
                 self.previous_frame_end = Some(future.boxed());
             }
-            Err(FlushError::OutOfDate) => {
+            Err(VulkanError::OutOfDate) => {
                 self.recreate_swapchain = true;
                 self.previous_frame_end =
                     Some(sync::now(self.graphics_queue.device().clone()).boxed());
