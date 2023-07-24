@@ -340,7 +340,7 @@ impl ShaderModule {
     /// # Safety
     ///
     /// - The SPIR-V code is not validated beyond the minimum needed to extract the information.
-    #[deprecated(since = "0.34.0", note = "Use `new` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `new` instead")]
     #[inline]
     pub unsafe fn from_words(
         device: Arc<Device>,
