@@ -475,12 +475,6 @@ impl<'a> ShaderModuleCreateInfo<'a> {
             }));
         }
 
-        // VUID-VkShaderModuleCreateInfo-pCode-08739
-        // If pCode is a pointer to SPIR-V code, pCode must not declare any capability that is not supported by the API, as described by the Capabilities section of the SPIR-V Environment appendix
-
-        // VUID-VkShaderModuleCreateInfo-pCode-08740
-        // If pCode is a pointer to SPIR-V code, and pCode declares any of the capabilities listed in the SPIR-V Environment appendix, one of the corresponding requirements must be satisfied
-
         {
             spirv_version.patch = 0; // Ignore the patch version
 
@@ -537,12 +531,6 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         for &capability in spirv_capabilities {
             validate_spirv_capability(device, capability).map_err(|err| err.add_context("code"))?;
         }
-
-        // VUID-VkShaderModuleCreateInfo-pCode-08741
-        // If pCode is a pointer to SPIR-V code, pCode must not declare any SPIR-V extension that is not supported by the API, as described by the Extension section of the SPIR-V Environment appendix
-
-        // VUID-VkShaderModuleCreateInfo-pCode-08742
-        // If pCode is a pointer to SPIR-V code, and pCode declares any of the SPIR-V extensions listed in the SPIR-V Environment appendix, one of the corresponding requirements must be satisfied
 
         for extension in spirv_extensions {
             validate_spirv_extension(device, extension).map_err(|err| err.add_context("code"))?;
