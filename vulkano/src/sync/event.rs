@@ -27,17 +27,10 @@
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    macros::impl_id_counter,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, VulkanError, VulkanObject,
+    macros::{impl_id_counter, vulkan_bitflags},
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
-    sync::Arc,
-};
+use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Used to block the GPU execution until an event on the CPU occurs.
 ///
@@ -51,6 +44,8 @@ pub struct Event {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
     must_put_in_pool: bool,
+
+    flags: EventCreateFlags,
 }
 
 impl Event {
@@ -61,18 +56,44 @@ impl Event {
     /// [`events`](crate::device::Features::events)
     /// feature must be enabled on the device.
     #[inline]
-    pub fn new(device: Arc<Device>, _create_info: EventCreateInfo) -> Result<Event, EventError> {
-        // VUID-vkCreateEvent-events-04468
+    pub fn new(
+        device: Arc<Device>,
+        create_info: EventCreateInfo,
+    ) -> Result<Event, Validated<VulkanError>> {
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &EventCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
         if device.enabled_extensions().khr_portability_subset && !device.enabled_features().events {
-            return Err(EventError::RequirementNotMet {
-                required_for: "this device is a portability subset device, and `Event::new` was \
-                    called",
+            return Err(Box::new(ValidationError {
+                problem: "this device is a portability subset device".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("events")])]),
-            });
+                vuids: &["VUID-vkCreateEvent-events-04468"],
+                ..Default::default()
+            }));
         }
 
-        let create_info = ash::vk::EventCreateInfo {
-            flags: ash::vk::EventCreateFlags::empty(),
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: EventCreateInfo,
+    ) -> Result<Event, VulkanError> {
+        let &EventCreateInfo { flags, _ne: _ } = &create_info;
+
+        let create_info_vk = ash::vk::EventCreateInfo {
+            flags: flags.into(),
             ..Default::default()
         };
 
@@ -81,7 +102,7 @@ impl Event {
             let fns = device.fns();
             (fns.v1_0.create_event)(
                 device.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -90,12 +111,7 @@ impl Event {
             output.assume_init()
         };
 
-        Ok(Event {
-            handle,
-            device: InstanceOwnedDebugWrapper(device),
-            id: Self::next_id(),
-            must_put_in_pool: false,
-        })
+        Ok(Self::from_handle(device, handle, create_info))
     }
 
     /// Takes an event from the vulkano-provided event pool.
@@ -105,7 +121,7 @@ impl Event {
     /// For most applications, using the event pool should be preferred,
     /// in order to avoid creating new events every frame.
     #[inline]
-    pub fn from_pool(device: Arc<Device>) -> Result<Event, EventError> {
+    pub fn from_pool(device: Arc<Device>) -> Result<Event, VulkanError> {
         let handle = device.event_pool().lock().pop();
         let event = match handle {
             Some(handle) => {
@@ -121,11 +137,13 @@ impl Event {
                     device: InstanceOwnedDebugWrapper(device),
                     id: Self::next_id(),
                     must_put_in_pool: true,
+
+                    flags: EventCreateFlags::empty(),
                 }
             }
             None => {
                 // Pool is empty, alloc new event
-                let mut event = Event::new(device, Default::default())?;
+                let mut event = unsafe { Event::new_unchecked(device, Default::default())? };
                 event.must_put_in_pool = true;
                 event
             }
@@ -144,33 +162,67 @@ impl Event {
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Event,
-        _create_info: EventCreateInfo,
+        create_info: EventCreateInfo,
     ) -> Event {
+        let EventCreateInfo { flags, _ne: _ } = create_info;
+
         Event {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
             must_put_in_pool: false,
+            flags,
         }
+    }
+
+    /// Returns the flags that the event was created with.
+    #[inline]
+    pub fn flags(&self) -> EventCreateFlags {
+        self.flags
     }
 
     /// Returns true if the event is signaled.
     #[inline]
-    pub fn signaled(&self) -> Result<bool, OomError> {
+    pub fn is_signaled(&self) -> Result<bool, Validated<VulkanError>> {
+        self.validate_is_signaled()?;
+
+        unsafe { Ok(self.is_signaled_unchecked()?) }
+    }
+
+    fn validate_is_signaled(&self) -> Result<(), Box<ValidationError>> {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn is_signaled_unchecked(&self) -> Result<bool, VulkanError> {
         unsafe {
             let fns = self.device.fns();
             let result = (fns.v1_0.get_event_status)(self.device.handle(), self.handle);
             match result {
                 ash::vk::Result::EVENT_SET => Ok(true),
                 ash::vk::Result::EVENT_RESET => Ok(false),
-                err => Err(VulkanError::from(err).into()),
+                err => Err(VulkanError::from(err)),
             }
         }
     }
 
-    /// See the docs of set().
+    /// Changes the `Event` to the signaled state.
+    ///
+    /// If a command buffer is waiting on this event, it is then unblocked.
+    pub fn set(&mut self) -> Result<(), Validated<VulkanError>> {
+        self.validate_set()?;
+
+        unsafe { Ok(self.set_unchecked()?) }
+    }
+
+    fn validate_set(&mut self) -> Result<(), Box<ValidationError>> {
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub fn set_raw(&mut self) -> Result<(), OomError> {
+    pub unsafe fn set_unchecked(&mut self) -> Result<(), VulkanError> {
         unsafe {
             let fns = self.device.fns();
             (fns.v1_0.set_event)(self.device.handle(), self.handle)
@@ -180,21 +232,32 @@ impl Event {
         }
     }
 
-    /// Changes the `Event` to the signaled state.
+    /// Changes the `Event` to the unsignaled state.
     ///
-    /// If a command buffer is waiting on this event, it is then unblocked.
+    /// # Safety
     ///
-    /// # Panics
+    /// - There must be an execution dependency between `reset` and the execution of any \
+    /// [`wait_events`] command that includes this event in its `events` parameter.
     ///
-    /// - Panics if the device or host ran out of memory.
+    /// [`wait_events`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::wait_events
     #[inline]
-    pub fn set(&mut self) {
-        self.set_raw().unwrap();
+    pub unsafe fn reset(&mut self) -> Result<(), Validated<VulkanError>> {
+        self.validate_reset()?;
+
+        Ok(self.reset_unchecked()?)
     }
 
-    /// See the docs of reset().
+    fn validate_reset(&mut self) -> Result<(), Box<ValidationError>> {
+        // VUID-vkResetEvent-event-03821
+        // VUID-vkResetEvent-event-03822
+        // Unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub fn reset_raw(&mut self) -> Result<(), OomError> {
+    pub unsafe fn reset_unchecked(&mut self) -> Result<(), VulkanError> {
         unsafe {
             let fns = self.device.fns();
             (fns.v1_0.reset_event)(self.device.handle(), self.handle)
@@ -202,16 +265,6 @@ impl Event {
                 .map_err(VulkanError::from)?;
             Ok(())
         }
-    }
-
-    /// Changes the `Event` to the unsignaled state.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the device or host ran out of memory.
-    #[inline]
-    pub fn reset(&mut self) {
-        self.reset_raw().unwrap();
     }
 }
 
@@ -251,6 +304,11 @@ impl_id_counter!(Event);
 /// Parameters to create a new `Event`.
 #[derive(Clone, Debug)]
 pub struct EventCreateInfo {
+    /// Additional properties of the event.
+    ///
+    /// The default value is empty.
+    pub flags: EventCreateFlags,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -258,56 +316,39 @@ impl Default for EventCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
+            flags: EventCreateFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EventError {
-    /// Not enough memory available.
-    OomError(OomError),
+impl EventCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self { flags, _ne: _ } = self;
 
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-VkEventCreateInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-impl Error for EventError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
+        Ok(())
     }
 }
 
-impl Display for EventError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
+vulkan_bitflags! {
+    #[non_exhaustive]
 
-impl From<VulkanError> for EventError {
-    fn from(err: VulkanError) -> Self {
-        match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
-                Self::OomError(e.into())
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
+    /// Flags specifying additional properties of an event.
+    EventCreateFlags = EventCreateFlags(u32);
+
+    DEVICE_ONLY = DEVICE_ONLY
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_3)]),
+        RequiresAllOf([DeviceExtension(khr_synchronization2)]),
+    ]),
 }
 
 #[cfg(test)]
@@ -318,17 +359,17 @@ mod tests {
     fn event_create() {
         let (device, _) = gfx_dev_and_queue!();
         let event = Event::new(device, Default::default()).unwrap();
-        assert!(!event.signaled().unwrap());
+        assert!(!event.is_signaled().unwrap());
     }
 
     #[test]
     fn event_set() {
         let (device, _) = gfx_dev_and_queue!();
         let mut event = Event::new(device, Default::default()).unwrap();
-        assert!(!event.signaled().unwrap());
+        assert!(!event.is_signaled().unwrap());
 
-        event.set();
-        assert!(event.signaled().unwrap());
+        event.set().unwrap();
+        assert!(event.is_signaled().unwrap());
     }
 
     #[test]
@@ -336,11 +377,11 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let mut event = Event::new(device, Default::default()).unwrap();
-        event.set();
-        assert!(event.signaled().unwrap());
+        event.set().unwrap();
+        assert!(event.is_signaled().unwrap());
 
-        event.reset();
-        assert!(!event.signaled().unwrap());
+        unsafe { event.reset().unwrap() };
+        assert!(!event.is_signaled().unwrap());
     }
 
     #[test]

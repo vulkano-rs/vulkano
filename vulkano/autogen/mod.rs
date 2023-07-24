@@ -191,7 +191,10 @@ impl<'r> VkRegistryData<'r> {
                 }) if name == "VkResult" => Some(children.iter().filter_map(|en| {
                     if let EnumsChild::Enum(en) = en {
                         if let EnumSpec::Value { value, .. } = &en.spec {
-                            if value.starts_with('-') {
+                            // Treat NotReady and Timeout as error conditions
+                            if value.starts_with('-')
+                                || matches!(en.name.as_str(), "VK_NOT_READY" | "VK_TIMEOUT")
+                            {
                                 return Some(en.name.as_str());
                             }
                         }

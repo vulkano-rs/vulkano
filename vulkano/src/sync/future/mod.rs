@@ -96,10 +96,7 @@ pub use self::{
     now::{now, NowFuture},
     semaphore_signal::SemaphoreSignalFuture,
 };
-use super::{
-    fence::{Fence, FenceError},
-    semaphore::Semaphore,
-};
+use super::{fence::Fence, semaphore::Semaphore};
 use crate::{
     buffer::Buffer,
     command_buffer::{
@@ -683,17 +680,6 @@ impl From<VulkanError> for FlushError {
             VulkanError::OutOfDate => Self::OutOfDate,
             VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
             _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<FenceError> for FlushError {
-    fn from(err: FenceError) -> FlushError {
-        match err {
-            FenceError::OomError(err) => Self::OomError(err),
-            FenceError::Timeout => Self::Timeout,
-            FenceError::DeviceLost => Self::DeviceLost,
-            _ => unreachable!(),
         }
     }
 }

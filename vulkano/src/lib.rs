@@ -298,6 +298,8 @@ impl Error for VulkanError {}
 impl Display for VulkanError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let msg = match self {
+            VulkanError::NotReady => "a resource is not yet ready",
+            VulkanError::Timeout => "an operation has not completed in the specified time",
             VulkanError::OutOfHostMemory => "a host memory allocation has failed",
             VulkanError::OutOfDeviceMemory => "a device memory allocation has failed",
             VulkanError::InitializationFailed => {
