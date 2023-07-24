@@ -446,7 +446,7 @@ fn read_spirv_words_from_file(path: impl AsRef<Path>) -> Vec<u32> {
         path.display(),
     );
 
-    // TODO: Use `Iterator::array_chunks` once it's stable.
+    // TODO: Use `slice::array_chunks` once it's stable.
     bytes
         .chunks_exact(4)
         .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
