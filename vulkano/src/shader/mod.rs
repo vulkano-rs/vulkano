@@ -174,7 +174,7 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
-    /// Craetes a new shader module.
+    /// Creates a new shader module.
     ///
     /// # Safety
     ///
