@@ -1059,11 +1059,20 @@ impl InstanceCreateInfo {
     #[inline]
     pub fn application_from_cargo_toml() -> Self {
         Self {
-            application_name: Some(env!("CARGO_PKG_NAME").to_owned()),
+            application_name: Some(option_env!("CARGO_PKG_NAME").unwrap().to_owned()),
             application_version: Version {
-                major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-                minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-                patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+                major: option_env!("CARGO_PKG_VERSION_MAJOR")
+                    .unwrap()
+                    .parse()
+                    .unwrap(),
+                minor: option_env!("CARGO_PKG_VERSION_MINOR")
+                    .unwrap()
+                    .parse()
+                    .unwrap(),
+                patch: option_env!("CARGO_PKG_VERSION_PATCH")
+                    .unwrap()
+                    .parse()
+                    .unwrap(),
             },
             ..Default::default()
         }
