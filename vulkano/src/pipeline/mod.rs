@@ -515,9 +515,16 @@ pub(crate) fn validate_required_subgroup_size(
     stage: ShaderStage,
     workgroup_size: Option<u32>,
     subgroup_size: u32,
-) -> Result<(), crate::ValidationError> {
+) -> Result<(), Box<ValidationError>> {
     if !device.enabled_features().subgroup_size_control {
-        todo!("requires subgroup_size_control");
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                "subgroup_size_control",
+            )])]),
+            vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02755"],
+            ..Default::default()
+        }));
     }
     let stages: ShaderStages = [stage].into_iter().collect();
     let properties = device.physical_device().properties();
@@ -526,22 +533,54 @@ pub(crate) fn validate_required_subgroup_size(
         .unwrap_or_default()
         .contains(stages)
     {
-        todo!("shader stage {stage:?} not supported");
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem: "shader stage {stage:?} is not in required_subgroup_size_stages".into(),
+            vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02755"],
+            ..Default::default()
+        }));
     }
     if subgroup_size.is_power_of_two() {
-        todo!("not power of 2")
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem: "subgroup_size {subgroup_size} is not a power of 2".into(),
+            vuids: &["VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02760"],
+            ..Default::default()
+        }));
     }
     let min_subgroup_size = properties.min_subgroup_size.unwrap_or(1);
+    if subgroup_size < min_subgroup_size {
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem:
+                "subgroup_size {subgroup_size} is less than min_subgroup_size {min_subgroup_size}"
+                    .into(),
+            vuids: &["requiredSubgroupSize must be greater or equal to minSubgroupSize"],
+            ..Default::default()
+        }));
+    }
     let max_subgroup_size = properties.max_subgroup_size.unwrap_or(128);
-    if !(min_subgroup_size..=max_subgroup_size).contains(&subgroup_size) {
-        todo!("out of range")
+    if subgroup_size > max_subgroup_size {
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem:
+                "subgroup_size {subgroup_size} is greater than max_subgroup_size {max_subgroup_size}"
+                    .into(),
+            vuids: &["requiredSubgroupSize must be less than or equal to maxSubgroupSize"],
+            ..Default::default()
+        }));
     }
     if let Some(workgroup_size) = workgroup_size {
         let max_compute_workgroup_subgroups = properties
             .max_compute_workgroup_subgroups
             .unwrap_or_default();
         if max_compute_workgroup_subgroups * subgroup_size < workgroup_size {
-            todo!("too many subgroups");
+            return Err(Box::new(ValidationError {
+                context: "required_subgroup_size".into(),
+                problem: "subgroup_size {subgroup_size} creates more than {max_compute_workgroup_subgroups} subgroups".into(),
+                vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02756"],
+                ..Default::default()
+            }));
         }
     }
     Ok(())
