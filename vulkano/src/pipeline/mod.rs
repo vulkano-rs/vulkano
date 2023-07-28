@@ -304,7 +304,7 @@ vulkan_bitflags! {
 /// Specifies a single shader stage when creating a pipeline.
 #[derive(Clone, Debug)]
 pub struct PipelineShaderStageCreateInfo {
-    /// Specifies how to create the shader stage.
+    /// Additional properties of the shader stage.
     ///
     /// The default value is empty.
     pub flags: PipelineShaderStageCreateFlags,
@@ -535,15 +535,16 @@ pub(crate) fn validate_required_subgroup_size(
     {
         return Err(Box::new(ValidationError {
             context: "required_subgroup_size".into(),
-            problem: "shader stage {stage:?} is not in required_subgroup_size_stages".into(),
+            problem: format!("`shader stage` {stage:?} is not in `required_subgroup_size_stages`")
+                .into(),
             vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02755"],
             ..Default::default()
         }));
     }
-    if subgroup_size.is_power_of_two() {
+    if !subgroup_size.is_power_of_two() {
         return Err(Box::new(ValidationError {
             context: "required_subgroup_size".into(),
-            problem: "subgroup_size {subgroup_size} is not a power of 2".into(),
+            problem: format!("`subgroup_size` {subgroup_size} is not a power of 2").into(),
             vuids: &["VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02760"],
             ..Default::default()
         }));
@@ -552,10 +553,11 @@ pub(crate) fn validate_required_subgroup_size(
     if subgroup_size < min_subgroup_size {
         return Err(Box::new(ValidationError {
             context: "required_subgroup_size".into(),
-            problem:
-                "subgroup_size {subgroup_size} is less than min_subgroup_size {min_subgroup_size}"
-                    .into(),
-            vuids: &["requiredSubgroupSize must be greater or equal to minSubgroupSize"],
+            problem: format!(
+                "`subgroup_size` {subgroup_size} is less than `min_subgroup_size` {min_subgroup_size}"
+            )
+            .into(),
+            vuids: &["VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02761"],
             ..Default::default()
         }));
     }
@@ -564,9 +566,9 @@ pub(crate) fn validate_required_subgroup_size(
         return Err(Box::new(ValidationError {
             context: "required_subgroup_size".into(),
             problem:
-                "subgroup_size {subgroup_size} is greater than max_subgroup_size {max_subgroup_size}"
+                format!("`subgroup_size` {subgroup_size} is greater than `max_subgroup_size` {max_subgroup_size}")
                     .into(),
-            vuids: &["requiredSubgroupSize must be less than or equal to maxSubgroupSize"],
+            vuids: &["VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02762"],
             ..Default::default()
         }));
     }
@@ -577,7 +579,7 @@ pub(crate) fn validate_required_subgroup_size(
         if max_compute_workgroup_subgroups * subgroup_size < workgroup_size {
             return Err(Box::new(ValidationError {
                 context: "required_subgroup_size".into(),
-                problem: "subgroup_size {subgroup_size} creates more than {max_compute_workgroup_subgroups} subgroups".into(),
+                problem: format!("`subgroup_size` {subgroup_size} creates more than {max_compute_workgroup_subgroups} subgroups").into(),
                 vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02756"],
                 ..Default::default()
             }));
