@@ -73,7 +73,26 @@ fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
                 )
             }
         }
-        ShaderExecution::Compute => quote! { ::vulkano::shader::ShaderExecution::Compute },
+        ShaderExecution::Compute(execution) => {
+            use ::vulkano::shader::ComputeShaderExecution;
+            match execution {
+                ComputeShaderExecution::LocalSize([x, y, z]) => {
+                    quote! { ::vulkano::shader::ShaderExecution::Compute(
+                        ::vulkano::shader::ComputeShaderExecution::LocalSize([#x, #y, #z])
+                    ) }
+                }
+                ComputeShaderExecution::LocalSizeId([x, y, z]) => {
+                    quote! { ::vulkano::shader::ShaderExecution::Compute(
+                        ::vulkano::shader::ComputeShaderExecution::LocalSizeId([#x, #y, #z])
+                    ) }
+                }
+                ComputeShaderExecution::WorkgroupSizeId([x, y, z]) => {
+                    quote! { ::vulkano::shader::ShaderExecution::Compute(
+                        ::vulkano::shader::ComputeShaderExecution::WorkgroupSizeId([#x, #y, #z])
+                    ) }
+                }
+            }
+        }
         ShaderExecution::RayGeneration => {
             quote! { ::vulkano::shader::ShaderExecution::RayGeneration }
         }

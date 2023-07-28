@@ -493,17 +493,18 @@ impl PipelineShaderStageCreateInfo {
                     }));
                 }
             }
+        }
 
-            if let Some(required_subgroup_size) = required_subgroup_size {
-                // TODO: Workgroup size could be reflected?
-                let workgroup_size = None;
-                validate_required_subgroup_size(
-                    device,
-                    stage_enum,
-                    workgroup_size,
-                    *required_subgroup_size,
-                )?;
-            }
+        if let Some(required_subgroup_size) = required_subgroup_size {
+            let local_size = entry_point_info.local_size(specialization_info)?;
+            let workgroup_size = local_size.map(|[x, y, z]| x * y * z);
+            // TODO: validate local_size
+            validate_required_subgroup_size(
+                device,
+                stage_enum,
+                workgroup_size,
+                *required_subgroup_size,
+            )?;
         }
 
         Ok(())

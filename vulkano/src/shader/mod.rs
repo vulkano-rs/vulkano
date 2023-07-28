@@ -557,6 +557,41 @@ pub struct EntryPointInfo {
     pub output_interface: ShaderInterface,
 }
 
+impl EntryPointInfo {
+    // The local size in Compute shaders, None otherwise.
+    // `specialization_info` is used for LocalSizeId / WorkgroupSizeId, using specialization_constants if not found.
+    // Errors if specialization constants
+    pub(crate) fn local_size(
+        &self,
+        specialization_info: &HashMap<u32, SpecializationConstant>,
+    ) -> Result<Option<[u32; 3]>, ValidationError> {
+        if let ShaderExecution::Compute(execution) = self.execution {
+            match execution {
+                ComputeShaderExecution::LocalSize(local_size) => Ok(Some(local_size)),
+                ComputeShaderExecution::LocalSizeId(local_size_id)
+                | ComputeShaderExecution::WorkgroupSizeId(local_size_id) => {
+                    let mut local_size = [0; 3];
+                    for (size, id) in local_size.iter_mut().zip(local_size_id) {
+                        if let Some(spec) = specialization_info
+                            .get(&id)
+                            .or(self.specialization_constants.get(&id))
+                        {
+                            if let SpecializationConstant::U32(x) = spec {
+                                *size = *x;
+                            } else {
+                                todo!("expected SpecializationConstant::U32(_), found {spec:?}",);
+                            }
+                        }
+                    }
+                    Ok(Some(local_size))
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 /// Represents a shader entry point in a shader module.
 ///
 /// Can be obtained by calling [`entry_point`](ShaderModule::entry_point) on the shader module.
@@ -589,15 +624,15 @@ pub enum ShaderExecution {
     TessellationEvaluation,
     Geometry(GeometryShaderExecution),
     Fragment(FragmentShaderExecution),
-    Compute,
+    Compute(ComputeShaderExecution),
     RayGeneration,
     AnyHit,
     ClosestHit,
     Miss,
     Intersection,
     Callable,
-    Task,
-    Mesh,
+    Task, // TODO: like compute?
+    Mesh, // TODO: like compute?
     SubpassShading,
 }
 
@@ -609,7 +644,7 @@ impl From<&ShaderExecution> for ExecutionModel {
             ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
             ShaderExecution::Geometry(_) => Self::Geometry,
             ShaderExecution::Fragment(_) => Self::Fragment,
-            ShaderExecution::Compute => Self::GLCompute,
+            ShaderExecution::Compute(_) => Self::GLCompute,
             ShaderExecution::RayGeneration => Self::RayGenerationKHR,
             ShaderExecution::AnyHit => Self::AnyHitKHR,
             ShaderExecution::ClosestHit => Self::ClosestHitKHR,
@@ -705,6 +740,17 @@ pub enum FragmentTestsStages {
     Early,
     Late,
     EarlyAndLate,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComputeShaderExecution {
+    LocalSize([u32; 3]),
+    // requires spirv 1.2
+    LocalSizeId([u32; 3]),
+    // Deprecated in spirv 1.6
+    // The ids are the fields of struct decorated with WorkgroupSize builtin.
+    // Functionally equivalent to LocalSizeId.
+    WorkgroupSizeId([u32; 3]),
 }
 
 /// The requirements imposed by a shader on a binding within a descriptor set layout, and on any
@@ -1297,7 +1343,7 @@ impl From<&ShaderExecution> for ShaderStage {
             ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
             ShaderExecution::Geometry(_) => Self::Geometry,
             ShaderExecution::Fragment(_) => Self::Fragment,
-            ShaderExecution::Compute => Self::Compute,
+            ShaderExecution::Compute(_) => Self::Compute,
             ShaderExecution::RayGeneration => Self::Raygen,
             ShaderExecution::AnyHit => Self::AnyHit,
             ShaderExecution::ClosestHit => Self::ClosestHit,

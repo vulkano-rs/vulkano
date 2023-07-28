@@ -355,7 +355,7 @@ impl ComputePipelineCreateInfo {
 
         let entry_point_info = entry_point.info();
 
-        if !matches!(entry_point_info.execution, ShaderExecution::Compute) {
+        if !matches!(entry_point_info.execution, ShaderExecution::Compute(_)) {
             return Err(Box::new(ValidationError {
                 context: "stage.entry_point".into(),
                 problem: "is not a `ShaderStage::Compute` entry point".into(),
@@ -534,7 +534,7 @@ mod tests {
         // It executes a single compute shader (one invocation) that writes the subgroup size
         // to a buffer. The buffer content is then checked for the right value.
 
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!(subgroup_size_control);
 
         let cs = unsafe {
             /*

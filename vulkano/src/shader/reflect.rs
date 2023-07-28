@@ -19,9 +19,10 @@ use crate::{
             Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction, Spirv,
             StorageClass,
         },
-        DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, GeometryShaderExecution,
-        GeometryShaderInput, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
-        ShaderInterfaceEntryType, ShaderScalarType, ShaderStage, SpecializationConstant,
+        ComputeShaderExecution, DescriptorIdentifier, DescriptorRequirements, EntryPointInfo,
+        GeometryShaderExecution, GeometryShaderInput, ShaderExecution, ShaderInterface,
+        ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderScalarType, ShaderStage,
+        SpecializationConstant,
     },
     DeviceSize,
 };
@@ -187,7 +188,47 @@ fn shader_execution(
             })
         }
 
-        ExecutionModel::GLCompute => ShaderExecution::Compute,
+        ExecutionModel::GLCompute => {
+            let mut execution = ComputeShaderExecution::LocalSize([1, 1, 1]);
+            for instruction in spirv.iter_execution_mode() {
+                match instruction {
+                    Instruction::ExecutionMode { entry_point, mode }
+                        if *entry_point == function_id =>
+                    {
+                        if let ExecutionMode::LocalSize {
+                            x_size,
+                            y_size,
+                            z_size,
+                        } = mode
+                        {
+                            execution =
+                                ComputeShaderExecution::LocalSize([*x_size, *y_size, *z_size]);
+                            break;
+                        }
+                    }
+                    Instruction::ExecutionModeId { entry_point, mode }
+                        if *entry_point == function_id =>
+                    {
+                        if let ExecutionMode::LocalSizeId {
+                            x_size,
+                            y_size,
+                            z_size,
+                        } = mode
+                        {
+                            execution = ComputeShaderExecution::LocalSizeId([
+                                u32::from(*x_size),
+                                u32::from(*y_size),
+                                u32::from(*z_size),
+                            ]);
+                            break;
+                        }
+                    }
+                    _ => continue,
+                };
+            }
+            // TODO: WorgroupSize
+            ShaderExecution::Compute(execution)
+        }
 
         ExecutionModel::RayGenerationKHR => ShaderExecution::RayGeneration,
         ExecutionModel::IntersectionKHR => ShaderExecution::Intersection,
