@@ -217,7 +217,7 @@ impl Image {
             samples: SampleCount::Sample1,
             tiling: ImageTiling::Optimal,
             usage: swapchain.image_usage(),
-            stencil_usage: swapchain.image_usage(),
+            stencil_usage: None,
             sharing: swapchain.image_sharing().clone(),
             initial_layout: ImageLayout::Undefined,
             ..Default::default()
@@ -323,7 +323,7 @@ impl Image {
 
     /// Returns the stencil usage the image was created with.
     #[inline]
-    pub fn stencil_usage(&self) -> ImageUsage {
+    pub fn stencil_usage(&self) -> Option<ImageUsage> {
         self.inner.stencil_usage()
     }
 
@@ -1673,13 +1673,12 @@ pub struct ImageFormatInfo {
     /// If `stencil_usage` is empty or if `format` does not have both a depth and a stencil aspect,
     /// then it is automatically set to equal `usage`.
     ///
-    /// If after this, `stencil_usage` does not equal `usage`,
-    /// then the physical device API version must be at least 1.2, or the
+    /// If this is `Some`, then the physical device API version must be at least 1.2, or the
     /// [`ext_separate_stencil_usage`](crate::device::DeviceExtensions::ext_separate_stencil_usage)
     /// extension must be supported by the physical device.
     ///
-    /// The default value is [`ImageUsage::empty()`].
-    pub stencil_usage: ImageUsage,
+    /// The default value is `None`.
+    pub stencil_usage: Option<ImageUsage>,
 
     /// An external memory handle type that will be imported to or exported from the image.
     ///
@@ -1724,7 +1723,7 @@ impl Default for ImageFormatInfo {
             image_type: ImageType::Dim2d,
             tiling: ImageTiling::Optimal,
             usage: ImageUsage::empty(),
-            stencil_usage: ImageUsage::empty(),
+            stencil_usage: None,
             external_memory_handle_type: None,
             image_view_type: None,
             drm_format_modifier_info: None,
@@ -1744,7 +1743,7 @@ impl ImageFormatInfo {
             image_type,
             tiling,
             usage,
-            mut stencil_usage,
+            stencil_usage,
             external_memory_handle_type,
             image_view_type,
             ref drm_format_modifier_info,
@@ -1800,28 +1799,15 @@ impl ImageFormatInfo {
             }));
         }
 
-        let aspects = format.aspects();
-
-        let has_separate_stencil_usage = if aspects
-            .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-            && !stencil_usage.is_empty()
-        {
-            stencil_usage == usage
-        } else {
-            stencil_usage = usage;
-            false
-        };
-
-        if has_separate_stencil_usage {
+        if let Some(stencil_usage) = stencil_usage {
             if !(physical_device.api_version() >= Version::V1_2
                 || physical_device
                     .supported_extensions()
                     .ext_separate_stencil_usage)
             {
                 return Err(Box::new(ValidationError {
-                    problem: "`stencil_usage` is `Some`, and `format` has both a depth and a \
-                        stencil aspect"
-                        .into(),
+                    context: "stencil_usage".into(),
+                    problem: "is `Some`".into(),
                     requires_one_of: RequiresOneOf(&[
                         RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
                         RequiresAllOf(&[Requires::DeviceExtension("ext_separate_stencil_usage")]),
@@ -1843,6 +1829,24 @@ impl ImageFormatInfo {
                     context: "stencil_usage".into(),
                     problem: "is empty".into(),
                     vuids: &["VUID-VkImageStencilUsageCreateInfo-usage-requiredbitmask"],
+                    ..Default::default()
+                }));
+            }
+
+            if stencil_usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT)
+                && !(stencil_usage
+                    - (ImageUsage::TRANSIENT_ATTACHMENT
+                        | ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                        | ImageUsage::INPUT_ATTACHMENT))
+                    .is_empty()
+            {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_usage".into(),
+                    problem: "contains `ImageUsage::TRANSIENT_ATTACHMENT`, but also contains \
+                        usages other than `ImageUsage::DEPTH_STENCIL_ATTACHMENT` or \
+                        `ImageUsage::INPUT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageStencilUsageCreateInfo-stencilUsage-02539"],
                     ..Default::default()
                 }));
             }

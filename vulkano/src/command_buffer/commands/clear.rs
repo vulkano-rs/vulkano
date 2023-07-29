@@ -360,7 +360,10 @@ where
         // VUID-vkCmdClearDepthStencilImage-pRanges-02658
         // VUID-vkCmdClearDepthStencilImage-pRanges-02659
         if image_aspects_used.intersects(ImageAspects::STENCIL)
-            && !image.stencil_usage().intersects(ImageUsage::TRANSFER_DST)
+            && !image
+                .stencil_usage()
+                .unwrap_or(image.usage())
+                .intersects(ImageUsage::TRANSFER_DST)
         {
             return Err(ClearError::MissingUsage {
                 usage: "transfer_dst",

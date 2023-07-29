@@ -878,6 +878,7 @@ where
         if src_image_aspects_used.intersects(ImageAspects::STENCIL)
             && !src_image
                 .stencil_usage()
+                .unwrap_or(src_image.usage())
                 .intersects(ImageUsage::TRANSFER_SRC)
         {
             return Err(CopyError::MissingUsage {
@@ -890,6 +891,7 @@ where
         if dst_image_aspects_used.intersects(ImageAspects::STENCIL)
             && !dst_image
                 .stencil_usage()
+                .unwrap_or(dst_image.usage())
                 .intersects(ImageUsage::TRANSFER_DST)
         {
             return Err(CopyError::MissingUsage {
