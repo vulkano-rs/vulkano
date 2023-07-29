@@ -1661,7 +1661,8 @@ pub struct ImageCreateInfo {
     /// The default value is [`ImageUsage::empty()`], which must be overridden.
     pub usage: ImageUsage,
 
-    /// How the stencil aspect of the image is going to be used, if any.
+    /// How the stencil aspect of the image is going to be used, if different from the regular
+    /// `usage`.
     ///
     /// If this is `Some`, then the device API version must be at least 1.2, or the
     /// [`ext_separate_stencil_usage`](crate::device::DeviceExtensions::ext_separate_stencil_usage)
