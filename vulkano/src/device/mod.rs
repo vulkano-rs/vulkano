@@ -1663,6 +1663,16 @@ vulkan_bitflags! {
 pub unsafe trait DeviceOwned {
     /// Returns the device that owns `self`.
     fn device(&self) -> &Arc<Device>;
+
+    /// Assigns a human-readable name to `object` for debugging purposes.
+    ///
+    /// If `object_name` is `None`, a previously set object name is removed.
+    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), OomError>
+    where
+        Self: VulkanObject + Sized,
+    {
+        self.device().set_debug_utils_object_name(self, object_name)
+    }
 }
 
 unsafe impl<T> DeviceOwned for T
