@@ -23,19 +23,19 @@
 //! # use vulkano::instance::Instance;
 //! # use std::sync::Arc;
 //! # let instance: Arc<Instance> = return;
-//! use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo, UserCallback};
+//! use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo};
 //!
 //! let _callback = unsafe {
 //!     DebugUtilsMessenger::new(
 //!         instance,
-//!         DebugUtilsMessengerCreateInfo::user_callback(UserCallback::new(|msg| {
-//!             println!("Debug callback: {:?}", msg.description);
-//!         })),
+//!         DebugUtilsMessengerCreateInfo::user_callback(
+//!             DebugUtilsMessengerCallback::new(|message_severity, message_type, callback_data| {
+//!                 println!("Debug callback: {:?}", callback_data.message);
+//!             }),
+//!         ),
 //!     ).ok()
 //! };
 //! ```
-//!
-//! The type of `msg` in the callback is [`Message`].
 //!
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
 //! be callable. If you don't store the return value of `DebugUtilsMessenger`'s constructor in a
@@ -192,9 +192,6 @@ pub struct DebugUtilsMessengerCreateInfo {
     ///
     /// The closure must not make any calls to the Vulkan API.
     /// If the closure panics, the panic is caught and ignored.
-    ///
-    /// The callback is provided inside an `Arc` so that it can be shared across multiple
-    /// messengers.
     pub user_callback: DebugUtilsMessengerCallback,
 
     pub _ne: crate::NonExhaustive,
@@ -288,7 +285,8 @@ impl Debug for DebugUtilsMessengerCreateInfo {
 
 /// The callback function for debug messages.
 ///
-/// This holds the provided closure inside an `Arc`, so it can be cloned cheaply.
+/// The wrapper holds the provided closure inside an `Arc`, so it can be cloned cheaply.
+/// This means it can be shared across multiple messengers.
 #[derive(Clone)]
 pub struct DebugUtilsMessengerCallback(Arc<CallbackData>);
 
