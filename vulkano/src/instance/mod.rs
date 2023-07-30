@@ -276,7 +276,7 @@ pub struct Instance {
     enabled_layers: Vec<String>,
     library: Arc<VulkanLibrary>,
     max_api_version: Version,
-    _user_callbacks: Vec<DebugUtilsMessengerCallback>,
+    _user_callbacks: Vec<Arc<DebugUtilsMessengerCallback>>,
 
     physical_devices: WeakArcOnceCache<ash::vk::PhysicalDevice, PhysicalDevice>,
     physical_device_groups: RwLock<(bool, Vec<PhysicalDeviceGroupPropertiesRaw>)>,

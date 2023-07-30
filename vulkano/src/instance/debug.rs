@@ -64,7 +64,7 @@ use std::{
 pub struct DebugUtilsMessenger {
     handle: ash::vk::DebugUtilsMessengerEXT,
     instance: DebugWrapper<Arc<Instance>>,
-    _user_callback: DebugUtilsMessengerCallback,
+    _user_callback: Arc<DebugUtilsMessengerCallback>,
 }
 
 impl DebugUtilsMessenger {
@@ -192,7 +192,7 @@ pub struct DebugUtilsMessengerCreateInfo {
     ///
     /// The closure must not make any calls to the Vulkan API.
     /// If the closure panics, the panic is caught and ignored.
-    pub user_callback: DebugUtilsMessengerCallback,
+    pub user_callback: Arc<DebugUtilsMessengerCallback>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -200,7 +200,7 @@ pub struct DebugUtilsMessengerCreateInfo {
 impl DebugUtilsMessengerCreateInfo {
     /// Returns a `DebugUtilsMessengerCreateInfo` with the specified `user_callback`.
     #[inline]
-    pub fn user_callback(user_callback: DebugUtilsMessengerCallback) -> Self {
+    pub fn user_callback(user_callback: Arc<DebugUtilsMessengerCallback>) -> Self {
         Self {
             message_severity: DebugUtilsMessageSeverity::ERROR | DebugUtilsMessageSeverity::WARNING,
             message_type: DebugUtilsMessageType::GENERAL,
@@ -284,11 +284,7 @@ impl Debug for DebugUtilsMessengerCreateInfo {
 }
 
 /// The callback function for debug messages.
-///
-/// The wrapper holds the provided closure inside an `Arc`, so it can be cloned cheaply.
-/// This means it can be shared across multiple messengers.
-#[derive(Clone)]
-pub struct DebugUtilsMessengerCallback(Arc<CallbackData>);
+pub struct DebugUtilsMessengerCallback(CallbackData);
 
 type CallbackData = Pin<
     Box<
@@ -317,12 +313,12 @@ impl DebugUtilsMessengerCallback {
             + Send
             + Sync
             + 'static,
-    ) -> Self {
-        Self(Arc::new(Box::pin(func)))
+    ) -> Arc<Self> {
+        Arc::new(Self(Box::pin(func)))
     }
 
     pub(crate) fn as_ptr(&self) -> *const CallbackData {
-        self.0.as_ref() as _
+        &self.0 as _
     }
 }
 
