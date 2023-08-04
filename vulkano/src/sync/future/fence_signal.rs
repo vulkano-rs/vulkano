@@ -19,7 +19,7 @@ use crate::{
         future::{AccessError, SubmitAnyBuilder},
         PipelineStages,
     },
-    DeviceSize, OomError,
+    DeviceSize, VulkanError,
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{
@@ -140,7 +140,7 @@ where
     F: GpuFuture,
 {
     /// Returns true if the fence is signaled by the GPU.
-    pub fn is_signaled(&self) -> Result<bool, OomError> {
+    pub fn is_signaled(&self) -> Result<bool, VulkanError> {
         let state = self.state.lock();
 
         match &*state {
@@ -190,14 +190,11 @@ where
 
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
-                match fence.wait(Some(Duration::from_secs(0))) {
-                    Ok(()) => {
-                        unsafe { prev.signal_finished() }
-                        *state = FenceSignalFutureState::Cleaned;
-                    }
-                    Err(_) => {
-                        prev.cleanup_finished();
-                    }
+                if fence.wait(Some(Duration::from_secs(0))).is_ok() {
+                    unsafe { prev.signal_finished() }
+                    *state = FenceSignalFutureState::Cleaned;
+                } else {
+                    prev.cleanup_finished();
                 }
             }
             FenceSignalFutureState::Pending(ref mut prev, _) => {
@@ -381,7 +378,7 @@ impl<F> Future for FenceSignalFuture<F>
 where
     F: GpuFuture,
 {
-    type Output = Result<(), OomError>;
+    type Output = Result<(), VulkanError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // Implement through fence

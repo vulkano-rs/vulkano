@@ -12,10 +12,12 @@ use ahash::HashMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::{
+    cmp::min,
     env,
     fmt::Display,
     fs::File,
     io::{BufWriter, Write},
+    ops::BitOrAssign,
     path::Path,
     process::Command,
 };
@@ -191,7 +193,10 @@ impl<'r> VkRegistryData<'r> {
                 }) if name == "VkResult" => Some(children.iter().filter_map(|en| {
                     if let EnumsChild::Enum(en) = en {
                         if let EnumSpec::Value { value, .. } = &en.spec {
-                            if value.starts_with('-') {
+                            // Treat NotReady and Timeout as error conditions
+                            if value.starts_with('-')
+                                || matches!(en.name.as_str(), "VK_NOT_READY" | "VK_TIMEOUT")
+                            {
                                 return Some(en.name.as_str());
                             }
                         }
@@ -446,5 +451,57 @@ fn suffix_key(name: &str) -> u32 {
         1
     } else {
         0
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RequiresOneOf {
+    pub api_version: Option<(u32, u32)>,
+    pub device_extensions: Vec<String>,
+    pub instance_extensions: Vec<String>,
+    pub features: Vec<String>,
+}
+
+impl RequiresOneOf {
+    pub fn is_empty(&self) -> bool {
+        let Self {
+            api_version,
+            device_extensions,
+            instance_extensions,
+            features,
+        } = self;
+
+        api_version.is_none()
+            && device_extensions.is_empty()
+            && instance_extensions.is_empty()
+            && features.is_empty()
+    }
+}
+
+impl BitOrAssign<&Self> for RequiresOneOf {
+    fn bitor_assign(&mut self, rhs: &Self) {
+        self.api_version = match (self.api_version, rhs.api_version) {
+            (None, None) => None,
+            (None, Some(x)) | (Some(x), None) => Some(x),
+            (Some(lhs), Some(rhs)) => Some(min(lhs, rhs)),
+        };
+
+        for rhs in &rhs.device_extensions {
+            if !self.device_extensions.contains(rhs) {
+                self.device_extensions.push(rhs.to_owned());
+            }
+        }
+
+        for rhs in &rhs.instance_extensions {
+            if !self.instance_extensions.contains(rhs) {
+                self.instance_extensions.push(rhs.to_owned());
+            }
+        }
+
+        for rhs in &rhs.features {
+            if !self.features.contains(rhs) {
+                self.features.push(rhs.to_owned());
+            }
+        }
     }
 }
