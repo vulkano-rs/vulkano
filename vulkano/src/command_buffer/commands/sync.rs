@@ -9,12 +9,12 @@
 
 use crate::{
     command_buffer::{allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder},
-    device::DeviceOwned,
+    device::{DeviceOwned, QueueFlags},
     sync::{
         event::Event, BufferMemoryBarrier, DependencyFlags, DependencyInfo, ImageMemoryBarrier,
         MemoryBarrier, PipelineStages,
     },
-    Version, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{ptr, sync::Arc};
@@ -23,22 +23,198 @@ impl<A> UnsafeCommandBufferBuilder<A>
 where
     A: CommandBufferAllocator,
 {
-    #[inline]
-    pub unsafe fn pipeline_barrier(&mut self, dependency_info: &DependencyInfo) -> &mut Self {
+    pub unsafe fn pipeline_barrier(
+        &mut self,
+        dependency_info: &DependencyInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_pipeline_barrier(dependency_info)?;
+
+        Ok(self.pipeline_barrier_unchecked(dependency_info))
+    }
+
+    fn validate_pipeline_barrier(
+        &self,
+        dependency_info: &DependencyInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::TRANSFER
+                | QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    transfer, graphics, compute, video decode or video encode operations"
+                    .into(),
+                vuids: &["VUID-vkCmdPipelineBarrier2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        dependency_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("dependency_info"))?;
+
+        let &DependencyInfo {
+            dependency_flags: _,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
+            _ne,
+        } = dependency_info;
+
+        let supported_pipeline_stages = PipelineStages::from(queue_family_properties.queue_flags);
+
+        for (barrier_index, memory_barrier) in memory_barriers.iter().enumerate() {
+            let &MemoryBarrier {
+                src_stages,
+                src_access: _,
+                dst_stages,
+                dst_access: _,
+                _ne: _,
+            } = memory_barrier;
+
+            if !supported_pipeline_stages.contains(src_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.memory_barriers[{}].src_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdPipelineBarrier2-srcStageMask-03849"],
+                    ..Default::default()
+                }));
+            }
+
+            if !supported_pipeline_stages.contains(dst_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.memory_barriers[{}].dst_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdPipelineBarrier2-dstStageMask-03850"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        for (barrier_index, buffer_memory_barrier) in buffer_memory_barriers.iter().enumerate() {
+            let &BufferMemoryBarrier {
+                src_stages,
+                src_access: _,
+                dst_stages,
+                dst_access: _,
+                queue_family_ownership_transfer: _,
+                buffer: _,
+                range: _,
+                _ne: _,
+            } = buffer_memory_barrier;
+
+            if !supported_pipeline_stages.contains(src_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.buffer_memory_barriers[{}].src_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdPipelineBarrier2-srcStageMask-03849"],
+                    ..Default::default()
+                }));
+            }
+
+            if !supported_pipeline_stages.contains(dst_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.buffer_memory_barriers[{}].dst_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdPipelineBarrier2-dstStageMask-03850"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        for (barrier_index, image_memory_barrier) in image_memory_barriers.iter().enumerate() {
+            let &ImageMemoryBarrier {
+                src_stages,
+                src_access: _,
+                dst_stages,
+                dst_access: _,
+                old_layout: _,
+                new_layout: _,
+                queue_family_ownership_transfer: _,
+                image: _,
+                subresource_range: _,
+                _ne: _,
+            } = image_memory_barrier;
+
+            if !supported_pipeline_stages.contains(src_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.image_memory_barriers[{}].src_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdPipelineBarrier2-srcStageMask-03849"],
+                    ..Default::default()
+                }));
+            }
+
+            if !supported_pipeline_stages.contains(dst_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.image_memory_barriers[{}].dst_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdPipelineBarrier2-dstStageMask-03850"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn pipeline_barrier_unchecked(
+        &mut self,
+        dependency_info: &DependencyInfo,
+    ) -> &mut Self {
         if dependency_info.is_empty() {
             return self;
         }
 
         let &DependencyInfo {
-            mut dependency_flags,
+            dependency_flags,
             ref memory_barriers,
             ref buffer_memory_barriers,
             ref image_memory_barriers,
             _ne: _,
         } = dependency_info;
-
-        // TODO: Is this needed?
-        dependency_flags |= DependencyFlags::BY_REGION;
 
         if self.device().enabled_features().synchronization2 {
             let memory_barriers_vk: SmallVec<[_; 2]> = memory_barriers
@@ -287,9 +463,197 @@ where
         self
     }
 
-    /// Calls `vkCmdSetEvent` on the builder.
-    #[inline]
     pub unsafe fn set_event(
+        &mut self,
+        event: &Event,
+        dependency_info: &DependencyInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_event(event, dependency_info)?;
+
+        Ok(self.set_event_unchecked(event, dependency_info))
+    }
+
+    fn validate_set_event(
+        &self,
+        event: &Event,
+        dependency_info: &DependencyInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics, compute, video decode or video encode operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetEvent2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdSetEvent2-commonparent
+        assert_eq!(self.device(), event.device());
+
+        dependency_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("dependency_info"))?;
+
+        let &DependencyInfo {
+            dependency_flags,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
+            _ne,
+        } = dependency_info;
+
+        if !dependency_flags.is_empty() {
+            return Err(Box::new(ValidationError {
+                context: "dependency_info.dependency_flags".into(),
+                problem: "is not empty".into(),
+                vuids: &["VUID-vkCmdSetEvent2-dependencyFlags-03825"],
+                ..Default::default()
+            }));
+        }
+
+        let supported_pipeline_stages = PipelineStages::from(queue_family_properties.queue_flags);
+
+        for (barrier_index, memory_barrier) in memory_barriers.iter().enumerate() {
+            let &MemoryBarrier {
+                src_stages,
+                src_access: _,
+                dst_stages,
+                dst_access: _,
+                _ne: _,
+            } = memory_barrier;
+
+            if !supported_pipeline_stages.contains(src_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.memory_barriers[{}].src_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdSetEvent2-srcStageMask-03827"],
+                    ..Default::default()
+                }));
+            }
+
+            if !supported_pipeline_stages.contains(dst_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.memory_barriers[{}].dst_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdSetEvent2-dstStageMask-03828"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        for (barrier_index, buffer_memory_barrier) in buffer_memory_barriers.iter().enumerate() {
+            let &BufferMemoryBarrier {
+                src_stages,
+                src_access: _,
+                dst_stages,
+                dst_access: _,
+                queue_family_ownership_transfer: _,
+                buffer: _,
+                range: _,
+                _ne: _,
+            } = buffer_memory_barrier;
+
+            if !supported_pipeline_stages.contains(src_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.buffer_memory_barriers[{}].src_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdSetEvent2-srcStageMask-03827"],
+                    ..Default::default()
+                }));
+            }
+
+            if !supported_pipeline_stages.contains(dst_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.buffer_memory_barriers[{}].dst_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdSetEvent2-dstStageMask-03828"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        for (barrier_index, image_memory_barrier) in image_memory_barriers.iter().enumerate() {
+            let &ImageMemoryBarrier {
+                src_stages,
+                src_access: _,
+                dst_stages,
+                dst_access: _,
+                old_layout: _,
+                new_layout: _,
+                queue_family_ownership_transfer: _,
+                image: _,
+                subresource_range: _,
+                _ne: _,
+            } = image_memory_barrier;
+
+            if !supported_pipeline_stages.contains(src_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.image_memory_barriers[{}].src_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdSetEvent2-srcStageMask-03827"],
+                    ..Default::default()
+                }));
+            }
+
+            if !supported_pipeline_stages.contains(dst_stages) {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "dependency_info.image_memory_barriers[{}].dst_stages",
+                        barrier_index
+                    )
+                    .into(),
+                    problem: "contains stages that are not supported by the queue family of the \
+                        command buffer"
+                        .into(),
+                    vuids: &["VUID-vkCmdSetEvent2-dstStageMask-03828"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_event_unchecked(
         &mut self,
         event: &Event,
         dependency_info: &DependencyInfo,
@@ -453,8 +817,193 @@ where
         self
     }
 
-    /// Calls `vkCmdWaitEvents` on the builder.
-    pub unsafe fn wait_events(&mut self, events: &[(Arc<Event>, DependencyInfo)]) -> &mut Self {
+    pub unsafe fn wait_events(
+        &mut self,
+        events: &[(Arc<Event>, DependencyInfo)],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_wait_events(events)?;
+
+        Ok(self.wait_events_unchecked(events))
+    }
+
+    fn validate_wait_events(
+        &self,
+        events: &[(Arc<Event>, DependencyInfo)],
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics, compute, video decode or video encode operations"
+                    .into(),
+                vuids: &["VUID-vkCmdWaitEvents2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        for (event_index, (event, dependency_info)) in events.iter().enumerate() {
+            // VUID-vkCmdWaitEvents2-commandBuffer-cmdpool
+            assert_eq!(self.device(), event.device());
+
+            dependency_info
+                .validate(self.device())
+                .map_err(|err| err.add_context(format!("events[{}].1", event_index)))?;
+
+            let &DependencyInfo {
+                dependency_flags: _,
+                ref memory_barriers,
+                ref buffer_memory_barriers,
+                ref image_memory_barriers,
+                _ne,
+            } = dependency_info;
+
+            let supported_pipeline_stages =
+                PipelineStages::from(queue_family_properties.queue_flags);
+
+            for (barrier_index, memory_barrier) in memory_barriers.iter().enumerate() {
+                let &MemoryBarrier {
+                    src_stages,
+                    src_access: _,
+                    dst_stages,
+                    dst_access: _,
+                    _ne: _,
+                } = memory_barrier;
+
+                if !supported_pipeline_stages.contains(src_stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "events[{}].1.memory_barriers[{}].src_stages",
+                            event_index, barrier_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the command buffer"
+                            .into(),
+                        vuids: &["VUID-vkCmdSetEvent2-srcStageMask-03827"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !supported_pipeline_stages.contains(dst_stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "events[{}].1.memory_barriers[{}].dst_stages",
+                            event_index, barrier_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the command buffer"
+                            .into(),
+                        vuids: &["VUID-vkCmdSetEvent2-dstStageMask-03828"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            for (barrier_index, buffer_memory_barrier) in buffer_memory_barriers.iter().enumerate()
+            {
+                let &BufferMemoryBarrier {
+                    src_stages,
+                    src_access: _,
+                    dst_stages,
+                    dst_access: _,
+                    queue_family_ownership_transfer: _,
+                    buffer: _,
+                    range: _,
+                    _ne: _,
+                } = buffer_memory_barrier;
+
+                if !supported_pipeline_stages.contains(src_stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "events[{}].1.buffer_memory_barriers[{}].src_stages",
+                            event_index, barrier_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the command buffer"
+                            .into(),
+                        vuids: &["VUID-vkCmdSetEvent2-srcStageMask-03827"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !supported_pipeline_stages.contains(dst_stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "events[{}].1.buffer_memory_barriers[{}].dst_stages",
+                            event_index, barrier_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the command buffer"
+                            .into(),
+                        vuids: &["VUID-vkCmdSetEvent2-dstStageMask-03828"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            for (barrier_index, image_memory_barrier) in image_memory_barriers.iter().enumerate() {
+                let &ImageMemoryBarrier {
+                    src_stages,
+                    src_access: _,
+                    dst_stages,
+                    dst_access: _,
+                    old_layout: _,
+                    new_layout: _,
+                    queue_family_ownership_transfer: _,
+                    image: _,
+                    subresource_range: _,
+                    _ne: _,
+                } = image_memory_barrier;
+
+                if !supported_pipeline_stages.contains(src_stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "events[{}].1.image_memory_barriers[{}].src_stages",
+                            event_index, barrier_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the command buffer"
+                            .into(),
+                        vuids: &["VUID-vkCmdSetEvent2-srcStageMask-03827"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !supported_pipeline_stages.contains(dst_stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "events[{}].1.image_memory_barriers[{}].dst_stages",
+                            event_index, barrier_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the command buffer"
+                            .into(),
+                        vuids: &["VUID-vkCmdSetEvent2-dstStageMask-03828"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn wait_events_unchecked(
+        &mut self,
+        events: &[(Arc<Event>, DependencyInfo)],
+    ) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().enabled_features().synchronization2 {
@@ -775,9 +1324,233 @@ where
         self
     }
 
-    /// Calls `vkCmdResetEvent` on the builder.
-    #[inline]
-    pub unsafe fn reset_event(&mut self, event: Arc<Event>, stages: PipelineStages) -> &mut Self {
+    pub unsafe fn reset_event(
+        &mut self,
+        event: &Event,
+        stages: PipelineStages,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_reset_event(event, stages)?;
+
+        Ok(self.reset_event_unchecked(event, stages))
+    }
+
+    fn validate_reset_event(
+        &self,
+        event: &Event,
+        stages: PipelineStages,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.queue_family_properties().queue_flags.intersects(
+            QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics, compute, video decode or video encode operations"
+                    .into(),
+                vuids: &["VUID-vkCmdResetEvent2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let device = self.device();
+
+        // VUID-vkCmdResetEvent2-commonparent
+        assert_eq!(device, event.device());
+
+        stages
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "stages".into(),
+                vuids: &["VUID-vkCmdResetEvent2-stageMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !device.enabled_features().synchronization2 {
+            if stages.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !device.enabled_features().geometry_shader {
+            if stages.intersects(PipelineStages::GEOMETRY_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "geometry_shader",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-03929"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().tessellation_shader {
+            if stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                        `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "tessellation_shader",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-03930"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().conditional_rendering {
+            if stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "conditional_rendering",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-03931"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().fragment_density_map {
+            if stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fragment_density_map",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-03932"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().transform_feedback {
+            if stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "transform_feedback",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-03933"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().mesh_shader {
+            if stages.intersects(PipelineStages::MESH_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "mesh_shader",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-03934"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().task_shader {
+            if stages.intersects(PipelineStages::TASK_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "task_shader",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-03935"],
+                }));
+            }
+        }
+
+        if !(device.enabled_features().attachment_fragment_shading_rate
+            || device.enabled_features().shading_rate_image)
+        {
+            if stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    ]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-shadingRateImage-07316"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().subpass_shading {
+            if stages.intersects(PipelineStages::SUBPASS_SHADING) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "subpass_shading",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-04957"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().invocation_mask {
+            if stages.intersects(PipelineStages::INVOCATION_MASK) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "invocation_mask",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-04995"],
+                }));
+            }
+        }
+
+        if !(device.enabled_extensions().nv_ray_tracing
+            || device.enabled_features().ray_tracing_pipeline)
+        {
+            if stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "stages".into(),
+                    problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ray_tracing_pipeline",
+                    )])]),
+                    vuids: &["VUID-vkCmdResetEvent2-stageMask-07946"],
+                }));
+            }
+        }
+
+        if stages.intersects(PipelineStages::HOST) {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::HOST`".into(),
+                vuids: &["VUID-vkCmdResetEvent2-stageMask-03830"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reset_event_unchecked(
+        &mut self,
+        event: &Event,
+        stages: PipelineStages,
+    ) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().enabled_features().synchronization2 {

@@ -20,8 +20,8 @@ use crate::{
             StorageClass,
         },
         DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, GeometryShaderExecution,
-        GeometryShaderInput, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
-        ShaderInterfaceEntryType, ShaderScalarType, ShaderStage, SpecializationConstant,
+        GeometryShaderInput, NumericType, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
+        ShaderInterfaceEntryType, ShaderStage, SpecializationConstant,
     },
     DeviceSize,
 };
@@ -854,14 +854,14 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                     } => {
                         assert!(width == 32); // TODO: 64-bit components
                         match signedness {
-                            0 => ShaderScalarType::Uint,
-                            1 => ShaderScalarType::Sint,
+                            0 => NumericType::Uint,
+                            1 => NumericType::Int,
                             _ => unreachable!(),
                         }
                     }
                     Instruction::TypeFloat { width, .. } => {
                         assert!(width == 32); // TODO: 64-bit components
-                        ShaderScalarType::Float
+                        NumericType::Float
                     }
                     _ => unreachable!(),
                 });
@@ -1347,8 +1347,8 @@ fn shader_interface_type_of(
             assert!(!ignore_first_array);
             ShaderInterfaceEntryType {
                 base_type: match signedness {
-                    0 => ShaderScalarType::Uint,
-                    1 => ShaderScalarType::Sint,
+                    0 => NumericType::Uint,
+                    1 => NumericType::Int,
                     _ => unreachable!(),
                 },
                 num_components: 1,
@@ -1363,7 +1363,7 @@ fn shader_interface_type_of(
         Instruction::TypeFloat { width, .. } => {
             assert!(!ignore_first_array);
             ShaderInterfaceEntryType {
-                base_type: ShaderScalarType::Float,
+                base_type: NumericType::Float,
                 num_components: 1,
                 num_elements: 1,
                 is_64bit: match width {

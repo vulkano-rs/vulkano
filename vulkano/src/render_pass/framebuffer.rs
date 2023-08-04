@@ -496,8 +496,8 @@ impl FramebufferCreateInfo {
 
             for image_view in attachments.iter() {
                 let image_view_extent = image_view.image().extent();
-                let image_view_array_layers = image_view.subresource_range().array_layers.end
-                    - image_view.subresource_range().array_layers.start;
+                let image_view_array_layers =
+                    image_view.subresource_range().array_layers.len() as u32;
 
                 auto_extent[0] = auto_extent[0].min(image_view_extent[0]);
                 auto_extent[1] = auto_extent[1].min(image_view_extent[1]);

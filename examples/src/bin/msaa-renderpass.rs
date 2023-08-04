@@ -67,7 +67,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyImageToBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
+        CopyImageToBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -394,15 +394,18 @@ fn main() {
                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), None],
                 ..RenderPassBeginInfo::framebuffer(framebuffer)
             },
-            SubpassContents::Inline,
+            Default::default(),
         )
         .unwrap()
         .set_viewport(0, [viewport].into_iter().collect())
+        .unwrap()
         .bind_pipeline_graphics(pipeline)
+        .unwrap()
         .bind_vertex_buffers(0, vertex_buffer.clone())
+        .unwrap()
         .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap()
-        .end_render_pass()
+        .end_render_pass(Default::default())
         .unwrap()
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();

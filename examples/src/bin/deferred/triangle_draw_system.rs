@@ -151,8 +151,11 @@ impl TriangleDrawSystem {
                 .into_iter()
                 .collect(),
             )
+            .unwrap()
             .bind_pipeline_graphics(self.pipeline.clone())
+            .unwrap()
             .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .unwrap()
             .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
         builder.build().unwrap()

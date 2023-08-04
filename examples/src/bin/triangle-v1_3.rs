@@ -635,8 +635,11 @@ fn main() {
                     //
                     // TODO: Document state setting and how it affects subsequent draw commands.
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .unwrap()
                     // We add a draw command.
                     .draw(vertex_buffer.len() as u32, 1, 0, 0)
                     .unwrap()

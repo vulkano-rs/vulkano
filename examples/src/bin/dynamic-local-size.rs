@@ -260,12 +260,14 @@ fn main() {
     .unwrap();
     builder
         .bind_pipeline_compute(pipeline.clone())
+        .unwrap()
         .bind_descriptor_sets(
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
             set,
         )
+        .unwrap()
         // Note that dispatch dimensions must be proportional to the local size.
         .dispatch([1024 / local_size_x, 1024 / local_size_y, 1])
         .unwrap()
