@@ -53,6 +53,9 @@ Changes to command buffers:
 - `UnsafeCommandBuffer(Builder)` now takes ownership of the command buffer allocation, and has a type parameter for the allocator.
 - `CommandPoolResetError` is renamed to `ResetCommandPoolError`.
 - Command pool creation and resetting now take `CommandPoolCreateFlags` and `CommandPoolResetFlags` respectively.
+- All validated binding and dynamic state commands now return `Result` instead of panicking, just like the other commands.
+- The `begin_render_pass`, `next_subpass` and `end_render_pass` commands now take `SubpassBeginInfo` and/or `SubpassEndInfo` parameters. Nothing has changed functionally, but this allows for future-compatibility.
+- `UnsafeCommandBufferBuilder` now performs some validation, when it does not rely on tracking any state. The old, completely unvalidated commands have been renamed with `_unchecked` added to the end.
 
 Changes to descriptor sets and descriptor set layouts:
 - `PersistentDescriptorSet::new` now takes an additional parameter, specifying descriptor set copy operations.
@@ -85,6 +88,8 @@ Changes to samplers:
 Changes to `Format`:
 - The following objects now use `Format` instead of `Option<Format>`: `BufferView`, `Image`, `ImageView`, `SamplerYcbcrConversion`.
 - The `block_size` method no longer returns an `Option`.
+- The `type_color`, `type_depth` and `type_stencil` methods are renamed to `numeric_format_color`, `numeric_format_depth` and `numeric_format_stencil`, and the returned type is renamed to `NumericFormat`.
+- `ShaderScalarType` is renamed to `NumericType`.
 
 Changes to memory allocation:
 - `AllocationCreateInfo::usage` and `SubbufferAllocatorCreateInfo::memory_usage` were replaced by a `memory_type_filter` field, to allow for a more flexible selection of the memory type. Additionally, `SubbufferAllocatorCreateInfo::memory_type_filter` defaults to `MemoryTypeFilter::PREFER_DEVICE` for consistency with `AllocationCreateInfo`, unlike the previous default of `MemoryUsage::Upload`.

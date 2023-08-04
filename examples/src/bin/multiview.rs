@@ -17,7 +17,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
-        CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo, SubpassContents,
+        CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
@@ -346,14 +346,16 @@ fn main() {
                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
                 ..RenderPassBeginInfo::framebuffer(framebuffer)
             },
-            SubpassContents::Inline,
+            Default::default(),
         )
         .unwrap()
         .bind_pipeline_graphics(pipeline)
+        .unwrap()
         .bind_vertex_buffers(0, vertex_buffer.clone())
+        .unwrap()
         .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap()
-        .end_render_pass()
+        .end_render_pass(Default::default())
         .unwrap();
 
     // Copy the image layers to different buffers to save them as individual images to disk.

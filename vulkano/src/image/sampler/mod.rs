@@ -49,7 +49,7 @@ pub mod ycbcr;
 use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
-    format::FormatFeatures,
+    format::{FormatFeatures, NumericType},
     image::{
         view::{ImageView, ImageViewType},
         ImageAspects,
@@ -57,7 +57,6 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_enum},
     pipeline::graphics::depth_stencil::CompareOp,
-    shader::ShaderScalarType,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc};
@@ -395,18 +394,18 @@ impl Sampler {
 
         if let Some(border_color) = self.border_color {
             let aspects = image_view.subresource_range().aspects;
-            let view_scalar_type = ShaderScalarType::from(
+            let view_numeric_type = NumericType::from(
                 if aspects.intersects(
                     ImageAspects::COLOR
                         | ImageAspects::PLANE_0
                         | ImageAspects::PLANE_1
                         | ImageAspects::PLANE_2,
                 ) {
-                    image_view.format().type_color().unwrap()
+                    image_view.format().numeric_format_color().unwrap()
                 } else if aspects.intersects(ImageAspects::DEPTH) {
-                    image_view.format().type_depth().unwrap()
+                    image_view.format().numeric_format_depth().unwrap()
                 } else if aspects.intersects(ImageAspects::STENCIL) {
-                    image_view.format().type_stencil().unwrap()
+                    image_view.format().numeric_format_stencil().unwrap()
                 } else {
                     // Per `ImageViewBuilder::aspects` and
                     // VUID-VkDescriptorImageInfo-imageView-01976
@@ -421,10 +420,7 @@ impl Sampler {
                     // The sampler borderColor is an integer type and the image view
                     // format is not one of the VkFormat integer types or a stencil
                     // component of a depth/stencil format.
-                    if !matches!(
-                        view_scalar_type,
-                        ShaderScalarType::Sint | ShaderScalarType::Uint
-                    ) {
+                    if !matches!(view_numeric_type, NumericType::Int | NumericType::Uint) {
                         return Err(Box::new(ValidationError {
                             problem: "the sampler has an integer border color, and \
                                 the image view does not have an integer format"
@@ -439,7 +435,7 @@ impl Sampler {
                     // The sampler borderColor is a float type and the image view
                     // format is not one of the VkFormat float types or a depth
                     // component of a depth/stencil format.
-                    if !matches!(view_scalar_type, ShaderScalarType::Float) {
+                    if !matches!(view_numeric_type, NumericType::Float) {
                         return Err(Box::new(ValidationError {
                             problem: "the sampler has an floating-point border color, and \
                                 the image view does not have a floating-point format"

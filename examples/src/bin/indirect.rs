@@ -31,7 +31,7 @@ use vulkano::{
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        DrawIndirectCommand, RenderPassBeginInfo, SubpassContents,
+        DrawIndirectCommand, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -474,12 +474,14 @@ fn main() {
                 // vertices and fill out the draw call arguments.
                 builder
                     .bind_pipeline_compute(compute_pipeline.clone())
+                    .unwrap()
                     .bind_descriptor_sets(
                         PipelineBindPoint::Compute,
                         compute_pipeline.layout().clone(),
                         0,
                         cs_desciptor_set,
                     )
+                    .unwrap()
                     .dispatch([1, 1, 1])
                     .unwrap()
                     .begin_render_pass(
@@ -489,17 +491,20 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        SubpassContents::Inline,
+                        Default::default(),
                     )
                     .unwrap()
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(render_pipeline.clone())
+                    .unwrap()
                     .bind_vertex_buffers(0, vertices)
+                    .unwrap()
                     // The indirect draw call is placed in the command buffer with a reference to
                     // the buffer that will contain the arguments for the draw.
                     .draw_indirect(indirect_buffer)
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
                 let command_buffer = builder.build().unwrap();
 

@@ -1170,7 +1170,7 @@ unsafe fn get_format_features(view_format: Format, image: &Image) -> FormatFeatu
         || device.enabled_extensions().khr_format_feature_flags2)
         && matches!(image.tiling(), ImageTiling::Linear | ImageTiling::Optimal)
     {
-        if view_format.type_color().is_none()
+        if view_format.numeric_format_color().is_none()
             && format_features.intersects(FormatFeatures::SAMPLED_IMAGE)
         {
             format_features |= FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON;

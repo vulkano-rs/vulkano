@@ -224,15 +224,20 @@ impl PixelsDrawPipeline {
                 .into_iter()
                 .collect(),
             )
+            .unwrap()
             .bind_pipeline_graphics(self.pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
                 desc_set,
             )
+            .unwrap()
             .bind_vertex_buffers(0, self.vertices.clone())
+            .unwrap()
             .bind_index_buffer(self.indices.clone())
+            .unwrap()
             .draw_indexed(self.indices.len() as u32, 1, 0, 0, 0)
             .unwrap();
         builder.build().unwrap()

@@ -1,6 +1,6 @@
 # Vulkano's coverage of Vulkan
 
-Coverage of support for Vulkan core features and extensions in Vulkano.
+Coverage of support for Vulkan core features and extensions in Vulkano, as of the Vulkan 1.3.260 spec.
 
 "Partially supported" includes core features and extensions that have some support in Vulkano, but are not fully implemented. A list of unimplemented features is given.
 
@@ -221,6 +221,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_get_display_properties2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_display_properties2.html)
 - [`VK_KHR_global_priority`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_global_priority.html)
 - [`VK_KHR_map_memory2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_map_memory2.html)
+- [`VK_KHR_maintenance5`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance5.html)
 - [`VK_KHR_performance_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_performance_query.html)
 - [`VK_KHR_pipeline_executable_properties`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_pipeline_executable_properties.html)
 - [`VK_KHR_pipeline_library`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_pipeline_library.html)
@@ -272,6 +273,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_global_priority_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_global_priority_query.html) (promoted)
 - [`VK_EXT_graphics_pipeline_library`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_graphics_pipeline_library.html)
 - [`VK_EXT_hdr_metadata`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_hdr_metadata.html)
+- [`VK_EXT_host_image_copy`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_host_image_copy.html)
 - [`VK_EXT_image_compression_control`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_compression_control.html)
 - [`VK_EXT_image_compression_control_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_compression_control_swapchain.html)
 - [`VK_EXT_image_sliced_view_of_3d`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_sliced_view_of_3d.html)
@@ -338,6 +340,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_AMD_shader_info`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_AMD_shader_info.html)
 - [`VK_AMD_shader_trinary_minmax`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_AMD_shader_trinary_minmax.html)
 - [`VK_AMD_texture_gather_bias_lod`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_AMD_texture_gather_bias_lod.html)
+- [`VK_AMDX_shader_enqueue`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_AMDX_shader_enqueue.html)
 - [`VK_ANDROID_external_memory_android_hardware_buffer`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_ANDROID_external_memory_android_hardware_buffer.html)
 - [`VK_ARM_rasterization_order_attachment_access`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_ARM_rasterization_order_attachment_access.html) (promoted)
 - [`VK_ARM_shader_core_builtins`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_ARM_shader_core_builtins.html)
