@@ -148,7 +148,7 @@ where
                         }) {
                             return Err(Box::new(ValidationError {
                                 problem: "the provided `present_id` was not greater than any \
-                                    `present`_id passed previously for the same swapchain"
+                                    `present_id` passed previously for the same swapchain"
                                     .into(),
                                 vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
                                 ..Default::default()
