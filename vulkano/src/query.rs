@@ -243,8 +243,6 @@ impl QueryPool {
         }
 
         match &self.query_type {
-            QueryType::Occlusion => todo!(),
-            QueryType::PipelineStatistics(_) => todo!(),
             QueryType::Timestamp => {
                 if flags.intersects(QueryResultFlags::PARTIAL) {
                     return Err(Box::new(ValidationError {
@@ -256,7 +254,9 @@ impl QueryPool {
                     }));
                 }
             }
-            QueryType::AccelerationStructureCompactedSize
+            QueryType::Occlusion
+            | QueryType::PipelineStatistics(_)
+            | QueryType::AccelerationStructureCompactedSize
             | QueryType::AccelerationStructureSerializationSize
             | QueryType::AccelerationStructureSerializationBottomLevelPointers
             | QueryType::AccelerationStructureSize => (),
