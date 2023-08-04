@@ -23,11 +23,11 @@ use crate::{
     swapchain::{PresentInfo, SwapchainPresentInfo},
     sync::{
         fence::{Fence, FenceState},
-        future::{AccessCheckError, FlushError, GpuFuture},
+        future::{AccessCheckError, GpuFuture},
         semaphore::SemaphoreState,
     },
-    OomError, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanError,
-    VulkanObject,
+    OomError, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
@@ -694,7 +694,7 @@ impl<'a> QueueGuard<'a> {
         fence: Option<Arc<Fence>>,
         future: &dyn GpuFuture,
         queue: &Queue,
-    ) -> Result<(), FlushError> {
+    ) -> Result<(), Validated<VulkanError>> {
         let submit_infos: SmallVec<[_; 4]> = smallvec![submit_info];
         let mut states = States::from_submit_infos(&submit_infos);
 
@@ -707,15 +707,31 @@ impl<'a> QueueGuard<'a> {
 
                 match command_buffer.usage() {
                     CommandBufferUsage::OneTimeSubmit => {
-                        // VUID-vkQueueSubmit2-commandBuffer-03874
                         if state.has_been_submitted() {
-                            return Err(FlushError::OneTimeSubmitAlreadySubmitted);
+                            return Err(Box::new(ValidationError {
+                                problem: "a command buffer, or one of the secondary \
+                                    command buffers it executes, was created with the \
+                                    `CommandBufferUsage::OneTimeSubmit` usage, but \
+                                    it has already been submitted in the past"
+                                    .into(),
+                                vuids: &["VUID-vkQueueSubmit2-commandBuffer-03874"],
+                                ..Default::default()
+                            })
+                            .into());
                         }
                     }
                     CommandBufferUsage::MultipleSubmit => {
-                        // VUID-vkQueueSubmit2-commandBuffer-03875
                         if state.is_submit_pending() {
-                            return Err(FlushError::ExclusiveAlreadyInUse);
+                            return Err(Box::new(ValidationError {
+                                problem: "a command buffer, or one of the secondary \
+                                    command buffers it executes, was not created with the \
+                                    `CommandBufferUsage::SimultaneousUse` usage, but \
+                                    it is already in use by the device"
+                                    .into(),
+                                vuids: &["VUID-vkQueueSubmit2-commandBuffer-03875"],
+                                ..Default::default()
+                            })
+                            .into());
                         }
                     }
                     CommandBufferUsage::SimultaneousUse => (),
@@ -739,10 +755,16 @@ impl<'a> QueueGuard<'a> {
                             queue,
                         ) {
                             Err(AccessCheckError::Denied(error)) => {
-                                return Err(FlushError::ResourceAccessError {
-                                    error,
-                                    use_ref: range_usage.first_use,
-                                });
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "access to a resource has been denied \
+                                        (resource use: {:?}, error: {})",
+                                        range_usage.first_use, error
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                })
+                                .into());
                             }
                             Err(AccessCheckError::Unknown) => {
                                 let result = if range_usage.mutable {
@@ -752,10 +774,16 @@ impl<'a> QueueGuard<'a> {
                                 };
 
                                 if let Err(error) = result {
-                                    return Err(FlushError::ResourceAccessError {
-                                        error,
-                                        use_ref: range_usage.first_use,
-                                    });
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "access to a resource has been denied \
+                                            (resource use: {:?}, error: {})",
+                                            range_usage.first_use, error
+                                        )
+                                        .into(),
+                                        ..Default::default()
+                                    })
+                                    .into());
                                 }
                             }
                             _ => (),
@@ -775,10 +803,16 @@ impl<'a> QueueGuard<'a> {
                             queue,
                         ) {
                             Err(AccessCheckError::Denied(error)) => {
-                                return Err(FlushError::ResourceAccessError {
-                                    error,
-                                    use_ref: range_usage.first_use,
-                                });
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "access to a resource has been denied \
+                                        (resource use: {:?}, error: {})",
+                                        range_usage.first_use, error
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                })
+                                .into());
                             }
                             Err(AccessCheckError::Unknown) => {
                                 let result = if range_usage.mutable {
@@ -789,10 +823,16 @@ impl<'a> QueueGuard<'a> {
                                 };
 
                                 if let Err(error) = result {
-                                    return Err(FlushError::ResourceAccessError {
-                                        error,
-                                        use_ref: range_usage.first_use,
-                                    });
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "access to a resource has been denied \
+                                            (resource use: {:?}, error: {})",
+                                            range_usage.first_use, error
+                                        )
+                                        .into(),
+                                        ..Default::default()
+                                    })
+                                    .into());
                                 }
                             }
                             _ => (),

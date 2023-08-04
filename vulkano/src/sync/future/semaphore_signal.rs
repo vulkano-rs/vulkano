@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
+use super::{AccessCheckError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
@@ -15,7 +15,7 @@ use crate::{
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{future::AccessError, semaphore::Semaphore, PipelineStages},
-    DeviceSize,
+    DeviceSize, Validated, ValidationError, VulkanError,
 };
 use parking_lot::Mutex;
 use smallvec::smallvec;
@@ -69,7 +69,7 @@ where
         self.previous.cleanup_finished();
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // Flushing the signaling part, since it must always be submitted before the waiting part.
         self.flush()?;
         let sem = smallvec![self.semaphore.clone()];
@@ -77,7 +77,7 @@ where
         Ok(SubmitAnyBuilder::SemaphoresWait(sem))
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         unsafe {
             let mut wait_submitted = self.wait_submitted.lock();
 
@@ -142,12 +142,18 @@ where
                                      builder.submit(&queue)?;*/
                 }
                 SubmitAnyBuilder::QueuePresent(present_info) => {
-                    // VUID-VkPresentIdKHR-presentIds-04999
                     for swapchain_info in &present_info.swapchain_infos {
                         if swapchain_info.present_id.map_or(false, |present_id| {
                             !swapchain_info.swapchain.try_claim_present_id(present_id)
                         }) {
-                            return Err(FlushError::PresentIdLessThanOrEqual);
+                            return Err(Box::new(ValidationError {
+                                problem: "the provided `present_id` was not greater than any \
+                                    `present_id` passed previously for the same swapchain"
+                                    .into(),
+                                vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
+                                ..Default::default()
+                            })
+                            .into());
                         }
 
                         match self.previous.check_swapchain_image_acquired(
@@ -157,9 +163,21 @@ where
                         ) {
                             Ok(_) => (),
                             Err(AccessCheckError::Unknown) => {
-                                return Err(AccessError::SwapchainImageNotAcquired.into())
+                                return Err(Box::new(ValidationError {
+                                    problem: AccessError::SwapchainImageNotAcquired
+                                        .to_string()
+                                        .into(),
+                                    ..Default::default()
+                                })
+                                .into());
                             }
-                            Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                            Err(AccessCheckError::Denied(err)) => {
+                                return Err(Box::new(ValidationError {
+                                    problem: err.to_string().into(),
+                                    ..Default::default()
+                                })
+                                .into());
+                            }
                         }
                     }
 
@@ -177,7 +195,7 @@ where
                             }],
                             None,
                         )?;
-                        Ok::<_, FlushError>(())
+                        Ok::<_, Validated<VulkanError>>(())
                     })?;
                 }
             };

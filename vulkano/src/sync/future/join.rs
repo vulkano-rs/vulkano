@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
+use super::{AccessCheckError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     swapchain::Swapchain,
-    DeviceSize, VulkanObject,
+    DeviceSize, Validated, VulkanError, VulkanObject,
 };
 use std::{ops::Range, sync::Arc};
 
@@ -62,7 +62,7 @@ where
         self.second.cleanup_finished();
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         // Since each future remembers whether it has been flushed, there's no safety issue here
         // if we call this function multiple times.
         self.first.flush()?;
@@ -71,7 +71,7 @@ where
         Ok(())
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // TODO: review this function
         let first = self.first.build_submission()?;
         let second = self.second.build_submission()?;

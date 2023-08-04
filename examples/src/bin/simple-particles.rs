@@ -50,7 +50,7 @@ use vulkano::{
         SwapchainPresentInfo,
     },
     sync::{self, future::FenceSignalFuture, GpuFuture},
-    VulkanLibrary,
+    Validated, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -627,7 +627,7 @@ fn main() {
                     .then_signal_fence_and_flush();
 
                 // Update this frame's future with current fence.
-                fences[image_index as usize] = match future {
+                fences[image_index as usize] = match future.map_err(Validated::unwrap) {
                     // Success, store result into vector.
                     Ok(future) => Some(Arc::new(future)),
 
