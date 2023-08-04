@@ -28,7 +28,7 @@
 pub use self::framebuffer::{Framebuffer, FramebufferCreateFlags, FramebufferCreateInfo};
 use crate::{
     device::{Device, DeviceOwned, QueueFlags},
-    format::{Format, FormatFeatures},
+    format::{ClearValueType, Format, FormatFeatures, NumericType},
     image::{ImageAspects, ImageLayout, SampleCount},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
@@ -1261,7 +1261,7 @@ impl RenderPassCreateInfo {
                     let resolve_format = resolve_attachment_desc.format;
 
                     if !(resolve_format.components()[0] == format.components()[0]
-                        && resolve_format.type_depth() == format.type_depth())
+                        && resolve_format.numeric_format_depth() == format.numeric_format_depth())
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
@@ -1282,7 +1282,8 @@ impl RenderPassCreateInfo {
                     }
 
                     if !(resolve_format.components()[1] == format.components()[1]
-                        && resolve_format.type_stencil() == format.type_stencil())
+                        && resolve_format.numeric_format_stencil()
+                            == format.numeric_format_stencil())
                     {
                         return Err(Box::new(ValidationError {
                             problem: format!(
@@ -2186,6 +2187,29 @@ impl AttachmentDescription {
         // TODO: How do you check this?
 
         Ok(())
+    }
+
+    pub(crate) fn required_clear_value(&self) -> Option<ClearValueType> {
+        if let Some(numeric_format) = self.format.numeric_format_color() {
+            (self.load_op == AttachmentLoadOp::Clear).then(|| match numeric_format.numeric_type() {
+                NumericType::Float => ClearValueType::Float,
+                NumericType::Int => ClearValueType::Int,
+                NumericType::Uint => ClearValueType::Uint,
+            })
+        } else {
+            let aspects = self.format.aspects();
+            let need_depth =
+                aspects.intersects(ImageAspects::DEPTH) && self.load_op == AttachmentLoadOp::Clear;
+            let need_stencil = aspects.intersects(ImageAspects::STENCIL)
+                && self.stencil_load_op.unwrap_or(self.load_op) == AttachmentLoadOp::Clear;
+
+            match (need_depth, need_stencil) {
+                (true, true) => Some(ClearValueType::DepthStencil),
+                (true, false) => Some(ClearValueType::Depth),
+                (false, true) => Some(ClearValueType::Stencil),
+                (false, false) => None,
+            }
+        }
     }
 }
 

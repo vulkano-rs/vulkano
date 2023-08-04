@@ -52,7 +52,7 @@ use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
         ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
-        PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
+        PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -596,11 +596,13 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        SubpassContents::Inline,
+                        Default::default(),
                     )
                     .unwrap()
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
                     .bind_descriptor_sets(
                         PipelineBindPoint::Graphics,
                         pipeline.layout().clone(),
@@ -613,10 +615,12 @@ fn main() {
                                 .clone(),
                         ),
                     )
+                    .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .unwrap()
                     .draw(vertex_buffer.len() as u32, 1, 0, 0)
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
                 let command_buffer = builder.build().unwrap();
 

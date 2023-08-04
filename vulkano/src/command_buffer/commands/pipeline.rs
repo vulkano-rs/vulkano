@@ -22,31 +22,33 @@ use crate::{
         DescriptorImageViewInfo,
     },
     device::{DeviceOwned, QueueFlags},
-    format::{Format, FormatFeatures},
-    image::{
-        sampler::Sampler,
-        view::{ImageView, ImageViewType},
-        ImageAspects, ImageLayout, SampleCount,
-    },
+    format::{FormatFeatures, NumericType},
+    image::{sampler::Sampler, view::ImageView, ImageAspects, ImageLayout, SampleCount},
     pipeline::{
         graphics::{
-            input_assembly::{PrimitiveTopology, PrimitiveTopologyClass},
-            subpass::PipelineSubpassType,
+            input_assembly::PrimitiveTopology, subpass::PipelineSubpassType,
             vertex_input::VertexInputRate,
         },
         DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineLayout,
     },
-    shader::{DescriptorBindingRequirements, ShaderScalarType, ShaderStage, ShaderStages},
+    shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStage, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
-use std::{
-    cmp::min,
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::size_of,
-    sync::Arc,
-};
+use std::{mem::size_of, sync::Arc};
+
+macro_rules! vuids {
+    ($vuid_type:ident, $($id:literal),+ $(,)?) => {
+        match $vuid_type {
+            VUIDType::Dispatch => &[$(concat!("VUID-vkCmdDispatch-", $id)),+],
+            VUIDType::DispatchIndirect => &[$(concat!("VUID-vkCmdDispatchIndirect-", $id)),+],
+            VUIDType::Draw => &[$(concat!("VUID-vkCmdDraw-", $id)),+],
+            VUIDType::DrawIndirect => &[$(concat!("VUID-vkCmdDrawIndirect-", $id)),+],
+            VUIDType::DrawIndexed => &[$(concat!("VUID-vkCmdDrawIndexed-", $id)),+],
+            VUIDType::DrawIndexedIndirect => &[$(concat!("VUID-vkCmdDrawIndexedIndirect-", $id)),+],
+        }
+    };
+}
 
 /// # Commands to execute a bound pipeline.
 ///
@@ -60,61 +62,37 @@ where
     /// A compute pipeline must have been bound using
     /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
     /// pipeline, such as descriptor sets, must have been set beforehand.
-    pub fn dispatch(
-        &mut self,
-        group_counts: [u32; 3],
-    ) -> Result<&mut Self, PipelineExecutionError> {
+    pub fn dispatch(&mut self, group_counts: [u32; 3]) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_dispatch(group_counts)?;
 
-        unsafe {
-            self.dispatch_unchecked(group_counts);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.dispatch_unchecked(group_counts)) }
     }
 
-    fn validate_dispatch(&self, group_counts: [u32; 3]) -> Result<(), PipelineExecutionError> {
-        let queue_family_properties = self.queue_family_properties();
+    fn validate_dispatch(&self, group_counts: [u32; 3]) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_dispatch(group_counts)?;
 
-        // VUID-vkCmdDispatch-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::COMPUTE)
-        {
-            return Err(PipelineExecutionError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdDispatch-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdDispatch-renderpass"],
+                ..Default::default()
+            }));
         }
 
-        // VUID-vkCmdDispatch-None-02700
         let pipeline = self
             .builder_state
             .pipeline_compute
             .as_ref()
-            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .ok_or(Box::new(ValidationError {
+                problem: "no compute pipeline is currently bound".into(),
+                vuids: &["VUID-vkCmdDispatch-None-08606"],
+                ..Default::default()
+            }))?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(pipeline)?;
-        self.validate_pipeline_push_constants(pipeline.layout())?;
-
-        let max = self
-            .device()
-            .physical_device()
-            .properties()
-            .max_compute_work_group_count;
-
-        // VUID-vkCmdDispatch-groupCountX-00386
-        // VUID-vkCmdDispatch-groupCountY-00387
-        // VUID-vkCmdDispatch-groupCountZ-00388
-        if group_counts[0] > max[0] || group_counts[1] > max[1] || group_counts[2] > max[2] {
-            return Err(PipelineExecutionError::MaxComputeWorkGroupCountExceeded {
-                requested: group_counts,
-                max,
-            });
-        }
+        const VUID_TYPE: VUIDType = VUIDType::Dispatch;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
 
         Ok(())
     }
@@ -135,7 +113,7 @@ where
             "dispatch",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.dispatch(group_counts);
+                out.dispatch_unchecked(group_counts);
             },
         );
 
@@ -151,46 +129,40 @@ where
     pub fn dispatch_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
-    ) -> Result<&mut Self, PipelineExecutionError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
 
-        unsafe {
-            self.dispatch_indirect_unchecked(indirect_buffer);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.dispatch_indirect_unchecked(indirect_buffer)) }
     }
 
     fn validate_dispatch_indirect(
         &self,
         indirect_buffer: &Subbuffer<[u8]>,
-    ) -> Result<(), PipelineExecutionError> {
-        let queue_family_properties = self.queue_family_properties();
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_dispatch_indirect(indirect_buffer)?;
 
-        // VUID-vkCmdDispatchIndirect-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::COMPUTE)
-        {
-            return Err(PipelineExecutionError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdDispatchIndirect-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdDispatchIndirect-renderpass"],
+                ..Default::default()
+            }));
         }
 
-        // VUID-vkCmdDispatchIndirect-None-02700
         let pipeline = self
             .builder_state
             .pipeline_compute
             .as_ref()
-            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .ok_or(Box::new(ValidationError {
+                problem: "no compute pipeline is currently bound".into(),
+                vuids: &["VUID-vkCmdDispatchIndirect-None-08606"],
+                ..Default::default()
+            }))?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(pipeline)?;
-        self.validate_pipeline_push_constants(pipeline.layout())?;
-        self.validate_indirect_buffer(indirect_buffer)?;
+        const VUID_TYPE: VUIDType = VUIDType::DispatchIndirect;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
 
         Ok(())
     }
@@ -215,7 +187,7 @@ where
             "dispatch",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.dispatch_indirect(&indirect_buffer);
+                out.dispatch_indirect_unchecked(&indirect_buffer);
             },
         );
 
@@ -239,14 +211,12 @@ where
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
-    ) -> Result<&mut Self, PipelineExecutionError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_draw(vertex_count, instance_count, first_vertex, first_instance)?;
 
         unsafe {
-            self.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
+            Ok(self.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance))
         }
-
-        Ok(self)
     }
 
     fn validate_draw(
@@ -255,31 +225,112 @@ where
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
-    ) -> Result<(), PipelineExecutionError> {
-        // VUID-vkCmdDraw-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_draw(vertex_count, instance_count, first_vertex, first_instance)?;
 
-        // VUID-vkCmdDraw-None-02700
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &["VUID-vkCmdDraw-renderpass"],
+                    ..Default::default()
+                }))?;
+
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .ok_or(Box::new(ValidationError {
+                problem: "no graphics pipeline is currently bound".into(),
+                vuids: &["VUID-vkCmdDraw-None-08606"],
+                ..Default::default()
+            }))?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(pipeline)?;
-        self.validate_pipeline_push_constants(pipeline.layout())?;
-        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
-        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(
-            pipeline,
-            Some((first_vertex, vertex_count)),
-            Some((first_instance, instance_count)),
-        )?;
+        const VUID_TYPE: VUIDType = VUIDType::Draw;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
+
+        let view_mask = match pipeline.subpass() {
+            PipelineSubpassType::BeginRenderPass(subpass) => subpass.render_pass().views_used(),
+            PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.view_mask,
+        };
+
+        if view_mask != 0 {
+            let properties = self.device().physical_device().properties();
+
+            if (first_instance + instance_count).saturating_sub(1)
+                > properties.max_multiview_instance_index.unwrap_or(0)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "the current render pass instance has a nonzero view mask, but \
+                        `first_instance + instance_count - 1` is greater than the \
+                        `max_multiview_instance_index` limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDraw-maxMultiviewInstanceIndex-02688"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        for (&binding_num, binding_desc) in &pipeline.vertex_input_state().bindings {
+            let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
+
+            // Per spec:
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap22.html#fxvertex-input-address-calculation
+            match binding_desc.input_rate {
+                VertexInputRate::Vertex => {
+                    let max_vertex_offset = (first_vertex as DeviceSize
+                        + vertex_count as DeviceSize)
+                        * binding_desc.stride as DeviceSize;
+
+                    if max_vertex_offset > vertex_buffer.size() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the size of the vertex buffer bound to binding {} is less \
+                                than the minimum size required, for the provided \
+                                `first_vertex` and `vertex_count` values, and the vertex \
+                                input state bindings of the currently bound graphics pipeline",
+                                binding_num
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdDraw-None-02721"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                VertexInputRate::Instance { divisor } => {
+                    let max_vertex_offset = if divisor == 0 {
+                        (first_instance as DeviceSize + 1) * binding_desc.stride as DeviceSize
+                    } else {
+                        (first_instance as DeviceSize
+                            + instance_count as DeviceSize / divisor as DeviceSize)
+                            * binding_desc.stride as DeviceSize
+                    };
+
+                    if max_vertex_offset > vertex_buffer.size() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the size of the vertex buffer bound to binding {} is less \
+                                than the minimum size required, for the provided \
+                                `first_instance` and `instance_count` values, and the vertex \
+                                input state bindings of the currently bound graphics pipeline",
+                                binding_num
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdDraw-None-02721"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            };
+        }
 
         Ok(())
     }
@@ -313,7 +364,7 @@ where
             "draw",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.draw(vertex_count, instance_count, first_vertex, first_instance);
+                out.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
             },
         );
 
@@ -338,70 +389,50 @@ where
     pub fn draw_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
-    ) -> Result<&mut Self, PipelineExecutionError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndirectCommand>() as u32;
         self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe {
-            self.draw_indirect_unchecked(indirect_buffer, draw_count, stride);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.draw_indirect_unchecked(indirect_buffer, draw_count, stride)) }
     }
 
     fn validate_draw_indirect(
         &self,
         indirect_buffer: &Subbuffer<[u8]>,
         draw_count: u32,
-        _stride: u32,
-    ) -> Result<(), PipelineExecutionError> {
-        // VUID-vkCmdDrawIndirect-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_draw_indirect(indirect_buffer, draw_count, stride)?;
 
-        // VUID-vkCmdDrawIndirect-None-02700
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &["VUID-vkCmdDrawIndirect-renderpass"],
+                    ..Default::default()
+                }))?;
+
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .ok_or(Box::new(ValidationError {
+                problem: "no graphics pipeline is currently bound".into(),
+                vuids: &["VUID-vkCmdDrawIndirect-None-08606"],
+                ..Default::default()
+            }))?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(pipeline)?;
-        self.validate_pipeline_push_constants(pipeline.layout())?;
-        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
-        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(pipeline, None, None)?;
-
-        self.validate_indirect_buffer(indirect_buffer)?;
-
-        // VUID-vkCmdDrawIndirect-drawCount-02718
-        if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
-            return Err(PipelineExecutionError::RequirementNotMet {
-                required_for: "`draw_count` is greater than `1`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "multi_draw_indirect",
-                )])]),
-            });
-        }
-
-        let max = self
-            .device()
-            .physical_device()
-            .properties()
-            .max_draw_indirect_count;
-
-        // VUID-vkCmdDrawIndirect-drawCount-02719
-        if draw_count > max {
-            return Err(PipelineExecutionError::MaxDrawIndirectCountExceeded {
-                provided: draw_count,
-                max,
-            });
-        }
+        const VUID_TYPE: VUIDType = VUIDType::DrawIndirect;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
         Ok(())
     }
@@ -435,7 +466,7 @@ where
             "draw_indirect",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.draw_indirect(&indirect_buffer, draw_count, stride);
+                out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
 
@@ -467,7 +498,7 @@ where
         first_index: u32,
         vertex_offset: i32,
         first_instance: u32,
-    ) -> Result<&mut Self, PipelineExecutionError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_draw_indexed(
             index_count,
             instance_count,
@@ -477,16 +508,14 @@ where
         )?;
 
         unsafe {
-            self.draw_indexed_unchecked(
+            Ok(self.draw_indexed_unchecked(
                 index_count,
                 instance_count,
                 first_index,
                 vertex_offset,
                 first_instance,
-            );
+            ))
         }
-
-        Ok(self)
     }
 
     fn validate_draw_indexed(
@@ -494,37 +523,131 @@ where
         index_count: u32,
         instance_count: u32,
         first_index: u32,
-        _vertex_offset: i32,
+        vertex_offset: i32,
         first_instance: u32,
-    ) -> Result<(), PipelineExecutionError> {
-        // TODO: how to handle an index out of range of the vertex buffers?
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_draw_indexed(
+            index_count,
+            instance_count,
+            first_index,
+            vertex_offset,
+            first_instance,
+        )?;
 
-        // VUID-vkCmdDrawIndexed-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &["VUID-vkCmdDrawIndexed-renderpass"],
+                    ..Default::default()
+                }))?;
 
-        // VUID-vkCmdDrawIndexed-None-02700
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .ok_or(Box::new(ValidationError {
+                problem: "no graphics pipeline is currently bound".into(),
+                vuids: &["VUID-vkCmdDrawIndexed-None-08606"],
+                ..Default::default()
+            }))?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(pipeline)?;
-        self.validate_pipeline_push_constants(pipeline.layout())?;
-        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
-        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(
-            pipeline,
-            None,
-            Some((first_instance, instance_count)),
-        )?;
+        const VUID_TYPE: VUIDType = VUIDType::DrawIndexed;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
-        self.validate_index_buffer(Some((first_index, index_count)))?;
+        let index_buffer =
+            self.builder_state
+                .index_buffer
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "no index buffer is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawIndexed-None-07312"],
+                    ..Default::default()
+                }))?;
+
+        let index_buffer_bytes = index_buffer.as_bytes();
+
+        if !self.device().enabled_features().robust_buffer_access2 {
+            if index_buffer.index_type().size()
+                * (first_index as DeviceSize + index_count as DeviceSize)
+                > index_buffer_bytes.size()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`first_index + index_count`, \
+                        multiplied by the size of the indices in the bound index buffer, \
+                        is greater than the size of the bound index buffer"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "robust_buffer_access2",
+                    )])]),
+                    vuids: &["VUID-vkCmdDrawIndexed-robustBufferAccess2-07825"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let view_mask = match pipeline.subpass() {
+            PipelineSubpassType::BeginRenderPass(subpass) => subpass.render_pass().views_used(),
+            PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.view_mask,
+        };
+
+        if view_mask != 0 {
+            let properties = self.device().physical_device().properties();
+
+            if (first_instance + instance_count).saturating_sub(1)
+                > properties.max_multiview_instance_index.unwrap_or(0)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "the current render pass instance has a nonzero view mask, but \
+                        `first_instance + instance_count - 1` is greater than the \
+                        `max_multiview_instance_index` limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndexed-maxMultiviewInstanceIndex-02688"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        for (&binding_num, binding_desc) in &pipeline.vertex_input_state().bindings {
+            let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
+
+            // Per spec:
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap22.html#fxvertex-input-address-calculation
+            match binding_desc.input_rate {
+                VertexInputRate::Vertex => (),
+                VertexInputRate::Instance { divisor } => {
+                    let max_vertex_offset = if divisor == 0 {
+                        (first_instance as DeviceSize + 1) * binding_desc.stride as DeviceSize
+                    } else {
+                        (first_instance as DeviceSize
+                            + instance_count as DeviceSize / divisor as DeviceSize)
+                            * binding_desc.stride as DeviceSize
+                    };
+
+                    if max_vertex_offset > vertex_buffer.size() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the size of the vertex buffer bound to binding {} is less \
+                                than the minimum size required, for the provided \
+                                `first_instance` and `instance_count` values, and the vertex \
+                                input state bindings of the currently bound graphics pipeline",
+                                binding_num
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdDrawIndexed-None-02721"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            };
+        }
 
         Ok(())
     }
@@ -560,7 +683,7 @@ where
             "draw_indexed",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.draw_indexed(
+                out.draw_indexed_unchecked(
                     index_count,
                     instance_count,
                     first_index,
@@ -596,71 +719,60 @@ where
     pub fn draw_indexed_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
-    ) -> Result<&mut Self, PipelineExecutionError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let draw_count = indirect_buffer.len() as u32;
         let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
         self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe {
-            self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride)) }
     }
 
     fn validate_draw_indexed_indirect(
         &self,
         indirect_buffer: &Subbuffer<[u8]>,
         draw_count: u32,
-        _stride: u32,
-    ) -> Result<(), PipelineExecutionError> {
-        // VUID-vkCmdDrawIndexedIndirect-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_draw_indexed_indirect(indirect_buffer, draw_count, stride)?;
 
-        // VUID-vkCmdDrawIndexedIndirect-None-02700
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-renderpass"],
+                    ..Default::default()
+                }))?;
+
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(PipelineExecutionError::PipelineNotBound)?
+            .ok_or(Box::new(ValidationError {
+                problem: "no graphics pipeline is currently bound".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirect-None-08606"],
+                ..Default::default()
+            }))?
             .as_ref();
 
-        self.validate_pipeline_descriptor_sets(pipeline)?;
-        self.validate_pipeline_push_constants(pipeline.layout())?;
-        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
-        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(pipeline, None, None)?;
+        const VUID_TYPE: VUIDType = VUIDType::DrawIndexedIndirect;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
-        self.validate_index_buffer(None)?;
-        self.validate_indirect_buffer(indirect_buffer)?;
-
-        // VUID-vkCmdDrawIndexedIndirect-drawCount-02718
-        if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
-            return Err(PipelineExecutionError::RequirementNotMet {
-                required_for: "`draw_count` is greater than `1`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "multi_draw_indirect",
-                )])]),
-            });
-        }
-
-        let max = self
-            .device()
-            .physical_device()
-            .properties()
-            .max_draw_indirect_count;
-
-        // VUID-vkCmdDrawIndexedIndirect-drawCount-02719
-        if draw_count > max {
-            return Err(PipelineExecutionError::MaxDrawIndirectCountExceeded {
-                provided: draw_count,
-                max,
-            });
-        }
+        let _index_buffer =
+            self.builder_state
+                .index_buffer
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "no index buffer is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-None-07312"],
+                    ..Default::default()
+                }))?;
 
         Ok(())
     }
@@ -695,85 +807,43 @@ where
             "draw_indexed_indirect",
             used_resources,
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.draw_indexed_indirect(&indirect_buffer, draw_count, stride);
+                out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
 
         self
     }
 
-    fn validate_index_buffer(
-        &self,
-        indices: Option<(u32, u32)>,
-    ) -> Result<(), PipelineExecutionError> {
-        // VUID?
-        let index_buffer = match &self.builder_state.index_buffer {
-            Some(x) => x,
-            None => return Err(PipelineExecutionError::IndexBufferNotBound),
-        };
-
-        let index_buffer_bytes = index_buffer.as_bytes();
-
-        if let Some((first_index, index_count)) = indices {
-            let max_index_count =
-                (index_buffer_bytes.size() / index_buffer.index_type().size()) as u32;
-
-            // // VUID-vkCmdDrawIndexed-firstIndex-04932
-            if first_index + index_count > max_index_count {
-                return Err(PipelineExecutionError::IndexBufferRangeOutOfBounds {
-                    highest_index: first_index + index_count,
-                    max_index_count,
-                });
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_indirect_buffer(
-        &self,
-        buffer: &Subbuffer<[u8]>,
-    ) -> Result<(), PipelineExecutionError> {
-        // VUID-vkCmdDispatchIndirect-commonparent
-        assert_eq!(self.device(), buffer.device());
-
-        // VUID-vkCmdDispatchIndirect-buffer-02709
-        if !buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDIRECT_BUFFER)
-        {
-            return Err(PipelineExecutionError::IndirectBufferMissingUsage);
-        }
-
-        // VUID-vkCmdDispatchIndirect-offset-02710
-        // TODO:
-
-        Ok(())
-    }
-
     fn validate_pipeline_descriptor_sets<Pl: Pipeline>(
         &self,
+        vuid_type: VUIDType,
         pipeline: &Pl,
-    ) -> Result<(), PipelineExecutionError> {
+    ) -> Result<(), Box<ValidationError>> {
         fn validate_resources<T>(
+            vuid_type: VUIDType,
             set_num: u32,
             binding_num: u32,
             binding_reqs: &DescriptorBindingRequirements,
             elements: &[Option<T>],
-            mut extra_check: impl FnMut(u32, &T) -> Result<(), DescriptorResourceInvalidError>,
-        ) -> Result<(), PipelineExecutionError> {
+            mut extra_check: impl FnMut(u32, u32, u32, &T) -> Result<(), Box<ValidationError>>,
+        ) -> Result<(), Box<ValidationError>> {
             let elements_to_check = if let Some(descriptor_count) = binding_reqs.descriptor_count {
                 // The shader has a fixed-sized array, so it will never access more than
                 // the first `descriptor_count` elements.
                 elements.get(..descriptor_count as usize).ok_or({
                     // There are less than `descriptor_count` elements in `elements`
-                    PipelineExecutionError::DescriptorResourceInvalid {
-                        set_num,
-                        binding_num,
-                        index: elements.len() as u32,
-                        error: DescriptorResourceInvalidError::Missing,
-                    }
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "the currently bound pipeline accesses the resource bound to \
+                            descriptor set {set_num}, binding {binding_num}, \
+                            descriptor index {}, but no descriptor was written to the \
+                            descriptor set currently bound to set {set_num}",
+                            elements.len()
+                        )
+                        .into(),
+                        vuids: vuids!(vuid_type, "None-02699"),
+                        ..Default::default()
+                    })
                 })?
             } else {
                 // The shader has a runtime-sized array, so any element could potentially
@@ -784,27 +854,24 @@ where
             for (index, element) in elements_to_check.iter().enumerate() {
                 let index = index as u32;
 
-                // VUID-vkCmdDispatch-None-02699
                 let element = match element {
                     Some(x) => x,
                     None => {
-                        return Err(PipelineExecutionError::DescriptorResourceInvalid {
-                            set_num,
-                            binding_num,
-                            index,
-                            error: DescriptorResourceInvalidError::Missing,
-                        })
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound pipeline accesses the resource bound to \
+                                descriptor set {set_num}, binding {binding_num}, \
+                                descriptor index {index}, but no descriptor was written to the \
+                                descriptor set currently bound to set {set_num}"
+                            )
+                            .into(),
+                            vuids: vuids!(vuid_type, "None-02699"),
+                            ..Default::default()
+                        }));
                     }
                 };
 
-                if let Err(error) = extra_check(index, element) {
-                    return Err(PipelineExecutionError::DescriptorResourceInvalid {
-                        set_num,
-                        binding_num,
-                        index,
-                        error,
-                    });
-                }
+                extra_check(set_num, binding_num, index, element)?;
             }
 
             Ok(())
@@ -814,238 +881,387 @@ where
             return Ok(());
         }
 
-        // VUID-vkCmdDispatch-None-02697
         let descriptor_set_state = self
             .builder_state
             .descriptor_sets
             .get(&pipeline.bind_point())
-            .ok_or(PipelineExecutionError::PipelineLayoutNotCompatible)?;
+            .ok_or(Box::new(ValidationError {
+                problem: "the currently bound pipeline accesses descriptor sets, but no \
+                    descriptor sets were previously bound"
+                    .into(),
+                vuids: vuids!(vuid_type, "None-02697"),
+                ..Default::default()
+            }))?;
 
-        // VUID-vkCmdDispatch-None-02697
         if !pipeline.layout().is_compatible_with(
             &descriptor_set_state.pipeline_layout,
             pipeline.num_used_descriptor_sets(),
         ) {
-            return Err(PipelineExecutionError::PipelineLayoutNotCompatible);
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound pipeline accesses descriptor sets, but the \
+                    pipeline layouts that were used to bind the descriptor sets are \
+                    not compatible with the pipeline layout of the currently bound pipeline"
+                    .into(),
+                vuids: vuids!(vuid_type, "None-02697"),
+                ..Default::default()
+            }));
         }
 
         for (&(set_num, binding_num), binding_reqs) in pipeline.descriptor_binding_requirements() {
             let layout_binding =
                 &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
-            let check_buffer = |_index: u32, _buffer_info: &DescriptorBufferInfo| Ok(());
+            let check_buffer =
+                |_set_num: u32,
+                 _binding_num: u32,
+                 _index: u32,
+                 _buffer_info: &DescriptorBufferInfo| Ok(());
 
-            let check_buffer_view = |index: u32, buffer_view: &Arc<BufferView>| {
-                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
-                    .chain(binding_reqs.descriptors.get(&None))
-                {
-                    if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
-                        // VUID-vkCmdDispatch-OpTypeImage-06423
-                        if binding_reqs.image_format.is_none()
-                            && !desc_reqs.memory_write.is_empty()
-                            && !buffer_view
-                                .format_features()
-                                .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
-                        {
-                            return Err(DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported);
-                        }
-
-                        // VUID-vkCmdDispatch-OpTypeImage-06424
-                        if binding_reqs.image_format.is_none()
-                            && !desc_reqs.memory_read.is_empty()
-                            && !buffer_view
-                                .format_features()
-                                .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
-                        {
-                            return Err(DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported);
-                        }
-                    }
-                }
-
-                Ok(())
-            };
-
-            let check_image_view_common = |index: u32, image_view: &Arc<ImageView>| {
-                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
-                    .chain(binding_reqs.descriptors.get(&None))
-                {
-                    // VUID-vkCmdDispatch-None-02691
-                    if desc_reqs.storage_image_atomic
-                        && !image_view
-                            .format_features()
-                            .intersects(FormatFeatures::STORAGE_IMAGE_ATOMIC)
+            let check_buffer_view =
+                |set_num: u32, binding_num: u32, index: u32, buffer_view: &Arc<BufferView>| {
+                    for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                        .chain(binding_reqs.descriptors.get(&None))
                     {
-                        return Err(DescriptorResourceInvalidError::StorageImageAtomicNotSupported);
+                        if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
+                            if binding_reqs.image_format.is_none()
+                                && !desc_reqs.memory_write.is_empty()
+                                && !buffer_view
+                                    .format_features()
+                                    .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
+                            {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the currently bound pipeline writes to the buffer view \
+                                        bound to descriptor set {set_num}, binding {binding_num}, \
+                                        descriptor index {index}, without specifying a format, \
+                                        but the format features of the buffer view's format do \
+                                        not contain `FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT`"
+                                    )
+                                    .into(),
+                                    vuids: vuids!(vuid_type, "OpTypeImage-06423"),
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if binding_reqs.image_format.is_none()
+                                && !desc_reqs.memory_read.is_empty()
+                                && !buffer_view
+                                    .format_features()
+                                    .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
+                            {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the currently bound pipeline reads from the buffer view \
+                                        bound to descriptor set {set_num}, binding {binding_num}, \
+                                        descriptor index {index}, without specifying a format, \
+                                        but the format features of the buffer view's format do \
+                                        not contain `FormatFeatures::STORAGE_READ_WITHOUT_FORMAT`"
+                                    )
+                                    .into(),
+                                    vuids: vuids!(vuid_type, "OpTypeImage-06424"),
+                                    ..Default::default()
+                                }));
+                            }
+                        }
                     }
 
-                    if layout_binding.descriptor_type == DescriptorType::StorageImage {
-                        // VUID-vkCmdDispatch-OpTypeImage-06423
-                        if binding_reqs.image_format.is_none()
-                            && !desc_reqs.memory_write.is_empty()
+                    Ok(())
+                };
+
+            let check_image_view_common =
+                |set_num: u32, binding_num: u32, index: u32, image_view: &Arc<ImageView>| {
+                    for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                        .chain(binding_reqs.descriptors.get(&None))
+                    {
+                        if desc_reqs.storage_image_atomic
                             && !image_view
                                 .format_features()
-                                .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
+                                .intersects(FormatFeatures::STORAGE_IMAGE_ATOMIC)
                         {
-                            return Err(
-                            DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
-                        );
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline performs atomic operations on \
+                                    the image view bound to descriptor set {set_num}, \
+                                    binding {binding_num}, descriptor index {index}, but \
+                                    the format features of the image view's format do \
+                                    not contain `FormatFeatures::STORAGE_IMAGE_ATOMIC`"
+                                )
+                                .into(),
+                                vuids: vuids!(vuid_type, "None-02691"),
+                                ..Default::default()
+                            }));
                         }
 
-                        // VUID-vkCmdDispatch-OpTypeImage-06424
-                        if binding_reqs.image_format.is_none()
-                            && !desc_reqs.memory_read.is_empty()
-                            && !image_view
-                                .format_features()
-                                .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
-                        {
-                            return Err(
-                            DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported,
-                        );
+                        if layout_binding.descriptor_type == DescriptorType::StorageImage {
+                            if binding_reqs.image_format.is_none()
+                                && !desc_reqs.memory_write.is_empty()
+                                && !image_view
+                                    .format_features()
+                                    .intersects(FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT)
+                            {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the currently bound pipeline writes to the image view \
+                                        bound to descriptor set {set_num}, binding {binding_num}, \
+                                        descriptor index {index}, without specifying a format, \
+                                        but the format features of the image view's format do \
+                                        not contain `FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT`"
+                                    )
+                                    .into(),
+                                    vuids: vuids!(vuid_type, "OpTypeImage-06423"),
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if binding_reqs.image_format.is_none()
+                                && !desc_reqs.memory_read.is_empty()
+                                && !image_view
+                                    .format_features()
+                                    .intersects(FormatFeatures::STORAGE_READ_WITHOUT_FORMAT)
+                            {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the currently bound pipeline reads from the image view \
+                                        bound to descriptor set {set_num}, binding {binding_num}, \
+                                        descriptor index {index}, without specifying a format, \
+                                        but the format features of the image view's format do \
+                                        not contain `FormatFeatures::STORAGE_READ_WITHOUT_FORMAT`"
+                                    )
+                                    .into(),
+                                    vuids: vuids!(vuid_type, "OpTypeImage-06424"),
+                                    ..Default::default()
+                                }));
+                            }
                         }
-                    }
-                }
-
-                /*
-                   Instruction/Sampler/Image View Validation
-                   https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
-                */
-
-                // The SPIR-V Image Format is not compatible with the image view’s format.
-                if let Some(format) = binding_reqs.image_format {
-                    if image_view.format() != format {
-                        return Err(DescriptorResourceInvalidError::ImageViewFormatMismatch {
-                            required: format,
-                            provided: image_view.format(),
-                        });
-                    }
-                }
-
-                // Rules for viewType
-                if let Some(image_view_type) = binding_reqs.image_view_type {
-                    if image_view.view_type() != image_view_type {
-                        return Err(DescriptorResourceInvalidError::ImageViewTypeMismatch {
-                            required: image_view_type,
-                            provided: image_view.view_type(),
-                        });
-                    }
-                }
-
-                // - If the image was created with VkImageCreateInfo::samples equal to
-                //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 0.
-                // - If the image was created with VkImageCreateInfo::samples not equal to
-                //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 1.
-                if binding_reqs.image_multisampled
-                    != (image_view.image().samples() != SampleCount::Sample1)
-                {
-                    return Err(
-                        DescriptorResourceInvalidError::ImageViewMultisampledMismatch {
-                            required: binding_reqs.image_multisampled,
-                            provided: image_view.image().samples() != SampleCount::Sample1,
-                        },
-                    );
-                }
-
-                // - If the Sampled Type of the OpTypeImage does not match the numeric format of the
-                //   image, as shown in the SPIR-V Sampled Type column of the
-                //   Interpretation of Numeric Format table.
-                // - If the signedness of any read or sample operation does not match the signedness of
-                //   the image’s format.
-                if let Some(scalar_type) = binding_reqs.image_scalar_type {
-                    let aspects = image_view.subresource_range().aspects;
-                    let view_scalar_type = ShaderScalarType::from(
-                        if aspects.intersects(
-                            ImageAspects::COLOR
-                                | ImageAspects::PLANE_0
-                                | ImageAspects::PLANE_1
-                                | ImageAspects::PLANE_2,
-                        ) {
-                            image_view.format().type_color().unwrap()
-                        } else if aspects.intersects(ImageAspects::DEPTH) {
-                            image_view.format().type_depth().unwrap()
-                        } else if aspects.intersects(ImageAspects::STENCIL) {
-                            image_view.format().type_stencil().unwrap()
-                        } else {
-                            // Per `ImageViewBuilder::aspects` and
-                            // VUID-VkDescriptorImageInfo-imageView-01976
-                            unreachable!()
-                        },
-                    );
-
-                    if scalar_type != view_scalar_type {
-                        return Err(
-                            DescriptorResourceInvalidError::ImageViewScalarTypeMismatch {
-                                required: scalar_type,
-                                provided: view_scalar_type,
-                            },
-                        );
-                    }
-                }
-
-                Ok(())
-            };
-
-            let check_sampler_common = |index: u32, sampler: &Arc<Sampler>| {
-                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
-                    .chain(binding_reqs.descriptors.get(&None))
-                {
-                    // VUID-vkCmdDispatch-None-02703
-                    // VUID-vkCmdDispatch-None-02704
-                    if desc_reqs.sampler_no_unnormalized_coordinates
-                        && sampler.unnormalized_coordinates()
-                    {
-                        return Err(
-                        DescriptorResourceInvalidError::SamplerUnnormalizedCoordinatesNotAllowed,
-                    );
-                    }
-
-                    // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
-                    //   be used with a sampler that enables sampler Y′CBCR conversion.
-                    // - The ConstOffset and Offset operands must not be used with a sampler that enables
-                    //   sampler Y′CBCR conversion.
-                    if desc_reqs.sampler_no_ycbcr_conversion
-                        && sampler.sampler_ycbcr_conversion().is_some()
-                    {
-                        return Err(
-                            DescriptorResourceInvalidError::SamplerYcbcrConversionNotAllowed,
-                        );
                     }
 
                     /*
-                        Instruction/Sampler/Image View Validation
-                        https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
+                       Instruction/Sampler/Image View Validation
+                       https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
                     */
 
-                    // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
-                    //   compareEnable is VK_FALSE
-                    // - The SPIR-V instruction is not one of the OpImage*Dref* instructions and the sampler
-                    //   compareEnable is VK_TRUE
-                    if desc_reqs.sampler_compare != sampler.compare().is_some() {
-                        return Err(DescriptorResourceInvalidError::SamplerCompareMismatch {
-                            required: desc_reqs.sampler_compare,
-                            provided: sampler.compare().is_some(),
-                        });
+                    // The SPIR-V Image Format is not compatible with the image view’s format.
+                    if let Some(format) = binding_reqs.image_format {
+                        if image_view.format() != format {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline accesses the image view \
+                                    bound to descriptor set {set_num}, binding {binding_num}, \
+                                    descriptor index {index}, but the format of the image view \
+                                    is not equal to the format required by the pipeline"
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        }
                     }
-                }
 
-                Ok(())
-            };
+                    // Rules for viewType
+                    if let Some(image_view_type) = binding_reqs.image_view_type {
+                        if image_view.view_type() != image_view_type {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline accesses the image view \
+                                    bound to descriptor set {set_num}, binding {binding_num}, \
+                                    descriptor index {index}, but the view type of the image view \
+                                    is not equal to the view type required by the pipeline"
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        }
+                    }
 
-            let check_image_view = |index: u32, image_view_info: &DescriptorImageViewInfo| {
-                let DescriptorImageViewInfo {
-                    image_view,
-                    image_layout: _,
-                } = image_view_info;
+                    // - If the image was created with VkImageCreateInfo::samples equal to
+                    //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 0.
+                    // - If the image was created with VkImageCreateInfo::samples not equal to
+                    //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 1.
+                    if binding_reqs.image_multisampled
+                        && image_view.image().samples() == SampleCount::Sample1
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound pipeline accesses the image view \
+                                bound to descriptor set {set_num}, binding {binding_num}, \
+                                descriptor index {index}, and the pipeline requires a \
+                                multisampled image, but the image view has only one sample"
+                            )
+                            .into(),
+                            // vuids?
+                            ..Default::default()
+                        }));
+                    } else if !binding_reqs.image_multisampled
+                        && image_view.image().samples() != SampleCount::Sample1
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound pipeline accesses the image view \
+                                bound to descriptor set {set_num}, binding {binding_num}, \
+                                descriptor index {index}, and the pipeline requires a non-\
+                                multisampled image, but the image view has more than one sample"
+                            )
+                            .into(),
+                            // vuids?
+                            ..Default::default()
+                        }));
+                    }
 
-                check_image_view_common(index, image_view)?;
+                    // - If the Sampled Type of the OpTypeImage does not match the numeric format of the
+                    //   image, as shown in the SPIR-V Sampled Type column of the
+                    //   Interpretation of Numeric Format table.
+                    // - If the signedness of any read or sample operation does not match the signedness of
+                    //   the image’s format.
+                    if let Some(shader_numeric_type) = binding_reqs.image_scalar_type {
+                        let aspects = image_view.subresource_range().aspects;
+                        let view_numeric_type = NumericType::from(
+                            if aspects.intersects(
+                                ImageAspects::COLOR
+                                    | ImageAspects::PLANE_0
+                                    | ImageAspects::PLANE_1
+                                    | ImageAspects::PLANE_2,
+                            ) {
+                                image_view.format().numeric_format_color().unwrap()
+                            } else if aspects.intersects(ImageAspects::DEPTH) {
+                                image_view.format().numeric_format_depth().unwrap()
+                            } else if aspects.intersects(ImageAspects::STENCIL) {
+                                image_view.format().numeric_format_stencil().unwrap()
+                            } else {
+                                // Per `ImageViewBuilder::aspects` and
+                                // VUID-VkDescriptorImageInfo-imageView-01976
+                                unreachable!()
+                            },
+                        );
 
-                if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
-                    check_sampler_common(index, sampler)?;
-                }
+                        if shader_numeric_type != view_numeric_type {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline accesses the image view \
+                                    bound to descriptor set {set_num}, binding {binding_num}, \
+                                    descriptor index {index}, and the pipeline requires an \
+                                    image view whose format has a `{shader_numeric_type:?}` \
+                                    numeric type, but the format of the image view has a \
+                                    `{view_numeric_type:?}` numeric type"
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        }
+                    }
 
-                Ok(())
-            };
+                    Ok(())
+                };
 
-            let check_image_view_sampler = |index: u32,
+            let check_sampler_common =
+                |set_num: u32, binding_num: u32, index: u32, sampler: &Arc<Sampler>| {
+                    for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                        .chain(binding_reqs.descriptors.get(&None))
+                    {
+                        if desc_reqs.sampler_no_unnormalized_coordinates
+                            && sampler.unnormalized_coordinates()
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline accesses the sampler bound to \
+                                    descriptor set {set_num}, binding {binding_num}, \
+                                    descriptor index {index}, in a way that does not support \
+                                    samplers with unnormalized coordinates, but \
+                                    the sampler currently bound to that descriptor \
+                                    uses unnormalized coordinates"
+                                )
+                                .into(),
+                                vuids: vuids!(vuid_type, "None-02703", "None-02704"),
+                                ..Default::default()
+                            }));
+                        }
+
+                        // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
+                        //   be used with a sampler that enables sampler Y′CBCR conversion.
+                        // - The ConstOffset and Offset operands must not be used with a sampler that enables
+                        //   sampler Y′CBCR conversion.
+                        if desc_reqs.sampler_no_ycbcr_conversion
+                            && sampler.sampler_ycbcr_conversion().is_some()
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline accesses the sampler bound to \
+                                    descriptor set {set_num}, binding {binding_num}, \
+                                    descriptor index {index}, in a way that does not support \
+                                    samplers with a sampler YCbCr conversion, but the sampler \
+                                    currently bound to that descriptor has a \
+                                    sampler YCbCr conversion"
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        }
+
+                        /*
+                            Instruction/Sampler/Image View Validation
+                            https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
+                        */
+
+                        if desc_reqs.sampler_compare && sampler.compare().is_none() {
+                            // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
+                            //   compareEnable is VK_FALSE
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline accesses the sampler bound to \
+                                    descriptor set {set_num}, binding {binding_num}, \
+                                    descriptor index {index}, in a way that requires a sampler \
+                                    with a compare operation, but the sampler currently bound to \
+                                    that descriptor does not have a compare operation"
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        } else if !desc_reqs.sampler_compare && sampler.compare().is_some() {
+                            // - The SPIR-V instruction is not one of the OpImage*Dref* instructions and the sampler
+                            //   compareEnable is VK_TRUE
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound pipeline accesses the sampler bound to \
+                                    descriptor set {set_num}, binding {binding_num}, \
+                                    descriptor index {index}, in a way that requires a sampler \
+                                    without a compare operation, but the sampler currently bound \
+                                    to that descriptor has a compare operation"
+                                )
+                                .into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
+                        }
+                    }
+
+                    Ok(())
+                };
+
+            let check_image_view =
+                |set_num: u32,
+                 binding_num: u32,
+                 index: u32,
+                 image_view_info: &DescriptorImageViewInfo| {
+                    let DescriptorImageViewInfo {
+                        image_view,
+                        image_layout: _,
+                    } = image_view_info;
+
+                    check_image_view_common(set_num, binding_num, index, image_view)?;
+
+                    if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
+                        check_sampler_common(set_num, binding_num, index, sampler)?;
+                    }
+
+                    Ok(())
+                };
+
+            let check_image_view_sampler = |set_num: u32,
+                                            binding_num: u32,
+                                            index: u32,
                                             (image_view_info, sampler): &(
                 DescriptorImageViewInfo,
                 Arc<Sampler>,
@@ -1055,64 +1271,79 @@ where
                     image_layout: _,
                 } = image_view_info;
 
-                check_image_view_common(index, image_view)?;
-                check_sampler_common(index, sampler)?;
+                check_image_view_common(set_num, binding_num, index, image_view)?;
+                check_sampler_common(set_num, binding_num, index, sampler)?;
 
                 Ok(())
             };
 
-            let check_sampler = |index: u32, sampler: &Arc<Sampler>| {
-                check_sampler_common(index, sampler)?;
+            let check_sampler =
+                |set_num: u32, binding_num: u32, index: u32, sampler: &Arc<Sampler>| {
+                    check_sampler_common(set_num, binding_num, index, sampler)?;
 
-                for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
-                    .chain(binding_reqs.descriptors.get(&None))
-                {
-                    // Check sampler-image compatibility. Only done for separate samplers;
-                    // combined image samplers are checked when updating the descriptor set.
+                    for desc_reqs in (binding_reqs.descriptors.get(&Some(index)).into_iter())
+                        .chain(binding_reqs.descriptors.get(&None))
+                    {
+                        // Check sampler-image compatibility. Only done for separate samplers;
+                        // combined image samplers are checked when updating the descriptor set.
 
-                    // If the image view isn't actually present in the resources, then just skip it.
-                    // It will be caught later by check_resources.
-                    let iter = desc_reqs.sampler_with_images.iter().filter_map(|id| {
-                        descriptor_set_state
-                            .descriptor_sets
-                            .get(&id.set)
-                            .and_then(|set| set.resources().binding(id.binding))
-                            .and_then(|res| match res {
-                                DescriptorBindingResources::ImageView(elements) => elements
-                                    .get(id.index as usize)
-                                    .and_then(|opt| opt.as_ref().map(|opt| (id, opt))),
-                                _ => None,
-                            })
-                    });
+                        // If the image view isn't actually present in the resources, then just skip it.
+                        // It will be caught later by check_resources.
+                        let iter = desc_reqs.sampler_with_images.iter().filter_map(|id| {
+                            descriptor_set_state
+                                .descriptor_sets
+                                .get(&id.set)
+                                .and_then(|set| set.resources().binding(id.binding))
+                                .and_then(|res| match res {
+                                    DescriptorBindingResources::ImageView(elements) => elements
+                                        .get(id.index as usize)
+                                        .and_then(|opt| opt.as_ref().map(|opt| (id, opt))),
+                                    _ => None,
+                                })
+                        });
 
-                    for (id, image_view_info) in iter {
-                        let DescriptorImageViewInfo {
-                            image_view,
-                            image_layout: _,
-                        } = image_view_info;
+                        for (id, image_view_info) in iter {
+                            let DescriptorIdentifier {
+                                set: iset_num,
+                                binding: ibinding_num,
+                                index: iindex,
+                            } = id;
+                            let DescriptorImageViewInfo {
+                                image_view,
+                                image_layout: _,
+                            } = image_view_info;
 
-                        if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
-                            return Err(
-                                DescriptorResourceInvalidError::SamplerImageViewIncompatible {
-                                    image_view_set_num: id.set,
-                                    image_view_binding_num: id.binding,
-                                    image_view_index: id.index,
-                                    error,
-                                },
-                            );
+                            if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the currently bound pipeline uses the sampler bound to \
+                                        descriptor set {set_num}, binding {binding_num}, \
+                                        descriptor index {index}, to sample the image bound to \
+                                        descriptor set {iset_num}, binding {ibinding_num}, \
+                                        descriptor index {iindex}, but the sampler is not \
+                                        compatible with the image: {}",
+                                        error,
+                                    )
+                                    .into(),
+                                    // vuids?
+                                    ..Default::default()
+                                }));
+                            }
                         }
                     }
-                }
 
-                Ok(())
-            };
+                    Ok(())
+                };
 
             let check_acceleration_structure =
-                |_index: u32, _acceleration_structure: &Arc<AccelerationStructure>| Ok(());
+                |_set_num: u32,
+                 _binding_num: u32,
+                 _index: u32,
+                 _acceleration_structure: &Arc<AccelerationStructure>| Ok(());
 
-            let check_none = |index: u32, _: &()| {
+            let check_none = |set_num: u32, binding_num: u32, index: u32, _: &()| {
                 if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
-                    check_sampler(index, sampler)?;
+                    check_sampler(set_num, binding_num, index, sampler)?;
                 }
 
                 Ok(())
@@ -1121,20 +1352,43 @@ where
             let set_resources = descriptor_set_state
                 .descriptor_sets
                 .get(&set_num)
-                .ok_or(PipelineExecutionError::DescriptorSetNotBound { set_num })?
+                .ok_or(Box::new(ValidationError {
+                    problem: format!(
+                        "the currently bound pipeline accesses descriptor set {set_num}, but \
+                        no descriptor set was previously bound"
+                    )
+                    .into(),
+                    // vuids?
+                    ..Default::default()
+                }))?
                 .resources();
 
             let binding_resources = set_resources.binding(binding_num).unwrap();
 
             match binding_resources {
                 DescriptorBindingResources::None(elements) => {
-                    validate_resources(set_num, binding_num, binding_reqs, elements, check_none)?;
+                    validate_resources(
+                        vuid_type,
+                        set_num,
+                        binding_num,
+                        binding_reqs,
+                        elements,
+                        check_none,
+                    )?;
                 }
                 DescriptorBindingResources::Buffer(elements) => {
-                    validate_resources(set_num, binding_num, binding_reqs, elements, check_buffer)?;
+                    validate_resources(
+                        vuid_type,
+                        set_num,
+                        binding_num,
+                        binding_reqs,
+                        elements,
+                        check_buffer,
+                    )?;
                 }
                 DescriptorBindingResources::BufferView(elements) => {
                     validate_resources(
+                        vuid_type,
                         set_num,
                         binding_num,
                         binding_reqs,
@@ -1144,6 +1398,7 @@ where
                 }
                 DescriptorBindingResources::ImageView(elements) => {
                     validate_resources(
+                        vuid_type,
                         set_num,
                         binding_num,
                         binding_reqs,
@@ -1153,6 +1408,7 @@ where
                 }
                 DescriptorBindingResources::ImageViewSampler(elements) => {
                     validate_resources(
+                        vuid_type,
                         set_num,
                         binding_num,
                         binding_reqs,
@@ -1162,6 +1418,7 @@ where
                 }
                 DescriptorBindingResources::Sampler(elements) => {
                     validate_resources(
+                        vuid_type,
                         set_num,
                         binding_num,
                         binding_reqs,
@@ -1178,6 +1435,7 @@ where
                 DescriptorBindingResources::InlineUniformBlock => (),
                 DescriptorBindingResources::AccelerationStructure(elements) => {
                     validate_resources(
+                        vuid_type,
                         set_num,
                         binding_num,
                         binding_reqs,
@@ -1193,38 +1451,56 @@ where
 
     fn validate_pipeline_push_constants(
         &self,
+        vuid_type: VUIDType,
         pipeline_layout: &PipelineLayout,
-    ) -> Result<(), PipelineExecutionError> {
+    ) -> Result<(), Box<ValidationError>> {
         if pipeline_layout.push_constant_ranges().is_empty()
             || self.device().enabled_features().maintenance4
         {
             return Ok(());
         }
 
-        // VUID-vkCmdDispatch-maintenance4-06425
         let constants_pipeline_layout = self
             .builder_state
             .push_constants_pipeline_layout
             .as_ref()
-            .ok_or(PipelineExecutionError::PushConstantsMissing)?;
+            .ok_or(Box::new(ValidationError {
+                problem: "the currently bound pipeline accesses push constants, but no \
+                    push constants were previously set"
+                    .into(),
+                vuids: vuids!(vuid_type, "maintenance4-06425"),
+                ..Default::default()
+            }))?;
 
-        // VUID-vkCmdDispatch-maintenance4-06425
         if pipeline_layout.handle() != constants_pipeline_layout.handle()
             && pipeline_layout.push_constant_ranges()
                 != constants_pipeline_layout.push_constant_ranges()
         {
-            return Err(PipelineExecutionError::PushConstantsNotCompatible);
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound pipeline accesses push constants, but the \
+                    pipeline layouts that were used to set the push constants are \
+                    not compatible with the pipeline layout of the currently bound pipeline"
+                    .into(),
+                vuids: vuids!(vuid_type, "maintenance4-06425"),
+                ..Default::default()
+            }));
         }
 
         let set_bytes = &self.builder_state.push_constants;
 
-        // VUID-vkCmdDispatch-maintenance4-06425
         if !pipeline_layout
             .push_constant_ranges()
             .iter()
             .all(|pc_range| set_bytes.contains(pc_range.offset..pc_range.offset + pc_range.size))
         {
-            return Err(PipelineExecutionError::PushConstantsMissing);
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound pipeline accesses push constants, but \
+                    not all bytes in the push constant ranges of the pipeline layout of the \
+                    currently bound pipeline have been set"
+                    .into(),
+                vuids: vuids!(vuid_type, "maintenance4-06425"),
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -1232,11 +1508,11 @@ where
 
     fn validate_pipeline_graphics_dynamic_state(
         &self,
+        vuid_type: VUIDType,
         pipeline: &GraphicsPipeline,
-    ) -> Result<(), PipelineExecutionError> {
+    ) -> Result<(), Box<ValidationError>> {
         let device = pipeline.device();
 
-        // VUID-vkCmdDraw-commandBuffer-02701
         for dynamic_state in pipeline
             .dynamic_states()
             .filter(|(_, d)| *d)
@@ -1244,82 +1520,169 @@ where
         {
             match dynamic_state {
                 DynamicState::BlendConstants => {
-                    // VUID?
                     if self.builder_state.blend_constants.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07835"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::ColorWriteEnable => {
-                    // VUID-vkCmdDraw-attachmentCount-06667
                     let enables = if let Some(enables) = &self.builder_state.color_write_enable {
                         enables
                     } else {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07749"),
+                            ..Default::default()
+                        }));
                     };
 
-                    // VUID-vkCmdDraw-attachmentCount-06667
                     if enables.len() < pipeline.color_blend_state().unwrap().attachments.len() {
-                        return Err(
-                            PipelineExecutionError::DynamicColorWriteEnableNotEnoughValues {
-                                color_write_enable_count: enables.len() as u32,
-                                attachment_count: pipeline
-                                    .color_blend_state()
-                                    .unwrap()
-                                    .attachments
-                                    .len() as u32,
-                            },
-                        );
+                        return Err(Box::new(ValidationError {
+                            problem: "the currently bound graphics pipeline requires the \
+                                `DynamicState::ColorWriteEnable` dynamic state, but \
+                                the number of enable values that were set is less than the number \
+                                of color attachments in the color blend state of the \
+                                graphics pipeline"
+                                .into(),
+                            vuids: vuids!(vuid_type, "attachmentCount-07750"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::CullMode => {
-                    // VUID?
                     if self.builder_state.cull_mode.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07840"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::DepthBias => {
-                    // VUID?
                     if self.builder_state.depth_bias.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07834"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::DepthBiasEnable => {
-                    // VUID-vkCmdDraw-None-04877
                     if self.builder_state.depth_bias_enable.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-04877"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::DepthBounds => {
-                    // VUID?
                     if self.builder_state.depth_bounds.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07836"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::DepthBoundsTestEnable => {
-                    // VUID?
                     if self.builder_state.depth_bounds_test_enable.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07846"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::DepthCompareOp => {
-                    // VUID?
                     if self.builder_state.depth_compare_op.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07845"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::DepthTestEnable => {
-                    // VUID?
                     if self.builder_state.depth_test_enable.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07843"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::DepthWriteEnable => {
-                    // VUID?
                     if self.builder_state.depth_write_enable.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07844"),
+                            ..Default::default()
+                        }));
                     }
-
-                    // TODO: Check if the depth buffer is writable
                 }
                 DynamicState::DiscardRectangle => {
                     let discard_rectangle_count =
@@ -1329,51 +1692,115 @@ where
                         };
 
                     for num in 0..discard_rectangle_count {
-                        // VUID?
                         if !self.builder_state.discard_rectangle.contains_key(&num) {
-                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, but \
+                                    this state was either not set for discard rectangle {1}, or \
+                                    it was overwritten by a more recent \
+                                    `bind_pipeline_graphics` command",
+                                    dynamic_state, num,
+                                ).into(),
+                                vuids: vuids!(vuid_type, "None-07751"),
+                                ..Default::default()
+                            }));
                         }
                     }
                 }
                 DynamicState::ExclusiveScissor => todo!(),
                 DynamicState::FragmentShadingRate => todo!(),
                 DynamicState::FrontFace => {
-                    // VUID?
                     if self.builder_state.front_face.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-0784"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::LineStipple => {
-                    // VUID?
                     if self.builder_state.line_stipple.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07849"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::LineWidth => {
-                    // VUID?
                     if self.builder_state.line_width.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07833"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::LogicOp => {
-                    // VUID-vkCmdDraw-logicOp-04878
                     if self.builder_state.logic_op.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "logicOp-04878"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::PatchControlPoints => {
-                    // VUID-vkCmdDraw-None-04875
                     if self.builder_state.patch_control_points.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-04875"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::PrimitiveRestartEnable => {
-                    // VUID-vkCmdDraw-None-04879
                     let primitive_restart_enable =
                         if let Some(enable) = self.builder_state.primitive_restart_enable {
                             enable
                         } else {
-                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, but \
+                                    this state was either not set, or it was overwritten by a \
+                                    more recent `bind_pipeline_graphics` command",
+                                    dynamic_state
+                                ).into(),
+                                vuids: vuids!(vuid_type, "None-04879"),
+                                ..Default::default()
+                            }));
                         };
 
                     if primitive_restart_enable {
@@ -1383,9 +1810,16 @@ where
                                 if let Some(topology) = self.builder_state.primitive_topology {
                                     topology
                                 } else {
-                                    return Err(PipelineExecutionError::DynamicStateNotSet {
-                                        dynamic_state: DynamicState::PrimitiveTopology,
-                                    });
+                                    return Err(Box::new(ValidationError {
+                                        problem: "the currently bound graphics pipeline requires \
+                                            the `DynamicState::PrimitiveTopology` dynamic state, \
+                                            but this state was either not set, or it was \
+                                            overwritten by a more recent `bind_pipeline_graphics` \
+                                            command"
+                                            .into(),
+                                        vuids: vuids!(vuid_type, "None-07842"),
+                                        ..Default::default()
+                                    }));
                                 }
                             }
                         };
@@ -1396,30 +1830,34 @@ where
                             | PrimitiveTopology::TriangleList
                             | PrimitiveTopology::LineListWithAdjacency
                             | PrimitiveTopology::TriangleListWithAdjacency => {
-                                // VUID?
                                 if !device.enabled_features().primitive_topology_list_restart {
-                                    return Err(PipelineExecutionError::RequirementNotMet {
-                                        required_for: "The bound pipeline sets \
-                                            `DynamicState::PrimitiveRestartEnable` and the \
-                                            current primitive topology is \
-                                            `PrimitiveTopology::*List`",
+                                    return Err(Box::new(ValidationError {
+                                        problem: "primitive restart is enabled for the currently \
+                                            bound graphics pipeline, but the currently set \
+                                            dynamic primitive topology is \
+                                            `PrimitiveTopology::*List`"
+                                            .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("primitive_topology_list_restart")])]),
-                                    });
+                                        // vuids?
+                                        ..Default::default()
+                                    }));
                                 }
                             }
                             PrimitiveTopology::PatchList => {
-                                // VUID?
                                 if !device
                                     .enabled_features()
                                     .primitive_topology_patch_list_restart
                                 {
-                                    return Err(PipelineExecutionError::RequirementNotMet {
-                                        required_for: "The bound pipeline sets \
-                                            `DynamicState::PrimitiveRestartEnable` and the \
-                                            current primitive topology is \
-                                            `PrimitiveTopology::PatchList`",
+                                    return Err(Box::new(ValidationError {
+                                        problem: "primitive restart is enabled for the currently \
+                                            bound graphics pipeline, but the currently set \
+                                            dynamic primitive topology is \
+                                            `PrimitiveTopology::PatchList`"
+                                            .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("primitive_topology_patch_list_restart")])]),
-                                    });
+                                        // vuids?
+                                        ..Default::default()
+                                    }));
                                 }
                             }
                             _ => (),
@@ -1427,50 +1865,92 @@ where
                     }
                 }
                 DynamicState::PrimitiveTopology => {
-                    // VUID-vkCmdDraw-primitiveTopology-03420
                     let topology = if let Some(topology) = self.builder_state.primitive_topology {
                         topology
                     } else {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07842"),
+                            ..Default::default()
+                        }));
                     };
 
                     if pipeline.shader(ShaderStage::TessellationControl).is_some() {
-                        // VUID?
                         if !matches!(topology, PrimitiveTopology::PatchList) {
-                            return Err(PipelineExecutionError::DynamicPrimitiveTopologyInvalid {
-                                topology,
-                            });
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, and the graphics pipeline \
+                                    includes tessellation shader stages, but the dynamic \
+                                    primitive topology is not `PrimitiveTopology::PatchList`",
+                                    dynamic_state
+                                ).into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
                         }
                     } else {
-                        // VUID?
                         if matches!(topology, PrimitiveTopology::PatchList) {
-                            return Err(PipelineExecutionError::DynamicPrimitiveTopologyInvalid {
-                                topology,
-                            });
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, and the graphics pipeline \
+                                    does not include tessellation shader stages, but the dynamic \
+                                    primitive topology is `PrimitiveTopology::PatchList`",
+                                    dynamic_state
+                                ).into(),
+                                // vuids?
+                                ..Default::default()
+                            }));
                         }
                     }
 
-                    let required_topology_class = match pipeline.input_assembly_state().topology {
-                        PartialStateMode::Dynamic(topology_class) => topology_class,
-                        _ => unreachable!(),
-                    };
+                    let properties = device.physical_device().properties();
 
-                    // VUID-vkCmdDraw-primitiveTopology-03420
-                    if topology.class() != required_topology_class {
-                        return Err(
-                            PipelineExecutionError::DynamicPrimitiveTopologyClassMismatch {
-                                provided_class: topology.class(),
-                                required_class: required_topology_class,
-                            },
-                        );
+                    if !properties.dynamic_primitive_topology_unrestricted.unwrap_or(false) {
+                        let required_topology_class = match pipeline.input_assembly_state().topology {
+                            PartialStateMode::Dynamic(topology_class) => topology_class,
+                            _ => unreachable!(),
+                        };
+
+                        if topology.class() != required_topology_class {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, and the \
+                                    `dynamic_primitive_topology_unrestricted` device property is \
+                                    `false`, but the dynamic primitive topology does not belong \
+                                    to the same topology class as the topology that the \
+                                    graphics pipeline was created with",
+                                    dynamic_state
+                                ).into(),
+                                vuids: vuids!(vuid_type, "dynamicPrimitiveTopologyUnrestricted-07500"),
+                                ..Default::default()
+                            }));
+                        }
                     }
 
                     // TODO: check that the topology matches the geometry shader
                 }
                 DynamicState::RasterizerDiscardEnable => {
-                    // VUID-vkCmdDraw-None-04876
                     if self.builder_state.rasterizer_discard_enable.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-04876"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::RayTracingPipelineStackSize => unreachable!(
@@ -1479,120 +1959,218 @@ where
                 DynamicState::SampleLocations => todo!(),
                 DynamicState::Scissor => {
                     for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
-                        // VUID?
                         if !self.builder_state.scissor.contains_key(&num) {
-                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                            return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07832"),
+                            ..Default::default()
+                        }));
                         }
                     }
                 }
                 DynamicState::ScissorWithCount => {
-                    // VUID-vkCmdDraw-scissorCount-03418
-                    // VUID-vkCmdDraw-viewportCount-03419
-                    let scissor_count = if let Some(scissors) = &self.builder_state.scissor_with_count {
-                        scissors.len() as u32
-                    } else {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
-                    };
+                    if let Some(scissors) = &self.builder_state.scissor_with_count {
+                        if let Some(viewport_count) = pipeline.viewport_state().unwrap().count() {
+                            // Check if the counts match, but only if the viewport count is fixed.
+                            // If the viewport count is also dynamic, then the
+                            // DynamicState::ViewportWithCount match arm will handle it.
 
-                    // Check if the counts match, but only if the viewport count is fixed.
-                    // If the viewport count is also dynamic, then the
-                    // DynamicState::ViewportWithCount match arm will handle it.
-                    if let Some(viewport_count) = pipeline.viewport_state().unwrap().count() {
-                        // VUID-vkCmdDraw-scissorCount-03418
-                        if viewport_count != scissor_count {
-                            return Err(
-                                PipelineExecutionError::DynamicViewportScissorCountMismatch {
-                                    viewport_count,
-                                    scissor_count,
-                                },
-                            );
+                            if viewport_count != scissors.len() as u32 {
+                                return Err(Box::new(ValidationError {
+                                    problem: "the currently bound graphics pipeline requires the \
+                                        `DynamicState::ScissorWithCount` dynamic state, and \
+                                        not the `DynamicState::ViewportWithCount` dynamic state, \
+                                        but the dynamic scissor count is not equal to the \
+                                        viewport count specified when creating the pipeline"
+                                        .into(),
+                                    vuids: vuids!(vuid_type, "scissorCount-03418"),
+                                    ..Default::default()
+                                }));
+                            }
                         }
-                    }
+                    } else {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "scissorCount-03418", "viewportCount-03419"),
+                            ..Default::default()
+                        }));
+                    };
                 }
                 DynamicState::StencilCompareMask => {
                     let state = self.builder_state.stencil_compare_mask;
 
-                    // VUID?
                     if state.front.is_none() || state.back.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07837"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::StencilOp => {
                     let state = self.builder_state.stencil_op;
 
-                    // VUID?
                     if state.front.is_none() || state.back.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07848"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::StencilReference => {
                     let state = self.builder_state.stencil_reference;
 
-                    // VUID?
                     if state.front.is_none() || state.back.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07839"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::StencilTestEnable => {
-                    // VUID?
                     if self.builder_state.stencil_test_enable.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07847"),
+                            ..Default::default()
+                        }));
                     }
-
-                    // TODO: Check if the stencil buffer is writable
                 }
                 DynamicState::StencilWriteMask => {
                     let state = self.builder_state.stencil_write_mask;
 
-                    // VUID?
                     if state.front.is_none() || state.back.is_none() {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07838"),
+                            ..Default::default()
+                        }));
                     }
                 }
                 DynamicState::VertexInput => todo!(),
                 DynamicState::VertexInputBindingStride => todo!(),
                 DynamicState::Viewport => {
                     for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
-                        // VUID?
                         if !self.builder_state.viewport.contains_key(&num) {
-                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                            return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "None-07831"),
+                            ..Default::default()
+                        }));
                         }
                     }
                 }
                 DynamicState::ViewportCoarseSampleOrder => todo!(),
                 DynamicState::ViewportShadingRatePalette => todo!(),
                 DynamicState::ViewportWithCount => {
-                    // VUID-vkCmdDraw-viewportCount-03417
                     let viewport_count = if let Some(viewports) = &self.builder_state.viewport_with_count {
                         viewports.len() as u32
                     } else {
-                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            ).into(),
+                            vuids: vuids!(vuid_type, "viewportCount-03417", "viewportCount-03419"),
+                            ..Default::default()
+                        }));
                     };
 
-                    let scissor_count = if let Some(scissor_count) =
+                    if let Some(scissor_count) =
                         pipeline.viewport_state().unwrap().count()
                     {
-                        // The scissor count is fixed.
-                        scissor_count
-                    } else {
-                        // VUID-vkCmdDraw-viewportCount-03419
-                        // The scissor count is also dynamic.
-                        if let Some(scissors) = &self.builder_state.scissor_with_count {
-                            scissors.len() as u32
-                        } else {
-                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        if viewport_count != scissor_count {
+                            return Err(Box::new(ValidationError {
+                                problem: "the currently bound graphics pipeline requires the \
+                                    `DynamicState::ViewportWithCount` dynamic state, and \
+                                    not the `DynamicState::ScissorWithCount` dynamic state, but \
+                                    the dynamic scissor count is not equal to the scissor count \
+                                    specified when creating the pipeline"
+                                    .into(),
+                                vuids: vuids!(vuid_type, "viewportCount-03417"),
+                                ..Default::default()
+                            }));
                         }
-                    };
-
-                    // VUID-vkCmdDraw-viewportCount-03417
-                    // VUID-vkCmdDraw-viewportCount-03419
-                    if viewport_count != scissor_count {
-                        return Err(
-                            PipelineExecutionError::DynamicViewportScissorCountMismatch {
-                                viewport_count,
-                                scissor_count,
-                            },
-                        );
+                    } else {
+                        if let Some(scissors) = &self.builder_state.scissor_with_count {
+                            if viewport_count != scissors.len() as u32 {
+                                return Err(Box::new(ValidationError {
+                                    problem: "the currently bound graphics pipeline requires both \
+                                        the `DynamicState::ViewportWithCount` and the \
+                                        `DynamicState::ScissorWithCount` dynamic states, but \
+                                        the dynamic scissor count is not equal to the \
+                                        dynamic scissor count "
+                                        .into(),
+                                    vuids: vuids!(vuid_type, "viewportCount-03419"),
+                                    ..Default::default()
+                                }));
+                            }
+                        } else {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, but \
+                                    this state was either not set, or it was overwritten by a \
+                                    more recent `bind_pipeline_graphics` command",
+                                    dynamic_state
+                                ).into(),
+                                vuids: vuids!(vuid_type, "scissorCount-03418", "viewportCount-03419"),
+                                ..Default::default()
+                            }));
+                        }
                     }
 
                     // TODO: VUID-vkCmdDrawIndexed-primitiveFragmentShadingRateWithMultipleViewports-04552
@@ -1644,14 +2222,18 @@ where
 
     fn validate_pipeline_graphics_render_pass(
         &self,
+        vuid_type: VUIDType,
         pipeline: &GraphicsPipeline,
         render_pass_state: &RenderPassState,
-    ) -> Result<(), PipelineExecutionError> {
-        // VUID?
+    ) -> Result<(), Box<ValidationError>> {
         if render_pass_state.contents != SubpassContents::Inline {
-            return Err(PipelineExecutionError::ForbiddenWithSubpassContents {
-                subpass_contents: render_pass_state.contents,
-            });
+            return Err(Box::new(ValidationError {
+                problem: "the contents of the current subpass instance is not \
+                    `SubpassContents::Inline`"
+                    .into(),
+                // vuids?
+                ..Default::default()
+            }));
         }
 
         match (&render_pass_state.render_pass, pipeline.subpass()) {
@@ -1659,51 +2241,59 @@ where
                 RenderPassStateType::BeginRenderPass(state),
                 PipelineSubpassType::BeginRenderPass(pipeline_subpass),
             ) => {
-                // VUID-vkCmdDraw-renderPass-02684
                 if !pipeline_subpass
                     .render_pass()
                     .is_compatible_with(state.subpass.render_pass())
                 {
-                    return Err(PipelineExecutionError::PipelineRenderPassNotCompatible);
+                    return Err(Box::new(ValidationError {
+                        problem: "the current render pass instance is not compatible with the \
+                            render pass that the currently bound graphics pipeline was \
+                            created with"
+                            .into(),
+                        vuids: vuids!(vuid_type, "renderPass-02684"),
+                        ..Default::default()
+                    }));
                 }
 
-                // VUID-vkCmdDraw-subpass-02685
                 if pipeline_subpass.index() != state.subpass.index() {
-                    return Err(PipelineExecutionError::PipelineSubpassMismatch {
-                        pipeline: pipeline_subpass.index(),
-                        current: state.subpass.index(),
-                    });
+                    return Err(Box::new(ValidationError {
+                        problem: "the subpass index of the current render pass instance is not \
+                            equal to the index of the subpass that the bound graphics pipeline was \
+                            created with"
+                            .into(),
+                        vuids: vuids!(vuid_type, "subpass-02685"),
+                        ..Default::default()
+                    }));
                 }
             }
             (
                 RenderPassStateType::BeginRendering(_),
                 PipelineSubpassType::BeginRendering(pipeline_rendering_info),
             ) => {
-                // VUID-vkCmdDraw-viewMask-06178
                 if pipeline_rendering_info.view_mask != render_pass_state.rendering_info.view_mask {
-                    return Err(PipelineExecutionError::PipelineViewMaskMismatch {
-                        pipeline_view_mask: pipeline_rendering_info.view_mask,
-                        required_view_mask: render_pass_state.rendering_info.view_mask,
-                    });
+                    return Err(Box::new(ValidationError {
+                        problem: "the `view_mask` of the current render pass instance is not \
+                            equal to the `view_mask` the bound graphics pipeline was created with"
+                            .into(),
+                        vuids: vuids!(vuid_type, "viewMask-06178"),
+                        ..Default::default()
+                    }));
                 }
 
-                // VUID-vkCmdDraw-colorAttachmentCount-06179
                 if pipeline_rendering_info.color_attachment_formats.len()
                     != render_pass_state
                         .rendering_info
                         .color_attachment_formats
                         .len()
                 {
-                    return Err(
-                        PipelineExecutionError::PipelineColorAttachmentCountMismatch {
-                            pipeline_count: pipeline_rendering_info.color_attachment_formats.len()
-                                as u32,
-                            required_count: render_pass_state
-                                .rendering_info
-                                .color_attachment_formats
-                                .len() as u32,
-                        },
-                    );
+                    return Err(Box::new(ValidationError {
+                        problem: "`color_attachments.len()` of the current render pass \
+                            instance is not equal to `color_attachment_formats.len()` that the
+                            currently bound graphics pipeline was created with"
+                            .into(),
+                        vuids: vuids!(vuid_type, "colorAttachmentCount-06179"),
+                        ..Default::default()
+                    }));
                 }
 
                 for (color_attachment_index, required_format, pipeline_format) in render_pass_state
@@ -1719,15 +2309,19 @@ where
                     .enumerate()
                     .filter_map(|(i, (r, p))| r.map(|r| (i as u32, r, p)))
                 {
-                    // VUID-vkCmdDraw-colorAttachmentCount-06180
                     if Some(required_format) != pipeline_format {
-                        return Err(
-                            PipelineExecutionError::PipelineColorAttachmentFormatMismatch {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`color_attachments[{0}].image_view.format()` of the current \
+                                render pass instance is not equal to \
+                                `color_attachment_formats[{0}]` that the currently bound \
+                                graphics pipeline was created with",
                                 color_attachment_index,
-                                pipeline_format,
-                                required_format,
-                            },
-                        );
+                            )
+                            .into(),
+                            vuids: vuids!(vuid_type, "colorAttachmentCount-06180"),
+                            ..Default::default()
+                        }));
                     }
                 }
 
@@ -1736,14 +2330,16 @@ where
                     .depth_attachment_format
                     .map(|r| (r, pipeline_rendering_info.depth_attachment_format))
                 {
-                    // VUID-vkCmdDraw-pDepthAttachment-06181
                     if Some(required_format) != pipeline_format {
-                        return Err(
-                            PipelineExecutionError::PipelineDepthAttachmentFormatMismatch {
-                                pipeline_format,
-                                required_format,
-                            },
-                        );
+                        return Err(Box::new(ValidationError {
+                            problem: "`depth_attachment.image_view.format()` of the current \
+                                render pass instance is not equal to \
+                                `depth_attachment_format` that the currently bound \
+                                graphics pipeline was created with"
+                                .into(),
+                            vuids: vuids!(vuid_type, "pDepthAttachment-06181"),
+                            ..Default::default()
+                        }));
                     }
                 }
 
@@ -1752,14 +2348,16 @@ where
                     .stencil_attachment_format
                     .map(|r| (r, pipeline_rendering_info.stencil_attachment_format))
                 {
-                    // VUID-vkCmdDraw-pStencilAttachment-06182
                     if Some(required_format) != pipeline_format {
-                        return Err(
-                            PipelineExecutionError::PipelineStencilAttachmentFormatMismatch {
-                                pipeline_format,
-                                required_format,
-                            },
-                        );
+                        return Err(Box::new(ValidationError {
+                            problem: "`stencil_attachment.image_view.format()` of the current \
+                                render pass instance is not equal to \
+                                `stencil_attachment_format` that the currently bound \
+                                graphics pipeline was created with"
+                                .into(),
+                            vuids: vuids!(vuid_type, "pStencilAttachment-06182"),
+                            ..Default::default()
+                        }));
                     }
                 }
 
@@ -1771,7 +2369,26 @@ where
                 // VUID-vkCmdDraw-imageView-06177
                 // TODO:
             }
-            _ => return Err(PipelineExecutionError::PipelineRenderPassTypeMismatch),
+            (RenderPassStateType::BeginRenderPass(_), PipelineSubpassType::BeginRendering(_)) => {
+                return Err(Box::new(ValidationError {
+                    problem: "the current render pass instance was begun with \
+                        `begin_render_pass`, but the currently bound graphics pipeline requires \
+                        a render pass instance begun with `begin_rendering`"
+                        .into(),
+                    // vuids?
+                    ..Default::default()
+                }));
+            }
+            (RenderPassStateType::BeginRendering(_), PipelineSubpassType::BeginRenderPass(_)) => {
+                return Err(Box::new(ValidationError {
+                    problem: "the current render pass instance was begun with \
+                        `begin_rendering`, but the currently bound graphics pipeline requires \
+                        a render pass instance begun with `begin_render_pass`"
+                        .into(),
+                    // vuids?
+                    ..Default::default()
+                }));
+            }
         }
 
         // VUID-vkCmdDraw-None-02686
@@ -1782,105 +2399,24 @@ where
 
     fn validate_pipeline_graphics_vertex_buffers(
         &self,
+        vuid_type: VUIDType,
         pipeline: &GraphicsPipeline,
-        vertices: Option<(u32, u32)>,
-        instances: Option<(u32, u32)>,
-    ) -> Result<(), PipelineExecutionError> {
+    ) -> Result<(), Box<ValidationError>> {
         let vertex_input = pipeline.vertex_input_state();
-        let mut vertices_in_buffers: Option<u64> = None;
-        let mut instances_in_buffers: Option<u64> = None;
 
-        for (&binding_num, binding_desc) in &vertex_input.bindings {
-            // VUID-vkCmdDraw-None-04007
-            let vertex_buffer = match self.builder_state.vertex_buffers.get(&binding_num) {
-                Some(x) => x,
-                None => return Err(PipelineExecutionError::VertexBufferNotBound { binding_num }),
-            };
-
-            let mut num_elements = vertex_buffer.size() / binding_desc.stride as u64;
-
-            match binding_desc.input_rate {
-                VertexInputRate::Vertex => {
-                    vertices_in_buffers = Some(if let Some(x) = vertices_in_buffers {
-                        min(x, num_elements)
-                    } else {
-                        num_elements
-                    });
-                }
-                VertexInputRate::Instance { divisor } => {
-                    if divisor == 0 {
-                        // A divisor of 0 means the same instance data is used for all instances,
-                        // so we can draw any number of instances from a single element.
-                        // The buffer must contain at least one element though.
-                        if num_elements != 0 {
-                            num_elements = u64::MAX;
-                        }
-                    } else {
-                        // If divisor is e.g. 2, we use only half the amount of data from the source
-                        // buffer, so the number of instances that can be drawn is twice as large.
-                        num_elements = num_elements.saturating_mul(divisor as u64);
-                    }
-
-                    instances_in_buffers = Some(if let Some(x) = instances_in_buffers {
-                        min(x, num_elements)
-                    } else {
-                        num_elements
-                    });
-                }
-            };
-        }
-
-        if let Some((first_vertex, vertex_count)) = vertices {
-            let vertices_needed = first_vertex as u64 + vertex_count as u64;
-
-            if let Some(vertices_in_buffers) = vertices_in_buffers {
-                // VUID-vkCmdDraw-None-02721
-                if vertices_needed > vertices_in_buffers {
-                    return Err(PipelineExecutionError::VertexBufferVertexRangeOutOfBounds {
-                        vertices_needed,
-                        vertices_in_buffers,
-                    });
-                }
-            }
-        }
-
-        if let Some((first_instance, instance_count)) = instances {
-            let instances_needed = first_instance as u64 + instance_count as u64;
-
-            if let Some(instances_in_buffers) = instances_in_buffers {
-                // VUID-vkCmdDraw-None-02721
-                if instances_needed > instances_in_buffers {
-                    return Err(
-                        PipelineExecutionError::VertexBufferInstanceRangeOutOfBounds {
-                            instances_needed,
-                            instances_in_buffers,
-                        },
-                    );
-                }
-            }
-
-            let view_mask = match pipeline.subpass() {
-                PipelineSubpassType::BeginRenderPass(subpass) => subpass.render_pass().views_used(),
-                PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.view_mask,
-            };
-
-            if view_mask != 0 {
-                let max = pipeline
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .max_multiview_instance_index
-                    .unwrap_or(0);
-
-                let highest_instance = instances_needed.saturating_sub(1);
-
-                // VUID-vkCmdDraw-maxMultiviewInstanceIndex-02688
-                if highest_instance > max as u64 {
-                    return Err(PipelineExecutionError::MaxMultiviewInstanceIndexExceeded {
-                        highest_instance,
-                        max,
-                    });
-                }
+        for &binding_num in vertex_input.bindings.keys() {
+            if !self.builder_state.vertex_buffers.contains_key(&binding_num) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "the currently bound graphics pipeline uses \
+                        vertex buffer binding {0}, but \
+                        no vertex buffer is currently bound to binding {0}",
+                        binding_num
+                    )
+                    .into(),
+                    vuids: vuids!(vuid_type, "None-04007"),
+                    ..Default::default()
+                }));
             }
         }
 
@@ -2148,9 +2684,64 @@ impl<A> UnsafeCommandBufferBuilder<A>
 where
     A: CommandBufferAllocator,
 {
-    /// Calls `vkCmdDispatch` on the builder.
-    #[inline]
-    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) -> &mut Self {
+    pub unsafe fn dispatch(
+        &mut self,
+        group_counts: [u32; 3],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_dispatch(group_counts)?;
+
+        Ok(self.dispatch_unchecked(group_counts))
+    }
+
+    fn validate_dispatch(&self, group_counts: [u32; 3]) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDispatch-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if group_counts[0] > properties.max_compute_work_group_count[0] {
+            return Err(Box::new(ValidationError {
+                context: "group_counts[0]".into(),
+                problem: "is greater than the `max_compute_work_group_count[0]` limit".into(),
+                vuids: &["VUID-vkCmdDispatch-groupCountX-00386"],
+                ..Default::default()
+            }));
+        }
+
+        if group_counts[1] > properties.max_compute_work_group_count[1] {
+            return Err(Box::new(ValidationError {
+                context: "group_counts[1]".into(),
+                problem: "is greater than the `max_compute_work_group_count[1]` limit".into(),
+                vuids: &["VUID-vkCmdDispatch-groupCountY-00387"],
+                ..Default::default()
+            }));
+        }
+
+        if group_counts[2] > properties.max_compute_work_group_count[2] {
+            return Err(Box::new(ValidationError {
+                context: "group_counts[2]".into(),
+                problem: "is greater than the `max_compute_work_group_count[2]` limit".into(),
+                vuids: &["VUID-vkCmdDispatch-groupCountZ-00388"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn dispatch_unchecked(&mut self, group_counts: [u32; 3]) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_dispatch)(
             self.handle(),
@@ -2162,9 +2753,67 @@ where
         self
     }
 
-    /// Calls `vkCmdDispatchIndirect` on the builder.
-    #[inline]
     pub unsafe fn dispatch_indirect(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DispatchIndirectCommand]>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
+
+        Ok(self.dispatch_indirect_unchecked(indirect_buffer))
+    }
+
+    fn validate_dispatch_indirect(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDispatchIndirect-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdDispatchIndirect-commonparent
+        assert_eq!(self.device(), indirect_buffer.device());
+
+        if !indirect_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "indirect_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDispatchIndirect-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if size_of::<DispatchIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+            return Err(Box::new(ValidationError {
+                problem: "`size_of::<DrawIndirectCommand>()` is greater than \
+                    `indirect_buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdDispatchIndirect-offset-00407"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdDispatchIndirect-offset-02710
+        // TODO:
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn dispatch_indirect_unchecked(
         &mut self,
         indirect_buffer: &Subbuffer<[DispatchIndirectCommand]>,
     ) -> &mut Self {
@@ -2178,9 +2827,44 @@ where
         self
     }
 
-    /// Calls `vkCmdDraw` on the builder.
-    #[inline]
     pub unsafe fn draw(
+        &mut self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw(vertex_count, instance_count, first_vertex, first_instance)?;
+
+        Ok(self.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance))
+    }
+
+    fn validate_draw(
+        &self,
+        _vertex_count: u32,
+        _instance_count: u32,
+        _first_vertex: u32,
+        _first_instance: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDraw-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_unchecked(
         &mut self,
         vertex_count: u32,
         instance_count: u32,
@@ -2199,9 +2883,192 @@ where
         self
     }
 
-    /// Calls `vkCmdDrawIndexed` on the builder.
-    #[inline]
+    pub unsafe fn draw_indirect(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
+
+        Ok(self.draw_indirect_unchecked(indirect_buffer, draw_count, stride))
+    }
+
+    fn validate_draw_indirect(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndirect-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !indirect_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "indirect_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawIndirect-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if draw_count > 1 {
+            if !self.device().enabled_features().multi_draw_indirect {
+                return Err(Box::new(ValidationError {
+                    context: "draw_count".into(),
+                    problem: "is greater than 1".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_draw_indirect",
+                    )])]),
+                    vuids: &["VUID-vkCmdDrawIndirect-drawCount-02718"],
+                }));
+            }
+
+            if stride % 4 != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride` is not a multiple of 4"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndirect-drawCount-00476"],
+                    ..Default::default()
+                }));
+            }
+
+            if (stride as DeviceSize) < size_of::<DrawIndirectCommand>() as DeviceSize {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride` is not greater than `size_of::<DrawIndirectCommand>()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndirect-drawCount-00476"],
+                    ..Default::default()
+                }));
+            }
+
+            if stride as DeviceSize * (draw_count as DeviceSize - 1)
+                + size_of::<DrawIndirectCommand>() as DeviceSize
+                > indirect_buffer.size()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride * (draw_count - 1) + size_of::<DrawIndirectCommand>()` is \
+                        greater than `indirect_buffer.size()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndirect-drawCount-00488"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if size_of::<DrawIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is 1, but `size_of::<DrawIndirectCommand>()` is \
+                        greater than `indirect_buffer.size()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndirect-drawCount-00487"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if draw_count > properties.max_draw_indirect_count {
+            return Err(Box::new(ValidationError {
+                context: "draw_count".into(),
+                problem: "is greater than the `max_draw_indirect_count` limit".into(),
+                vuids: &["VUID-vkCmdDrawIndirect-drawCount-02719"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indirect_unchecked(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_draw_indirect)(
+            self.handle(),
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
+            draw_count,
+            stride,
+        );
+
+        self
+    }
+
     pub unsafe fn draw_indexed(
+        &mut self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_indexed(
+            index_count,
+            instance_count,
+            first_index,
+            vertex_offset,
+            first_instance,
+        )?;
+
+        Ok(self.draw_indexed_unchecked(
+            index_count,
+            instance_count,
+            first_index,
+            vertex_offset,
+            first_instance,
+        ))
+    }
+
+    fn validate_draw_indexed(
+        &self,
+        _index_count: u32,
+        _instance_count: u32,
+        _first_index: u32,
+        _vertex_offset: i32,
+        _first_instance: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndexed-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indexed_unchecked(
         &mut self,
         index_count: u32,
         instance_count: u32,
@@ -2222,29 +3089,123 @@ where
         self
     }
 
-    /// Calls `vkCmdDrawIndirect` on the builder.
-    #[inline]
-    pub unsafe fn draw_indirect(
+    pub unsafe fn draw_indexed_indirect(
         &mut self,
-        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
         draw_count: u32,
         stride: u32,
-    ) -> &mut Self {
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_draw_indirect)(
-            self.handle(),
-            indirect_buffer.buffer().handle(),
-            indirect_buffer.offset(),
-            draw_count,
-            stride,
-        );
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        self
+        Ok(self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride))
     }
 
-    /// Calls `vkCmdDrawIndexedIndirect` on the builder.
-    #[inline]
-    pub unsafe fn draw_indexed_indirect(
+    fn validate_draw_indexed_indirect(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirect-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !indirect_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "indirect_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirect-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if draw_count > 1 {
+            if !self.device().enabled_features().multi_draw_indirect {
+                return Err(Box::new(ValidationError {
+                    context: "draw_count".into(),
+                    problem: "is greater than 1".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_draw_indirect",
+                    )])]),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-02718"],
+                }));
+            }
+
+            if stride % 4 != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride` is not a multiple of 4"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00528"],
+                    ..Default::default()
+                }));
+            }
+
+            if (stride as DeviceSize) < size_of::<DrawIndexedIndirectCommand>() as DeviceSize {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride` is not greater than `size_of::<DrawIndexedIndirectCommand>()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00528"],
+                    ..Default::default()
+                }));
+            }
+
+            if stride as DeviceSize * (draw_count as DeviceSize - 1)
+                + size_of::<DrawIndexedIndirectCommand>() as DeviceSize
+                > indirect_buffer.size()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride * (draw_count - 1) + size_of::<DrawIndexedIndirectCommand>()` is \
+                        greater than `indirect_buffer.size()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00540"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if size_of::<DrawIndexedIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is 1, but `size_of::<DrawIndexedIndirectCommand>()` is \
+                        greater than `indirect_buffer.size()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-00539"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if draw_count > properties.max_draw_indirect_count {
+            return Err(Box::new(ValidationError {
+                context: "draw_count".into(),
+                problem: "is greater than the `max_draw_indirect_count` limit".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-02719"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indexed_indirect_unchecked(
         &mut self,
         indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
         draw_count: u32,
@@ -2263,496 +3224,12 @@ where
     }
 }
 
-/// Error that can happen when recording a bound pipeline execution command.
-#[derive(Debug, Clone)]
-pub enum PipelineExecutionError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The resource bound to a descriptor set binding at a particular index is not compatible
-    /// with the requirements of the pipeline and shaders.
-    DescriptorResourceInvalid {
-        set_num: u32,
-        binding_num: u32,
-        index: u32,
-        error: DescriptorResourceInvalidError,
-    },
-
-    /// The pipeline layout requires a descriptor set bound to a set number, but none was bound.
-    DescriptorSetNotBound { set_num: u32 },
-
-    /// The bound pipeline uses a dynamic color write enable setting, but the number of provided
-    /// enable values is less than the number of attachments in the current render subpass.
-    DynamicColorWriteEnableNotEnoughValues {
-        color_write_enable_count: u32,
-        attachment_count: u32,
-    },
-
-    /// The bound pipeline uses a dynamic primitive topology, but the provided topology is of a
-    /// different topology class than what the pipeline requires.
-    DynamicPrimitiveTopologyClassMismatch {
-        provided_class: PrimitiveTopologyClass,
-        required_class: PrimitiveTopologyClass,
-    },
-
-    /// The bound pipeline uses a dynamic primitive topology, but the provided topology is not
-    /// compatible with the shader stages in the pipeline.
-    DynamicPrimitiveTopologyInvalid { topology: PrimitiveTopology },
-
-    /// The pipeline requires a particular dynamic state, but this state was not set.
-    DynamicStateNotSet { dynamic_state: DynamicState },
-
-    /// The bound pipeline uses a dynamic scissor and/or viewport count, but the scissor count
-    /// does not match the viewport count.
-    DynamicViewportScissorCountMismatch {
-        viewport_count: u32,
-        scissor_count: u32,
-    },
-
-    /// Operation forbidden inside a render pass.
-    ForbiddenInsideRenderPass,
-
-    /// Operation forbidden outside a render pass.
-    ForbiddenOutsideRenderPass,
-
-    /// Operation forbidden inside a render subpass with the specified contents.
-    ForbiddenWithSubpassContents { subpass_contents: SubpassContents },
-
-    /// An indexed draw command was recorded, but no index buffer was bound.
-    IndexBufferNotBound,
-
-    /// The highest index to be drawn exceeds the available number of indices in the bound index
-    /// buffer.
-    IndexBufferRangeOutOfBounds {
-        highest_index: u32,
-        max_index_count: u32,
-    },
-
-    /// The `indirect_buffer` usage was not enabled on the indirect buffer.
-    IndirectBufferMissingUsage,
-
-    /// The `max_compute_work_group_count` limit has been exceeded.
-    MaxComputeWorkGroupCountExceeded { requested: [u32; 3], max: [u32; 3] },
-
-    /// The `max_draw_indirect_count` limit has been exceeded.
-    MaxDrawIndirectCountExceeded { provided: u32, max: u32 },
-
-    /// The `max_multiview_instance_index` limit has been exceeded.
-    MaxMultiviewInstanceIndexExceeded { highest_instance: u64, max: u32 },
-
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
-
-    /// The color attachment count in the bound pipeline does not match the count of the current
-    /// render pass.
-    PipelineColorAttachmentCountMismatch {
-        pipeline_count: u32,
-        required_count: u32,
-    },
-
-    /// The format of a color attachment in the bound pipeline does not match the format of the
-    /// corresponding color attachment in the current render pass.
-    PipelineColorAttachmentFormatMismatch {
-        color_attachment_index: u32,
-        pipeline_format: Option<Format>,
-        required_format: Format,
-    },
-
-    /// The format of the depth attachment in the bound pipeline does not match the format of the
-    /// depth attachment in the current render pass.
-    PipelineDepthAttachmentFormatMismatch {
-        pipeline_format: Option<Format>,
-        required_format: Format,
-    },
-
-    /// The bound pipeline is not compatible with the layout used to bind the descriptor sets.
-    PipelineLayoutNotCompatible,
-
-    /// No pipeline was bound to the bind point used by the operation.
-    PipelineNotBound,
-
-    /// The bound graphics pipeline uses a render pass that is not compatible with the currently
-    /// active render pass.
-    PipelineRenderPassNotCompatible,
-
-    /// The bound graphics pipeline uses a render pass of a different type than the currently
-    /// active render pass.
-    PipelineRenderPassTypeMismatch,
-
-    /// The bound graphics pipeline uses a render subpass index that doesn't match the currently
-    /// active subpass index.
-    PipelineSubpassMismatch { pipeline: u32, current: u32 },
-
-    /// The format of the stencil attachment in the bound pipeline does not match the format of the
-    /// stencil attachment in the current render pass.
-    PipelineStencilAttachmentFormatMismatch {
-        pipeline_format: Option<Format>,
-        required_format: Format,
-    },
-
-    /// The view mask of the bound pipeline does not match the view mask of the current render pass.
-    PipelineViewMaskMismatch {
-        pipeline_view_mask: u32,
-        required_view_mask: u32,
-    },
-
-    /// The push constants are not compatible with the pipeline layout.
-    PushConstantsNotCompatible,
-
-    /// Not all push constants used by the pipeline have been set.
-    PushConstantsMissing,
-
-    /// The bound graphics pipeline requires a vertex buffer bound to a binding number, but none
-    /// was bound.
-    VertexBufferNotBound { binding_num: u32 },
-
-    /// The number of instances to be drawn exceeds the available number of indices in the
-    /// bound vertex buffers used by the pipeline.
-    VertexBufferInstanceRangeOutOfBounds {
-        instances_needed: u64,
-        instances_in_buffers: u64,
-    },
-
-    /// The number of vertices to be drawn exceeds the lowest available number of vertices in the
-    /// bound vertex buffers used by the pipeline.
-    VertexBufferVertexRangeOutOfBounds {
-        vertices_needed: u64,
-        vertices_in_buffers: u64,
-    },
-}
-
-impl Error for PipelineExecutionError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::DescriptorResourceInvalid { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl Display for PipelineExecutionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::DescriptorResourceInvalid {
-                set_num,
-                binding_num,
-                index,
-                ..
-            } => write!(
-                f,
-                "the resource bound to descriptor set {} binding {} at index {} is not compatible \
-                with the requirements of the pipeline and shaders",
-                set_num, binding_num, index,
-            ),
-            Self::DescriptorSetNotBound { set_num } => write!(
-                f,
-                "the pipeline layout requires a descriptor set bound to set number {}, but none \
-                was bound",
-                set_num,
-            ),
-            Self::DynamicColorWriteEnableNotEnoughValues {
-                color_write_enable_count,
-                attachment_count,
-            } => write!(
-                f,
-                "the bound pipeline uses a dynamic color write enable setting, but the number of \
-                provided enable values ({}) is less than the number of attachments in the current \
-                render subpass ({})",
-                color_write_enable_count, attachment_count,
-            ),
-            Self::DynamicPrimitiveTopologyClassMismatch {
-                provided_class,
-                required_class,
-            } => write!(
-                f,
-                "The bound pipeline uses a dynamic primitive topology, but the provided topology \
-                is of a different topology class ({:?}) than what the pipeline requires ({:?})",
-                provided_class, required_class,
-            ),
-            Self::DynamicPrimitiveTopologyInvalid { topology } => write!(
-                f,
-                "the bound pipeline uses a dynamic primitive topology, but the provided topology \
-                ({:?}) is not compatible with the shader stages in the pipeline",
-                topology,
-            ),
-            Self::DynamicStateNotSet { dynamic_state } => write!(
-                f,
-                "the pipeline requires the dynamic state {:?}, but this state was not set",
-                dynamic_state,
-            ),
-            Self::DynamicViewportScissorCountMismatch {
-                viewport_count,
-                scissor_count,
-            } => write!(
-                f,
-                "the bound pipeline uses a dynamic scissor and/or viewport count, but the scissor \
-                count ({}) does not match the viewport count ({})",
-                scissor_count, viewport_count,
-            ),
-            Self::ForbiddenInsideRenderPass => {
-                write!(f, "operation forbidden inside a render pass")
-            }
-            Self::ForbiddenOutsideRenderPass => {
-                write!(f, "operation forbidden outside a render pass")
-            }
-            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
-                f,
-                "operation forbidden inside a render subpass with contents {:?}",
-                subpass_contents,
-            ),
-            Self::IndexBufferNotBound => write!(
-                f,
-                "an indexed draw command was recorded, but no index buffer was bound",
-            ),
-            Self::IndexBufferRangeOutOfBounds {
-                highest_index,
-                max_index_count,
-            } => write!(
-                f,
-                "the highest index to be drawn ({}) exceeds the available number of indices in the \
-                bound index buffer ({})",
-                highest_index, max_index_count,
-            ),
-            Self::IndirectBufferMissingUsage => write!(
-                f,
-                "the `indirect_buffer` usage was not enabled on the indirect buffer",
-            ),
-            Self::MaxComputeWorkGroupCountExceeded { .. } => write!(
-                f,
-                "the `max_compute_work_group_count` limit has been exceeded",
-            ),
-            Self::MaxDrawIndirectCountExceeded { .. } => {
-                write!(f, "the `max_draw_indirect_count` limit has been exceeded")
-            }
-            Self::MaxMultiviewInstanceIndexExceeded { .. } => write!(
-                f,
-                "the `max_multiview_instance_index` limit has been exceeded",
-            ),
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::PipelineColorAttachmentCountMismatch {
-                pipeline_count,
-                required_count,
-            } => write!(
-                f,
-                "the color attachment count in the bound pipeline ({}) does not match the count of \
-                the current render pass ({})",
-                pipeline_count, required_count,
-            ),
-            Self::PipelineColorAttachmentFormatMismatch {
-                color_attachment_index,
-                pipeline_format,
-                required_format,
-            } => write!(
-                f,
-                "the format of color attachment {} in the bound pipeline ({:?}) does not match the \
-                format of the corresponding color attachment in the current render pass ({:?})",
-                color_attachment_index, pipeline_format, required_format,
-            ),
-            Self::PipelineDepthAttachmentFormatMismatch {
-                pipeline_format,
-                required_format,
-            } => write!(
-                f,
-                "the format of the depth attachment in the bound pipeline ({:?}) does not match \
-                the format of the depth attachment in the current render pass ({:?})",
-                pipeline_format, required_format,
-            ),
-            Self::PipelineLayoutNotCompatible => write!(
-                f,
-                "the bound pipeline is not compatible with the layout used to bind the descriptor \
-                sets",
-            ),
-            Self::PipelineNotBound => write!(
-                f,
-                "no pipeline was bound to the bind point used by the operation",
-            ),
-            Self::PipelineRenderPassNotCompatible => write!(
-                f,
-                "the bound graphics pipeline uses a render pass that is not compatible with the \
-                currently active render pass",
-            ),
-            Self::PipelineRenderPassTypeMismatch => write!(
-                f,
-                "the bound graphics pipeline uses a render pass of a different type than the \
-                currently active render pass",
-            ),
-            Self::PipelineSubpassMismatch { pipeline, current } => write!(
-                f,
-                "the bound graphics pipeline uses a render subpass index ({}) that doesn't match \
-                the currently active subpass index ({})",
-                pipeline, current,
-            ),
-            Self::PipelineStencilAttachmentFormatMismatch {
-                pipeline_format,
-                required_format,
-            } => write!(
-                f,
-                "the format of the stencil attachment in the bound pipeline ({:?}) does not match \
-                the format of the stencil attachment in the current render pass ({:?})",
-                pipeline_format, required_format,
-            ),
-            Self::PipelineViewMaskMismatch {
-                pipeline_view_mask,
-                required_view_mask,
-            } => write!(
-                f,
-                "the view mask of the bound pipeline ({}) does not match the view mask of the \
-                current render pass ({})",
-                pipeline_view_mask, required_view_mask,
-            ),
-            Self::PushConstantsNotCompatible => write!(
-                f,
-                "the push constants are not compatible with the pipeline layout",
-            ),
-            Self::PushConstantsMissing => write!(
-                f,
-                "not all push constants used by the pipeline have been set",
-            ),
-            Self::VertexBufferNotBound { binding_num } => write!(
-                f,
-                "the bound graphics pipeline requires a vertex buffer bound to binding number {}, \
-                but none was bound",
-                binding_num,
-            ),
-            Self::VertexBufferInstanceRangeOutOfBounds {
-                instances_needed,
-                instances_in_buffers,
-            } => write!(
-                f,
-                "the number of instances to be drawn ({}) exceeds the available number of \
-                instances in the bound vertex buffers ({}) used by the pipeline",
-                instances_needed, instances_in_buffers,
-            ),
-            Self::VertexBufferVertexRangeOutOfBounds {
-                vertices_needed,
-                vertices_in_buffers,
-            } => write!(
-                f,
-                "the number of vertices to be drawn ({}) exceeds the available number of vertices \
-                in the bound vertex buffers ({}) used by the pipeline",
-                vertices_needed, vertices_in_buffers,
-            ),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum DescriptorResourceInvalidError {
-    ImageViewFormatMismatch {
-        required: Format,
-        provided: Format,
-    },
-    ImageViewMultisampledMismatch {
-        required: bool,
-        provided: bool,
-    },
-    ImageViewScalarTypeMismatch {
-        required: ShaderScalarType,
-        provided: ShaderScalarType,
-    },
-    ImageViewTypeMismatch {
-        required: ImageViewType,
-        provided: ImageViewType,
-    },
-    Missing,
-    SamplerCompareMismatch {
-        required: bool,
-        provided: bool,
-    },
-    SamplerImageViewIncompatible {
-        image_view_set_num: u32,
-        image_view_binding_num: u32,
-        image_view_index: u32,
-        error: Box<ValidationError>,
-    },
-    SamplerUnnormalizedCoordinatesNotAllowed,
-    SamplerYcbcrConversionNotAllowed,
-    StorageImageAtomicNotSupported,
-    StorageReadWithoutFormatNotSupported,
-    StorageWriteWithoutFormatNotSupported,
-}
-
-impl Error for DescriptorResourceInvalidError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::SamplerImageViewIncompatible { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl Display for DescriptorResourceInvalidError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::ImageViewFormatMismatch { provided, required } => write!(
-                f,
-                "the format of the bound image view ({:?}) does not match what the pipeline \
-                requires ({:?})",
-                provided, required,
-            ),
-            Self::ImageViewMultisampledMismatch { provided, required } => write!(
-                f,
-                "the multisampling of the bound image ({}) does not match what the pipeline \
-                requires ({})",
-                provided, required,
-            ),
-            Self::ImageViewScalarTypeMismatch { provided, required } => write!(
-                f,
-                "the scalar type of the format and aspect of the bound image view ({:?}) does not \
-                match what the pipeline requires ({:?})",
-                provided, required,
-            ),
-            Self::ImageViewTypeMismatch { provided, required } => write!(
-                f,
-                "the image view type of the bound image view ({:?}) does not match what the \
-                pipeline requires ({:?})",
-                provided, required,
-            ),
-            Self::Missing => write!(f, "no resource was bound"),
-            Self::SamplerImageViewIncompatible { .. } => write!(
-                f,
-                "the bound sampler samples an image view that is not compatible with that sampler",
-            ),
-            Self::SamplerCompareMismatch { provided, required } => write!(
-                f,
-                "the depth comparison state of the bound sampler ({}) does not match what the \
-                pipeline requires ({})",
-                provided, required,
-            ),
-            Self::SamplerUnnormalizedCoordinatesNotAllowed => write!(
-                f,
-                "the bound sampler is required to have unnormalized coordinates disabled",
-            ),
-            Self::SamplerYcbcrConversionNotAllowed => write!(
-                f,
-                "the bound sampler is required to have no attached sampler YCbCr conversion",
-            ),
-            Self::StorageImageAtomicNotSupported => write!(
-                f,
-                "the bound image view does not support the `storage_image_atomic` format feature",
-            ),
-            Self::StorageReadWithoutFormatNotSupported => write!(
-                f,
-                "the bound image view or buffer view does not support the \
-                `storage_read_without_format` format feature",
-            ),
-            Self::StorageWriteWithoutFormatNotSupported => write!(
-                f,
-                "the bound image view or buffer view does not support the \
-                `storage_write_without_format` format feature",
-            ),
-        }
-    }
+#[derive(Clone, Copy)]
+enum VUIDType {
+    Dispatch,
+    DispatchIndirect,
+    Draw,
+    DrawIndirect,
+    DrawIndexed,
+    DrawIndexedIndirect,
 }

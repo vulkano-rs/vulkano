@@ -10,9 +10,7 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, IndexBuffer, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator,
-        auto::{RenderPassStateType, SetOrPush},
-        sys::UnsafeCommandBufferBuilder,
+        allocator::CommandBufferAllocator, auto::SetOrPush, sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
     descriptor_set::{
@@ -22,23 +20,15 @@ use crate::{
         WriteDescriptorSet,
     },
     device::{DeviceOwned, QueueFlags},
-    memory::{is_aligned, DeviceAlignment},
+    memory::is_aligned,
     pipeline::{
-        graphics::{subpass::PipelineSubpassType, vertex_input::VertexBuffersCollection},
-        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+        graphics::vertex_input::VertexBuffersCollection, ComputePipeline, GraphicsPipeline,
+        PipelineBindPoint, PipelineLayout,
     },
-    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
-    VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{
-    cmp::min,
-    error,
-    ffi::c_void,
-    fmt::{Display, Error as FmtError, Formatter},
-    mem::size_of,
-    sync::Arc,
-};
+use std::{cmp::min, ffi::c_void, mem::size_of, sync::Arc};
 
 /// # Commands to bind or push state for pipeline execution commands.
 ///
@@ -48,39 +38,29 @@ where
     A: CommandBufferAllocator,
 {
     /// Binds descriptor sets for future dispatch or draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support `pipeline_bind_point`.
-    /// - Panics if the highest descriptor set slot being bound is not less than the number of sets
-    ///   in `pipeline_layout`.
-    /// - Panics if `self` and any element of `descriptor_sets` do not belong to the same device.
     pub fn bind_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         first_set: u32,
         descriptor_sets: impl DescriptorSetsCollection,
-    ) -> &mut Self {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let descriptor_sets = descriptor_sets.into_vec();
         self.validate_bind_descriptor_sets(
             pipeline_bind_point,
             &pipeline_layout,
             first_set,
             &descriptor_sets,
-        )
-        .unwrap();
+        )?;
 
         unsafe {
-            self.bind_descriptor_sets_unchecked(
+            Ok(self.bind_descriptor_sets_unchecked(
                 pipeline_bind_point,
                 pipeline_layout,
                 first_set,
                 descriptor_sets,
-            );
+            ))
         }
-
-        self
     }
 
     fn validate_bind_descriptor_sets(
@@ -89,134 +69,13 @@ where
         pipeline_layout: &PipelineLayout,
         first_set: u32,
         descriptor_sets: &[DescriptorSetWithOffsets],
-    ) -> Result<(), BindPushError> {
-        // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-parameter
-        pipeline_bind_point.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool
-        // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361
-        match pipeline_bind_point {
-            PipelineBindPoint::Compute => {
-                if !queue_family_properties
-                    .queue_flags
-                    .intersects(QueueFlags::COMPUTE)
-                {
-                    return Err(BindPushError::NotSupportedByQueueFamily);
-                }
-            }
-            PipelineBindPoint::Graphics => {
-                if !queue_family_properties
-                    .queue_flags
-                    .intersects(QueueFlags::GRAPHICS)
-                {
-                    return Err(BindPushError::NotSupportedByQueueFamily);
-                }
-            }
-        }
-
-        // VUID-vkCmdBindDescriptorSets-firstSet-00360
-        if first_set + descriptor_sets.len() as u32 > pipeline_layout.set_layouts().len() as u32 {
-            return Err(BindPushError::DescriptorSetOutOfRange {
-                set_num: first_set + descriptor_sets.len() as u32,
-                pipeline_layout_set_count: pipeline_layout.set_layouts().len() as u32,
-            });
-        }
-
-        let properties = self.device().physical_device().properties();
-        let uniform_alignment = properties.min_uniform_buffer_offset_alignment;
-        let storage_alignment = properties.min_storage_buffer_offset_alignment;
-
-        for (i, set) in descriptor_sets.iter().enumerate() {
-            let set_num = first_set + i as u32;
-            let (set, dynamic_offsets) = set.as_ref();
-
-            // VUID-vkCmdBindDescriptorSets-commonparent
-            assert_eq!(self.device(), set.device());
-
-            let set_layout = set.layout();
-            let pipeline_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
-
-            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-00358
-            if !pipeline_set_layout.is_compatible_with(set_layout) {
-                return Err(BindPushError::DescriptorSetNotCompatible { set_num });
-            }
-
-            let mut dynamic_offsets_remaining = dynamic_offsets;
-            let mut required_dynamic_offset_count = 0;
-
-            for (&binding_num, binding) in set_layout.bindings() {
-                let required_alignment = match binding.descriptor_type {
-                    DescriptorType::UniformBufferDynamic => uniform_alignment,
-                    DescriptorType::StorageBufferDynamic => storage_alignment,
-                    _ => continue,
-                };
-
-                let count = if binding
-                    .binding_flags
-                    .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
-                {
-                    set.variable_descriptor_count()
-                } else {
-                    binding.descriptor_count
-                } as usize;
-
-                required_dynamic_offset_count += count;
-
-                if !dynamic_offsets_remaining.is_empty() {
-                    let split_index = min(count, dynamic_offsets_remaining.len());
-                    let dynamic_offsets = &dynamic_offsets_remaining[..split_index];
-                    dynamic_offsets_remaining = &dynamic_offsets_remaining[split_index..];
-
-                    let elements = match set.resources().binding(binding_num) {
-                        Some(DescriptorBindingResources::Buffer(elements)) => elements.as_slice(),
-                        _ => unreachable!(),
-                    };
-
-                    for (index, (&offset, element)) in
-                        dynamic_offsets.iter().zip(elements).enumerate()
-                    {
-                        // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971
-                        // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972
-                        if !is_aligned(offset as DeviceSize, required_alignment) {
-                            return Err(BindPushError::DynamicOffsetNotAligned {
-                                set_num,
-                                binding_num,
-                                index: index as u32,
-                                offset,
-                                required_alignment,
-                            });
-                        }
-
-                        if let Some(buffer_info) = element {
-                            let DescriptorBufferInfo { buffer, range } = buffer_info;
-
-                            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979
-                            if offset as DeviceSize + range.end > buffer.size() {
-                                return Err(BindPushError::DynamicOffsetOutOfBufferBounds {
-                                    set_num,
-                                    binding_num,
-                                    index: index as u32,
-                                    offset,
-                                    range_end: range.end,
-                                    buffer_size: buffer.size(),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
-            // VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359
-            if dynamic_offsets.len() != required_dynamic_offset_count {
-                return Err(BindPushError::DynamicOffsetCountMismatch {
-                    set_num,
-                    provided_count: dynamic_offsets.len(),
-                    required_count: required_dynamic_offset_count,
-                });
-            }
-        }
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_bind_descriptor_sets(
+            pipeline_bind_point,
+            pipeline_layout,
+            first_set,
+            descriptor_sets,
+        )?;
 
         Ok(())
     }
@@ -252,7 +111,7 @@ where
             "bind_descriptor_sets",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_descriptor_sets(
+                out.bind_descriptor_sets_unchecked(
                     pipeline_bind_point,
                     &pipeline_layout,
                     first_set,
@@ -265,67 +124,21 @@ where
     }
 
     /// Binds an index buffer for future indexed draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if `self` and `index_buffer` do not belong to the same device.
-    /// - Panics if `index_buffer` does not have the [`BufferUsage::INDEX_BUFFER`] usage enabled.
-    /// - If the index buffer contains `u8` indices, panics if the [`index_type_uint8`] feature is
-    ///   not enabled on the device.
-    ///
-    /// [`BufferUsage::INDEX_BUFFER`]: crate::buffer::BufferUsage::INDEX_BUFFER
-    /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
-    pub fn bind_index_buffer(&mut self, index_buffer: impl Into<IndexBuffer>) -> &mut Self {
+    pub fn bind_index_buffer(
+        &mut self,
+        index_buffer: impl Into<IndexBuffer>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let index_buffer = index_buffer.into();
-        self.validate_bind_index_buffer(&index_buffer).unwrap();
+        self.validate_bind_index_buffer(&index_buffer)?;
 
-        unsafe {
-            self.bind_index_buffer_unchecked(index_buffer);
-        }
-
-        self
+        unsafe { Ok(self.bind_index_buffer_unchecked(index_buffer)) }
     }
 
-    fn validate_bind_index_buffer(&self, index_buffer: &IndexBuffer) -> Result<(), BindPushError> {
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(BindPushError::NotSupportedByQueueFamily);
-        }
-
-        let index_buffer_bytes = index_buffer.as_bytes();
-
-        // VUID-vkCmdBindIndexBuffer-commonparent
-        assert_eq!(self.device(), index_buffer_bytes.device());
-
-        // VUID-vkCmdBindIndexBuffer-buffer-00433
-        if !index_buffer_bytes
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::INDEX_BUFFER)
-        {
-            return Err(BindPushError::IndexBufferMissingUsage);
-        }
-
-        // VUID-vkCmdBindIndexBuffer-indexType-02765
-        if matches!(index_buffer, IndexBuffer::U8(_))
-            && !self.device().enabled_features().index_type_uint8
-        {
-            return Err(BindPushError::RequirementNotMet {
-                required_for: "`index_buffer` is `IndexBuffer::U8`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "index_type_uint8",
-                )])]),
-            });
-        }
-
-        // TODO:
-        // VUID-vkCmdBindIndexBuffer-offset-00432
+    fn validate_bind_index_buffer(
+        &self,
+        index_buffer: &IndexBuffer,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_bind_index_buffer(index_buffer)?;
 
         Ok(())
     }
@@ -341,7 +154,7 @@ where
             "bind_index_buffer",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_index_buffer(&index_buffer);
+                out.bind_index_buffer_unchecked(&index_buffer);
             },
         );
 
@@ -349,37 +162,20 @@ where
     }
 
     /// Binds a compute pipeline for future dispatch calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support compute operations.
-    /// - Panics if `self` and `pipeline` do not belong to the same device.
-    pub fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) -> &mut Self {
-        self.validate_bind_pipeline_compute(&pipeline).unwrap();
+    pub fn bind_pipeline_compute(
+        &mut self,
+        pipeline: Arc<ComputePipeline>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_pipeline_compute(&pipeline)?;
 
-        unsafe {
-            self.bind_pipeline_compute_unchecked(pipeline);
-        }
-
-        self
+        unsafe { Ok(self.bind_pipeline_compute_unchecked(pipeline)) }
     }
 
     fn validate_bind_pipeline_compute(
         &self,
         pipeline: &ComputePipeline,
-    ) -> Result<(), BindPushError> {
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBindPipeline-pipelineBindPoint-00777
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::COMPUTE)
-        {
-            return Err(BindPushError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdBindPipeline-commonparent
-        assert_eq!(self.device(), pipeline.device());
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_bind_pipeline_compute(pipeline)?;
 
         Ok(())
     }
@@ -394,7 +190,7 @@ where
             "bind_pipeline_compute",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_pipeline_compute(&pipeline);
+                out.bind_pipeline_compute_unchecked(&pipeline);
             },
         );
 
@@ -402,77 +198,20 @@ where
     }
 
     /// Binds a graphics pipeline for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if `self` and `pipeline` do not belong to the same device.
-    pub fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) -> &mut Self {
-        self.validate_bind_pipeline_graphics(&pipeline).unwrap();
+    pub fn bind_pipeline_graphics(
+        &mut self,
+        pipeline: Arc<GraphicsPipeline>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_pipeline_graphics(&pipeline)?;
 
-        unsafe {
-            self.bind_pipeline_graphics_unchecked(pipeline);
-        }
-
-        self
+        unsafe { Ok(self.bind_pipeline_graphics_unchecked(pipeline)) }
     }
 
     fn validate_bind_pipeline_graphics(
         &self,
         pipeline: &GraphicsPipeline,
-    ) -> Result<(), BindPushError> {
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBindPipeline-pipelineBindPoint-00778
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(BindPushError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdBindPipeline-commonparent
-        assert_eq!(self.device(), pipeline.device());
-
-        if let Some(last_pipeline) =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .and_then(|render_pass_state| match &render_pass_state.render_pass {
-                    RenderPassStateType::BeginRendering(state) if state.pipeline_used => {
-                        self.builder_state.pipeline_graphics.as_ref()
-                    }
-                    _ => None,
-                })
-        {
-            if let (
-                PipelineSubpassType::BeginRendering(pipeline_rendering_info),
-                PipelineSubpassType::BeginRendering(last_pipeline_rendering_info),
-            ) = (pipeline.subpass(), last_pipeline.subpass())
-            {
-                // VUID-vkCmdBindPipeline-pipeline-06195
-                // VUID-vkCmdBindPipeline-pipeline-06196
-                if pipeline_rendering_info.color_attachment_formats
-                    != last_pipeline_rendering_info.color_attachment_formats
-                {
-                    return Err(BindPushError::PreviousPipelineColorAttachmentFormatMismatch);
-                }
-
-                // VUID-vkCmdBindPipeline-pipeline-06197
-                if pipeline_rendering_info.depth_attachment_format
-                    != last_pipeline_rendering_info.depth_attachment_format
-                {
-                    return Err(BindPushError::PreviousPipelineDepthAttachmentFormatMismatch);
-                }
-
-                // VUID-vkCmdBindPipeline-pipeline-06194
-                if pipeline_rendering_info.stencil_attachment_format
-                    != last_pipeline_rendering_info.stencil_attachment_format
-                {
-                    return Err(BindPushError::PreviousPipelineStencilAttachmentFormatMismatch);
-                }
-            }
-        }
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_bind_pipeline_graphics(pipeline)?;
 
         // VUID-vkCmdBindPipeline-pipeline-00781
         // TODO:
@@ -498,7 +237,7 @@ where
             "bind_pipeline_graphics",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_pipeline_graphics(&pipeline);
+                out.bind_pipeline_graphics_unchecked(&pipeline);
             },
         );
 
@@ -506,81 +245,24 @@ where
     }
 
     /// Binds vertex buffers for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the highest vertex buffer binding being bound is greater than the
-    ///   [`max_vertex_input_bindings`] device property.
-    /// - Panics if `self` and any element of `vertex_buffers` do not belong to the same device.
-    /// - Panics if any element of `vertex_buffers` does not have the
-    ///   [`BufferUsage::VERTEX_BUFFER`] usage enabled.
-    ///
-    /// [`max_vertex_input_bindings`]: crate::device::Properties::max_vertex_input_bindings
-    /// [`BufferUsage::VERTEX_BUFFER`]: crate::buffer::BufferUsage::VERTEX_BUFFER
     pub fn bind_vertex_buffers(
         &mut self,
         first_binding: u32,
         vertex_buffers: impl VertexBuffersCollection,
-    ) -> &mut Self {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let vertex_buffers = vertex_buffers.into_vec();
-        self.validate_bind_vertex_buffers(first_binding, &vertex_buffers)
-            .unwrap();
+        self.validate_bind_vertex_buffers(first_binding, &vertex_buffers)?;
 
-        unsafe {
-            self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers);
-        }
-
-        self
+        unsafe { Ok(self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers)) }
     }
 
     fn validate_bind_vertex_buffers(
         &self,
         first_binding: u32,
         vertex_buffers: &[Subbuffer<[u8]>],
-    ) -> Result<(), BindPushError> {
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBindVertexBuffers-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(BindPushError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdBindVertexBuffers-firstBinding-00624
-        // VUID-vkCmdBindVertexBuffers-firstBinding-00625
-        if first_binding + vertex_buffers.len() as u32
-            > self
-                .device()
-                .physical_device()
-                .properties()
-                .max_vertex_input_bindings
-        {
-            return Err(BindPushError::MaxVertexInputBindingsExceeded {
-                _binding_count: first_binding + vertex_buffers.len() as u32,
-                _max: self
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .max_vertex_input_bindings,
-            });
-        }
-
-        for buffer in vertex_buffers {
-            // VUID-vkCmdBindVertexBuffers-commonparent
-            assert_eq!(self.device(), buffer.device());
-
-            // VUID-vkCmdBindVertexBuffers-pBuffers-00627
-            if !buffer
-                .buffer()
-                .usage()
-                .intersects(BufferUsage::VERTEX_BUFFER)
-            {
-                return Err(BindPushError::VertexBufferMissingUsage);
-            }
-        }
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_bind_vertex_buffers(first_binding, vertex_buffers)?;
 
         Ok(())
     }
@@ -603,7 +285,7 @@ where
             "bind_vertex_buffers",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.bind_vertex_buffers(first_binding, &vertex_buffers);
+                out.bind_vertex_buffers_unchecked(first_binding, &vertex_buffers);
             },
         );
 
@@ -611,83 +293,34 @@ where
     }
 
     /// Sets push constants for future dispatch or draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `offset` is not a multiple of 4.
-    /// - Panics if the size of `push_constants` is not a multiple of 4.
-    /// - Panics if any of the bytes in `push_constants` do not fall within any of the pipeline
-    ///   layout's push constant ranges.
     pub fn push_constants<Pc>(
         &mut self,
         pipeline_layout: Arc<PipelineLayout>,
         offset: u32,
         push_constants: Pc,
-    ) -> &mut Self
+    ) -> Result<&mut Self, Box<ValidationError>>
     where
         Pc: BufferContents,
     {
         let size = size_of::<Pc>() as u32;
 
         if size == 0 {
-            return self;
+            return Ok(self);
         }
 
-        self.validate_push_constants(&pipeline_layout, offset, &push_constants)
-            .unwrap();
+        self.validate_push_constants(&pipeline_layout, offset, &push_constants)?;
 
-        unsafe {
-            self.push_constants_unchecked(pipeline_layout, offset, push_constants);
-        }
-
-        self
+        unsafe { Ok(self.push_constants_unchecked(pipeline_layout, offset, push_constants)) }
     }
 
     fn validate_push_constants<Pc: BufferContents>(
         &self,
         pipeline_layout: &PipelineLayout,
         offset: u32,
-        _push_constants: &Pc,
-    ) -> Result<(), BindPushError> {
-        let mut remaining_size = size_of::<Pc>();
-
-        if offset % 4 != 0 {
-            return Err(BindPushError::PushConstantsOffsetNotAligned);
-        }
-
-        if remaining_size % 4 != 0 {
-            return Err(BindPushError::PushConstantsSizeNotAligned);
-        }
-
-        let mut current_offset = offset as usize;
-
-        for range in pipeline_layout
-            .push_constant_ranges_disjoint()
-            .iter()
-            .skip_while(|range| range.offset + range.size <= offset)
-        {
-            // there is a gap between ranges, but the passed push_constants contains
-            // some bytes in this gap, exit the loop and report error
-            if range.offset as usize > current_offset {
-                break;
-            }
-
-            // push the minimum of the whole remaining data, and the part until the end of this range
-            let push_size =
-                remaining_size.min(range.offset as usize + range.size as usize - current_offset);
-            current_offset += push_size;
-            remaining_size -= push_size;
-
-            if remaining_size == 0 {
-                break;
-            }
-        }
-
-        if remaining_size != 0 {
-            return Err(BindPushError::PushConstantsDataOutOfRange {
-                offset: current_offset,
-            });
-        }
+        push_constants: &Pc,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_push_constants(pipeline_layout, offset, push_constants)?;
 
         Ok(())
     }
@@ -716,7 +349,7 @@ where
             "push_constants",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.push_constants(&pipeline_layout, offset, &push_constants);
+                out.push_constants_unchecked(&pipeline_layout, offset, &push_constants);
             },
         );
 
@@ -724,40 +357,814 @@ where
     }
 
     /// Pushes descriptor data directly into the command buffer for future dispatch or draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support `pipeline_bind_point`.
-    /// - Panics if the
-    ///   [`khr_push_descriptor`](crate::device::DeviceExtensions::khr_push_descriptor)
-    ///   extension is not enabled on the device.
-    /// - Panics if `set_num` is not less than the number of sets in `pipeline_layout`.
-    /// - Panics if an element of `descriptor_writes` is not compatible with `pipeline_layout`.
     pub fn push_descriptor_set(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
         descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
-    ) -> &mut Self {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_push_descriptor_set(
             pipeline_bind_point,
             &pipeline_layout,
             set_num,
             &descriptor_writes,
-        )
-        .unwrap();
+        )?;
 
         unsafe {
-            self.push_descriptor_set_unchecked(
+            Ok(self.push_descriptor_set_unchecked(
                 pipeline_bind_point,
                 pipeline_layout,
                 set_num,
                 descriptor_writes,
-            );
+            ))
+        }
+    }
+
+    fn validate_push_descriptor_set(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        set_num: u32,
+        descriptor_writes: &[WriteDescriptorSet],
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_push_descriptor_set(
+            pipeline_bind_point,
+            pipeline_layout,
+            set_num,
+            descriptor_writes,
+        )?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn push_descriptor_set_unchecked(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        set_num: u32,
+        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
+    ) -> &mut Self {
+        let state = self.builder_state.invalidate_descriptor_sets(
+            pipeline_bind_point,
+            pipeline_layout.clone(),
+            set_num,
+            1,
+        );
+        let layout = state.pipeline_layout.set_layouts()[set_num as usize].as_ref();
+        debug_assert!(layout
+            .flags()
+            .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR));
+
+        let set_resources = match state
+            .descriptor_sets
+            .entry(set_num)
+            .or_insert_with(|| SetOrPush::Push(DescriptorSetResources::new(layout, 0)))
+        {
+            SetOrPush::Push(set_resources) => set_resources,
+            _ => unreachable!(),
+        };
+
+        for write in &descriptor_writes {
+            set_resources.write(write, layout);
         }
 
+        self.add_command(
+            "push_descriptor_set",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+                out.push_descriptor_set_unchecked(
+                    pipeline_bind_point,
+                    &pipeline_layout,
+                    set_num,
+                    &descriptor_writes,
+                );
+            },
+        );
+
         self
+    }
+}
+
+impl<A> UnsafeCommandBufferBuilder<A>
+where
+    A: CommandBufferAllocator,
+{
+    pub unsafe fn bind_descriptor_sets(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[DescriptorSetWithOffsets],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_descriptor_sets(
+            pipeline_bind_point,
+            pipeline_layout,
+            first_set,
+            descriptor_sets,
+        )?;
+
+        Ok(self.bind_descriptor_sets_unchecked(
+            pipeline_bind_point,
+            pipeline_layout,
+            first_set,
+            descriptor_sets,
+        ))
+    }
+
+    fn validate_bind_descriptor_sets(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[DescriptorSetWithOffsets],
+    ) -> Result<(), Box<ValidationError>> {
+        pipeline_bind_point
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "pipeline_bind_point".into(),
+                vuids: &["VUID-vkCmdBindDescriptorSets-pipelineBindPoint-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        let queue_family_properties = self.queue_family_properties();
+
+        match pipeline_bind_point {
+            PipelineBindPoint::Compute => {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::COMPUTE)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "pipeline_bind_point".into(),
+                        problem: "is `PipelineBindPoint::Compute`, but \
+                            the queue family of the command buffer does not support \
+                            compute operations"
+                            .into(),
+                        vuids: &[
+                            "VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361",
+                            "VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+            }
+            PipelineBindPoint::Graphics => {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::GRAPHICS)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "pipeline_bind_point".into(),
+                        problem: "is `PipelineBindPoint::Graphics`, but \
+                            the queue family of the command buffer does not support \
+                            graphics operations"
+                            .into(),
+                        vuids: &[
+                            "VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361",
+                            "VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if first_set + descriptor_sets.len() as u32 > pipeline_layout.set_layouts().len() as u32 {
+            return Err(Box::new(ValidationError {
+                problem: "`first_set + descriptor_sets.len()` is greater than \
+                    `pipeline_layout.set_layouts().len()`"
+                    .into(),
+                vuids: &["VUID-vkCmdBindDescriptorSets-firstSet-00360"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        for (descriptor_sets_index, set) in descriptor_sets.iter().enumerate() {
+            let set_num = first_set + descriptor_sets_index as u32;
+            let (set, dynamic_offsets) = set.as_ref();
+
+            // VUID-vkCmdBindDescriptorSets-commonparent
+            assert_eq!(self.device(), set.device());
+
+            let set_layout = set.layout();
+            let pipeline_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+
+            if !pipeline_set_layout.is_compatible_with(set_layout) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`descriptor_sets[{0}]` (for set number {1}) is not compatible with \
+                        `pipeline_layout.set_layouts()[{1}]`",
+                        descriptor_sets_index, set_num
+                    )
+                    .into(),
+                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-00358"],
+                    ..Default::default()
+                }));
+            }
+
+            let mut dynamic_offsets_remaining = dynamic_offsets;
+            let mut required_dynamic_offset_count = 0;
+
+            for (&binding_num, binding) in set_layout.bindings() {
+                let required_alignment = match binding.descriptor_type {
+                    DescriptorType::UniformBufferDynamic => {
+                        properties.min_uniform_buffer_offset_alignment
+                    }
+                    DescriptorType::StorageBufferDynamic => {
+                        properties.min_storage_buffer_offset_alignment
+                    }
+                    _ => continue,
+                };
+
+                let count = if binding
+                    .binding_flags
+                    .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+                {
+                    set.variable_descriptor_count()
+                } else {
+                    binding.descriptor_count
+                } as usize;
+
+                required_dynamic_offset_count += count;
+
+                if !dynamic_offsets_remaining.is_empty() {
+                    let split_index = min(count, dynamic_offsets_remaining.len());
+                    let dynamic_offsets = &dynamic_offsets_remaining[..split_index];
+                    dynamic_offsets_remaining = &dynamic_offsets_remaining[split_index..];
+
+                    let elements = match set.resources().binding(binding_num) {
+                        Some(DescriptorBindingResources::Buffer(elements)) => elements.as_slice(),
+                        _ => unreachable!(),
+                    };
+
+                    for (index, (&offset, element)) in
+                        dynamic_offsets.iter().zip(elements).enumerate()
+                    {
+                        if !is_aligned(offset as DeviceSize, required_alignment) {
+                            match binding.descriptor_type {
+                                DescriptorType::UniformBufferDynamic => {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "the descriptor type of `descriptor_sets[{}]` \
+                                            (for set number {}) is \
+                                            `DescriptorType::UniformBufferDynamic`, but the \
+                                            dynamic offset provided for binding {} index {} is \
+                                            not aligned to the \
+                                            `min_uniform_buffer_offset_alignment` device property",
+                                            descriptor_sets_index, set_num, binding_num, index,
+                                        )
+                                        .into(),
+                                        vuids: &[
+                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971",
+                                        ],
+                                        ..Default::default()
+                                    }));
+                                }
+                                DescriptorType::StorageBufferDynamic => {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "the descriptor type of `descriptor_sets[{}]` \
+                                            (for set number {}) is \
+                                            `DescriptorType::StorageBufferDynamic`, but the \
+                                            dynamic offset provided for binding {} index {} is \
+                                            not aligned to the \
+                                            `min_storage_buffer_offset_alignment` device property",
+                                            descriptor_sets_index, set_num, binding_num, index,
+                                        )
+                                        .into(),
+                                        vuids: &[
+                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972",
+                                        ],
+                                        ..Default::default()
+                                    }));
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+
+                        if let Some(buffer_info) = element {
+                            let DescriptorBufferInfo { buffer, range } = buffer_info;
+
+                            if offset as DeviceSize + range.end > buffer.size() {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the dynamic offset of `descriptor_sets[{}]` \
+                                        (for set number {}) for binding {} index {}, when \
+                                        added to `range.end` of the descriptor write, is \
+                                        greater than the size of the bound buffer",
+                                        descriptor_sets_index, set_num, binding_num, index,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+
+            if dynamic_offsets.len() != required_dynamic_offset_count {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "the number of dynamic offsets provided for `descriptor_sets[{}]` \
+                        (for set number {}) does not equal the number required ({})",
+                        descriptor_sets_index, set_num, required_dynamic_offset_count,
+                    )
+                    .into(),
+                    vuids: &["VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_descriptor_sets_unchecked(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[DescriptorSetWithOffsets],
+    ) -> &mut Self {
+        if descriptor_sets.is_empty() {
+            return self;
+        }
+
+        let descriptor_sets_vk: SmallVec<[_; 12]> = descriptor_sets
+            .iter()
+            .map(|x| x.as_ref().0.inner().handle())
+            .collect();
+        let dynamic_offsets_vk: SmallVec<[_; 32]> = descriptor_sets
+            .iter()
+            .flat_map(|x| x.as_ref().1.iter().copied())
+            .collect();
+
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_bind_descriptor_sets)(
+            self.handle(),
+            pipeline_bind_point.into(),
+            pipeline_layout.handle(),
+            first_set,
+            descriptor_sets_vk.len() as u32,
+            descriptor_sets_vk.as_ptr(),
+            dynamic_offsets_vk.len() as u32,
+            dynamic_offsets_vk.as_ptr(),
+        );
+
+        self
+    }
+
+    pub unsafe fn bind_index_buffer(
+        &mut self,
+        index_buffer: &IndexBuffer,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_index_buffer(index_buffer)?;
+
+        Ok(self.bind_index_buffer_unchecked(index_buffer))
+    }
+
+    fn validate_bind_index_buffer(
+        &self,
+        index_buffer: &IndexBuffer,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let index_buffer_bytes = index_buffer.as_bytes();
+
+        // VUID-vkCmdBindIndexBuffer-commonparent
+        assert_eq!(self.device(), index_buffer_bytes.device());
+
+        if !index_buffer_bytes
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDEX_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "index_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDEX_BUFFER`".into(),
+                vuids: &["VUID-vkCmdBindIndexBuffer-buffer-00433"],
+                ..Default::default()
+            }));
+        }
+
+        if matches!(index_buffer, IndexBuffer::U8(_))
+            && !self.device().enabled_features().index_type_uint8
+        {
+            return Err(Box::new(ValidationError {
+                context: "index_buffer".into(),
+                problem: "is `IndexBuffer::U8`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "index_type_uint8",
+                )])]),
+                vuids: &["VUID-vkCmdBindIndexBuffer-indexType-02765"],
+            }));
+        }
+
+        // TODO:
+        // VUID-vkCmdBindIndexBuffer-offset-00432
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_index_buffer_unchecked(&mut self, index_buffer: &IndexBuffer) -> &mut Self {
+        let index_buffer_bytes = index_buffer.as_bytes();
+
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_bind_index_buffer)(
+            self.handle(),
+            index_buffer_bytes.buffer().handle(),
+            index_buffer_bytes.offset(),
+            index_buffer.index_type().into(),
+        );
+
+        self
+    }
+
+    pub unsafe fn bind_pipeline_compute(
+        &mut self,
+        pipeline: &ComputePipeline,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_pipeline_compute(pipeline)?;
+
+        Ok(self.bind_pipeline_compute_unchecked(pipeline))
+    }
+
+    fn validate_bind_pipeline_compute(
+        &self,
+        pipeline: &ComputePipeline,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBindPipeline-pipelineBindPoint-00777"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdBindPipeline-commonparent
+        assert_eq!(self.device(), pipeline.device());
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_pipeline_compute_unchecked(
+        &mut self,
+        pipeline: &ComputePipeline,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_bind_pipeline)(
+            self.handle(),
+            ash::vk::PipelineBindPoint::COMPUTE,
+            pipeline.handle(),
+        );
+
+        self
+    }
+
+    pub unsafe fn bind_pipeline_graphics(
+        &mut self,
+        pipeline: &GraphicsPipeline,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_pipeline_graphics(pipeline)?;
+
+        Ok(self.bind_pipeline_graphics_unchecked(pipeline))
+    }
+
+    fn validate_bind_pipeline_graphics(
+        &self,
+        pipeline: &GraphicsPipeline,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBindPipeline-pipelineBindPoint-00778"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdBindPipeline-commonparent
+        assert_eq!(self.device(), pipeline.device());
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_pipeline_graphics_unchecked(
+        &mut self,
+        pipeline: &GraphicsPipeline,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_bind_pipeline)(
+            self.handle(),
+            ash::vk::PipelineBindPoint::GRAPHICS,
+            pipeline.handle(),
+        );
+
+        self
+    }
+
+    pub unsafe fn bind_vertex_buffers(
+        &mut self,
+        first_binding: u32,
+        vertex_buffers: &[Subbuffer<[u8]>],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_vertex_buffers(first_binding, vertex_buffers)?;
+
+        Ok(self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers))
+    }
+
+    fn validate_bind_vertex_buffers(
+        &self,
+        first_binding: u32,
+        vertex_buffers: &[Subbuffer<[u8]>],
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBindVertexBuffers-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if first_binding + vertex_buffers.len() as u32 > properties.max_vertex_input_bindings {
+            return Err(Box::new(ValidationError {
+                problem: "`first_binding + vertex_buffers.len()` is greater than the \
+                    `max_vertex_input_bindings` limit"
+                    .into(),
+                vuids: &[
+                    "VUID-vkCmdBindVertexBuffers-firstBinding-00624",
+                    "VUID-vkCmdBindVertexBuffers-firstBinding-00625",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        for (vertex_buffers_index, buffer) in vertex_buffers.iter().enumerate() {
+            // VUID-vkCmdBindVertexBuffers-commonparent
+            assert_eq!(self.device(), buffer.device());
+
+            if !buffer
+                .buffer()
+                .usage()
+                .intersects(BufferUsage::VERTEX_BUFFER)
+            {
+                return Err(Box::new(ValidationError {
+                    context: format!("vertex_buffers[{}].usage()", vertex_buffers_index).into(),
+                    problem: "does not contain `BufferUsage::VERTEX_BUFFER`".into(),
+                    vuids: &["VUID-vkCmdBindVertexBuffers-pBuffers-00627"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_vertex_buffers_unchecked(
+        &mut self,
+        first_binding: u32,
+        vertex_buffers: &[Subbuffer<[u8]>],
+    ) -> &mut Self {
+        if vertex_buffers.is_empty() {
+            return self;
+        }
+
+        let (buffers_vk, offsets_vk): (SmallVec<[_; 2]>, SmallVec<[_; 2]>) = vertex_buffers
+            .iter()
+            .map(|buffer| (buffer.buffer().handle(), buffer.offset()))
+            .unzip();
+
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_bind_vertex_buffers)(
+            self.handle(),
+            first_binding,
+            buffers_vk.len() as u32,
+            buffers_vk.as_ptr(),
+            offsets_vk.as_ptr(),
+        );
+
+        self
+    }
+
+    pub unsafe fn push_constants<Pc>(
+        &mut self,
+        pipeline_layout: &PipelineLayout,
+        offset: u32,
+        push_constants: &Pc,
+    ) -> Result<&mut Self, Box<ValidationError>>
+    where
+        Pc: BufferContents,
+    {
+        self.validate_push_constants(pipeline_layout, offset, push_constants)?;
+
+        Ok(self.push_constants_unchecked(pipeline_layout, offset, push_constants))
+    }
+
+    fn validate_push_constants<Pc: BufferContents>(
+        &self,
+        pipeline_layout: &PipelineLayout,
+        offset: u32,
+        _push_constants: &Pc,
+    ) -> Result<(), Box<ValidationError>> {
+        let mut remaining_size = size_of::<Pc>();
+
+        if offset % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdPushConstants-offset-00368"],
+                ..Default::default()
+            }));
+        }
+
+        if remaining_size % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "push_constants".into(),
+                problem: "the size is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdPushConstants-size-00369"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if offset >= properties.max_push_constants_size {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not less than the `max_push_constants_size` limit".into(),
+                vuids: &["VUID-vkCmdPushConstants-offset-00370"],
+                ..Default::default()
+            }));
+        }
+
+        if offset as usize + remaining_size >= properties.max_push_constants_size as usize {
+            return Err(Box::new(ValidationError {
+                problem: "`offset` + the size of `push_constants` is not less than the \
+                    `max_push_constants_size` limit"
+                    .into(),
+                vuids: &["VUID-vkCmdPushConstants-size-00371"],
+                ..Default::default()
+            }));
+        }
+
+        let mut current_offset = offset as usize;
+
+        for range in pipeline_layout
+            .push_constant_ranges_disjoint()
+            .iter()
+            .skip_while(|range| range.offset + range.size <= offset)
+        {
+            // there is a gap between ranges, but the passed push_constants contains
+            // some bytes in this gap, exit the loop and report error
+            if range.offset as usize > current_offset {
+                break;
+            }
+
+            // push the minimum of the whole remaining data, and the part until the end of this range
+            let push_size =
+                remaining_size.min(range.offset as usize + range.size as usize - current_offset);
+            current_offset += push_size;
+            remaining_size -= push_size;
+
+            if remaining_size == 0 {
+                break;
+            }
+        }
+
+        if remaining_size != 0 {
+            return Err(Box::new(ValidationError {
+                problem: "one or more bytes of `push_constants` are not within any push constant \
+                    range of `pipeline_layout`"
+                    .into(),
+                vuids: &["VUID-vkCmdPushConstants-offset-01795"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn push_constants_unchecked<Pc>(
+        &mut self,
+        pipeline_layout: &PipelineLayout,
+        offset: u32,
+        push_constants: &Pc,
+    ) -> &mut Self
+    where
+        Pc: BufferContents,
+    {
+        let size = u32::try_from(size_of::<Pc>()).unwrap();
+
+        if size == 0 {
+            return self;
+        }
+
+        let fns = self.device().fns();
+        let mut current_offset = offset;
+        let mut remaining_size = size;
+
+        for range in pipeline_layout
+            .push_constant_ranges_disjoint()
+            .iter()
+            .skip_while(|range| range.offset + range.size <= offset)
+        {
+            // there is a gap between ranges, but the passed push_constants contains
+            // some bytes in this gap, exit the loop and report error
+            if range.offset > current_offset {
+                break;
+            }
+
+            // push the minimum of the whole remaining data, and the part until the end of this range
+            let push_size = remaining_size.min(range.offset + range.size - current_offset);
+            let data_offset = (current_offset - offset) as usize;
+            debug_assert!(data_offset < size as usize);
+            let data = (push_constants as *const Pc as *const c_void).add(data_offset);
+
+            (fns.v1_0.cmd_push_constants)(
+                self.handle(),
+                pipeline_layout.handle(),
+                range.stages.into(),
+                current_offset,
+                push_size,
+                data,
+            );
+
+            current_offset += push_size;
+            remaining_size -= push_size;
+
+            if remaining_size == 0 {
+                break;
+            }
+        }
+
+        debug_assert!(remaining_size == 0);
+
+        self
+    }
+
+    pub unsafe fn push_descriptor_set(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        set_num: u32,
+        descriptor_writes: &[WriteDescriptorSet],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_push_descriptor_set(
+            pipeline_bind_point,
+            pipeline_layout,
+            set_num,
+            descriptor_writes,
+        )?;
+
+        Ok(self.push_descriptor_set_unchecked(
+            pipeline_bind_point,
+            pipeline_layout,
+            set_num,
+            descriptor_writes,
+        ))
     }
 
     fn validate_push_descriptor_set(
@@ -867,234 +1274,6 @@ where
     pub unsafe fn push_descriptor_set_unchecked(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: Arc<PipelineLayout>,
-        set_num: u32,
-        descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
-    ) -> &mut Self {
-        let state = self.builder_state.invalidate_descriptor_sets(
-            pipeline_bind_point,
-            pipeline_layout.clone(),
-            set_num,
-            1,
-        );
-        let layout = state.pipeline_layout.set_layouts()[set_num as usize].as_ref();
-        debug_assert!(layout
-            .flags()
-            .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR));
-
-        let set_resources = match state
-            .descriptor_sets
-            .entry(set_num)
-            .or_insert_with(|| SetOrPush::Push(DescriptorSetResources::new(layout, 0)))
-        {
-            SetOrPush::Push(set_resources) => set_resources,
-            _ => unreachable!(),
-        };
-
-        for write in &descriptor_writes {
-            set_resources.write(write, layout);
-        }
-
-        self.add_command(
-            "push_descriptor_set",
-            Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.push_descriptor_set(
-                    pipeline_bind_point,
-                    &pipeline_layout,
-                    set_num,
-                    &descriptor_writes,
-                );
-            },
-        );
-
-        self
-    }
-}
-
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
-    /// Calls `vkCmdBindDescriptorSets` on the builder.
-    ///
-    /// Does nothing if the list of descriptor sets is empty, as it would be a no-op and isn't a
-    /// valid usage of the command anyway.
-    #[inline]
-    pub unsafe fn bind_descriptor_sets(
-        &mut self,
-        pipeline_bind_point: PipelineBindPoint,
-        pipeline_layout: &PipelineLayout,
-        first_set: u32,
-        descriptor_sets: &[DescriptorSetWithOffsets],
-    ) -> &mut Self {
-        if descriptor_sets.is_empty() {
-            return self;
-        }
-
-        let descriptor_sets_vk: SmallVec<[_; 12]> = descriptor_sets
-            .iter()
-            .map(|x| x.as_ref().0.inner().handle())
-            .collect();
-        let dynamic_offsets_vk: SmallVec<[_; 32]> = descriptor_sets
-            .iter()
-            .flat_map(|x| x.as_ref().1.iter().copied())
-            .collect();
-
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_descriptor_sets)(
-            self.handle(),
-            pipeline_bind_point.into(),
-            pipeline_layout.handle(),
-            first_set,
-            descriptor_sets_vk.len() as u32,
-            descriptor_sets_vk.as_ptr(),
-            dynamic_offsets_vk.len() as u32,
-            dynamic_offsets_vk.as_ptr(),
-        );
-
-        self
-    }
-
-    /// Calls `vkCmdBindIndexBuffer` on the builder.
-    #[inline]
-    pub unsafe fn bind_index_buffer(&mut self, index_buffer: &IndexBuffer) -> &mut Self {
-        let index_buffer_bytes = index_buffer.as_bytes();
-
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_index_buffer)(
-            self.handle(),
-            index_buffer_bytes.buffer().handle(),
-            index_buffer_bytes.offset(),
-            index_buffer.index_type().into(),
-        );
-
-        self
-    }
-
-    /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
-    #[inline]
-    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &ComputePipeline) -> &mut Self {
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_pipeline)(
-            self.handle(),
-            ash::vk::PipelineBindPoint::COMPUTE,
-            pipeline.handle(),
-        );
-
-        self
-    }
-
-    /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
-    #[inline]
-    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &GraphicsPipeline) -> &mut Self {
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_pipeline)(
-            self.handle(),
-            ash::vk::PipelineBindPoint::GRAPHICS,
-            pipeline.handle(),
-        );
-
-        self
-    }
-
-    /// Calls `vkCmdBindVertexBuffers` on the builder.
-    ///
-    /// Does nothing if the list of buffers is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    // TODO: vkCmdBindVertexBuffers2EXT
-    #[inline]
-    pub unsafe fn bind_vertex_buffers(
-        &mut self,
-        first_binding: u32,
-        vertex_buffers: &[Subbuffer<[u8]>],
-    ) -> &mut Self {
-        if vertex_buffers.is_empty() {
-            return self;
-        }
-
-        let (buffers_vk, offsets_vk): (SmallVec<[_; 2]>, SmallVec<[_; 2]>) = vertex_buffers
-            .iter()
-            .map(|buffer| (buffer.buffer().handle(), buffer.offset()))
-            .unzip();
-
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_vertex_buffers)(
-            self.handle(),
-            first_binding,
-            buffers_vk.len() as u32,
-            buffers_vk.as_ptr(),
-            offsets_vk.as_ptr(),
-        );
-
-        self
-    }
-
-    /// Calls `vkCmdPushConstants` on the builder.
-    pub unsafe fn push_constants<Pc>(
-        &mut self,
-        pipeline_layout: &PipelineLayout,
-        offset: u32,
-        push_constants: &Pc,
-    ) -> &mut Self
-    where
-        Pc: BufferContents,
-    {
-        let size = u32::try_from(size_of::<Pc>()).unwrap();
-
-        if size == 0 {
-            return self;
-        }
-
-        let fns = self.device().fns();
-        let mut current_offset = offset;
-        let mut remaining_size = size;
-
-        for range in pipeline_layout
-            .push_constant_ranges_disjoint()
-            .iter()
-            .skip_while(|range| range.offset + range.size <= offset)
-        {
-            // there is a gap between ranges, but the passed push_constants contains
-            // some bytes in this gap, exit the loop and report error
-            if range.offset > current_offset {
-                break;
-            }
-
-            // push the minimum of the whole remaining data, and the part until the end of this range
-            let push_size = remaining_size.min(range.offset + range.size - current_offset);
-            let data_offset = (current_offset - offset) as usize;
-            debug_assert!(data_offset < size as usize);
-            let data = (push_constants as *const Pc as *const c_void).add(data_offset);
-
-            (fns.v1_0.cmd_push_constants)(
-                self.handle(),
-                pipeline_layout.handle(),
-                range.stages.into(),
-                current_offset,
-                push_size,
-                data,
-            );
-
-            current_offset += push_size;
-            remaining_size -= push_size;
-
-            if remaining_size == 0 {
-                break;
-            }
-        }
-
-        debug_assert!(remaining_size == 0);
-
-        self
-    }
-
-    /// Calls `vkCmdPushDescriptorSetKHR` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn push_descriptor_set(
-        &mut self,
-        pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         set_num: u32,
         descriptor_writes: &[WriteDescriptorSet],
@@ -1174,210 +1353,5 @@ where
         );
 
         self
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(in super::super) enum BindPushError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The element of `descriptor_sets` being bound to a slot is not compatible with the
-    /// corresponding slot in `pipeline_layout`.
-    DescriptorSetNotCompatible { set_num: u32 },
-
-    /// The highest descriptor set slot being bound is greater than the number of sets in
-    /// `pipeline_layout`.
-    DescriptorSetOutOfRange {
-        set_num: u32,
-        pipeline_layout_set_count: u32,
-    },
-
-    /// In an element of `descriptor_sets`, the number of provided dynamic offsets does not match
-    /// the number required by the descriptor set.
-    DynamicOffsetCountMismatch {
-        set_num: u32,
-        provided_count: usize,
-        required_count: usize,
-    },
-
-    /// In an element of `descriptor_sets`, a provided dynamic offset
-    /// is not a multiple of the value of the [`min_uniform_buffer_offset_alignment`] or
-    /// [`min_storage_buffer_offset_alignment`]  property.
-    ///
-    /// min_uniform_buffer_offset_alignment: crate::device::Properties::min_uniform_buffer_offset_alignment
-    /// min_storage_buffer_offset_alignment: crate::device::Properties::min_storage_buffer_offset_alignment
-    DynamicOffsetNotAligned {
-        set_num: u32,
-        binding_num: u32,
-        index: u32,
-        offset: u32,
-        required_alignment: DeviceAlignment,
-    },
-
-    /// In an element of `descriptor_sets`, a provided dynamic offset, when added to the end of the
-    /// buffer range bound to the descriptor set, is greater than the size of the buffer.
-    DynamicOffsetOutOfBufferBounds {
-        set_num: u32,
-        binding_num: u32,
-        index: u32,
-        offset: u32,
-        range_end: DeviceSize,
-        buffer_size: DeviceSize,
-    },
-
-    /// An index buffer is missing the `index_buffer` usage.
-    IndexBufferMissingUsage,
-
-    /// The `max_vertex_input_bindings` limit has been exceeded.
-    MaxVertexInputBindingsExceeded { _binding_count: u32, _max: u32 },
-
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
-
-    /// The newly set pipeline has color attachment formats that do not match the
-    /// previously used pipeline.
-    PreviousPipelineColorAttachmentFormatMismatch,
-
-    /// The newly set pipeline has a depth attachment format that does not match the
-    /// previously used pipeline.
-    PreviousPipelineDepthAttachmentFormatMismatch,
-
-    /// The newly set pipeline has a stencil attachment format that does not match the
-    /// previously used pipeline.
-    PreviousPipelineStencilAttachmentFormatMismatch,
-
-    /// The push constants data to be written at an offset is not included in any push constant
-    /// range of the pipeline layout.
-    PushConstantsDataOutOfRange { offset: usize },
-
-    /// The push constants offset is not a multiple of 4.
-    PushConstantsOffsetNotAligned,
-
-    /// The push constants size is not a multiple of 4.
-    PushConstantsSizeNotAligned,
-
-    /// A vertex buffer is missing the `vertex_buffer` usage.
-    VertexBufferMissingUsage,
-}
-
-impl error::Error for BindPushError {}
-
-impl Display for BindPushError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::DescriptorSetNotCompatible { set_num } => write!(
-                f,
-                "the element of `descriptor_sets` being bound to slot {} is not compatible with \
-                the corresponding slot in `pipeline_layout`",
-                set_num,
-            ),
-            Self::DescriptorSetOutOfRange {
-                set_num,
-                pipeline_layout_set_count,
-            } => write!(
-                f,
-                "the highest descriptor set slot being bound ({}) is greater than the number of \
-                sets in `pipeline_layout` ({})",
-                set_num, pipeline_layout_set_count,
-            ),
-            Self::DynamicOffsetCountMismatch {
-                set_num,
-                provided_count,
-                required_count,
-            } => write!(
-                f,
-                "in the element of `descriptor_sets` being bound to slot {}, the number of \
-                provided dynamic offsets ({}) does not match the number required by the \
-                descriptor set ({})",
-                set_num, provided_count, required_count,
-            ),
-            Self::DynamicOffsetNotAligned {
-                set_num,
-                binding_num,
-                index,
-                offset,
-                required_alignment,
-            } => write!(
-                f,
-                "in the element of `descriptor_sets` being bound to slot {}, the dynamic offset \
-                provided for binding {} index {} ({}) is not a multiple of the value of the \
-                `min_uniform_buffer_offset_alignment` or `min_storage_buffer_offset_alignment` \
-                property ({:?})",
-                set_num, binding_num, index, offset, required_alignment,
-            ),
-            Self::DynamicOffsetOutOfBufferBounds {
-                set_num,
-                binding_num,
-                index,
-                offset,
-                range_end,
-                buffer_size,
-            } => write!(
-                f,
-                "in the element of `descriptor_sets` being bound to slot {}, the dynamic offset \
-                provided for binding {} index {} ({}), when added to the end of the buffer range \
-                bound to the descriptor set ({}), is greater than the size of the buffer ({})",
-                set_num, binding_num, index, offset, range_end, buffer_size,
-            ),
-            Self::IndexBufferMissingUsage => {
-                write!(f, "an index buffer is missing the `index_buffer` usage")
-            }
-            Self::MaxVertexInputBindingsExceeded { .. } => {
-                write!(f, "the `max_vertex_input_bindings` limit has been exceeded")
-            }
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::PreviousPipelineColorAttachmentFormatMismatch => write!(
-                f,
-                "the newly set pipeline has color attachment formats that do not match the \
-                previously used pipeline",
-            ),
-            Self::PreviousPipelineDepthAttachmentFormatMismatch => write!(
-                f,
-                "the newly set pipeline has a depth attachment format that does not match the \
-                previously used pipeline",
-            ),
-            Self::PreviousPipelineStencilAttachmentFormatMismatch => write!(
-                f,
-                "the newly set pipeline has a stencil attachment format that does not match the \
-                previously used pipeline",
-            ),
-            Self::PushConstantsDataOutOfRange { offset } => write!(
-                f,
-                "the push constants data to be written at offset {} is not included in any push \
-                constant range of the pipeline layout",
-                offset,
-            ),
-            Self::PushConstantsOffsetNotAligned => {
-                write!(f, "the push constants offset is not a multiple of 4")
-            }
-            Self::PushConstantsSizeNotAligned => {
-                write!(f, "the push constants size is not a multiple of 4")
-            }
-            Self::VertexBufferMissingUsage => {
-                write!(f, "a vertex buffer is missing the `vertex_buffer` usage")
-            }
-        }
-    }
-}
-
-impl From<RequirementNotMet> for BindPushError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
     }
 }

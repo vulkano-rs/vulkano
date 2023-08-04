@@ -11,7 +11,9 @@ use crate::{
     buffer::Buffer,
     descriptor_set::layout::DescriptorType,
     device::{Device, QueueFlags},
-    image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange},
+    image::{
+        Image, ImageAspects, ImageCreateFlags, ImageLayout, ImageSubresourceRange, ImageUsage,
+    },
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
     shader::ShaderStages,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
@@ -1762,6 +1764,44 @@ impl DependencyInfo {
             && self.buffer_memory_barriers.is_empty()
             && self.image_memory_barriers.is_empty()
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            dependency_flags,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
+            _ne: _,
+        } = self;
+
+        dependency_flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dependency_flags".into(),
+                vuids: &["VUID-VkDependencyInfo-dependencyFlags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        for (barrier_index, memory_barrier) in memory_barriers.iter().enumerate() {
+            memory_barrier
+                .validate(device)
+                .map_err(|err| err.add_context(format!("memory_barriers[{}]", barrier_index)))?;
+        }
+
+        for (barrier_index, buffer_memory_barrier) in buffer_memory_barriers.iter().enumerate() {
+            buffer_memory_barrier.validate(device).map_err(|err| {
+                err.add_context(format!("buffer_memory_barriers[{}]", barrier_index))
+            })?;
+        }
+
+        for (barrier_index, image_memory_barrier) in image_memory_barriers.iter().enumerate() {
+            image_memory_barrier.validate(device).map_err(|err| {
+                err.add_context(format!("image_memory_barriers[{}]", barrier_index))
+            })?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for DependencyInfo {
@@ -2386,6 +2426,624 @@ impl BufferMemoryBarrier {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+            ref queue_family_ownership_transfer,
+            ref buffer,
+            ref range,
+            _ne,
+        } = self;
+
+        src_stages
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_stages".into(),
+                vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_stages
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_stages".into(),
+                vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        src_access
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_access".into(),
+                vuids: &["VUID-VkBufferMemoryBarrier2-srcAccessMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_access
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_access".into(),
+                vuids: &["VUID-VkBufferMemoryBarrier2-dstAccessMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !device.enabled_features().synchronization2 {
+            if src_stages.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            if dst_stages.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            if src_access.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "src_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            if dst_access.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "dst_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !device.enabled_features().geometry_shader {
+            if src_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "geometry_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03929"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "geometry_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03929"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().tessellation_shader {
+            if src_stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                        `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "tessellation_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03930"],
+                }));
+            }
+
+            if dst_stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                        `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "tessellation_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03930"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().conditional_rendering {
+            if src_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "conditional_rendering",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03931"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "conditional_rendering",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03931"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().fragment_density_map {
+            if src_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fragment_density_map",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03932"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fragment_density_map",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03932"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().transform_feedback {
+            if src_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "transform_feedback",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03933"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "transform_feedback",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03933"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().mesh_shader {
+            if src_stages.intersects(PipelineStages::MESH_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "mesh_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03934"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::MESH_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "mesh_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03934"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().task_shader {
+            if src_stages.intersects(PipelineStages::TASK_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "task_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03935"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::TASK_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "task_shader",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03935"],
+                }));
+            }
+        }
+
+        if !(device.enabled_features().attachment_fragment_shading_rate
+            || device.enabled_features().shading_rate_image)
+        {
+            if src_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    ]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-shadingRateImage-07316"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    ]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-shadingRateImage-07316"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().subpass_shading {
+            if src_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "subpass_shading",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-04957"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "subpass_shading",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-04957"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().invocation_mask {
+            if src_stages.intersects(PipelineStages::INVOCATION_MASK) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "invocation_mask",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-04995"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::INVOCATION_MASK) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "invocation_mask",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-04995"],
+                }));
+            }
+        }
+
+        if !(device.enabled_extensions().nv_ray_tracing
+            || device.enabled_features().ray_tracing_pipeline)
+        {
+            if src_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ray_tracing_pipeline",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-07946"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ray_tracing_pipeline",
+                    )])]),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-07946"],
+                }));
+            }
+        }
+
+        if !AccessFlags::from(src_stages).contains(src_access) {
+            return Err(Box::new(ValidationError {
+                problem: "`src_access` contains one or more access types that are not performed \
+                    by any stage in `src_stages`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03900",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03901",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03902",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03903",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03904",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03905",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03906",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03907",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-07454",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03909",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03910",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03911",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03912",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03913",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03914",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03915",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03916",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03917",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03918",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03919",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03920",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-04747",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03922",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03923",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-04994",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03924",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03925",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03926",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03927",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-03928",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-06256",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-07272",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-04858",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-04859",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-04860",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-04861",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-07455",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-07456",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-07457",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-07458",
+                    "VUID-VkBufferMemoryBarrier2-srcAccessMask-08118",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if !AccessFlags::from(dst_stages).contains(dst_access) {
+            return Err(Box::new(ValidationError {
+                problem: "`dst_access` contains one or more access types that are not performed \
+                    by any stage in `dst_stages`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03900",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03901",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03902",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03903",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03904",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03905",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03906",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03907",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-07454",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03909",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03910",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03911",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03912",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03913",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03914",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03915",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03916",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03917",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03918",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03919",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03920",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-04747",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03922",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03923",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-04994",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03924",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03925",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03926",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03927",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-03928",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-06256",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-07272",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-04858",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-04859",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-04860",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-04861",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-07455",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-07456",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-07457",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-07458",
+                    "VUID-VkBufferMemoryBarrier2-dstAccessMask-08118",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if range.is_empty() {
+            return Err(Box::new(ValidationError {
+                context: "range".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkBufferMemoryBarrier2-size-01188"],
+                ..Default::default()
+            }));
+        }
+
+        if range.end > buffer.size() {
+            return Err(Box::new(ValidationError {
+                problem: "`range.end` is greater than `buffer.size()`".into(),
+                vuids: &[
+                    "VUID-VkBufferMemoryBarrier2-offset-01187",
+                    "VUID-VkBufferMemoryBarrier2-size-01189",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if let Some(queue_family_ownership_transfer) = queue_family_ownership_transfer {
+            if src_stages.intersects(PipelineStages::HOST) {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_stages` contains `PipelineStages::HOST`, but \
+                        `queue_family_ownership_transfer` is `Some`"
+                        .into(),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03851"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::HOST) {
+                return Err(Box::new(ValidationError {
+                    problem: "`dst_stages` contains `PipelineStages::HOST`, but \
+                        `queue_family_ownership_transfer` is `Some`"
+                        .into(),
+                    vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03851"],
+                    ..Default::default()
+                }));
+            }
+
+            // VUID-VkBufferMemoryBarrier2-srcQueueFamilyIndex-04087
+            // VUID-VkBufferMemoryBarrier2-buffer-04088
+            // Ensured by the use of an enum.
+
+            let queue_family_count =
+                device.physical_device().queue_family_properties().len() as u32;
+
+            match queue_family_ownership_transfer {
+                &QueueFamilyOwnershipTransfer::ExclusiveBetweenLocal {
+                    src_index,
+                    dst_index,
+                } => {
+                    if src_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.src_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkBufferMemoryBarrier2-buffer-04089"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.dst_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkBufferMemoryBarrier2-buffer-04089"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_index == dst_index {
+                        return Err(Box::new(ValidationError {
+                            problem: "`queue_family_ownership_transfer.src_index` is equal to \
+                                `queue_family_ownership_transfer.dst_index`"
+                                .into(),
+                            // just for sanity, so that the value is `Some`
+                            // if and only if there is a transfer
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveToExternal { src_index } => {
+                    if src_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.src_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkBufferMemoryBarrier2-buffer-04089"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveFromExternal { dst_index } => {
+                    if dst_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.dst_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkBufferMemoryBarrier2-buffer-04089"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveToForeign { src_index } => {
+                    if src_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.src_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkBufferMemoryBarrier2-buffer-04089"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveFromForeign { dst_index } => {
+                    if dst_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.dst_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkBufferMemoryBarrier2-buffer-04089"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                QueueFamilyOwnershipTransfer::ConcurrentToExternal
+                | QueueFamilyOwnershipTransfer::ConcurrentFromExternal
+                | QueueFamilyOwnershipTransfer::ConcurrentToForeign
+                | QueueFamilyOwnershipTransfer::ConcurrentFromForeign => (),
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// A memory barrier that is applied to a single image.
@@ -2450,6 +3108,1000 @@ impl ImageMemoryBarrier {
             },
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+            old_layout,
+            new_layout,
+            ref queue_family_ownership_transfer,
+            ref image,
+            ref subresource_range,
+            _ne,
+        } = self;
+
+        src_stages
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_stages".into(),
+                vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_stages
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_stages".into(),
+                vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        src_access
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_access".into(),
+                vuids: &["VUID-VkImageMemoryBarrier2-srcAccessMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_access
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_access".into(),
+                vuids: &["VUID-VkImageMemoryBarrier2-dstAccessMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !device.enabled_features().synchronization2 {
+            if src_stages.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            if dst_stages.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            if src_access.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "src_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            if dst_access.contains_flags2() {
+                return Err(Box::new(ValidationError {
+                    context: "dst_access".into(),
+                    problem: "contains flags from `VkAccessFlagBits2`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !device.enabled_features().geometry_shader {
+            if src_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "geometry_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03929"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::GEOMETRY_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "geometry_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03929"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().tessellation_shader {
+            if src_stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                        `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "tessellation_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03930"],
+                }));
+            }
+
+            if dst_stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                        `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "tessellation_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03930"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().conditional_rendering {
+            if src_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "conditional_rendering",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03931"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::CONDITIONAL_RENDERING) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "conditional_rendering",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03931"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().fragment_density_map {
+            if src_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fragment_density_map",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03932"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "fragment_density_map",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03932"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().transform_feedback {
+            if src_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "transform_feedback",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03933"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::TRANSFORM_FEEDBACK) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "transform_feedback",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03933"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().mesh_shader {
+            if src_stages.intersects(PipelineStages::MESH_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "mesh_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03934"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::MESH_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "mesh_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03934"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().task_shader {
+            if src_stages.intersects(PipelineStages::TASK_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "task_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03935"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::TASK_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "task_shader",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03935"],
+                }));
+            }
+        }
+
+        if !(device.enabled_features().attachment_fragment_shading_rate
+            || device.enabled_features().shading_rate_image)
+        {
+            if src_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    ]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-shadingRateImage-07316"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    ]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-shadingRateImage-07316"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().subpass_shading {
+            if src_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "subpass_shading",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-04957"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "subpass_shading",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-04957"],
+                }));
+            }
+        }
+
+        if !device.enabled_features().invocation_mask {
+            if src_stages.intersects(PipelineStages::INVOCATION_MASK) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "invocation_mask",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-04995"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::INVOCATION_MASK) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "invocation_mask",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-04995"],
+                }));
+            }
+        }
+
+        if !(device.enabled_extensions().nv_ray_tracing
+            || device.enabled_features().ray_tracing_pipeline)
+        {
+            if src_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "src_stages".into(),
+                    problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ray_tracing_pipeline",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-07946"],
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::RAY_TRACING_SHADER) {
+                return Err(Box::new(ValidationError {
+                    context: "dst_stages".into(),
+                    problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "ray_tracing_pipeline",
+                    )])]),
+                    vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-07946"],
+                }));
+            }
+        }
+
+        if !AccessFlags::from(src_stages).contains(src_access) {
+            return Err(Box::new(ValidationError {
+                problem: "`src_access` contains one or more access types that are not performed \
+                    by any stage in `src_stages`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03900",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03901",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03902",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03903",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03904",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03905",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03906",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03907",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-07454",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03909",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03910",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03911",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03912",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03913",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03914",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03915",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03916",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03917",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03918",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03919",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03920",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-04747",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03922",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03923",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-04994",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03924",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03925",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03926",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03927",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-03928",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-06256",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-07272",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-04858",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-04859",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-04860",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-04861",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-07455",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-07456",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-07457",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-07458",
+                    "VUID-VkImageMemoryBarrier2-srcAccessMask-08118",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if !AccessFlags::from(dst_stages).contains(dst_access) {
+            return Err(Box::new(ValidationError {
+                problem: "`dst_access` contains one or more access types that are not performed \
+                    by any stage in `dst_stages`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03900",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03901",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03902",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03903",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03904",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03905",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03906",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03907",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-07454",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03909",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03910",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03911",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03912",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03913",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03914",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03915",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03916",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03917",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03918",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03919",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03920",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-04747",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03922",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03923",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-04994",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03924",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03925",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03926",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03927",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-03928",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-06256",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-07272",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-04858",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-04859",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-04860",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-04861",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-07455",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-07456",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-07457",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-07458",
+                    "VUID-VkImageMemoryBarrier2-dstAccessMask-08118",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-VkImageMemoryBarrier2-synchronization2-07793
+        // If the synchronization2 feature is not enabled, oldLayout must not be VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR or VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+
+        // VUID-VkImageMemoryBarrier2-synchronization2-07794
+        // If the synchronization2 feature is not enabled, newLayout must not be VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR or VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+
+        // VUID-VkImageMemoryBarrier2-attachmentFeedbackLoopLayout-07313
+        // If the attachmentFeedbackLoopLayout feature is not enabled, newLayout must not be VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+
+        subresource_range
+            .validate(device)
+            .map_err(|err| err.add_context("subresource_range"))?;
+
+        if subresource_range.mip_levels.end > image.mip_levels() {
+            return Err(Box::new(ValidationError {
+                problem: "`subresource_range.mip_levels.end` is greater than \
+                    `image.mip_levels()`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkImageMemoryBarrier2-subresourceRange-01486",
+                    "VUID-VkImageMemoryBarrier2-subresourceRange-01724",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if subresource_range.array_layers.end > image.array_layers() {
+            return Err(Box::new(ValidationError {
+                problem: "`subresource_range.array_layers.end` is greater than \
+                    `image.array_layers()`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkImageMemoryBarrier2-subresourceRange-01488",
+                    "VUID-VkImageMemoryBarrier2-subresourceRange-01725",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        let image_format_aspects = image.format().aspects();
+
+        if !image_format_aspects.contains(subresource_range.aspects) {
+            return Err(Box::new(ValidationError {
+                problem: "`subresource_range.aspects` is not a subset of \
+                    `image.format().aspects()`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkImageMemoryBarrier2-image-01672",
+                    "VUID-VkImageMemoryBarrier2-image-03319",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if image_format_aspects.intersects(ImageAspects::COLOR)
+            && !image.flags().intersects(ImageCreateFlags::DISJOINT)
+            && subresource_range.aspects != ImageAspects::COLOR
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`image.format()` is a color format, and \
+                    `image.flags()` does not contain `ImageCreateFlags::DISJOINT`, but \
+                    `subresource_range.aspects` is not `ImageAspects::COLOR`"
+                    .into(),
+                vuids: &["VUID-VkImageMemoryBarrier2-image-01671"],
+                ..Default::default()
+            }));
+        }
+
+        if image_format_aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            && !subresource_range
+                .aspects
+                .contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            && !device.enabled_features().separate_depth_stencil_layouts
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`image.format()` has both a depth and a stencil component, and \
+                    `subresource_range.aspects` does not contain both \
+                    `ImageAspects::DEPTH` and `ImageAspects::STENCIL`"
+                    .into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "separate_depth_stencil_layouts",
+                )])]),
+                vuids: &["VUID-VkImageMemoryBarrier2-image-03320"],
+                ..Default::default()
+            }));
+        }
+
+        if subresource_range.aspects.intersects(ImageAspects::DEPTH) {
+            if matches!(
+                old_layout,
+                ImageLayout::StencilAttachmentOptimal | ImageLayout::StencilReadOnlyOptimal
+            ) {
+                return Err(Box::new(ValidationError {
+                    problem: "`subresource_range.aspects` contains `ImageAspects::DEPTH`, but \
+                        `old_layout` is `ImageLayout::StencilAttachmentOptimal` or \
+                        `ImageLayout::StencilReadOnlyOptimal`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-aspectMask-08702"],
+                    ..Default::default()
+                }));
+            }
+
+            if matches!(
+                new_layout,
+                ImageLayout::StencilAttachmentOptimal | ImageLayout::StencilReadOnlyOptimal
+            ) {
+                return Err(Box::new(ValidationError {
+                    problem: "`subresource_range.aspects` contains `ImageAspects::DEPTH`, but \
+                        `new_layout` is `ImageLayout::StencilAttachmentOptimal` or \
+                        `ImageLayout::StencilReadOnlyOptimal`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-aspectMask-08702"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if subresource_range.aspects.intersects(ImageAspects::STENCIL) {
+            if matches!(
+                old_layout,
+                ImageLayout::StencilAttachmentOptimal | ImageLayout::StencilReadOnlyOptimal
+            ) {
+                return Err(Box::new(ValidationError {
+                    problem: "`subresource_range.aspects` contains `ImageAspects::STENCIL`, but \
+                        `old_layout` is `ImageLayout::DepthAttachmentOptimal` or \
+                        `ImageLayout::DepthReadOnlyOptimal`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-aspectMask-08703"],
+                    ..Default::default()
+                }));
+            }
+
+            if matches!(
+                new_layout,
+                ImageLayout::DepthAttachmentOptimal | ImageLayout::DepthReadOnlyOptimal
+            ) {
+                return Err(Box::new(ValidationError {
+                    problem: "`subresource_range.aspects` contains `ImageAspects::STENCIL`, but \
+                        `new_layout` is `ImageLayout::DepthAttachmentOptimal` or \
+                        `ImageLayout::DepthReadOnlyOptimal`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-aspectMask-08703"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if let Some(queue_family_ownership_transfer) = queue_family_ownership_transfer {
+            if src_stages.intersects(PipelineStages::HOST) {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_stages` contains `PipelineStages::HOST`, but \
+                        `queue_family_ownership_transfer` is `Some`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03854"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_stages.intersects(PipelineStages::HOST) {
+                return Err(Box::new(ValidationError {
+                    problem: "`dst_stages` contains `PipelineStages::HOST`, but \
+                        `queue_family_ownership_transfer` is `Some`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03854"],
+                    ..Default::default()
+                }));
+            }
+
+            // VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04070
+            // VUID-VkImageMemoryBarrier2-image-04071
+            // Ensured by the use of an enum.
+
+            let queue_family_count =
+                device.physical_device().queue_family_properties().len() as u32;
+
+            match queue_family_ownership_transfer {
+                &QueueFamilyOwnershipTransfer::ExclusiveBetweenLocal {
+                    src_index,
+                    dst_index,
+                } => {
+                    if src_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.src_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-image-04072"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.dst_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-image-04072"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_index == dst_index {
+                        return Err(Box::new(ValidationError {
+                            problem: "`queue_family_ownership_transfer.src_index` is equal to \
+                                `queue_family_ownership_transfer.dst_index`"
+                                .into(),
+                            // just for sanity, so that the value is `Some`
+                            // if and only if there is a transfer
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveToExternal { src_index } => {
+                    if src_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.src_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-image-04072"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveFromExternal { dst_index } => {
+                    if dst_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.dst_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-image-04072"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveToForeign { src_index } => {
+                    if src_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.src_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-image-04072"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                &QueueFamilyOwnershipTransfer::ExclusiveFromForeign { dst_index } => {
+                    if dst_index >= queue_family_count {
+                        return Err(Box::new(ValidationError {
+                            context: "queue_family_ownership_transfer.dst_index".into(),
+                            problem: "is not less than the number of queue families in the \
+                                physical device"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-image-04072"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                QueueFamilyOwnershipTransfer::ConcurrentToExternal
+                | QueueFamilyOwnershipTransfer::ConcurrentFromExternal
+                | QueueFamilyOwnershipTransfer::ConcurrentToForeign
+                | QueueFamilyOwnershipTransfer::ConcurrentFromForeign => (),
+            }
+        }
+
+        let is_image_layout_transition =
+            !device.enabled_features().synchronization2 || old_layout != new_layout;
+        let is_queue_family_ownership_transfer = queue_family_ownership_transfer.is_some();
+
+        if is_image_layout_transition || is_queue_family_ownership_transfer {
+            match old_layout {
+                ImageLayout::ColorAttachmentOptimal => {
+                    if !image.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`old_layout` is `ImageLayout::ColorAttachmentOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::COLOR_ATTACHMENT`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01208"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                | ImageLayout::DepthAttachmentOptimal
+                | ImageLayout::StencilAttachmentOptimal => {
+                    if !image
+                        .usage()
+                        .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`old_layout` is \
+                                `ImageLayout::DepthStencilAttachmentOptimal`, \
+                                `ImageLayout::DepthStencilReadOnlyOptimal`, \
+                                `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`, \
+                                `ImageLayout::DepthAttachmentStencilReadOnlyOptimal`, \
+                                `ImageLayout::DepthAttachmentOptimal` or \
+                                `ImageLayout::StencilAttachmentOptimal`, but \
+                                `image.usage()` does not contain \
+                                `ImageUsage::DEPTH_STENCIL_ATTACHMENT`"
+                                .into(),
+                            vuids: &[
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01209",
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01210",
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01658",
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01659",
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04066",
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04068",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::ShaderReadOnlyOptimal => {
+                    if !image
+                        .usage()
+                        .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`old_layout` is `ImageLayout::ShaderReadOnlyOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::SAMPLED` or \
+                                `ImageUsage::INPUT_ATTACHMENT`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01211"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::TransferSrcOptimal => {
+                    if !image.usage().intersects(ImageUsage::TRANSFER_SRC) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`old_layout` is `ImageLayout::TransferSrcOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::TRANSFER_SRC`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01212"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::TransferDstOptimal => {
+                    if !image.usage().intersects(ImageUsage::TRANSFER_DST) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`old_layout` is `ImageLayout::TransferDstOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::TRANSFER_DST`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01213"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::Preinitialized => todo!(),
+                ImageLayout::DepthReadOnlyOptimal | ImageLayout::StencilReadOnlyOptimal => {
+                    if !image.usage().intersects(
+                        ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                            | ImageUsage::SAMPLED
+                            | ImageUsage::INPUT_ATTACHMENT,
+                    ) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`old_layout` is `ImageLayout::DepthReadOnlyOptimal` or \
+                                `ImageLayout::StencilReadOnlyOptimal`, but \
+                                `image.usage()` does not contain \
+                                `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, `ImageUsage::SAMPLED` or \
+                                `ImageUsage::INPUT_ATTACHMENT`"
+                                .into(),
+                            vuids: &[
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04065",
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04067",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::Undefined | ImageLayout::General | ImageLayout::PresentSrc => (),
+            }
+
+            match new_layout {
+                ImageLayout::Undefined | ImageLayout::Preinitialized => {
+                    return Err(Box::new(ValidationError {
+                        context: "new_layout".into(),
+                        problem: "is `ImageLayout::Undefined` or `ImageLayout::Preinitialized`"
+                            .into(),
+                        vuids: &["VUID-VkImageMemoryBarrier2-newLayout-01198"],
+                        ..Default::default()
+                    }));
+                }
+                ImageLayout::ColorAttachmentOptimal => {
+                    if !image.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`new_layout` is `ImageLayout::ColorAttachmentOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::COLOR_ATTACHMENT`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01208"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::DepthStencilAttachmentOptimal
+                | ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                | ImageLayout::DepthAttachmentOptimal
+                | ImageLayout::StencilAttachmentOptimal => {
+                    if !image
+                        .usage()
+                        .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`new_layout` is \
+                                `ImageLayout::DepthStencilAttachmentOptimal`, \
+                                `ImageLayout::DepthStencilReadOnlyOptimal`, \
+                                `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`, \
+                                `ImageLayout::DepthAttachmentStencilReadOnlyOptimal`, \
+                                `ImageLayout::DepthAttachmentOptimal` or \
+                                `ImageLayout::StencilAttachmentOptimal`, but \
+                                `image.usage()` does not contain \
+                                `ImageUsage::DEPTH_STENCIL_ATTACHMENT`"
+                                .into(),
+                            vuids: &[
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01209",
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01210",
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01658",
+                                "VUID-VkImageMemoryBarrier2-oldLayout-01659",
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04066",
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04068",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::ShaderReadOnlyOptimal => {
+                    if !image
+                        .usage()
+                        .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`new_layout` is `ImageLayout::ShaderReadOnlyOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::SAMPLED` or \
+                                `ImageUsage::INPUT_ATTACHMENT`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01211"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::TransferSrcOptimal => {
+                    if !image.usage().intersects(ImageUsage::TRANSFER_SRC) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`new_layout` is `ImageLayout::TransferSrcOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::TRANSFER_SRC`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01212"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::TransferDstOptimal => {
+                    if !image.usage().intersects(ImageUsage::TRANSFER_DST) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`new_layout` is `ImageLayout::TransferDstOptimal`, but \
+                                `image.usage()` does not contain `ImageUsage::TRANSFER_DST`"
+                                .into(),
+                            vuids: &["VUID-VkImageMemoryBarrier2-oldLayout-01213"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::DepthReadOnlyOptimal | ImageLayout::StencilReadOnlyOptimal => {
+                    if !image.usage().intersects(
+                        ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                            | ImageUsage::SAMPLED
+                            | ImageUsage::INPUT_ATTACHMENT,
+                    ) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`new_layout` is `ImageLayout::DepthReadOnlyOptimal` or \
+                                `ImageLayout::StencilReadOnlyOptimal`, but \
+                                `image.usage()` does not contain \
+                                `ImageUsage::DEPTH_STENCIL_ATTACHMENT`, `ImageUsage::SAMPLED` or \
+                                `ImageUsage::INPUT_ATTACHMENT`"
+                                .into(),
+                            vuids: &[
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04065",
+                                "VUID-VkImageMemoryBarrier2-srcQueueFamilyIndex-04067",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageLayout::General | ImageLayout::PresentSrc => (),
+            }
+
+            if src_stages.intersects(PipelineStages::HOST)
+                && !matches!(
+                    old_layout,
+                    ImageLayout::Preinitialized | ImageLayout::Undefined | ImageLayout::General
+                )
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_stages` contains `PipelineStages::HOST`, but \
+                        `old_layout` is not `ImageLayout::Preinitialized`, \
+                        `ImageLayout::Undefined` or `ImageLayout::General`"
+                        .into(),
+                    vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03855"],
+                    ..Default::default()
+                }));
+            }
+
+            // VUID-VkImageMemoryBarrier2-oldLayout-01197
+            // Unsafe
+        }
+
+        Ok(())
     }
 }
 

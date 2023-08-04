@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{extensions::RequiresOneOf, write_file, IndexMap, VkRegistryData};
+use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
 use once_cell::sync::Lazy;
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -53,9 +53,9 @@ struct FormatMember {
     compression: Option<Ident>,
     planes: Vec<Ident>,
     texels_per_block: u8,
-    type_color: Option<Ident>,
-    type_depth: Option<Ident>,
-    type_stencil: Option<Ident>,
+    numeric_format_color: Option<Ident>,
+    numeric_format_depth: Option<Ident>,
+    numeric_format_stencil: Option<Ident>,
     ycbcr_chroma_sampling: Option<Ident>,
 
     type_std_array: Option<TokenStream>,
@@ -182,31 +182,37 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             })
         },
     );
-    let type_color_items = members.iter().filter_map(
+    let numeric_format_color_items = members.iter().filter_map(
         |FormatMember {
-             name, type_color, ..
+             name,
+             numeric_format_color,
+             ..
          }| {
-            type_color
+            numeric_format_color
                 .as_ref()
-                .map(|ty| quote! { Self::#name => Some(NumericType::#ty), })
+                .map(|ty| quote! { Self::#name => Some(NumericFormat::#ty), })
         },
     );
-    let type_depth_items = members.iter().filter_map(
+    let numeric_format_depth_items = members.iter().filter_map(
         |FormatMember {
-             name, type_depth, ..
+             name,
+             numeric_format_depth,
+             ..
          }| {
-            type_depth
+            numeric_format_depth
                 .as_ref()
-                .map(|ty| quote! { Self::#name => Some(NumericType::#ty), })
+                .map(|ty| quote! { Self::#name => Some(NumericFormat::#ty), })
         },
     );
-    let type_stencil_items = members.iter().filter_map(
+    let numeric_format_stencil_items = members.iter().filter_map(
         |FormatMember {
-             name, type_stencil, ..
+             name,
+             numeric_format_stencil,
+             ..
          }| {
-            type_stencil
+            numeric_format_stencil
                 .as_ref()
-                .map(|ty| quote! { Self::#name => Some(NumericType::#ty), })
+                .map(|ty| quote! { Self::#name => Some(NumericFormat::#ty), })
         },
     );
     let ycbcr_chroma_sampling_items = members.iter().filter_map(
@@ -271,6 +277,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                      api_version,
                      device_extensions,
                      instance_extensions,
+                     features: _,
                  }| {
                     let condition_items = (api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
@@ -431,29 +438,29 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 }
             }
 
-            /// Returns the numeric data type of the color aspect of this format. Returns `None`
+            /// Returns the numeric format of the color aspect of this format. Returns `None`
             /// for depth/stencil formats.
-            pub fn type_color(self) -> Option<NumericType> {
+            pub fn numeric_format_color(self) -> Option<NumericFormat> {
                 match self {
-                    #(#type_color_items)*
+                    #(#numeric_format_color_items)*
                     _ => None,
                 }
             }
 
-            /// Returns the numeric data type of the depth aspect of this format. Returns `None`
+            /// Returns the numeric format of the depth aspect of this format. Returns `None`
             /// color and stencil-only formats.
-            pub fn type_depth(self) -> Option<NumericType> {
+            pub fn numeric_format_depth(self) -> Option<NumericFormat> {
                 match self {
-                    #(#type_depth_items)*
+                    #(#numeric_format_depth_items)*
                     _ => None,
                 }
             }
 
-            /// Returns the numeric data type of the stencil aspect of this format. Returns `None`
+            /// Returns the numeric format of the stencil aspect of this format. Returns `None`
             /// for color and depth-only formats.
-            pub fn type_stencil(self) -> Option<NumericType> {
+            pub fn numeric_format_stencil(self) -> Option<NumericFormat> {
                 match self {
-                    #(#type_stencil_items)*
+                    #(#numeric_format_stencil_items)*
                     _ => None,
                 }
             }
@@ -605,9 +612,9 @@ fn formats_members(
             compression: None,
             planes: vec![],
             texels_per_block: 0,
-            type_color: None,
-            type_depth: None,
-            type_stencil: None,
+            numeric_format_color: None,
+            numeric_format_depth: None,
+            numeric_format_stencil: None,
             ycbcr_chroma_sampling: None,
 
             type_std_array: None,
@@ -654,9 +661,9 @@ fn formats_members(
                     .map(|c| format_ident!("{}", c.replace(' ', "_"))),
                 planes: vec![],
                 texels_per_block: format.texelsPerBlock,
-                type_color: None,
-                type_depth: None,
-                type_stencil: None,
+                numeric_format_color: None,
+                numeric_format_depth: None,
+                numeric_format_stencil: None,
                 ycbcr_chroma_sampling: None,
 
                 type_std_array: None,
@@ -683,32 +690,32 @@ fn formats_members(
                             "R" => {
                                 member.aspect_color = true;
                                 member.components[0] += bits;
-                                member.type_color = Some(ty);
+                                member.numeric_format_color = Some(ty);
                             }
                             "G" => {
                                 member.aspect_color = true;
                                 member.components[1] += bits;
-                                member.type_color = Some(ty);
+                                member.numeric_format_color = Some(ty);
                             }
                             "B" => {
                                 member.aspect_color = true;
                                 member.components[2] += bits;
-                                member.type_color = Some(ty);
+                                member.numeric_format_color = Some(ty);
                             }
                             "A" => {
                                 member.aspect_color = true;
                                 member.components[3] += bits;
-                                member.type_color = Some(ty);
+                                member.numeric_format_color = Some(ty);
                             }
                             "D" => {
                                 member.aspect_depth = true;
                                 member.components[0] += bits;
-                                member.type_depth = Some(ty);
+                                member.numeric_format_depth = Some(ty);
                             }
                             "S" => {
                                 member.aspect_stencil = true;
                                 member.components[1] += bits;
-                                member.type_stencil = Some(ty);
+                                member.numeric_format_stencil = Some(ty);
                             }
                             _ => {
                                 panic!("Unknown component type {} on format {}", name, format.name)
@@ -751,7 +758,7 @@ fn formats_members(
                 }
             };
 
-            if let (Some(numeric_type), true) = (&member.type_color, member.planes.is_empty()) {
+            if let (Some(numeric_type), true) = (&member.numeric_format_color, member.planes.is_empty()) {
                 if format.compressed.is_some() {
                     member.type_std_array = Some({
                         let block_size = Literal::usize_unsuffixed(format.blockSize as usize);

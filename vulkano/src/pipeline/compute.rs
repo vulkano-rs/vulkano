@@ -394,7 +394,7 @@ mod tests {
             ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
             PipelineShaderStageCreateInfo,
         },
-        shader::ShaderModule,
+        shader::{ShaderModule, ShaderModuleCreateInfo},
         sync::{now, GpuFuture},
     };
 
@@ -435,7 +435,8 @@ mod tests {
                 8, 9, 2, 262187, 6, 10, 0, 262194, 6, 11, 3735928559, 262176, 12, 2, 6, 327734, 2,
                 4, 0, 3, 131320, 5, 327745, 12, 13, 9, 10, 196670, 13, 11, 65789, 65592,
             ];
-            let module = ShaderModule::from_words(device.clone(), &MODULE).unwrap();
+            let module =
+                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
             module.entry_point("main").unwrap()
         };
 
@@ -492,12 +493,14 @@ mod tests {
         )
         .unwrap();
         cbb.bind_pipeline_compute(pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Compute,
                 pipeline.layout().clone(),
                 0,
                 set,
             )
+            .unwrap()
             .dispatch([1, 1, 1])
             .unwrap();
         let cb = cbb.build().unwrap();

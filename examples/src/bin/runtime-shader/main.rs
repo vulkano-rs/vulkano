@@ -21,12 +21,12 @@
 //
 // Vulkano uses shaderc to build your shaders internally.
 
-use std::{fs::File, io::Read, sync::Arc};
+use std::{fs::File, io::Read, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -49,7 +49,7 @@ use vulkano::{
         GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::ShaderModule,
+    shader::{ShaderModule, ShaderModuleCreateInfo},
     swapchain::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
@@ -177,26 +177,22 @@ fn main() {
 
     let graphics_pipeline = {
         let vs = {
-            let mut f = File::open("src/bin/runtime-shader/vert.spv").expect(
-            "can't find file `src/bin/runtime-shader/vert.spv`, this example needs to be run from \
-            the root of the example crate",
-        );
-            let mut v = vec![];
-            f.read_to_end(&mut v).unwrap();
+            let code = read_spirv_words_from_file("src/bin/runtime-shader/vert.spv");
 
             // Create a ShaderModule on a device the same Shader::load does it.
             // NOTE: You will have to verify correctness of the data by yourself!
-            let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
+            let module = unsafe {
+                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&code)).unwrap()
+            };
             module.entry_point("main").unwrap()
         };
 
         let fs = {
-            let mut f = File::open("src/bin/runtime-shader/frag.spv")
-                .expect("can't find file `src/bin/runtime-shader/frag.spv`");
-            let mut v = vec![];
-            f.read_to_end(&mut v).unwrap();
+            let code = read_spirv_words_from_file("src/bin/runtime-shader/frag.spv");
 
-            let module = unsafe { ShaderModule::from_bytes(device.clone(), &v).unwrap() };
+            let module = unsafe {
+                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&code)).unwrap()
+            };
             module.entry_point("main").unwrap()
         };
 
@@ -360,15 +356,18 @@ fn main() {
                             framebuffers[image_index as usize].clone(),
                         )
                     },
-                    SubpassContents::Inline,
+                    Default::default(),
                 )
                 .unwrap()
                 .set_viewport(0, [viewport.clone()].into_iter().collect())
+                .unwrap()
                 .bind_pipeline_graphics(graphics_pipeline.clone())
+                .unwrap()
                 .bind_vertex_buffers(0, vertex_buffer.clone())
+                .unwrap()
                 .draw(vertex_buffer.len() as u32, 1, 0, 0)
                 .unwrap()
-                .end_render_pass()
+                .end_render_pass(Default::default())
                 .unwrap();
             let command_buffer = builder.build().unwrap();
 
@@ -425,4 +424,33 @@ fn window_size_dependent_setup(
             .unwrap()
         })
         .collect::<Vec<_>>()
+}
+
+fn read_spirv_words_from_file(path: impl AsRef<Path>) -> Vec<u32> {
+    // Read the file.
+    let path = path.as_ref();
+    let mut bytes = vec![];
+    let mut file = File::open(path).unwrap_or_else(|err| {
+        panic!(
+            "can't open file `{}`: {}.\n\
+            Note: this example needs to be run from the root of the example crate",
+            path.display(),
+            err,
+        )
+    });
+    file.read_to_end(&mut bytes).unwrap();
+
+    // Convert the bytes to words.
+    // SPIR-V is defined to be always little-endian, so this may need an endianness conversion.
+    assert!(
+        bytes.len() % 4 == 0,
+        "file `{}` does not contain a whole number of SPIR-V words",
+        path.display(),
+    );
+
+    // TODO: Use `slice::array_chunks` once it's stable.
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .collect()
 }

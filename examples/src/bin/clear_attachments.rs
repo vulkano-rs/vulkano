@@ -11,7 +11,7 @@ use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, ClearAttachment,
-        ClearRect, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        ClearRect, CommandBufferUsage, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -222,7 +222,7 @@ fn main() {
                             framebuffers[image_index as usize].clone(),
                         )
                     },
-                    SubpassContents::Inline,
+                    Default::default(),
                 )
                 .unwrap()
                 // Clear attachments with clear values and rects information. All the rects will be
@@ -259,7 +259,7 @@ fn main() {
                     .collect(),
                 )
                 .unwrap()
-                .end_render_pass()
+                .end_render_pass(Default::default())
                 .unwrap();
             let command_buffer = builder.build().unwrap();
 

@@ -18,7 +18,7 @@ use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBufferAbstract,
-        SubpassContents,
+        SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
@@ -363,7 +363,10 @@ impl FrameSystem {
                     ],
                     ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
                 },
-                SubpassContents::SecondaryCommandBuffers,
+                SubpassBeginInfo {
+                    contents: SubpassContents::SecondaryCommandBuffers,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -428,7 +431,13 @@ impl<'a> Frame<'a> {
                 self.command_buffer_builder
                     .as_mut()
                     .unwrap()
-                    .next_subpass(SubpassContents::SecondaryCommandBuffers)
+                    .next_subpass(
+                        Default::default(),
+                        SubpassBeginInfo {
+                            contents: SubpassContents::SecondaryCommandBuffers,
+                            ..Default::default()
+                        },
+                    )
                     .unwrap();
 
                 // And returning an object that will allow the user to apply lighting to the scene.
@@ -442,7 +451,7 @@ impl<'a> Frame<'a> {
                 self.command_buffer_builder
                     .as_mut()
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
                 let command_buffer = self.command_buffer_builder.take().unwrap().build().unwrap();
 

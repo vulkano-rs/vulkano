@@ -338,14 +338,12 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::Sharing,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
-    VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
-    error::Error,
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    fmt::Debug,
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -1382,24 +1380,55 @@ impl Swapchain {
     /// either the `release_full_screen_exclusive` is called, or if any of the the other `Swapchain`
     /// functions return `FullScreenExclusiveLost`.
     #[inline]
-    pub fn acquire_full_screen_exclusive(&self) -> Result<(), FullScreenExclusiveError> {
+    pub fn acquire_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
+        self.validate_acquire_full_screen_exclusive_mode()?;
+
+        unsafe { Ok(self.acquire_full_screen_exclusive_mode_unchecked()?) }
+    }
+
+    fn validate_acquire_full_screen_exclusive_mode(&self) -> Result<(), Box<ValidationError>> {
+        if *self.is_retired.lock() {
+            return Err(Box::new(ValidationError {
+                problem: "this swapchain is retired".into(),
+                vuids: &["VUID-vkAcquireFullScreenExclusiveModeEXT-swapchain-02674"],
+                ..Default::default()
+            }));
+        }
+
         if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
-            return Err(FullScreenExclusiveError::NotApplicationControlled);
+            return Err(Box::new(ValidationError {
+                context: "self.full_screen_exclusive()".into(),
+                problem: "is not `FullScreenExclusive::ApplicationControlled`".into(),
+                vuids: &["VUID-vkAcquireFullScreenExclusiveModeEXT-swapchain-02675"],
+                ..Default::default()
+            }));
         }
 
-        if self.full_screen_exclusive_held.swap(true, Ordering::SeqCst) {
-            return Err(FullScreenExclusiveError::DoubleAcquire);
+        // This must be the last check in this function.
+        if self
+            .full_screen_exclusive_held
+            .swap(true, Ordering::Acquire)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "this swapchain already holds full-screen exclusive access".into(),
+                vuids: &["VUID-vkAcquireFullScreenExclusiveModeEXT-swapchain-02676"],
+                ..Default::default()
+            }));
         }
 
-        unsafe {
-            let fns = self.device.fns();
-            (fns.ext_full_screen_exclusive
-                .acquire_full_screen_exclusive_mode_ext)(
-                self.device.handle(), self.handle
-            )
-            .result()
-            .map_err(VulkanError::from)?;
-        }
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn acquire_full_screen_exclusive_mode_unchecked(&self) -> Result<(), VulkanError> {
+        self.full_screen_exclusive_held
+            .store(true, Ordering::Relaxed);
+
+        let fns = self.device.fns();
+        (fns.ext_full_screen_exclusive
+            .acquire_full_screen_exclusive_mode_ext)(self.device.handle(), self.handle)
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -1409,27 +1438,43 @@ impl Swapchain {
     /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
     /// and must currently hold full-screen exclusivity.
     #[inline]
-    pub fn release_full_screen_exclusive(&self) -> Result<(), FullScreenExclusiveError> {
+    pub fn release_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
+        self.validate_release_full_screen_exclusive_mode()?;
+
+        unsafe { Ok(self.release_full_screen_exclusive_mode_unchecked()?) }
+    }
+
+    fn validate_release_full_screen_exclusive_mode(&self) -> Result<(), Box<ValidationError>> {
+        if *self.is_retired.lock() {
+            return Err(Box::new(ValidationError {
+                problem: "this swapchain is retired".into(),
+                vuids: &["VUID-vkReleaseFullScreenExclusiveModeEXT-swapchain-02677"],
+                ..Default::default()
+            }));
+        }
+
         if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
-            return Err(FullScreenExclusiveError::NotApplicationControlled);
+            return Err(Box::new(ValidationError {
+                context: "self.full_screen_exclusive()".into(),
+                problem: "is not `FullScreenExclusive::ApplicationControlled`".into(),
+                vuids: &["VUID-vkReleaseFullScreenExclusiveModeEXT-swapchain-02678"],
+                ..Default::default()
+            }));
         }
 
-        if !self
-            .full_screen_exclusive_held
-            .swap(false, Ordering::SeqCst)
-        {
-            return Err(FullScreenExclusiveError::DoubleRelease);
-        }
+        Ok(())
+    }
 
-        unsafe {
-            let fns = self.device.fns();
-            (fns.ext_full_screen_exclusive
-                .release_full_screen_exclusive_mode_ext)(
-                self.device.handle(), self.handle
-            )
-            .result()
-            .map_err(VulkanError::from)?;
-        }
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn release_full_screen_exclusive_mode_unchecked(&self) -> Result<(), VulkanError> {
+        self.full_screen_exclusive_held
+            .store(false, Ordering::Release);
+
+        let fns = self.device.fns();
+        (fns.ext_full_screen_exclusive
+            .release_full_screen_exclusive_mode_ext)(self.device.handle(), self.handle)
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -2080,82 +2125,3 @@ impl Win32Monitor {
 // Winit's `MonitorHandle` is Send on Win32, so this seems safe.
 unsafe impl Send for Win32Monitor {}
 unsafe impl Sync for Win32Monitor {}
-
-/// Error that can happen when calling `Swapchain::acquire_full_screen_exclusive` or
-/// `Swapchain::release_full_screen_exclusive`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum FullScreenExclusiveError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// Operation could not be completed for driver specific reasons.
-    InitializationFailed,
-
-    /// The surface is no longer accessible and must be recreated.
-    SurfaceLost,
-
-    /// Full-screen exclusivity is already acquired.
-    DoubleAcquire,
-
-    /// Full-screen exclusivity is not currently acquired.
-    DoubleRelease,
-
-    /// The swapchain is not in full-screen exclusive application controlled mode.
-    NotApplicationControlled,
-}
-
-impl Error for FullScreenExclusiveError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            FullScreenExclusiveError::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for FullScreenExclusiveError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                FullScreenExclusiveError::OomError(_) => "not enough memory",
-                FullScreenExclusiveError::SurfaceLost => {
-                    "the surface of this swapchain is no longer valid"
-                }
-                FullScreenExclusiveError::InitializationFailed => {
-                    "operation could not be completed for driver specific reasons"
-                }
-                FullScreenExclusiveError::DoubleAcquire =>
-                    "full-screen exclusivity is already acquired",
-                FullScreenExclusiveError::DoubleRelease =>
-                    "full-screen exclusivity is not acquired",
-                FullScreenExclusiveError::NotApplicationControlled => {
-                    "the swapchain is not in full-screen exclusive application controlled mode"
-                }
-            }
-        )
-    }
-}
-
-impl From<VulkanError> for FullScreenExclusiveError {
-    fn from(err: VulkanError) -> FullScreenExclusiveError {
-        match err {
-            err @ VulkanError::OutOfHostMemory => {
-                FullScreenExclusiveError::OomError(OomError::from(err))
-            }
-            err @ VulkanError::OutOfDeviceMemory => {
-                FullScreenExclusiveError::OomError(OomError::from(err))
-            }
-            VulkanError::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
-            VulkanError::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for FullScreenExclusiveError {
-    fn from(err: OomError) -> FullScreenExclusiveError {
-        FullScreenExclusiveError::OomError(err)
-    }
-}

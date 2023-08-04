@@ -31,10 +31,10 @@
 //!
 //! The macro generates the following items of interest:
 //!
-//! - The `load` constructor. This function takes an `Arc<Device>`, calls
-//!   [`ShaderModule::from_words_with_data`] with the passed-in device and the shader data provided
-//!   via the macro, and returns `Result<Arc<ShaderModule>, ShaderModuleCreationError>`.
-//!   Before doing so, it loops through every capability instruction in the shader data,
+//! - The `load` constructor. This function takes an `Arc<Device>`, constructs a
+//!   [`ShaderModule`] with the passed-in device and the shader data provided
+//!   via the macro, and returns `Result<Arc<ShaderModule>, Validated<VulkanError>>`.
+//!   Before doing so, it checks every capability instruction in the shader data,
 //!   verifying that the passed-in `Device` has the appropriate features enabled.
 //! - If the `shaders` option is used, then instead of one `load` constructor, there is one for
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
@@ -50,8 +50,7 @@
 //! ```
 //! # fn main() {}
 //! # use std::sync::Arc;
-//! # use vulkano::shader::{ShaderModuleCreationError, ShaderModule};
-//! # use vulkano::device::Device;
+//! # use vulkano::{device::Device, shader::ShaderModule, Validated, VulkanError};
 //! #
 //! # mod vs {
 //! #     vulkano_shaders::shader!{
@@ -75,7 +74,7 @@
 //! }
 //!
 //! impl Shaders {
-//!     pub fn load(device: Arc<Device>) -> Result<Self, ShaderModuleCreationError> {
+//!     pub fn load(device: Arc<Device>) -> Result<Self, Validated<VulkanError>> {
 //!         Ok(Self {
 //!             vs: vs::load(device)?,
 //!         })
@@ -208,7 +207,7 @@
 //!
 //! [`cargo-env-vars`]: https://doc.rust-lang.org/cargo/reference/environment-variables.html
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
-//! [`ShaderModule::from_words_with_data`]: vulkano::shader::ShaderModule::from_words_with_data
+//! [`ShaderModule`]: vulkano::shader::ShaderModule
 //! [pipeline]: vulkano::pipeline
 //! [`set_target_env`]: shaderc::CompileOptions::set_target_env
 //! [`set_target_spirv`]: shaderc::CompileOptions::set_target_spirv

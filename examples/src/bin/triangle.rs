@@ -21,7 +21,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -617,24 +617,30 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        // The contents of the first (and only) subpass. This can be either
-                        // `Inline` or `SecondaryCommandBuffers`. The latter is a bit more advanced
-                        // and is not covered here.
-                        SubpassContents::Inline,
+                        SubpassBeginInfo {
+                            // The contents of the first (and only) subpass.
+                            // This can be either `Inline` or `SecondaryCommandBuffers`.
+                            // The latter is a bit more advanced and is not covered here.
+                            contents: SubpassContents::Inline,
+                            ..Default::default()
+                        },
                     )
                     .unwrap()
                     // We are now inside the first subpass of the render pass.
                     //
                     // TODO: Document state setting and how it affects subsequent draw commands.
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .unwrap()
                     // We add a draw command.
                     .draw(vertex_buffer.len() as u32, 1, 0, 0)
                     .unwrap()
                     // We leave the render pass. Note that if we had multiple subpasses we could
                     // have called `next_subpass` to jump to the next subpass.
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
 
                 // Finish building the command buffer by calling `build`.

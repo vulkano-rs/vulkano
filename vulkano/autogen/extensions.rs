@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, IndexMap, VkRegistryData};
+use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
 use once_cell::sync::Lazy;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
-use std::{cmp::min, fmt::Write as _, ops::BitOrAssign};
+use std::fmt::Write as _;
 use vk_parse::Extension;
 
 // This is not included in vk.xml, so it's added here manually
@@ -47,35 +47,6 @@ struct ExtensionsMember {
     requires_all_of: Vec<RequiresOneOf>,
     conflicts_device_extensions: Vec<Ident>,
     status: Option<ExtensionStatus>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RequiresOneOf {
-    pub api_version: Option<(u32, u32)>,
-    pub device_extensions: Vec<String>,
-    pub instance_extensions: Vec<String>,
-}
-
-impl BitOrAssign<&Self> for RequiresOneOf {
-    fn bitor_assign(&mut self, rhs: &Self) {
-        self.api_version = match (self.api_version, rhs.api_version) {
-            (None, None) => None,
-            (None, Some(x)) | (Some(x), None) => Some(x),
-            (Some(lhs), Some(rhs)) => Some(min(lhs, rhs)),
-        };
-
-        for rhs_ext in &rhs.device_extensions {
-            if !self.device_extensions.contains(rhs_ext) {
-                self.device_extensions.push(rhs_ext.to_owned());
-            }
-        }
-
-        for rhs_ext in &rhs.instance_extensions {
-            if !self.instance_extensions.contains(rhs_ext) {
-                self.instance_extensions.push(rhs_ext.to_owned());
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -129,6 +100,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                      api_version,
                      device_extensions,
                      instance_extensions,
+                     features: _,
                  }| {
                     (device_extensions.is_empty()
                         && (api_version.is_some() || !instance_extensions.is_empty()))
@@ -204,6 +176,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                          api_version,
                          device_extensions,
                          instance_extensions: _,
+                         features: _,
                      }| {
                         (!device_extensions.is_empty()).then(|| {
                             let condition_items = api_version
@@ -310,6 +283,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                      api_version,
                      device_extensions: _,
                      instance_extensions,
+                     features: _,
                  }| {
                     api_version.filter(|_| instance_extensions.is_empty()).map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
@@ -363,6 +337,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                          api_version,
                          device_extensions: _,
                          instance_extensions,
+                         features: _,
                      }| {
                         (!instance_extensions.is_empty()).then(|| {
                             let condition_items = api_version

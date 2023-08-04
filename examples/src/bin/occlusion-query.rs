@@ -16,7 +16,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -435,7 +435,9 @@ fn main() {
                     .reset_query_pool(query_pool.clone(), 0..3)
                     .unwrap()
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
                     .begin_render_pass(
                         RenderPassBeginInfo {
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), Some(1.0.into())],
@@ -443,7 +445,7 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        SubpassContents::Inline,
+                        Default::default(),
                     )
                     .unwrap()
                     // Begin query 0, then draw the red triangle. Enabling the
@@ -457,6 +459,7 @@ fn main() {
                     )
                     .unwrap()
                     .bind_vertex_buffers(0, triangle1.clone())
+                    .unwrap()
                     .draw(triangle1.len() as u32, 1, 0, 0)
                     .unwrap()
                     // End query 0.
@@ -466,6 +469,7 @@ fn main() {
                     .begin_query(query_pool.clone(), 1, QueryControlFlags::empty())
                     .unwrap()
                     .bind_vertex_buffers(0, triangle2.clone())
+                    .unwrap()
                     .draw(triangle2.len() as u32, 1, 0, 0)
                     .unwrap()
                     .end_query(query_pool.clone(), 1)
@@ -474,11 +478,12 @@ fn main() {
                     .begin_query(query_pool.clone(), 2, QueryControlFlags::empty())
                     .unwrap()
                     .bind_vertex_buffers(0, triangle3.clone())
+                    .unwrap()
                     .draw(triangle3.len() as u32, 1, 0, 0)
                     .unwrap()
                     .end_query(query_pool.clone(), 2)
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
             }
 

@@ -129,7 +129,7 @@ fn write_descriptor_binding_requirements(
                 let image_scalar_type = match image_scalar_type {
                     Some(image_scalar_type) => {
                         let ident = format_ident!("{}", format!("{:?}", image_scalar_type));
-                        quote! { Some(::vulkano::shader::ShaderScalarType::#ident) }
+                        quote! { Some(::vulkano::format::NumericType::#ident) }
                     }
                     None => quote! { None },
                 };
@@ -305,7 +305,7 @@ fn write_interface(interface: &ShaderInterface) -> TokenStream {
                     location: #location,
                     component: #component,
                     ty: ::vulkano::shader::ShaderInterfaceEntryType {
-                        base_type: ::vulkano::shader::ShaderScalarType::#base_type,
+                        base_type: ::vulkano::format::NumericType::#base_type,
                         num_components: #num_components,
                         num_elements: #num_elements,
                         is_64bit: #is_64bit,
