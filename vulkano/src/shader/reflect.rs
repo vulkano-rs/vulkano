@@ -16,8 +16,8 @@ use crate::{
     pipeline::layout::PushConstantRange,
     shader::{
         spirv::{
-            Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction, Spirv,
-            StorageClass,
+            BuiltIn, Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction,
+            Spirv, StorageClass,
         },
         ComputeShaderExecution, DescriptorIdentifier, DescriptorRequirements, EntryPointInfo,
         GeometryShaderExecution, GeometryShaderInput, ShaderExecution, ShaderInterface,
@@ -56,6 +56,7 @@ pub fn spirv_extensions(spirv: &Spirv) -> impl Iterator<Item = &str> {
 #[inline]
 pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ {
     let interface_variables = interface_variables(spirv);
+    let workgroup_size_decorations = workgroup_size_decorations(spirv);
 
     spirv.iter_entry_point().filter_map(move |instruction| {
         let (execution_model, function_id, entry_point_name, interface) = match instruction {
@@ -69,7 +70,12 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
             _ => return None,
         };
 
-        let execution = shader_execution(spirv, execution_model, function_id);
+        let execution = shader_execution(
+            spirv,
+            execution_model,
+            function_id,
+            &workgroup_size_decorations,
+        );
         let stage = ShaderStage::from(&execution);
 
         let descriptor_binding_requirements = inspect_entry_point(
@@ -110,11 +116,29 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
     })
 }
 
+/// Extracts the `WorkgroupSize` builtin Id's from `spirv`.
+fn workgroup_size_decorations(spirv: &Spirv) -> HashSet<Id> {
+    spirv
+        .iter_decoration()
+        .filter_map(|inst| {
+            if let Instruction::Decorate { target, decoration } = inst {
+                if let Decoration::BuiltIn { built_in } = decoration {
+                    if *built_in == BuiltIn::WorkgroupSize {
+                        return Some(*target);
+                    }
+                }
+            }
+            None
+        })
+        .collect()
+}
+
 /// Extracts the `ShaderExecution` for the entry point `function_id` from `spirv`.
 fn shader_execution(
     spirv: &Spirv,
     execution_model: ExecutionModel,
     function_id: Id,
+    workgroup_size_decorations: &HashSet<Id>,
 ) -> ShaderExecution {
     match execution_model {
         ExecutionModel::Vertex => ShaderExecution::Vertex,
@@ -226,7 +250,45 @@ fn shader_execution(
                     _ => continue,
                 };
             }
-            // TODO: WorgroupSize
+            if !workgroup_size_decorations.is_empty() {
+                let mut in_function = false;
+                for instruction in spirv.instructions() {
+                    if !in_function {
+                        match *instruction {
+                            Instruction::Function { result_id, .. } if result_id == function_id => {
+                                in_function = true;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        match instruction {
+                            Instruction::ConstantComposite {
+                                result_type_id: _,
+                                result_id,
+                                constituents,
+                            }
+                            | Instruction::SpecConstantComposite {
+                                result_type_id: _,
+                                result_id,
+                                constituents,
+                            } => {
+                                if workgroup_size_decorations.contains(result_id) {
+                                    if let [x, y, z] = constituents.as_slice() {
+                                        execution = ComputeShaderExecution::WorkgroupSizeId([
+                                            u32::from(*x),
+                                            u32::from(*y),
+                                            u32::from(*z),
+                                        ]);
+                                        break;
+                                    }
+                                }
+                            }
+                            Instruction::FunctionEnd => break,
+                            _ => continue,
+                        }
+                    }
+                }
+            }
             ShaderExecution::Compute(execution)
         }
 

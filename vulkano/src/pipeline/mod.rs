@@ -495,10 +495,13 @@ impl PipelineShaderStageCreateInfo {
             }
         }
 
+        let local_size = entry_point_info.local_size(specialization_info)?;
+        let workgroup_size = local_size.map(|[x, y, z]| x * y * z);
+        if workgroup_size == Some(0) {
+            todo!("LocalSize {:?} cannot be 0!", local_size.unwrap());
+        }
+
         if let Some(required_subgroup_size) = required_subgroup_size {
-            let local_size = entry_point_info.local_size(specialization_info)?;
-            let workgroup_size = local_size.map(|[x, y, z]| x * y * z);
-            // TODO: validate local_size
             validate_required_subgroup_size(
                 device,
                 stage_enum,

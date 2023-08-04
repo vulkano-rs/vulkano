@@ -579,8 +579,10 @@ impl EntryPointInfo {
                             if let SpecializationConstant::U32(x) = spec {
                                 *size = *x;
                             } else {
-                                todo!("expected SpecializationConstant::U32(_), found {spec:?}",);
+                                todo!("expected SpecializationConstant::U32(_), found {spec:?}");
                             }
+                        } else {
+                            todo!("Specialization (id = {id}) not found!");
                         }
                     }
                     Ok(Some(local_size))
@@ -742,14 +744,20 @@ pub enum FragmentTestsStages {
     EarlyAndLate,
 }
 
+/// The mode in which the compute shader executes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComputeShaderExecution {
+    /// Workgroup size in x, y, and z.
     LocalSize([u32; 3]),
-    // requires spirv 1.2
+    /// Requires spirv 1.2.
+    /// `LocalSize` but with ids instead of literals.
+    // TODO: In order to validate the spirv 1.2 req, should look at all execution
+    // modes again because `WorkgroupSizeId` discards this info.
     LocalSizeId([u32; 3]),
-    // Deprecated in spirv 1.6
-    // The ids are the fields of struct decorated with WorkgroupSize builtin.
-    // Functionally equivalent to LocalSizeId.
+    /// Deprecated in spirv 1.6.
+    /// The ids are the components of a `ConstantComposite` or `SpecConstantComposite`
+    /// vector decorated with the `WorkgroupSize` builtin.
+    /// Functionally equivalent to `LocalSizeId`.
     WorkgroupSizeId([u32; 3]),
 }
 
