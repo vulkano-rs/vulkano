@@ -530,12 +530,11 @@ pub(crate) fn validate_required_subgroup_size(
             ..Default::default()
         }));
     }
-    let stages: ShaderStages = [stage].into_iter().collect();
     let properties = device.physical_device().properties();
     if !properties
         .required_subgroup_size_stages
         .unwrap_or_default()
-        .contains(stages)
+        .contains_enum(stage)
     {
         return Err(Box::new(ValidationError {
             context: "required_subgroup_size".into(),
