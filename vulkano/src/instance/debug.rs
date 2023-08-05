@@ -23,7 +23,9 @@
 //! # use vulkano::instance::Instance;
 //! # use std::sync::Arc;
 //! # let instance: Arc<Instance> = return;
-//! use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo};
+//! use vulkano::instance::debug::{
+//!     DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
+//! };
 //!
 //! let _callback = unsafe {
 //!     DebugUtilsMessenger::new(
