@@ -18,7 +18,6 @@ mod linux {
         command_buffer::{
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
             CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
-            SubpassContents,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -63,16 +62,18 @@ mod linux {
             PipelineShaderStageCreateInfo,
         },
         render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-        swapchain::{AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
+        swapchain::{
+            acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+        },
         sync::{
             now,
             semaphore::{
                 ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, Semaphore,
                 SemaphoreCreateInfo,
             },
-            FlushError, GpuFuture,
+            GpuFuture,
         },
-        VulkanLibrary,
+        Validated, VulkanError, VulkanLibrary,
     };
     use winit::{
         event::{Event, WindowEvent},
@@ -352,15 +353,19 @@ mod linux {
                         recreate_swapchain = false;
                     }
 
-                    let (image_index, suboptimal, acquire_future) =
-                        match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
-                            Ok(r) => r,
-                            Err(AcquireError::OutOfDate) => {
-                                recreate_swapchain = true;
-                                return;
-                            }
-                            Err(e) => panic!("failed to acquire next image: {e}"),
-                        };
+                    let (image_index, suboptimal, acquire_future) = match acquire_next_image(
+                        swapchain.clone(),
+                        None,
+                    )
+                    .map_err(Validated::unwrap)
+                    {
+                        Ok(r) => r,
+                        Err(VulkanError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("failed to acquire next image: {e}"),
+                    };
 
                     if suboptimal {
                         recreate_swapchain = true;
@@ -380,21 +385,25 @@ mod linux {
                                     framebuffers[image_index as usize].clone(),
                                 )
                             },
-                            SubpassContents::Inline,
+                            Default::default(),
                         )
                         .unwrap()
                         .set_viewport(0, [viewport.clone()].into_iter().collect())
+                        .unwrap()
                         .bind_pipeline_graphics(pipeline.clone())
+                        .unwrap()
                         .bind_descriptor_sets(
                             PipelineBindPoint::Graphics,
                             pipeline.layout().clone(),
                             0,
                             set.clone(),
                         )
+                        .unwrap()
                         .bind_vertex_buffers(0, vertex_buffer.clone())
+                        .unwrap()
                         .draw(vertex_buffer.len() as u32, 1, 0, 0)
                         .unwrap()
-                        .end_render_pass()
+                        .end_render_pass(Default::default())
                         .unwrap();
                     let command_buffer = builder.build().unwrap();
 
@@ -412,12 +421,12 @@ mod linux {
                         )
                         .then_signal_fence_and_flush();
 
-                    match future {
+                    match future.map_err(Validated::unwrap) {
                         Ok(future) => {
                             future.wait(None).unwrap();
                             previous_frame_end = Some(future.boxed());
                         }
-                        Err(FlushError::OutOfDate) => {
+                        Err(VulkanError::OutOfDate) => {
                             recreate_swapchain = true;
                             previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
                         }

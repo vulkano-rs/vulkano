@@ -18,6 +18,7 @@
 use crate::Version;
 use ahash::{HashMap, HashMapExt};
 use std::{
+    borrow::Cow,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     ops::Range,
@@ -563,10 +564,18 @@ impl<'a> StructMemberInfo<'a> {
 #[repr(transparent)]
 pub struct Id(u32);
 
+impl Id {
+    // Returns the raw numeric value of this Id.
+    #[inline]
+    pub const fn as_raw(self) -> u32 {
+        self.0
+    }
+}
+
 impl From<Id> for u32 {
     #[inline]
     fn from(id: Id) -> u32 {
-        id.0
+        id.as_raw()
     }
 }
 
@@ -790,5 +799,39 @@ impl Display for ParseErrors {
                 write!(f, "invalid spec constant instruction opcode {}", opcode)
             }
         }
+    }
+}
+
+/// Converts SPIR-V bytes to words. If necessary, the byte order is swapped from little-endian
+/// to native-endian.
+pub fn bytes_to_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, SpirvBytesNotMultipleOf4> {
+    // If the current target is little endian, and the slice already has the right size and
+    // alignment, then we can just transmute the slice with bytemuck.
+    #[cfg(target_endian = "little")]
+    if let Ok(words) = bytemuck::try_cast_slice(bytes) {
+        return Ok(Cow::Borrowed(words));
+    }
+
+    if bytes.len() % 4 != 0 {
+        return Err(SpirvBytesNotMultipleOf4);
+    }
+
+    // TODO: Use `slice::array_chunks` once it's stable.
+    let words: Vec<u32> = bytes
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .collect();
+
+    Ok(Cow::Owned(words))
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SpirvBytesNotMultipleOf4;
+
+impl Error for SpirvBytesNotMultipleOf4 {}
+
+impl Display for SpirvBytesNotMultipleOf4 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the length of the provided slice is not a multiple of 4")
     }
 }

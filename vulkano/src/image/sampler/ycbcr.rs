@@ -111,7 +111,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    format::{ChromaSampling, Format, FormatFeatures, NumericType},
+    format::{ChromaSampling, Format, FormatFeatures, NumericFormat},
     image::sampler::{ComponentMapping, ComponentSwizzle, Filter},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_enum},
@@ -518,8 +518,8 @@ impl SamplerYcbcrConversionCreateInfo {
             })?;
 
         if !format
-            .type_color()
-            .map_or(false, |ty| ty == NumericType::UNORM)
+            .numeric_format_color()
+            .map_or(false, |ty| ty == NumericFormat::UNORM)
         {
             return Err(Box::new(ValidationError {
                 context: "format".into(),

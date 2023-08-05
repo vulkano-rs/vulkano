@@ -17,12 +17,10 @@ use crate::{
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
-        future::{
-            now, AccessCheckError, AccessError, FlushError, GpuFuture, NowFuture, SubmitAnyBuilder,
-        },
+        future::{now, AccessCheckError, AccessError, GpuFuture, NowFuture, SubmitAnyBuilder},
         PipelineStages,
     },
-    DeviceSize, SafeDeref, VulkanObject,
+    DeviceSize, SafeDeref, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{
@@ -172,7 +170,7 @@ pub unsafe trait SecondaryCommandBufferAbstract:
     /// and if so locks it.
     ///
     /// If you call this function, then you should call `unlock` afterwards.
-    fn lock_record(&self) -> Result<(), CommandBufferExecError>;
+    fn lock_record(&self) -> Result<(), Box<ValidationError>>;
 
     /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
     ///
@@ -198,7 +196,7 @@ where
         (**self).inheritance_info()
     }
 
-    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+    fn lock_record(&self) -> Result<(), Box<ValidationError>> {
         (**self).lock_record()
     }
 
@@ -235,7 +233,7 @@ where
 {
     // Implementation of `build_submission`. Doesn't check whenever the future was already flushed.
     // You must make sure to not submit same command buffer multiple times.
-    unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
                 SubmitInfo {
@@ -289,7 +287,7 @@ where
         self.previous.cleanup_finished();
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         if *self.submitted.lock() {
             return Ok(SubmitAnyBuilder::Empty);
         }
@@ -297,7 +295,7 @@ where
         self.build_submission_impl()
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         unsafe {
             let mut submitted = self.submitted.lock();
             if *submitted {

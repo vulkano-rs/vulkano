@@ -12,23 +12,16 @@ use crate::{
         allocator::CommandBufferAllocator,
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
+        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
         ResourceInCommand, SecondaryCommandBufferAbstract, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
-    format::Format,
-    image::SampleCount,
-    query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
-    Requires, RequiresAllOf, RequiresOneOf, SafeDeref, VulkanObject,
+    query::QueryType,
+    Requires, RequiresAllOf, RequiresOneOf, SafeDeref, ValidationError, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
-use std::{
-    cmp::min,
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    sync::Arc,
-};
+use std::{cmp::min, iter, ops::Deref, sync::Arc};
 
 /// # Commands to execute a secondary command buffer inside a primary command buffer.
 ///
@@ -46,15 +39,11 @@ where
     pub fn execute_commands(
         &mut self,
         command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
-    ) -> Result<&mut Self, ExecuteCommandsError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffer = DropUnlockCommandBuffer::new(command_buffer)?;
-        self.validate_execute_commands(&command_buffer, 0)?;
+        self.validate_execute_commands(iter::once(&**command_buffer))?;
 
-        unsafe {
-            self.execute_commands_locked(smallvec![command_buffer]);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.execute_commands_locked(smallvec![command_buffer])) }
     }
 
     /// Executes multiple secondary command buffers in a vector.
@@ -66,289 +55,405 @@ where
     pub fn execute_commands_from_vec(
         &mut self,
         command_buffers: Vec<Arc<dyn SecondaryCommandBufferAbstract>>,
-    ) -> Result<&mut Self, ExecuteCommandsError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffers: SmallVec<[_; 4]> = command_buffers
             .into_iter()
             .map(DropUnlockCommandBuffer::new)
             .collect::<Result<_, _>>()?;
 
-        for (command_buffer_index, command_buffer) in command_buffers.iter().enumerate() {
-            self.validate_execute_commands(command_buffer, command_buffer_index as u32)?;
-        }
+        self.validate_execute_commands(command_buffers.iter().map(|cb| &***cb))?;
 
-        unsafe {
-            self.execute_commands_locked(command_buffers);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.execute_commands_locked(command_buffers)) }
     }
 
-    fn validate_execute_commands(
+    fn validate_execute_commands<'a>(
         &self,
-        command_buffer: &dyn SecondaryCommandBufferAbstract,
-        command_buffer_index: u32,
-    ) -> Result<(), ExecuteCommandsError> {
-        // VUID-vkCmdExecuteCommands-commonparent
-        assert_eq!(self.device(), command_buffer.device());
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdExecuteCommands-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(ExecuteCommandsError::NotSupportedByQueueFamily);
-        }
-
-        // TODO:
-        // VUID-vkCmdExecuteCommands-pCommandBuffers-00094
+        command_buffers: impl Iterator<Item = &'a dyn SecondaryCommandBufferAbstract> + Clone,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_execute_commands(command_buffers.clone())?;
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
-            // VUID-vkCmdExecuteCommands-contents-06018
-            // VUID-vkCmdExecuteCommands-flags-06024
             if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
-                return Err(ExecuteCommandsError::ForbiddenWithSubpassContents {
-                    contents: render_pass_state.contents,
-                });
-            }
-
-            // VUID-vkCmdExecuteCommands-pCommandBuffers-00096
-            let inheritance_render_pass = command_buffer
-                .inheritance_info()
-                .render_pass
-                .as_ref()
-                .ok_or(ExecuteCommandsError::RenderPassInheritanceRequired {
-                    command_buffer_index,
-                })?;
-
-            match (&render_pass_state.render_pass, inheritance_render_pass) {
-                (
-                    RenderPassStateType::BeginRenderPass(state),
-                    CommandBufferInheritanceRenderPassType::BeginRenderPass(inheritance_info),
-                ) => {
-                    // VUID-vkCmdExecuteCommands-pBeginInfo-06020
-                    if !inheritance_info
-                        .subpass
-                        .render_pass()
-                        .is_compatible_with(state.subpass.render_pass())
-                    {
-                        return Err(ExecuteCommandsError::RenderPassNotCompatible {
-                            command_buffer_index,
-                        });
-                    }
-
-                    // VUID-vkCmdExecuteCommands-pCommandBuffers-06019
-                    if inheritance_info.subpass.index() != state.subpass.index() {
-                        return Err(ExecuteCommandsError::RenderPassSubpassMismatch {
-                            command_buffer_index,
-                            required_subpass: state.subpass.index(),
-                            inherited_subpass: inheritance_info.subpass.index(),
-                        });
-                    }
-
-                    // VUID-vkCmdExecuteCommands-pCommandBuffers-00099
-                    if let Some(framebuffer) = &inheritance_info.framebuffer {
-                        if framebuffer != state.framebuffer.as_ref().unwrap() {
-                            return Err(ExecuteCommandsError::RenderPassFramebufferMismatch {
-                                command_buffer_index,
-                            });
-                        }
-                    }
-                }
-                (
-                    RenderPassStateType::BeginRendering(_),
-                    CommandBufferInheritanceRenderPassType::BeginRendering(inheritance_info),
-                ) => {
-                    let attachments = render_pass_state.attachments.as_ref().unwrap();
-
-                    // VUID-vkCmdExecuteCommands-colorAttachmentCount-06027
-                    if inheritance_info.color_attachment_formats.len()
-                        != attachments.color_attachments.len()
-                    {
-                        return Err(
-                            ExecuteCommandsError::RenderPassColorAttachmentCountMismatch {
-                                command_buffer_index,
-                                required_count: attachments.color_attachments.len() as u32,
-                                inherited_count: inheritance_info.color_attachment_formats.len()
-                                    as u32,
-                            },
-                        );
-                    }
-
-                    for (color_attachment_index, image_view, inherited_format) in attachments
-                        .color_attachments
-                        .iter()
-                        .zip(inheritance_info.color_attachment_formats.iter().copied())
-                        .enumerate()
-                        .filter_map(|(i, (a, f))| a.as_ref().map(|a| (i as u32, &a.image_view, f)))
-                    {
-                        let required_format = image_view.format();
-
-                        // VUID-vkCmdExecuteCommands-imageView-06028
-                        if Some(required_format) != inherited_format {
-                            return Err(
-                                ExecuteCommandsError::RenderPassColorAttachmentFormatMismatch {
-                                    command_buffer_index,
-                                    color_attachment_index,
-                                    required_format,
-                                    inherited_format,
-                                },
-                            );
-                        }
-
-                        // VUID-vkCmdExecuteCommands-pNext-06035
-                        if image_view.image().samples() != inheritance_info.rasterization_samples {
-                            return Err(
-                                ExecuteCommandsError::RenderPassColorAttachmentSamplesMismatch {
-                                    command_buffer_index,
-                                    color_attachment_index,
-                                    required_samples: image_view.image().samples(),
-                                    inherited_samples: inheritance_info.rasterization_samples,
-                                },
-                            );
-                        }
-                    }
-
-                    if let Some((image_view, format)) = attachments
-                        .depth_attachment
-                        .as_ref()
-                        .map(|a| (&a.image_view, inheritance_info.depth_attachment_format))
-                    {
-                        // VUID-vkCmdExecuteCommands-pDepthAttachment-06029
-                        if Some(image_view.format()) != format {
-                            return Err(
-                                ExecuteCommandsError::RenderPassDepthAttachmentFormatMismatch {
-                                    command_buffer_index,
-                                    required_format: image_view.format(),
-                                    inherited_format: format,
-                                },
-                            );
-                        }
-
-                        // VUID-vkCmdExecuteCommands-pNext-06036
-                        if image_view.image().samples() != inheritance_info.rasterization_samples {
-                            return Err(
-                                ExecuteCommandsError::RenderPassDepthAttachmentSamplesMismatch {
-                                    command_buffer_index,
-                                    required_samples: image_view.image().samples(),
-                                    inherited_samples: inheritance_info.rasterization_samples,
-                                },
-                            );
-                        }
-                    }
-
-                    if let Some((image_view, format)) = attachments
-                        .stencil_attachment
-                        .as_ref()
-                        .map(|a| (&a.image_view, inheritance_info.stencil_attachment_format))
-                    {
-                        // VUID-vkCmdExecuteCommands-pStencilAttachment-06030
-                        if Some(image_view.format()) != format {
-                            return Err(
-                                ExecuteCommandsError::RenderPassStencilAttachmentFormatMismatch {
-                                    command_buffer_index,
-                                    required_format: image_view.format(),
-                                    inherited_format: format,
-                                },
-                            );
-                        }
-
-                        // VUID-vkCmdExecuteCommands-pNext-06037
-                        if image_view.image().samples() != inheritance_info.rasterization_samples {
-                            return Err(
-                                ExecuteCommandsError::RenderPassStencilAttachmentSamplesMismatch {
-                                    command_buffer_index,
-                                    required_samples: image_view.image().samples(),
-                                    inherited_samples: inheritance_info.rasterization_samples,
-                                },
-                            );
-                        }
-                    }
-
-                    // VUID-vkCmdExecuteCommands-viewMask-06031
-                    if inheritance_info.view_mask != render_pass_state.rendering_info.view_mask {
-                        return Err(ExecuteCommandsError::RenderPassViewMaskMismatch {
-                            command_buffer_index,
-                            required_view_mask: render_pass_state.rendering_info.view_mask,
-                            inherited_view_mask: inheritance_info.view_mask,
-                        });
-                    }
-                }
-                _ => {
-                    // VUID-vkCmdExecuteCommands-pBeginInfo-06025
-                    return Err(ExecuteCommandsError::RenderPassTypeMismatch {
-                        command_buffer_index,
-                    });
-                }
-            }
-
-            // TODO:
-            // VUID-vkCmdExecuteCommands-commandBuffer-06533
-            // VUID-vkCmdExecuteCommands-commandBuffer-06534
-            // VUID-vkCmdExecuteCommands-pCommandBuffers-06535
-            // VUID-vkCmdExecuteCommands-pCommandBuffers-06536
-        } else {
-            // VUID-vkCmdExecuteCommands-pCommandBuffers-00100
-            if command_buffer.inheritance_info().render_pass.is_some() {
-                return Err(ExecuteCommandsError::RenderPassInheritanceForbidden {
-                    command_buffer_index,
-                });
+                return Err(Box::new(ValidationError {
+                    problem: "a render pass instance is active, but its current subpass contents \
+                        is `SubpassContents::SecondaryCommandBuffers`"
+                        .into(),
+                    vuids: &[
+                        "VUID-vkCmdExecuteCommands-contents-06018",
+                        "VUID-vkCmdExecuteCommands-flags-06024",
+                    ],
+                    ..Default::default()
+                }));
             }
         }
 
-        // VUID-vkCmdExecuteCommands-commandBuffer-00101
         if !self.builder_state.queries.is_empty()
             && !self.device().enabled_features().inherited_queries
         {
-            return Err(ExecuteCommandsError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::execute_commands` when a query is active",
+            return Err(Box::new(ValidationError {
+                problem: "a query is active".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "inherited_queries",
                 )])]),
-            });
+                vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00101"],
+                ..Default::default()
+            }));
         }
 
-        for state in self.builder_state.queries.values() {
-            match state.query_pool.query_type() {
-                QueryType::Occlusion => {
-                    // VUID-vkCmdExecuteCommands-commandBuffer-00102
-                    let inherited_flags = command_buffer.inheritance_info().occlusion_query.ok_or(
-                        ExecuteCommandsError::OcclusionQueryInheritanceRequired {
-                            command_buffer_index,
-                        },
-                    )?;
+        for (command_buffer_index, command_buffer) in command_buffers.enumerate() {
+            if let Some(render_pass_state) = &self.builder_state.render_pass {
+                let inheritance_render_pass = command_buffer
+                    .inheritance_info()
+                    .render_pass
+                    .as_ref()
+                    .ok_or(Box::new(ValidationError {
+                        problem: format!(
+                            "a render pass instance is active, but \
+                            `command_buffers[{}].inheritance_info().render_pass` is `None`",
+                            command_buffer_index
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00096"],
+                        ..Default::default()
+                    }))?;
 
-                    let inherited_flags_vk = ash::vk::QueryControlFlags::from(inherited_flags);
-                    let state_flags_vk = ash::vk::QueryControlFlags::from(state.flags);
+                match (&render_pass_state.render_pass, inheritance_render_pass) {
+                    (
+                        RenderPassStateType::BeginRenderPass(state),
+                        CommandBufferInheritanceRenderPassType::BeginRenderPass(inheritance_info),
+                    ) => {
+                        if !inheritance_info
+                            .subpass
+                            .render_pass()
+                            .is_compatible_with(state.subpass.render_pass())
+                        {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "command_buffers[{}].inheritance_info().render_pass\
+                                    .subpass.render_pass()",
+                                    command_buffer_index
+                                )
+                                .into(),
+                                problem: "is not compatible with the current render pass instance"
+                                    .into(),
+                                vuids: &["VUID-vkCmdExecuteCommands-pBeginInfo-06020"],
+                                ..Default::default()
+                            }));
+                        }
 
-                    // VUID-vkCmdExecuteCommands-commandBuffer-00103
-                    if inherited_flags_vk & state_flags_vk != state_flags_vk {
-                        return Err(ExecuteCommandsError::OcclusionQueryFlagsNotSuperset {
-                            command_buffer_index,
-                            required_flags: state.flags,
-                            inherited_flags,
-                        });
+                        if inheritance_info.subpass.index() != state.subpass.index() {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "command_buffers[{}].inheritance_info().render_pass\
+                                    .subpass.index()",
+                                    command_buffer_index
+                                )
+                                .into(),
+                                problem: "is not equal to the index of the current \
+                                    subpass instance"
+                                    .into(),
+                                vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-06019"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if let Some(framebuffer) = &inheritance_info.framebuffer {
+                            if framebuffer != state.framebuffer.as_ref().unwrap() {
+                                return Err(Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().render_pass\
+                                        .framebuffer",
+                                        command_buffer_index
+                                    )
+                                    .into(),
+                                    problem: "is `Some`, but is not equal to the framebuffer of \
+                                        the current render pass instance"
+                                        .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00099"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    }
+                    (
+                        RenderPassStateType::BeginRendering(_),
+                        CommandBufferInheritanceRenderPassType::BeginRendering(inheritance_info),
+                    ) => {
+                        let attachments = render_pass_state.attachments.as_ref().unwrap();
+
+                        if inheritance_info.color_attachment_formats.len()
+                            != attachments.color_attachments.len()
+                        {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "command_buffers[{}].inheritance_info().render_pass\
+                                    .color_attachment_formats.len()",
+                                    command_buffer_index
+                                )
+                                .into(),
+                                problem: "is not equal to the number of color attachments in the \
+                                    current subpass instance"
+                                    .into(),
+                                vuids: &["VUID-vkCmdExecuteCommands-colorAttachmentCount-06027"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        for (color_attachment_index, image_view, inherited_format) in (attachments
+                            .color_attachments
+                            .iter())
+                        .zip(inheritance_info.color_attachment_formats.iter().copied())
+                        .enumerate()
+                        .filter_map(|(i, (a, f))| a.as_ref().map(|a| (i as u32, &a.image_view, f)))
+                        {
+                            let required_format = image_view.format();
+
+                            if Some(required_format) != inherited_format {
+                                return Err(Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().render_pass\
+                                        .color_attachment_formats[{}]",
+                                        command_buffer_index, color_attachment_index
+                                    )
+                                    .into(),
+                                    problem: "is not equal to the format of the \
+                                        corresponding color attachment in the current subpass \
+                                        instance"
+                                        .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-imageView-06028"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if image_view.image().samples()
+                                != inheritance_info.rasterization_samples
+                            {
+                                return Err(Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().render_pass\
+                                        .rasterization_samples",
+                                        command_buffer_index,
+                                    )
+                                    .into(),
+                                    problem: "is not equal to the number of samples of the \
+                                        attachments in the current subpass instance"
+                                        .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-pNext-06035"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+
+                        if let Some((image_view, format)) = attachments
+                            .depth_attachment
+                            .as_ref()
+                            .map(|a| (&a.image_view, inheritance_info.depth_attachment_format))
+                        {
+                            if Some(image_view.format()) != format {
+                                return Err(Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().render_pass\
+                                        .depth_attachment_format",
+                                        command_buffer_index
+                                    )
+                                    .into(),
+                                    problem: "is not equal to the format of the \
+                                        depth attachment in the current subpass instance"
+                                        .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-pDepthAttachment-06029"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if image_view.image().samples()
+                                != inheritance_info.rasterization_samples
+                            {
+                                return Err(Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().render_pass\
+                                        .rasterization_samples",
+                                        command_buffer_index,
+                                    )
+                                    .into(),
+                                    problem: "is not equal to the number of samples of the \
+                                        attachments in the current subpass instance"
+                                        .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-pNext-06036"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+
+                        if let Some((image_view, format)) = attachments
+                            .stencil_attachment
+                            .as_ref()
+                            .map(|a| (&a.image_view, inheritance_info.stencil_attachment_format))
+                        {
+                            if Some(image_view.format()) != format {
+                                return Err(Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().render_pass\
+                                        .stencil_attachment_format",
+                                        command_buffer_index
+                                    )
+                                    .into(),
+                                    problem: "is not equal to the format of the \
+                                        stencil attachment in the current subpass instance"
+                                        .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-pStencilAttachment-06030"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if image_view.image().samples()
+                                != inheritance_info.rasterization_samples
+                            {
+                                return Err(Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().render_pass\
+                                        .rasterization_samples",
+                                        command_buffer_index,
+                                    )
+                                    .into(),
+                                    problem: "is not equal to the number of samples of the \
+                                        attachments in the current subpass instance"
+                                        .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-pNext-06037"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+
+                        if inheritance_info.view_mask != render_pass_state.rendering_info.view_mask
+                        {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "command_buffers[{}].inheritance_info().render_pass\
+                                    .view_mask",
+                                    command_buffer_index,
+                                )
+                                .into(),
+                                problem: "is not equal to the `view_mask` of the current subpass \
+                                    instance"
+                                    .into(),
+                                vuids: &["VUID-vkCmdExecuteCommands-viewMask-06031"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    (
+                        RenderPassStateType::BeginRenderPass(_),
+                        CommandBufferInheritanceRenderPassType::BeginRendering(_),
+                    ) => {
+                        return Err(Box::new(ValidationError {
+                            context: format!(
+                                "command_buffers[{}].inheritance_info().render_pass",
+                                command_buffer_index
+                            )
+                            .into(),
+                            problem: "is `CommandBufferInheritanceRenderPassType::\
+                                BeginRendering`, but the current render pass instance was begun \
+                                with `begin_render_pass`"
+                                .into(),
+                            // vuids?
+                            ..Default::default()
+                        }));
+                    }
+                    (
+                        RenderPassStateType::BeginRendering(_),
+                        CommandBufferInheritanceRenderPassType::BeginRenderPass(_),
+                    ) => {
+                        return Err(Box::new(ValidationError {
+                            context: format!(
+                                "command_buffers[{}].inheritance_info().render_pass",
+                                command_buffer_index
+                            )
+                            .into(),
+                            problem: "is `CommandBufferInheritanceRenderPassType::\
+                                BeginRenderPass`, but the current render pass instance was begun \
+                                with `begin_rendering`"
+                                .into(),
+                            vuids: &["VUID-vkCmdExecuteCommands-pBeginInfo-06025"],
+                            ..Default::default()
+                        }));
                     }
                 }
-                &QueryType::PipelineStatistics(state_flags) => {
-                    let inherited_flags = command_buffer.inheritance_info().query_statistics_flags;
-                    let inherited_flags_vk =
-                        ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
-                    let state_flags_vk = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
 
-                    // VUID-vkCmdExecuteCommands-commandBuffer-00104
-                    if inherited_flags_vk & state_flags_vk != state_flags_vk {
-                        return Err(
-                            ExecuteCommandsError::PipelineStatisticsQueryFlagsNotSuperset {
-                                command_buffer_index,
-                                required_flags: state_flags,
-                                inherited_flags,
-                            },
-                        );
-                    }
+                // TODO:
+                // VUID-vkCmdExecuteCommands-commandBuffer-06533
+                // VUID-vkCmdExecuteCommands-commandBuffer-06534
+                // VUID-vkCmdExecuteCommands-pCommandBuffers-06535
+                // VUID-vkCmdExecuteCommands-pCommandBuffers-06536
+            } else {
+                if command_buffer.inheritance_info().render_pass.is_some() {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "command_buffers[{}].inheritance_info().render_pass",
+                            command_buffer_index
+                        )
+                        .into(),
+                        problem: "is `Some`, but a render pass instance is not active".into(),
+                        vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00100"],
+                        ..Default::default()
+                    }));
                 }
-                _ => (),
+            }
+
+            for state in self.builder_state.queries.values() {
+                match state.query_pool.query_type() {
+                    QueryType::Occlusion => {
+                        let inherited_flags = command_buffer
+                            .inheritance_info()
+                            .occlusion_query
+                            .ok_or(Box::new(ValidationError {
+                                context: format!(
+                                    "command_buffers[{}].inheritance_info().occlusion_query",
+                                    command_buffer_index
+                                )
+                                .into(),
+                                problem: "is `None`, but an occlusion query is currently active"
+                                    .into(),
+                                vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00102"],
+                                ..Default::default()
+                            }))?;
+
+                        if !inherited_flags.contains(state.flags) {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "command_buffers[{}].inheritance_info().occlusion_query",
+                                    command_buffer_index
+                                )
+                                .into(),
+                                problem: "is not a superset of the flags of the active \
+                                    occlusion query"
+                                    .into(),
+                                vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00103"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    &QueryType::PipelineStatistics(state_flags) => {
+                        let inherited_flags =
+                            command_buffer.inheritance_info().query_statistics_flags;
+
+                        if !inherited_flags.contains(state_flags) {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "command_buffers[{}].inheritance_info().query_statistics_flags",
+                                    command_buffer_index
+                                )
+                                .into(),
+                                problem: "is not a superset of the flags of the active \
+                                    pipeline statistics query"
+                                    .into(),
+                                vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00104"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    _ => (),
+                }
             }
         }
 
@@ -357,13 +462,6 @@ where
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00092
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00093
         // VUID-vkCmdExecuteCommands-pCommandBuffers-00105
-
-        // VUID-vkCmdExecuteCommands-bufferlevel
-        // Ensured by the type of the impl block.
-
-        // VUID-vkCmdExecuteCommands-pCommandBuffers-00088
-        // VUID-vkCmdExecuteCommands-pCommandBuffers-00089
-        // Ensured by the SecondaryCommandBuffer trait.
 
         Ok(())
     }
@@ -462,12 +560,64 @@ impl<A> UnsafeCommandBufferBuilder<A>
 where
     A: CommandBufferAllocator,
 {
-    /// Calls `vkCmdExecuteCommands` on the builder.
-    ///
-    /// Does nothing if the list of command buffers is empty, as it would be a no-op and isn't a
-    /// valid usage of the command anyway.
-    #[inline]
     pub unsafe fn execute_commands(
+        &mut self,
+        command_buffers: &[Arc<dyn SecondaryCommandBufferAbstract>],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_execute_commands(command_buffers.iter().map(Deref::deref))?;
+
+        Ok(self.execute_commands_unchecked(command_buffers))
+    }
+
+    fn validate_execute_commands<'a>(
+        &self,
+        command_buffers: impl Iterator<Item = &'a dyn SecondaryCommandBufferAbstract>,
+    ) -> Result<(), Box<ValidationError>> {
+        if self.level() != CommandBufferLevel::Primary {
+            return Err(Box::new(ValidationError {
+                problem: "this command buffer is not a primary command buffer".into(),
+                vuids: &["VUID-vkCmdExecuteCommands-bufferlevel"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    transfer, graphics or compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        for (_command_buffer_index, command_buffer) in command_buffers.enumerate() {
+            // VUID-vkCmdExecuteCommands-commonparent
+            assert_eq!(self.device(), command_buffer.device());
+
+            // TODO:
+            // VUID-vkCmdExecuteCommands-pCommandBuffers-00094
+        }
+
+        // TODO:
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00091
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00092
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00093
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00105
+
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00088
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00089
+        // Ensured by the SecondaryCommandBuffer trait.
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn execute_commands_unchecked(
         &mut self,
         command_buffers: &[Arc<dyn SecondaryCommandBufferAbstract>],
     ) -> &mut Self {
@@ -529,7 +679,7 @@ struct DropUnlockCommandBuffer(Arc<dyn SecondaryCommandBufferAbstract>);
 impl DropUnlockCommandBuffer {
     fn new(
         command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
-    ) -> Result<Self, CommandBufferExecError> {
+    ) -> Result<Self, Box<ValidationError>> {
         command_buffer.lock_record()?;
         Ok(Self(command_buffer))
     }
@@ -549,337 +699,5 @@ impl Drop for DropUnlockCommandBuffer {
         unsafe {
             self.unlock();
         }
-    }
-}
-
-/// Error that can happen when executing a secondary command buffer.
-#[derive(Clone, Debug)]
-pub enum ExecuteCommandsError {
-    ExecError(CommandBufferExecError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// Operation forbidden inside a render subpass with the specified contents.
-    ForbiddenWithSubpassContents {
-        contents: SubpassContents,
-    },
-
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
-
-    /// A render pass is active, but a command buffer does not contain occlusion query inheritance
-    /// info.
-    OcclusionQueryInheritanceRequired {
-        command_buffer_index: u32,
-    },
-
-    /// The inherited occlusion query control flags of a command buffer are not a superset of the
-    /// currently active flags.
-    OcclusionQueryFlagsNotSuperset {
-        command_buffer_index: u32,
-        required_flags: QueryControlFlags,
-        inherited_flags: QueryControlFlags,
-    },
-
-    /// The inherited pipeline statistics query flags of a command buffer are not a superset of the
-    /// currently active flags.
-    PipelineStatisticsQueryFlagsNotSuperset {
-        command_buffer_index: u32,
-        required_flags: QueryPipelineStatisticFlags,
-        inherited_flags: QueryPipelineStatisticFlags,
-    },
-
-    /// The inherited color attachment count of a command buffer does not match the current
-    /// attachment count.
-    RenderPassColorAttachmentCountMismatch {
-        command_buffer_index: u32,
-        required_count: u32,
-        inherited_count: u32,
-    },
-
-    /// The inherited format of a color attachment of a command buffer does not match the current
-    /// attachment format.
-    RenderPassColorAttachmentFormatMismatch {
-        command_buffer_index: u32,
-        color_attachment_index: u32,
-        required_format: Format,
-        inherited_format: Option<Format>,
-    },
-
-    /// The inherited sample count of a color attachment of a command buffer does not match the
-    /// current attachment sample count.
-    RenderPassColorAttachmentSamplesMismatch {
-        command_buffer_index: u32,
-        color_attachment_index: u32,
-        required_samples: SampleCount,
-        inherited_samples: SampleCount,
-    },
-
-    /// The inherited format of the depth attachment of a command buffer does not match the current
-    /// attachment format.
-    RenderPassDepthAttachmentFormatMismatch {
-        command_buffer_index: u32,
-        required_format: Format,
-        inherited_format: Option<Format>,
-    },
-
-    /// The inherited sample count of the depth attachment of a command buffer does not match the
-    /// current attachment sample count.
-    RenderPassDepthAttachmentSamplesMismatch {
-        command_buffer_index: u32,
-        required_samples: SampleCount,
-        inherited_samples: SampleCount,
-    },
-
-    /// The inherited framebuffer of a command buffer does not match the current framebuffer.
-    RenderPassFramebufferMismatch {
-        command_buffer_index: u32,
-    },
-
-    /// A render pass is active, but a command buffer does not contain render pass inheritance info.
-    RenderPassInheritanceRequired {
-        command_buffer_index: u32,
-    },
-
-    /// A render pass is not active, but a command buffer contains render pass inheritance info.
-    RenderPassInheritanceForbidden {
-        command_buffer_index: u32,
-    },
-
-    /// The inherited render pass of a command buffer is not compatible with the current render
-    /// pass.
-    RenderPassNotCompatible {
-        command_buffer_index: u32,
-    },
-
-    /// The inherited format of the stencil attachment of a command buffer does not match the
-    /// current attachment format.
-    RenderPassStencilAttachmentFormatMismatch {
-        command_buffer_index: u32,
-        required_format: Format,
-        inherited_format: Option<Format>,
-    },
-
-    /// The inherited sample count of the stencil attachment of a command buffer does not match the
-    /// current attachment sample count.
-    RenderPassStencilAttachmentSamplesMismatch {
-        command_buffer_index: u32,
-        required_samples: SampleCount,
-        inherited_samples: SampleCount,
-    },
-
-    /// The inherited subpass index of a command buffer does not match the current subpass index.
-    RenderPassSubpassMismatch {
-        command_buffer_index: u32,
-        required_subpass: u32,
-        inherited_subpass: u32,
-    },
-
-    /// The inherited render pass of a command buffer is of the wrong type.
-    RenderPassTypeMismatch {
-        command_buffer_index: u32,
-    },
-
-    /// The inherited view mask of a command buffer does not match the current view mask.
-    RenderPassViewMaskMismatch {
-        command_buffer_index: u32,
-        required_view_mask: u32,
-        inherited_view_mask: u32,
-    },
-}
-
-impl Error for ExecuteCommandsError {}
-
-impl Display for ExecuteCommandsError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::ExecError(err) => Display::fmt(err, f),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::ForbiddenWithSubpassContents {
-                contents: subpass_contents,
-            } => write!(
-                f,
-                "operation forbidden inside a render subpass with contents {:?}",
-                subpass_contents,
-            ),
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::OcclusionQueryInheritanceRequired {
-                command_buffer_index,
-            } => write!(
-                f,
-                "a render pass is active, but command buffer {} does not contain occlusion query \
-                inheritance info",
-                command_buffer_index,
-            ),
-            Self::OcclusionQueryFlagsNotSuperset {
-                command_buffer_index,
-                required_flags,
-                inherited_flags,
-            } => write!(
-                f,
-                "the inherited occlusion query control flags ({:?}) of command buffer {} are not a \
-                superset of the currently active flags ({:?})",
-                inherited_flags, command_buffer_index, required_flags,
-            ),
-            Self::PipelineStatisticsQueryFlagsNotSuperset {
-                command_buffer_index,
-                required_flags,
-                inherited_flags,
-            } => write!(
-                f,
-                "the inherited pipeline statistics query flags ({:?}) of command buffer {} are not \
-                a superset of the currently active flags ({:?})",
-                inherited_flags, command_buffer_index, required_flags,
-            ),
-            Self::RenderPassColorAttachmentCountMismatch {
-                command_buffer_index,
-                required_count,
-                inherited_count,
-            } => write!(
-                f,
-                "the inherited color attachment count ({}) of command buffer {} does not match the \
-                current attachment count ({})",
-                inherited_count, command_buffer_index, required_count,
-            ),
-            Self::RenderPassColorAttachmentFormatMismatch {
-                command_buffer_index,
-                color_attachment_index,
-                required_format,
-                inherited_format,
-            } => write!(
-                f,
-                "the inherited format ({:?}) of color attachment {} of command buffer {} does not \
-                match the current attachment format ({:?})",
-                inherited_format, color_attachment_index, command_buffer_index, required_format,
-            ),
-            Self::RenderPassColorAttachmentSamplesMismatch {
-                command_buffer_index,
-                color_attachment_index,
-                required_samples,
-                inherited_samples,
-            } => write!(
-                f,
-                "the inherited sample count ({:?}) of color attachment {} of command buffer {} \
-                does not match the current attachment sample count ({:?})",
-                inherited_samples, color_attachment_index, command_buffer_index, required_samples,
-            ),
-            Self::RenderPassDepthAttachmentFormatMismatch {
-                command_buffer_index,
-                required_format,
-                inherited_format,
-            } => write!(
-                f,
-                "the inherited format ({:?}) of the depth attachment of command buffer {} does not \
-                match the current attachment format ({:?})",
-                inherited_format, command_buffer_index, required_format,
-            ),
-            Self::RenderPassDepthAttachmentSamplesMismatch {
-                command_buffer_index,
-                required_samples,
-                inherited_samples,
-            } => write!(
-                f,
-                "the inherited sample count ({:?}) of the depth attachment of command buffer {} \
-                does not match the current attachment sample count ({:?})",
-                inherited_samples, command_buffer_index, required_samples,
-            ),
-            Self::RenderPassFramebufferMismatch {
-                command_buffer_index,
-            } => write!(
-                f,
-                "the inherited framebuffer of command buffer {} does not match the current \
-                framebuffer",
-                command_buffer_index,
-            ),
-            Self::RenderPassInheritanceRequired {
-                command_buffer_index,
-            } => write!(
-                f,
-                "a render pass is active, but command buffer {} does not contain render pass \
-                inheritance info",
-                command_buffer_index,
-            ),
-            Self::RenderPassInheritanceForbidden {
-                command_buffer_index,
-            } => write!(
-                f,
-                "a render pass is not active, but command buffer {} contains render pass \
-                inheritance info",
-                command_buffer_index,
-            ),
-            Self::RenderPassNotCompatible {
-                command_buffer_index,
-            } => write!(
-                f,
-                "the inherited render pass of command buffer {} is not compatible with the current \
-                render pass",
-                command_buffer_index,
-            ),
-            Self::RenderPassStencilAttachmentFormatMismatch {
-                command_buffer_index,
-                required_format,
-                inherited_format,
-            } => write!(
-                f,
-                "the inherited format ({:?}) of the stencil attachment of command buffer {} does \
-                not match the current attachment format ({:?})",
-                inherited_format, command_buffer_index, required_format,
-            ),
-            Self::RenderPassStencilAttachmentSamplesMismatch {
-                command_buffer_index,
-                required_samples,
-                inherited_samples,
-            } => write!(
-                f,
-                "the inherited sample count ({:?}) of the stencil attachment of command buffer {} \
-                does not match the current attachment sample count ({:?})",
-                inherited_samples, command_buffer_index, required_samples,
-            ),
-            Self::RenderPassSubpassMismatch {
-                command_buffer_index,
-                required_subpass,
-                inherited_subpass,
-            } => write!(
-                f,
-                "the inherited subpass index ({}) of command buffer {} does not match the current \
-                subpass index ({})",
-                inherited_subpass, command_buffer_index, required_subpass,
-            ),
-            Self::RenderPassTypeMismatch {
-                command_buffer_index,
-            } => write!(
-                f,
-                "the inherited render pass of command buffer {} is of the wrong type",
-                command_buffer_index,
-            ),
-            Self::RenderPassViewMaskMismatch {
-                command_buffer_index,
-                required_view_mask,
-                inherited_view_mask,
-            } => write!(
-                f,
-                "the inherited view mask ({}) of command buffer {} does not match the current view \
-                mask ({})",
-                inherited_view_mask, command_buffer_index, required_view_mask,
-            ),
-        }
-    }
-}
-
-impl From<CommandBufferExecError> for ExecuteCommandsError {
-    fn from(val: CommandBufferExecError) -> Self {
-        Self::ExecError(val)
     }
 }

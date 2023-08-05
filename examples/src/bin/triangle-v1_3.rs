@@ -51,11 +51,10 @@ use vulkano::{
     },
     render_pass::{AttachmentLoadOp, AttachmentStoreOp},
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{self, FlushError, GpuFuture},
-    Version, VulkanLibrary,
+    sync::{self, GpuFuture},
+    Validated, Version, VulkanError, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -569,9 +568,9 @@ fn main() {
                 // This function can block if no image is available. The parameter is an optional
                 // timeout after which the function call will return an error.
                 let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(swapchain.clone(), None) {
+                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
                         Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
+                        Err(VulkanError::OutOfDate) => {
                             recreate_swapchain = true;
                             return;
                         }
@@ -635,8 +634,11 @@ fn main() {
                     //
                     // TODO: Document state setting and how it affects subsequent draw commands.
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .unwrap()
                     // We add a draw command.
                     .draw(vertex_buffer.len() as u32, 1, 0, 0)
                     .unwrap()
@@ -667,11 +669,11 @@ fn main() {
                     )
                     .then_signal_fence_and_flush();
 
-                match future {
+                match future.map_err(Validated::unwrap) {
                     Ok(future) => {
                         previous_frame_end = Some(future.boxed());
                     }
-                    Err(FlushError::OutOfDate) => {
+                    Err(VulkanError::OutOfDate) => {
                         recreate_swapchain = true;
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }

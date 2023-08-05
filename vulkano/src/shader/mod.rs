@@ -151,7 +151,7 @@ use spirv::ExecutionModel;
 use std::{
     borrow::Cow,
     collections::hash_map::Entry,
-    mem::{align_of, discriminant, size_of, size_of_val, MaybeUninit},
+    mem::{discriminant, size_of_val, MaybeUninit},
     num::NonZeroU64,
     ptr,
     sync::Arc,
@@ -357,23 +357,15 @@ impl ShaderModule {
     /// - Panics if the length of `bytes` is not a multiple of 4.
     #[deprecated(
         since = "0.34.0",
-        note = "read little-endian words yourself, and then use `new` instead"
+        note = "use `shader::spirv::bytes_to_words`, and then use `new` instead"
     )]
     #[inline]
     pub unsafe fn from_bytes(
         device: Arc<Device>,
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
-        assert!(bytes.as_ptr() as usize % align_of::<u32>() == 0);
-        assert!(bytes.len() % size_of::<u32>() == 0);
-
-        Self::new(
-            device,
-            ShaderModuleCreateInfo::new(std::slice::from_raw_parts(
-                bytes.as_ptr() as *const _,
-                bytes.len() / size_of::<u32>(),
-            )),
-        )
+        let words = spirv::bytes_to_words(bytes).unwrap();
+        Self::new(device, ShaderModuleCreateInfo::new(&words))
     }
 
     /// Returns information about the entry point with the provided name. Returns `None` if no entry
@@ -730,7 +722,7 @@ pub struct DescriptorBindingRequirements {
 
     /// The base scalar type required for the format of image views bound to this binding.
     /// This is `None` for non-image bindings.
-    pub image_scalar_type: Option<ShaderScalarType>,
+    pub image_scalar_type: Option<NumericType>,
 
     /// The view type that is required for image views bound to this binding.
     /// This is `None` for non-image bindings.
@@ -1140,7 +1132,7 @@ pub struct ShaderInterfaceEntry {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ShaderInterfaceEntryType {
     /// The base numeric type.
-    pub base_type: ShaderScalarType,
+    pub base_type: NumericType,
 
     /// The number of vector components. Must be in the range 1..=4.
     pub num_components: u32,
@@ -1157,32 +1149,6 @@ impl ShaderInterfaceEntryType {
     pub(crate) fn num_locations(&self) -> u32 {
         assert!(!self.is_64bit); // TODO: implement
         self.num_elements
-    }
-}
-
-/// The numeric base type of a shader variable.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ShaderScalarType {
-    Float,
-    Sint,
-    Uint,
-}
-
-// https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#formats-numericformat
-impl From<NumericType> for ShaderScalarType {
-    #[inline]
-    fn from(val: NumericType) -> Self {
-        match val {
-            NumericType::SFLOAT => Self::Float,
-            NumericType::UFLOAT => Self::Float,
-            NumericType::SINT => Self::Sint,
-            NumericType::UINT => Self::Uint,
-            NumericType::SNORM => Self::Float,
-            NumericType::UNORM => Self::Float,
-            NumericType::SSCALED => Self::Float,
-            NumericType::USCALED => Self::Float,
-            NumericType::SRGB => Self::Float,
-        }
     }
 }
 

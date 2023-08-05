@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{AccessCheckError, FlushError, GpuFuture};
+use super::{AccessCheckError, GpuFuture};
 use crate::{
     buffer::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
@@ -19,7 +19,7 @@ use crate::{
         future::{AccessError, SubmitAnyBuilder},
         PipelineStages,
     },
-    DeviceSize, VulkanError,
+    DeviceSize, Validated, ValidationError, VulkanError,
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{
@@ -160,7 +160,7 @@ where
     ///
     /// If the wait is successful, this function also cleans any resource locked by previous
     /// submissions.
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FlushError> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), Validated<VulkanError>> {
         let mut state = self.state.lock();
 
         self.flush_impl(&mut state)?;
@@ -211,7 +211,7 @@ where
     fn flush_impl(
         &self,
         state: &mut MutexGuard<'_, FenceSignalFutureState<F>>,
-    ) -> Result<(), FlushError> {
+    ) -> Result<(), Validated<VulkanError>> {
         unsafe {
             // In this function we temporarily replace the current state with `Poisoned` at the
             // beginning, and we take care to always put back a value into `state` before
@@ -314,12 +314,18 @@ where
                             })
                             .map_err(|err| OutcomeErr::Partial(err.into()))
                     } else {
-                        // VUID-VkPresentIdKHR-presentIds-04999
                         for swapchain_info in &present_info.swapchain_infos {
                             if swapchain_info.present_id.map_or(false, |present_id| {
                                 !swapchain_info.swapchain.try_claim_present_id(present_id)
                             }) {
-                                return Err(FlushError::PresentIdLessThanOrEqual);
+                                return Err(Box::new(ValidationError {
+                                    problem: "the provided `present_id` was not greater than any \
+                                        `present_id` passed previously for the same swapchain"
+                                        .into(),
+                                    vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
+                                    ..Default::default()
+                                })
+                                .into());
                             }
 
                             match previous.check_swapchain_image_acquired(
@@ -329,9 +335,21 @@ where
                             ) {
                                 Ok(_) => (),
                                 Err(AccessCheckError::Unknown) => {
-                                    return Err(AccessError::SwapchainImageNotAcquired.into())
+                                    return Err(Box::new(ValidationError {
+                                        problem: AccessError::SwapchainImageNotAcquired
+                                            .to_string()
+                                            .into(),
+                                        ..Default::default()
+                                    })
+                                    .into());
                                 }
-                                Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                                Err(AccessCheckError::Denied(err)) => {
+                                    return Err(Box::new(ValidationError {
+                                        problem: err.to_string().into(),
+                                        ..Default::default()
+                                    })
+                                    .into());
+                                }
                             }
                         }
 
@@ -414,7 +432,7 @@ where
         self.cleanup_finished_impl()
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.flush_impl(&mut state)?;
 
@@ -433,7 +451,7 @@ where
         Ok(SubmitAnyBuilder::Empty)
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         let mut state = self.state.lock();
         self.flush_impl(&mut state)
     }
@@ -569,13 +587,13 @@ where
         self.cleanup_finished_impl()
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // Note that this is sound because we always return `SubmitAnyBuilder::Empty`. See the
         // documentation of `build_submission`.
         (**self).build_submission()
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         (**self).flush()
     }
 

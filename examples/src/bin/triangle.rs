@@ -21,7 +21,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -45,11 +45,10 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
+    sync::{self, GpuFuture},
+    Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -569,9 +568,9 @@ fn main() {
                 // This function can block if no image is available. The parameter is an optional
                 // timeout after which the function call will return an error.
                 let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(swapchain.clone(), None) {
+                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
                         Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
+                        Err(VulkanError::OutOfDate) => {
                             recreate_swapchain = true;
                             return;
                         }
@@ -618,24 +617,30 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        // The contents of the first (and only) subpass. This can be either
-                        // `Inline` or `SecondaryCommandBuffers`. The latter is a bit more advanced
-                        // and is not covered here.
-                        SubpassContents::Inline,
+                        SubpassBeginInfo {
+                            // The contents of the first (and only) subpass.
+                            // This can be either `Inline` or `SecondaryCommandBuffers`.
+                            // The latter is a bit more advanced and is not covered here.
+                            contents: SubpassContents::Inline,
+                            ..Default::default()
+                        },
                     )
                     .unwrap()
                     // We are now inside the first subpass of the render pass.
                     //
                     // TODO: Document state setting and how it affects subsequent draw commands.
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .unwrap()
                     // We add a draw command.
                     .draw(vertex_buffer.len() as u32, 1, 0, 0)
                     .unwrap()
                     // We leave the render pass. Note that if we had multiple subpasses we could
                     // have called `next_subpass` to jump to the next subpass.
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
 
                 // Finish building the command buffer by calling `build`.
@@ -661,11 +666,11 @@ fn main() {
                     )
                     .then_signal_fence_and_flush();
 
-                match future {
+                match future.map_err(Validated::unwrap) {
                     Ok(future) => {
                         previous_frame_end = Some(future.boxed());
                     }
-                    Err(FlushError::OutOfDate) => {
+                    Err(VulkanError::OutOfDate) => {
                         recreate_swapchain = true;
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
