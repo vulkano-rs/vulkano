@@ -142,6 +142,7 @@ Changes to futures:
 - `Device::set_debug_utils_object_name` no longer exhibits use-after-free UB.
 - [#2248](https://github.com/vulkano-rs/vulkano/issues/2248): Meanings of | and & operators for extensions were swapped.
 - Fixed validation for the `AllocationType` of allocations in `RawImage::bind_memory`, where the image tiling wasn't taken into consideration.
+- vulkano-shaders: Use a placeholder name instead of erroring out, when the shader doesn't contain a name for a struct.
 
 # Version 0.33.0 (2023-04-01)
 
