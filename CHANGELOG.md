@@ -70,6 +70,9 @@ Changes to render pass objects:
 
 Changes to instances:
 - `InstanceCreateInfo::enumerate_portability` has been replaced with a more generic `flags` field.
+- `DebugUtilsMessengerCreateInfo::user_callback` is now a custom type `DebugUtilsMessengerCallback`, and is unsafe to create.
+- The debug messenger callback now takes three parameters instead of one, corresponding to the first three parameters of the Vulkan callback (the fourth, user data, is represented by the closure itself).
+- `InstanceCreateInfo` now has a `debug_utils_messengers` field. The `Instance::with_debug_utils_messengers` constructor is removed, as the unsafety has been moved to the user callback construction itself.
 
 Changes to `DescriptorPool`:
 - `DescriptorPool::new` now returns validation errors instead of panicking.
@@ -132,6 +135,7 @@ Changes to futures:
 - Support for the `ext_image_2d_view_of_3d` extension.
 - Added `Format::UNDEFINED`, and implemented `Default` which returns this value.
 - `ShaderModule` is now constructed with a `new` method, which takes a `ShaderModuleCreateInfo` struct. The old constructors `from_words` and `from_bytes` are deprecated.
+- Added a `set_debug_utils_object_name` method to the `DeviceOwned` trait.
 
 ### Bugs fixed
 
