@@ -667,12 +667,7 @@ impl TypeStruct {
                 Instruction::Name { name, .. } => Some(Ident::new(name, Span::call_site())),
                 _ => None,
             })
-            .ok_or_else(|| {
-                Error::new_spanned(
-                    &shader.source,
-                    "expected struct in shader interface to have an associated `Name` instruction",
-                )
-            })?;
+            .unwrap_or_else(|| format_ident!("Unnamed{}", struct_id.as_raw()));
 
         let mut members = Vec::<Member>::with_capacity(member_type_ids.len());
 
@@ -822,7 +817,10 @@ impl TypeStruct {
             members.push(Member { ident, ty, offset });
         }
 
-        Ok(TypeStruct { ident, members })
+        Ok(TypeStruct {
+            ident,
+            members,
+        })
     }
 
     fn size(&self) -> Option<usize> {

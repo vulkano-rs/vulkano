@@ -151,7 +151,7 @@ use spirv::ExecutionModel;
 use std::{
     borrow::Cow,
     collections::hash_map::Entry,
-    mem::{align_of, discriminant, size_of, size_of_val, MaybeUninit},
+    mem::{discriminant, size_of_val, MaybeUninit},
     num::NonZeroU64,
     ptr,
     sync::Arc,
@@ -357,23 +357,15 @@ impl ShaderModule {
     /// - Panics if the length of `bytes` is not a multiple of 4.
     #[deprecated(
         since = "0.34.0",
-        note = "read little-endian words yourself, and then use `new` instead"
+        note = "use `shader::spirv::bytes_to_words`, and then use `new` instead"
     )]
     #[inline]
     pub unsafe fn from_bytes(
         device: Arc<Device>,
         bytes: &[u8],
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
-        assert!(bytes.as_ptr() as usize % align_of::<u32>() == 0);
-        assert!(bytes.len() % size_of::<u32>() == 0);
-
-        Self::new(
-            device,
-            ShaderModuleCreateInfo::new(std::slice::from_raw_parts(
-                bytes.as_ptr() as *const _,
-                bytes.len() / size_of::<u32>(),
-            )),
-        )
+        let words = spirv::bytes_to_words(bytes).unwrap();
+        Self::new(device, ShaderModuleCreateInfo::new(&words))
     }
 
     /// Returns information about the entry point with the provided name. Returns `None` if no entry
