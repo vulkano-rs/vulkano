@@ -440,17 +440,7 @@ fn read_spirv_words_from_file(path: impl AsRef<Path>) -> Vec<u32> {
     });
     file.read_to_end(&mut bytes).unwrap();
 
-    // Convert the bytes to words.
-    // SPIR-V is defined to be always little-endian, so this may need an endianness conversion.
-    assert!(
-        bytes.len() % 4 == 0,
-        "file `{}` does not contain a whole number of SPIR-V words",
-        path.display(),
-    );
-
-    // TODO: Use `slice::array_chunks` once it's stable.
-    bytes
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
-        .collect()
+    vulkano::shader::spirv::bytes_to_words(&bytes)
+        .unwrap_or_else(|err| panic!("file `{}`: {}", path.display(), err))
+        .into_owned()
 }
