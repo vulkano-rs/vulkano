@@ -34,7 +34,9 @@ mod linux {
             Image, ImageCreateFlags, ImageCreateInfo, ImageType, ImageUsage,
         },
         instance::{
-            debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
+            debug::{
+                DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
+            },
             Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions,
         },
         memory::{
@@ -487,15 +489,17 @@ mod linux {
         let _debug_callback = unsafe {
             DebugUtilsMessenger::new(
                 instance.clone(),
-                DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
-                    println!(
-                        "{} {:?} {:?}: {}",
-                        msg.layer_prefix.unwrap_or("unknown"),
-                        msg.ty,
-                        msg.severity,
-                        msg.description,
-                    );
-                })),
+                DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
+                    |message_severity, message_type, callback_data| {
+                        println!(
+                            "{} {:?} {:?}: {}",
+                            callback_data.message_id_name.unwrap_or("unknown"),
+                            message_type,
+                            message_severity,
+                            callback_data.message,
+                        );
+                    },
+                )),
             )
             .unwrap()
         };
