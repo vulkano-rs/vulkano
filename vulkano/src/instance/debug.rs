@@ -52,7 +52,6 @@ use std::{
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     panic::{catch_unwind, AssertUnwindSafe, RefUnwindSafe},
-    pin::Pin,
     ptr, slice,
     sync::Arc,
 };
@@ -286,16 +285,11 @@ impl Debug for DebugUtilsMessengerCreateInfo {
 /// The callback function for debug messages.
 pub struct DebugUtilsMessengerCallback(CallbackData);
 
-type CallbackData = Pin<
-    Box<
-        dyn Fn(
-                DebugUtilsMessageSeverity,
-                DebugUtilsMessageType,
-                DebugUtilsMessengerCallbackData<'_>,
-            ) + RefUnwindSafe
-            + Send
-            + Sync,
-    >,
+type CallbackData = Box<
+    dyn Fn(DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessengerCallbackData<'_>)
+        + RefUnwindSafe
+        + Send
+        + Sync,
 >;
 
 impl DebugUtilsMessengerCallback {
@@ -314,7 +308,7 @@ impl DebugUtilsMessengerCallback {
             + Sync
             + 'static,
     ) -> Arc<Self> {
-        Arc::new(Self(Box::pin(func)))
+        Arc::new(Self(Box::new(func)))
     }
 
     pub(crate) fn as_ptr(&self) -> *const CallbackData {
@@ -434,6 +428,7 @@ impl<'a> Iterator for DebugUtilsMessengerCallbackLabelIter<'a> {
 }
 
 /// An object that triggered a callback.
+#[non_exhaustive]
 pub struct DebugUtilsMessengerCallbackObjectNameInfo<'a> {
     /// The type of object.
     pub object_type: ash::vk::ObjectType,
