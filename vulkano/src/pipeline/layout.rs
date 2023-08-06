@@ -902,6 +902,33 @@ pub struct PipelineDescriptorSetLayoutCreateInfo {
 impl PipelineDescriptorSetLayoutCreateInfo {
     /// Creates a new `PipelineDescriptorSetLayoutCreateInfo` from the union of the requirements of
     /// each shader stage in `stages`.
+    ///
+    /// This is intended for quick prototyping or for single use layouts that do not have any
+    /// bindings in common with other shaders. For the general case, it is strongly recommended
+    /// to create pipeline layouts manually:
+    /// - When multiple pipelines share the same layout object, it is faster than if they have
+    ///   different objects, even if the objects both contain identical bindings. It is also faster
+    ///   (though a little bit less), if multiple pipeline layout objects share common descriptor
+    ///   set objects.
+    /// - Pipeline layouts only need to be a superset of what the shaders use, they don't have to
+    ///   match exactly. Creating a manual pipeline layout therefore allows you to specify layouts
+    ///   that are applicable for many shaders, as long as each one uses a subset. This allows
+    ///   further sharing.
+    /// - Creating a manual pipeline layout makes your code more robust against changes in the
+    ///   shader, in particular regarding whether a particular binding in the shader is used or not
+    ///   (see also the limitations below).
+    ///
+    /// # Limitations:
+    ///
+    /// Only bindings that are [statically used] are included in the descriptor binding
+    /// requirements, and therefore are included in the descriptor set layout.
+    /// If the use of a binding depends on input variables to the shader (buffers, images,
+    /// push constants etc.) then the shader reflection is unable to know that the binding is in
+    /// use, and it will not be included in the pipeline layout.
+    ///
+    /// Note that this corresponds to the `shader_*_array_dynamic_indexing` device features.
+    ///
+    /// [statically used]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#shaders-staticuse
     pub fn from_stages<'a>(
         stages: impl IntoIterator<Item = &'a PipelineShaderStageCreateInfo>,
     ) -> Self {
