@@ -931,21 +931,15 @@ impl ImageViewCreateInfo {
             _ne: _,
         } = self;
 
-        view_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "view_type".into(),
-                vuids: &["VUID-VkImageViewCreateInfo-viewType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        view_type.validate_device(device).map_err(|err| {
+            err.add_context("view_type")
+                .set_vuids(&["VUID-VkImageViewCreateInfo-viewType-parameter"])
+        })?;
 
-        format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkImageViewCreateInfo-format-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        format.validate_device(device).map_err(|err| {
+            err.add_context("format")
+                .set_vuids(&["VUID-VkImageViewCreateInfo-format-parameter"])
+        })?;
 
         component_mapping
             .validate(device)
@@ -955,13 +949,10 @@ impl ImageViewCreateInfo {
             .validate(device)
             .map_err(|err| err.add_context("subresource_range"))?;
 
-        usage
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "usage".into(),
-                vuids: &["VUID-VkImageViewUsageCreateInfo-usage-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        usage.validate_device(device).map_err(|err| {
+            err.add_context("usage")
+                .set_vuids(&["VUID-VkImageViewUsageCreateInfo-usage-parameter"])
+        })?;
 
         match view_type {
             ImageViewType::Dim1d | ImageViewType::Dim2d | ImageViewType::Dim3d => {

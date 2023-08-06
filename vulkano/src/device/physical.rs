@@ -807,13 +807,10 @@ impl PhysicalDevice {
     }
 
     fn validate_format_properties(&self, format: Format) -> Result<(), Box<ValidationError>> {
-        format
-            .validate_physical_device(self)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-vkGetPhysicalDeviceFormatProperties2-format-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        format.validate_physical_device(self).map_err(|err| {
+            err.add_context("format")
+                .set_vuids(&["VUID-vkGetPhysicalDeviceFormatProperties2-format-parameter"])
+        })?;
 
         Ok(())
     }
@@ -1528,10 +1525,12 @@ impl PhysicalDevice {
         if let Some(present_mode) = present_mode {
             let mut present_modes = unsafe {
                 self.surface_present_modes_unchecked(surface)
-                    .map_err(|_err| ValidationError {
-                        context: "PhysicalDevice::surface_present_modes".into(),
-                        problem: "returned an error".into(),
-                        ..Default::default()
+                    .map_err(|_err| {
+                        Box::new(ValidationError {
+                            context: "PhysicalDevice::surface_present_modes".into(),
+                            problem: "returned an error".into(),
+                            ..Default::default()
+                        })
                     })?
             };
 
@@ -1893,10 +1892,12 @@ impl PhysicalDevice {
         if let Some(present_mode) = present_mode {
             let mut present_modes = unsafe {
                 self.surface_present_modes_unchecked(surface)
-                    .map_err(|_err| ValidationError {
-                        context: "PhysicalDevice::surface_present_modes".into(),
-                        problem: "returned an error".into(),
-                        ..Default::default()
+                    .map_err(|_err| {
+                        Box::new(ValidationError {
+                            context: "PhysicalDevice::surface_present_modes".into(),
+                            problem: "returned an error".into(),
+                            ..Default::default()
+                        })
                     })?
             };
 

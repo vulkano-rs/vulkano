@@ -18,8 +18,8 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
-    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Validated,
-    ValidationError, VulkanError, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
+    VulkanObject,
 };
 use std::{
     ffi::c_void,
@@ -183,13 +183,10 @@ impl QueryPool {
     where
         T: QueryResultElement,
     {
-        flags
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-vkGetQueryPoolResults-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(&self.device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-vkGetQueryPoolResults-flags-parameter"])
+        })?;
 
         if destination.is_empty() {
             return Err(Box::new(ValidationError {
@@ -363,13 +360,10 @@ impl QueryPoolCreateInfo {
             _ne: _,
         } = self;
 
-        query_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "query_type".into(),
-                vuids: &["VUID-VkQueryPoolCreateInfo-queryType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        query_type.validate_device(device).map_err(|err| {
+            err.add_context("query_type")
+                .set_vuids(&["VUID-VkQueryPoolCreateInfo-queryType-parameter"])
+        })?;
 
         match query_type {
             QueryType::PipelineStatistics(flags) => {
@@ -384,13 +378,10 @@ impl QueryPoolCreateInfo {
                     }));
                 }
 
-                flags
-                    .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: "query_type.flags".into(),
-                        vuids: &["VUID-VkQueryPoolCreateInfo-queryType-00792"],
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                flags.validate_device(device).map_err(|err| {
+                    err.add_context("query_type.flags")
+                        .set_vuids(&["VUID-VkQueryPoolCreateInfo-queryType-00792"])
+                })?;
             }
             QueryType::Occlusion
             | QueryType::Timestamp
@@ -508,50 +499,55 @@ impl QueryType {
         }
     }
 
-    pub(crate) fn validate_device(&self, device: &Device) -> Result<(), RequirementNotMet> {
+    pub(crate) fn validate_device(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         match self {
             QueryType::Occlusion => (),
             QueryType::PipelineStatistics(_) => (),
             QueryType::Timestamp => (),
             QueryType::AccelerationStructureCompactedSize => {
                 if !device.enabled_extensions().khr_acceleration_structure {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "QueryType::AccelerationStructureCompactedSize",
+                    return Err(Box::new(ValidationError {
+                        problem: "`is `QueryType::AccelerationStructureCompactedSize`".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceExtension("khr_acceleration_structure"),
                         ])]),
-                    });
+                        ..Default::default()
+                    }));
                 }
             }
             QueryType::AccelerationStructureSerializationSize => {
                 if !device.enabled_extensions().khr_acceleration_structure {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "QueryType::AccelerationStructureSerializationSize",
+                    return Err(Box::new(ValidationError {
+                        problem: "is `QueryType::AccelerationStructureSerializationSize`".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceExtension("khr_acceleration_structure"),
                         ])]),
-                    });
+                        ..Default::default()
+                    }));
                 }
             }
             QueryType::AccelerationStructureSerializationBottomLevelPointers => {
                 if !device.enabled_extensions().khr_ray_tracing_maintenance1 {
-                    return Err(crate::RequirementNotMet {
-                        required_for:
-                            "QueryType::AccelerationStructureSerializationBottomLevelPointers",
+                    return Err(Box::new(ValidationError {
+                        problem:
+                            "is `QueryType::AccelerationStructureSerializationBottomLevelPointers`"
+                                .into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceExtension("khr_ray_tracing_maintenance1"),
                         ])]),
-                    });
+                        ..Default::default()
+                    }));
                 }
             }
             QueryType::AccelerationStructureSize => {
                 if !device.enabled_extensions().khr_ray_tracing_maintenance1 {
-                    return Err(crate::RequirementNotMet {
-                        required_for: "QueryType::AccelerationStructureSize",
+                    return Err(Box::new(ValidationError {
+                        problem: "is `QueryType::AccelerationStructureSize`".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceExtension("khr_ray_tracing_maintenance1"),
                         ])]),
-                    });
+                        ..Default::default()
+                    }));
                 }
             }
         }

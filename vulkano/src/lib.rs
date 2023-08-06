@@ -501,15 +501,6 @@ pub struct ValidationError {
 }
 
 impl ValidationError {
-    fn from_requirement(err: RequirementNotMet) -> Self {
-        Self {
-            context: "".into(),
-            problem: err.required_for.into(),
-            vuids: &[],
-            requires_one_of: err.requires_one_of,
-        }
-    }
-
     fn from_error<E: Error>(err: E) -> Self {
         Self {
             context: "".into(),
@@ -526,6 +517,11 @@ impl ValidationError {
             self.context = format!("{}.{}", context.into(), self.context).into();
         }
 
+        self
+    }
+
+    fn set_vuids(mut self: Box<Self>, vuids: &'static [&'static str]) -> Box<Self> {
+        self.vuids = vuids;
         self
     }
 }
@@ -684,44 +680,6 @@ impl Display for Requires {
             Requires::InstanceExtension(instance_extension) => {
                 write!(f, "instance extension `{}`", instance_extension)
             }
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct RequirementNotMet {
-    pub(crate) required_for: &'static str,
-    pub(crate) requires_one_of: RequiresOneOf,
-}
-
-/// Error type returned by most Vulkan functions.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum OomError {
-    /// There is no memory available on the host (ie. the CPU, RAM, etc.).
-    OutOfHostMemory,
-    /// There is no memory available on the device (ie. video memory).
-    OutOfDeviceMemory,
-}
-
-impl Error for OomError {}
-
-impl Display for OomError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let msg = match self {
-            OomError::OutOfHostMemory => "no memory available on the host",
-            OomError::OutOfDeviceMemory => "no memory available on the graphical device",
-        };
-
-        write!(f, "{msg}")
-    }
-}
-
-impl From<VulkanError> for OomError {
-    fn from(err: VulkanError) -> OomError {
-        match err {
-            VulkanError::OutOfHostMemory => OomError::OutOfHostMemory,
-            VulkanError::OutOfDeviceMemory => OomError::OutOfDeviceMemory,
-            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

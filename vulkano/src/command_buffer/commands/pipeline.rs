@@ -83,11 +83,13 @@ where
             .builder_state
             .pipeline_compute
             .as_ref()
-            .ok_or(Box::new(ValidationError {
-                problem: "no compute pipeline is currently bound".into(),
-                vuids: &["VUID-vkCmdDispatch-None-08606"],
-                ..Default::default()
-            }))?
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no compute pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDispatch-None-08606"],
+                    ..Default::default()
+                })
+            })?
             .as_ref();
 
         const VUID_TYPE: VUIDType = VUIDType::Dispatch;
@@ -153,11 +155,13 @@ where
             .builder_state
             .pipeline_compute
             .as_ref()
-            .ok_or(Box::new(ValidationError {
-                problem: "no compute pipeline is currently bound".into(),
-                vuids: &["VUID-vkCmdDispatchIndirect-None-08606"],
-                ..Default::default()
-            }))?
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no compute pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDispatchIndirect-None-08606"],
+                    ..Default::default()
+                })
+            })?
             .as_ref();
 
         const VUID_TYPE: VUIDType = VUIDType::DispatchIndirect;
@@ -229,25 +233,25 @@ where
         self.inner
             .validate_draw(vertex_count, instance_count, first_vertex, first_instance)?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &["VUID-vkCmdDraw-renderpass"],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDraw-renderpass"],
+                ..Default::default()
+            })
+        })?;
 
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(Box::new(ValidationError {
-                problem: "no graphics pipeline is currently bound".into(),
-                vuids: &["VUID-vkCmdDraw-None-08606"],
-                ..Default::default()
-            }))?
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDraw-None-08606"],
+                    ..Default::default()
+                })
+            })?
             .as_ref();
 
         const VUID_TYPE: VUIDType = VUIDType::Draw;
@@ -406,25 +410,25 @@ where
         self.inner
             .validate_draw_indirect(indirect_buffer, draw_count, stride)?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &["VUID-vkCmdDrawIndirect-renderpass"],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawIndirect-renderpass"],
+                ..Default::default()
+            })
+        })?;
 
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(Box::new(ValidationError {
-                problem: "no graphics pipeline is currently bound".into(),
-                vuids: &["VUID-vkCmdDrawIndirect-None-08606"],
-                ..Default::default()
-            }))?
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawIndirect-None-08606"],
+                    ..Default::default()
+                })
+            })?
             .as_ref();
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndirect;
@@ -534,25 +538,25 @@ where
             first_instance,
         )?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &["VUID-vkCmdDrawIndexed-renderpass"],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawIndexed-renderpass"],
+                ..Default::default()
+            })
+        })?;
 
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(Box::new(ValidationError {
-                problem: "no graphics pipeline is currently bound".into(),
-                vuids: &["VUID-vkCmdDrawIndexed-None-08606"],
-                ..Default::default()
-            }))?
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawIndexed-None-08606"],
+                    ..Default::default()
+                })
+            })?
             .as_ref();
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexed;
@@ -562,15 +566,13 @@ where
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
         self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
-        let index_buffer =
-            self.builder_state
-                .index_buffer
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "no index buffer is currently bound".into(),
-                    vuids: &["VUID-vkCmdDrawIndexed-None-07312"],
-                    ..Default::default()
-                }))?;
+        let index_buffer = self.builder_state.index_buffer.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "no index buffer is currently bound".into(),
+                vuids: &["VUID-vkCmdDrawIndexed-None-07312"],
+                ..Default::default()
+            })
+        })?;
 
         let index_buffer_bytes = index_buffer.as_bytes();
 
@@ -736,25 +738,25 @@ where
         self.inner
             .validate_draw_indexed_indirect(indirect_buffer, draw_count, stride)?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &["VUID-vkCmdDrawIndexedIndirect-renderpass"],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirect-renderpass"],
+                ..Default::default()
+            })
+        })?;
 
         let pipeline = self
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .ok_or(Box::new(ValidationError {
-                problem: "no graphics pipeline is currently bound".into(),
-                vuids: &["VUID-vkCmdDrawIndexedIndirect-None-08606"],
-                ..Default::default()
-            }))?
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirect-None-08606"],
+                    ..Default::default()
+                })
+            })?
             .as_ref();
 
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexedIndirect;
@@ -764,15 +766,13 @@ where
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
         self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
-        let _index_buffer =
-            self.builder_state
-                .index_buffer
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "no index buffer is currently bound".into(),
-                    vuids: &["VUID-vkCmdDrawIndexedIndirect-None-07312"],
-                    ..Default::default()
-                }))?;
+        let _index_buffer = self.builder_state.index_buffer.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "no index buffer is currently bound".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirect-None-07312"],
+                ..Default::default()
+            })
+        })?;
 
         Ok(())
     }
@@ -830,7 +830,7 @@ where
             let elements_to_check = if let Some(descriptor_count) = binding_reqs.descriptor_count {
                 // The shader has a fixed-sized array, so it will never access more than
                 // the first `descriptor_count` elements.
-                elements.get(..descriptor_count as usize).ok_or({
+                elements.get(..descriptor_count as usize).ok_or_else(|| {
                     // There are less than `descriptor_count` elements in `elements`
                     Box::new(ValidationError {
                         problem: format!(
@@ -885,13 +885,15 @@ where
             .builder_state
             .descriptor_sets
             .get(&pipeline.bind_point())
-            .ok_or(Box::new(ValidationError {
-                problem: "the currently bound pipeline accesses descriptor sets, but no \
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "the currently bound pipeline accesses descriptor sets, but no \
                     descriptor sets were previously bound"
-                    .into(),
-                vuids: vuids!(vuid_type, "None-02697"),
-                ..Default::default()
-            }))?;
+                        .into(),
+                    vuids: vuids!(vuid_type, "None-02697"),
+                    ..Default::default()
+                })
+            })?;
 
         if !pipeline.layout().is_compatible_with(
             &descriptor_set_state.pipeline_layout,
@@ -1352,15 +1354,17 @@ where
             let set_resources = descriptor_set_state
                 .descriptor_sets
                 .get(&set_num)
-                .ok_or(Box::new(ValidationError {
-                    problem: format!(
-                        "the currently bound pipeline accesses descriptor set {set_num}, but \
+                .ok_or_else(|| {
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "the currently bound pipeline accesses descriptor set {set_num}, but \
                         no descriptor set was previously bound"
-                    )
-                    .into(),
-                    // vuids?
-                    ..Default::default()
-                }))?
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    })
+                })?
                 .resources();
 
             let binding_resources = set_resources.binding(binding_num).unwrap();
@@ -1464,13 +1468,15 @@ where
             .builder_state
             .push_constants_pipeline_layout
             .as_ref()
-            .ok_or(Box::new(ValidationError {
-                problem: "the currently bound pipeline accesses push constants, but no \
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "the currently bound pipeline accesses push constants, but no \
                     push constants were previously set"
-                    .into(),
-                vuids: vuids!(vuid_type, "maintenance4-06425"),
-                ..Default::default()
-            }))?;
+                        .into(),
+                    vuids: vuids!(vuid_type, "maintenance4-06425"),
+                    ..Default::default()
+                })
+            })?;
 
         if pipeline_layout.handle() != constants_pipeline_layout.handle()
             && pipeline_layout.push_constant_ranges()

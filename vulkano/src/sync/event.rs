@@ -326,13 +326,10 @@ impl EventCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { flags, _ne: _ } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkEventCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkEventCreateInfo-flags-parameter"])
+        })?;
 
         Ok(())
     }

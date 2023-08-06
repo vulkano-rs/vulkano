@@ -440,13 +440,10 @@ impl DeviceMemory {
         &self,
         handle_type: ExternalMemoryHandleType,
     ) -> Result<(), Box<ValidationError>> {
-        handle_type
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkMemoryGetFdInfoKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(&self.device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkMemoryGetFdInfoKHR-handleType-parameter"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -621,11 +618,13 @@ impl<'d> MemoryAllocateInfo<'d> {
         let memory_type = memory_properties
             .memory_types
             .get(memory_type_index as usize)
-            .ok_or(ValidationError {
-                context: "memory_type_index".into(),
-                problem: "is not less than the number of memory types in the device".into(),
-                vuids: &["VUID-vkAllocateMemory-pAllocateInfo-01714"],
-                ..Default::default()
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    context: "memory_type_index".into(),
+                    problem: "is not less than the number of memory types in the device".into(),
+                    vuids: &["VUID-vkAllocateMemory-pAllocateInfo-01714"],
+                    ..Default::default()
+                })
             })?;
         let memory_heap = &memory_properties.memory_heaps[memory_type.heap_index as usize];
 
@@ -733,13 +732,10 @@ impl<'d> MemoryAllocateInfo<'d> {
                 }));
             }
 
-            export_handle_types
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "export_handle_types".into(),
-                    vuids: &["VUID-VkExportMemoryAllocateInfo-handleTypes-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            export_handle_types.validate_device(device).map_err(|err| {
+                err.add_context("export_handle_types")
+                    .set_vuids(&["VUID-VkExportMemoryAllocateInfo-handleTypes-parameter"])
+            })?;
 
             // VUID-VkMemoryAllocateInfo-pNext-00639
             // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
@@ -869,13 +865,10 @@ impl MemoryImportInfo {
 
                 #[cfg(unix)]
                 {
-                    handle_type
-                        .validate_device(device)
-                        .map_err(|err| ValidationError {
-                            context: "handle_type".into(),
-                            vuids: &["VUID-VkImportMemoryFdInfoKHR-handleType-parameter"],
-                            ..ValidationError::from_requirement(err)
-                        })?;
+                    handle_type.validate_device(device).map_err(|err| {
+                        err.add_context("handle_type")
+                            .set_vuids(&["VUID-VkImportMemoryFdInfoKHR-handleType-parameter"])
+                    })?;
 
                     match handle_type {
                         ExternalMemoryHandleType::OpaqueFd => {
@@ -929,13 +922,11 @@ impl MemoryImportInfo {
 
                 #[cfg(windows)]
                 {
-                    handle_type
-                        .validate_device(device)
-                        .map_err(|err| ValidationError {
-                            context: "handle_type".into(),
-                            vuids: &["VUID-VkImportMemoryWin32HandleInfoKHR-handleType-parameter"],
-                            ..ValidationError::from_requirement(err)
-                        })?;
+                    handle_type.validate_device(device).map_err(|err| {
+                        err.add_context("handle_type").set_vuids(&[
+                            "VUID-VkImportMemoryWin32HandleInfoKHR-handleType-parameter",
+                        ])
+                    })?;
 
                     match handle_type {
                         ExternalMemoryHandleType::OpaqueWin32

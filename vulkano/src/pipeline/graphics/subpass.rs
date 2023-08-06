@@ -185,13 +185,10 @@ impl PipelineRenderingCreateInfo {
         {
             let attachment_index = attachment_index as u32;
 
-            format
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: format!("color_attachment_formats[{}]", attachment_index).into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06580"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            format.validate_device(device).map_err(|err| {
+                err.add_context(format!("color_attachment_formats[{}]", attachment_index))
+                    .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-renderPass-06580"])
+            })?;
 
             if format == Format::UNDEFINED {
                 return Err(Box::new(ValidationError {
@@ -217,13 +214,10 @@ impl PipelineRenderingCreateInfo {
         }
 
         if let Some(format) = depth_attachment_format {
-            format
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "depth_attachment_format".into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06583"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            format.validate_device(device).map_err(|err| {
+                err.add_context("depth_attachment_format")
+                    .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-renderPass-06583"])
+            })?;
 
             if format == Format::UNDEFINED {
                 return Err(Box::new(ValidationError {
@@ -258,13 +252,10 @@ impl PipelineRenderingCreateInfo {
         }
 
         if let Some(format) = stencil_attachment_format {
-            format
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_attachment_format".into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06584"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            format.validate_device(device).map_err(|err| {
+                err.add_context("stencil_attachment_format")
+                    .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-renderPass-06584"])
+            })?;
 
             if format == Format::UNDEFINED {
                 return Err(Box::new(ValidationError {

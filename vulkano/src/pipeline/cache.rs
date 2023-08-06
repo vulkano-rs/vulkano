@@ -365,13 +365,10 @@ impl PipelineCacheCreateInfo {
             _ne,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkPipelineCacheCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkPipelineCacheCreateInfo-flags-parameter"])
+        })?;
 
         Ok(())
     }

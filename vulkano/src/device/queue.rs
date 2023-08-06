@@ -26,8 +26,8 @@ use crate::{
         future::{AccessCheckError, GpuFuture},
         semaphore::SemaphoreState,
     },
-    OomError, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
-    VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
@@ -193,7 +193,7 @@ impl<'a> QueueGuard<'a> {
     /// Just like [`Device::wait_idle`], you shouldn't have to call this function in a typical
     /// program.
     #[inline]
-    pub fn wait_idle(&mut self) -> Result<(), OomError> {
+    pub fn wait_idle(&mut self) -> Result<(), VulkanError> {
         self.state.wait_idle(&self.queue.device, self.queue.handle)
     }
 
@@ -1358,7 +1358,7 @@ struct QueueState {
 }
 
 impl QueueState {
-    fn wait_idle(&mut self, device: &Device, handle: ash::vk::Queue) -> Result<(), OomError> {
+    fn wait_idle(&mut self, device: &Device, handle: ash::vk::Queue) -> Result<(), VulkanError> {
         unsafe {
             let fns = device.fns();
             (fns.v1_0.queue_wait_idle)(handle)

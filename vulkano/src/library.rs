@@ -21,7 +21,7 @@
 pub use crate::fns::EntryFunctions;
 use crate::{
     instance::{InstanceExtensions, LayerProperties},
-    ExtensionProperties, OomError, SafeDeref, Version, VulkanError,
+    ExtensionProperties, SafeDeref, Version, VulkanError,
 };
 use libloading::{Error as LibloadingError, Library};
 use std::{
@@ -233,7 +233,7 @@ impl VulkanLibrary {
     /// ```
     pub fn layer_properties(
         &self,
-    ) -> Result<impl ExactSizeIterator<Item = LayerProperties>, OomError> {
+    ) -> Result<impl ExactSizeIterator<Item = LayerProperties>, VulkanError> {
         let fns = self.fns();
 
         let layer_properties = unsafe {
@@ -255,7 +255,7 @@ impl VulkanLibrary {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
+                    err => return Err(VulkanError::from(err)),
                 }
             }
         };

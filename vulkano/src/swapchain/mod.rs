@@ -589,10 +589,12 @@ impl Swapchain {
                         ..Default::default()
                     },
                 )
-                .map_err(|_err| ValidationError {
-                    context: "PhysicalDevice::surface_capabilities".into(),
-                    problem: "returned an error".into(),
-                    ..Default::default()
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        context: "PhysicalDevice::surface_capabilities".into(),
+                        problem: "returned an error".into(),
+                        ..Default::default()
+                    })
                 })?
         };
         let surface_formats = unsafe {
@@ -608,20 +610,24 @@ impl Swapchain {
                         ..Default::default()
                     },
                 )
-                .map_err(|_err| ValidationError {
-                    context: "PhysicalDevice::surface_formats".into(),
-                    problem: "returned an error".into(),
-                    ..Default::default()
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        context: "PhysicalDevice::surface_formats".into(),
+                        problem: "returned an error".into(),
+                        ..Default::default()
+                    })
                 })?
         };
         let surface_present_modes: SmallVec<[_; PresentMode::COUNT]> = unsafe {
             device
                 .physical_device()
                 .surface_present_modes_unchecked(surface)
-                .map_err(|_err| ValidationError {
-                    context: "PhysicalDevice::surface_present_modes".into(),
-                    problem: "returned an error".into(),
-                    ..Default::default()
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        context: "PhysicalDevice::surface_present_modes".into(),
+                        problem: "returned an error".into(),
+                        ..Default::default()
+                    })
                 })?
                 .collect()
         };
@@ -814,10 +820,12 @@ impl Swapchain {
                                     ..Default::default()
                                 },
                             )
-                            .map_err(|_err| ValidationError {
-                                context: "PhysicalDevice::surface_capabilities".into(),
-                                problem: "returned an error".into(),
-                                ..Default::default()
+                            .map_err(|_err| {
+                                Box::new(ValidationError {
+                                    context: "PhysicalDevice::surface_capabilities".into(),
+                                    problem: "returned an error".into(),
+                                    ..Default::default()
+                                })
                             })?
                     };
 
@@ -1729,37 +1737,25 @@ impl SwapchainCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkSwapchainCreateInfoKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-flags-parameter"])
+        })?;
 
-        image_format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "image_format".into(),
-                vuids: &["VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        image_format.validate_device(device).map_err(|err| {
+            err.add_context("image_format")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter"])
+        })?;
 
-        image_color_space
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "image_color_space".into(),
-                vuids: &["VUID-VkSwapchainCreateInfoKHR-imageColorSpace-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        image_color_space.validate_device(device).map_err(|err| {
+            err.add_context("image_color_space")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-imageColorSpace-parameter"])
+        })?;
 
-        image_usage
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "image_usage".into(),
-                vuids: &["VUID-VkSwapchainCreateInfoKHR-imageUsage-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        image_usage.validate_device(device).map_err(|err| {
+            err.add_context("image_usage")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-imageUsage-parameter"])
+        })?;
 
         if image_usage.is_empty() {
             return Err(Box::new(ValidationError {
@@ -1770,29 +1766,20 @@ impl SwapchainCreateInfo {
             }));
         }
 
-        pre_transform
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "pre_transform".into(),
-                vuids: &["VUID-VkSwapchainCreateInfoKHR-preTransform-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        pre_transform.validate_device(device).map_err(|err| {
+            err.add_context("pre_transform")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-preTransform-parameter"])
+        })?;
 
-        composite_alpha
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "composite_alpha".into(),
-                vuids: &["VUID-VkSwapchainCreateInfoKHR-compositeAlpha-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        composite_alpha.validate_device(device).map_err(|err| {
+            err.add_context("composite_alpha")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-compositeAlpha-parameter"])
+        })?;
 
-        present_mode
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "present_mode".into(),
-                vuids: &["VUID-VkSwapchainCreateInfoKHR-presentMode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        present_mode.validate_device(device).map_err(|err| {
+            err.add_context("present_mode")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-presentMode-parameter"])
+        })?;
 
         if image_extent.contains(&0) {
             return Err(Box::new(ValidationError {
@@ -1868,10 +1855,12 @@ impl SwapchainCreateInfo {
                     usage: image_usage,
                     ..Default::default()
                 })
-                .map_err(|_err| ValidationError {
-                    context: "PhysicalDevice::image_format_properties".into(),
-                    problem: "returned an error".into(),
-                    ..Default::default()
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        context: "PhysicalDevice::image_format_properties".into(),
+                        problem: "returned an error".into(),
+                        ..Default::default()
+                    })
                 })?
         };
 
@@ -1898,15 +1887,12 @@ impl SwapchainCreateInfo {
             }
 
             for (index, &present_mode) in present_modes.iter().enumerate() {
-                present_mode
-                    .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: format!("present_modes[{}]", index).into(),
-                        vuids: &[
+                present_mode.validate_device(device).map_err(|err| {
+                    err.add_context(format!("present_modes[{}]", index))
+                        .set_vuids(&[
                             "VUID-VkSwapchainPresentModesCreateInfoEXT-pPresentModes-parameter",
-                        ],
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                        ])
+                })?;
             }
 
             if !present_modes.contains(&present_mode) {
@@ -1931,15 +1917,11 @@ impl SwapchainCreateInfo {
                 }));
             }
 
-            scaling_behavior
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "scaling_behavior".into(),
-                    vuids: &[
-                        "VUID-VkSwapchainPresentScalingCreateInfoEXT-scalingBehavior-parameter",
-                    ],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            scaling_behavior.validate_device(device).map_err(|err| {
+                err.add_context("scaling_behavior").set_vuids(&[
+                    "VUID-VkSwapchainPresentScalingCreateInfoEXT-scalingBehavior-parameter",
+                ])
+            })?;
 
             // VUID-VkSwapchainPresentScalingCreateInfoEXT-scalingBehavior-07767
             // Ensured by the use of an enum.
@@ -1958,16 +1940,13 @@ impl SwapchainCreateInfo {
             }
 
             for (axis_index, present_gravity) in present_gravity.into_iter().enumerate() {
-                present_gravity
-                    .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: format!("present_gravity[{}]", axis_index).into(),
-                        vuids: &[
+                present_gravity.validate_device(device).map_err(|err| {
+                    err.add_context(format!("present_gravity[{}]", axis_index))
+                        .set_vuids(&[
                             "VUID-VkSwapchainPresentScalingCreateInfoEXT-presentGravityX-parameter",
                             "VUID-VkSwapchainPresentScalingCreateInfoEXT-presentGravityY-parameter",
-                        ],
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                        ])
+                })?;
             }
 
             // VUID-VkSwapchainPresentScalingCreateInfoEXT-presentGravityX-07765
@@ -1993,12 +1972,10 @@ impl SwapchainCreateInfo {
 
             full_screen_exclusive
                 .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "full_screen_exclusive".into(),
-                    vuids: &[
+                .map_err(|err| {
+                    err.add_context("full_screen_exclusive").set_vuids(&[
                         "VUID-VkSurfaceFullScreenExclusiveInfoEXT-fullScreenExclusive-parameter",
-                    ],
-                    ..ValidationError::from_requirement(err)
+                    ])
                 })?;
         }
 

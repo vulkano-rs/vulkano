@@ -1359,13 +1359,10 @@ where
         // VUID-vkCmdResetEvent2-commonparent
         assert_eq!(device, event.device());
 
-        stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "stages".into(),
-                vuids: &["VUID-vkCmdResetEvent2-stageMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        stages.validate_device(device).map_err(|err| {
+            err.add_context("stages")
+                .set_vuids(&["VUID-vkCmdResetEvent2-stageMask-parameter"])
+        })?;
 
         if !device.enabled_features().synchronization2 {
             if stages.contains_flags2() {

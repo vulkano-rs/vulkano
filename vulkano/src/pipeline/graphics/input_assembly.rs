@@ -93,13 +93,11 @@ impl InputAssemblyState {
 
         match topology {
             PartialStateMode::Fixed(topology) => {
-                topology
-                    .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: "topology".into(),
-                        vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter"],
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                topology.validate_device(device).map_err(|err| {
+                    err.add_context("topology").set_vuids(&[
+                        "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter",
+                    ])
+                })?;
 
                 match topology {
                     PrimitiveTopology::TriangleFan => {
@@ -156,10 +154,10 @@ impl InputAssemblyState {
                 topology_class
                     .example()
                     .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: "topology".into(),
-                        vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter"],
-                        ..ValidationError::from_requirement(err)
+                    .map_err(|err| {
+                        err.add_context("topology").set_vuids(&[
+                            "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter",
+                        ])
                     })?;
 
                 if !(device.api_version() >= Version::V1_3

@@ -291,7 +291,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                         let ident = format_ident!("{}", ext_name);
                         quote! { instance_extensions.#ident }
                     }));
-                    let required_for = format!("`Format::{}`", name);
+                    let required_for = format!("is `Format::{}`", name);
                     let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
                         quote! {
@@ -317,12 +317,13 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
                     quote! {
                         if !(#(#condition_items)||*) {
-                            return Err(crate::RequirementNotMet {
-                                required_for: #required_for,
+                            return Err(Box::new(crate::ValidationError {
+                                problem: #required_for.into(),
                                 requires_one_of: crate::RequiresOneOf(&[
                                     #(#requires_one_of_items)*
                                 ]),
-                            });
+                                ..Default::default()
+                            }));
                         }
                     }
                 },
@@ -482,7 +483,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             pub(crate) fn validate_device(
                 self,
                 #[allow(unused_variables)] device: &crate::device::Device,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_device_raw(
                     device.api_version(),
                     device.enabled_features(),
@@ -495,7 +496,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             pub(crate) fn validate_physical_device(
                 self,
                 #[allow(unused_variables)] physical_device: &crate::device::physical::PhysicalDevice,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_device_raw(
                     physical_device.api_version(),
                     physical_device.supported_features(),
@@ -511,7 +512,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 #[allow(unused_variables)] device_features: &crate::device::Features,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 match self {
                     #(#validate_device_items)*
                 }

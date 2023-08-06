@@ -453,13 +453,10 @@ where
 
         let device = self.device();
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-vkCmdBeginQuery-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-vkCmdBeginQuery-flags-parameter"])
+        })?;
 
         // VUID-vkCmdBeginQuery-commonparent
         assert_eq!(device, query_pool.device());
@@ -673,13 +670,10 @@ where
 
         let device = self.device();
 
-        stage
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "stage".into(),
-                vuids: &["VUID-vkCmdWriteTimestamp2-stage-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        stage.validate_device(device).map_err(|err| {
+            err.add_context("stage")
+                .set_vuids(&["VUID-vkCmdWriteTimestamp2-stage-parameter"])
+        })?;
 
         if !device.enabled_features().synchronization2
             && PipelineStages::from(stage).contains_flags2()

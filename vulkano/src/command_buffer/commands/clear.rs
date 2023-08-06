@@ -703,13 +703,10 @@ impl ClearColorImageInfo {
             _ne: _,
         } = self;
 
-        image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "image_layout".into(),
-                vuids: &["VUID-vkCmdClearColorImage-imageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        image_layout.validate_device(device).map_err(|err| {
+            err.add_context("image_layout")
+                .set_vuids(&["VUID-vkCmdClearColorImage-imageLayout-parameter"])
+        })?;
 
         // VUID-vkCmdClearColorImage-commonparent
         assert_eq!(device, image.device().as_ref());
@@ -885,13 +882,10 @@ impl ClearDepthStencilImageInfo {
             _ne: _,
         } = self;
 
-        image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "image_layout".into(),
-                vuids: &["VUID-vkCmdClearDepthStencilImage-imageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        image_layout.validate_device(device).map_err(|err| {
+            err.add_context("image_layout")
+                .set_vuids(&["VUID-vkCmdClearDepthStencilImage-imageLayout-parameter"])
+        })?;
 
         // VUID-vkCmdClearDepthStencilImage-commonparent
         assert_eq!(device, image.device().as_ref());

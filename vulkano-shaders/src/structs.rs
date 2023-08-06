@@ -817,10 +817,7 @@ impl TypeStruct {
             members.push(Member { ident, ty, offset });
         }
 
-        Ok(TypeStruct {
-            ident,
-            members,
-        })
+        Ok(TypeStruct { ident, members })
     }
 
     fn size(&self) -> Option<usize> {

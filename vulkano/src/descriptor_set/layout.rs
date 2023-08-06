@@ -329,13 +329,10 @@ impl DescriptorSetLayoutCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkDescriptorSetLayoutCreateInfo-flags-parameter"])
+        })?;
 
         // VUID-VkDescriptorSetLayoutCreateInfo-binding-00279
         // Ensured because it is a map
@@ -620,23 +617,16 @@ impl DescriptorSetLayoutBinding {
             _ne: _,
         } = self;
 
-        binding_flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "binding_flags".into(),
-                vuids: &[
-                    "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-parameter",
-                ],
-                ..ValidationError::from_requirement(err)
-            })?;
+        binding_flags.validate_device(device).map_err(|err| {
+            err.add_context("binding_flags").set_vuids(&[
+                "VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-parameter",
+            ])
+        })?;
 
-        descriptor_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "descriptor_type".into(),
-                vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        descriptor_type.validate_device(device).map_err(|err| {
+            err.add_context("descriptor_type")
+                .set_vuids(&["VUID-VkDescriptorSetLayoutBinding-descriptorType-parameter"])
+        })?;
 
         if descriptor_type == DescriptorType::InlineUniformBlock {
             if !device.enabled_features().inline_uniform_block {
@@ -679,13 +669,10 @@ impl DescriptorSetLayoutBinding {
         }
 
         if descriptor_count != 0 {
-            stages
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stages".into(),
-                    vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            stages.validate_device(device).map_err(|err| {
+                err.add_context("stages")
+                    .set_vuids(&["VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283"])
+            })?;
 
             if descriptor_type == DescriptorType::InputAttachment
                 && !(stages.is_empty() || stages == ShaderStages::FRAGMENT)

@@ -962,10 +962,12 @@ impl RawImage {
                             _ne: crate::NonExhaustive(()),
                         })
                     }
-                    .map_err(|_| ValidationError {
-                        problem: "`PhysicalDevice::image_format_properties` returned an error"
-                            .into(),
-                        ..Default::default()
+                    .map_err(|_| {
+                        Box::new(ValidationError {
+                            problem: "`PhysicalDevice::image_format_properties` returned an error"
+                                .into(),
+                            ..Default::default()
+                        })
                     })?
                     .unwrap();
 
@@ -1342,13 +1344,10 @@ impl RawImage {
         mip_level: u32,
         array_layer: u32,
     ) -> Result<(), Box<ValidationError>> {
-        aspect
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "aspect".into(),
-                vuids: &["VUID-VkImageSubresource-aspectMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        aspect.validate_device(&self.device).map_err(|err| {
+            err.add_context("aspect")
+                .set_vuids(&["VUID-VkImageSubresource-aspectMask-parameter"])
+        })?;
 
         // VUID-VkImageSubresource-aspectMask-requiredbitmask
         // VUID-vkGetImageSubresourceLayout-aspectMask-00997
@@ -1788,45 +1787,30 @@ impl ImageCreateInfo {
         let physical_device = device.physical_device();
         let device_properties = physical_device.properties();
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkImageCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkImageCreateInfo-flags-parameter"])
+        })?;
 
-        format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkImageCreateInfo-format-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        format.validate_device(device).map_err(|err| {
+            err.add_context("format")
+                .set_vuids(&["VUID-VkImageCreateInfo-format-parameter"])
+        })?;
 
-        samples
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "samples".into(),
-                vuids: &["VUID-VkImageCreateInfo-samples-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        samples.validate_device(device).map_err(|err| {
+            err.add_context("samples")
+                .set_vuids(&["VUID-VkImageCreateInfo-samples-parameter"])
+        })?;
 
-        tiling
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "tiling".into(),
-                vuids: &["VUID-VkImageCreateInfo-tiling-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        tiling.validate_device(device).map_err(|err| {
+            err.add_context("tiling")
+                .set_vuids(&["VUID-VkImageCreateInfo-tiling-parameter"])
+        })?;
 
-        usage
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "usage".into(),
-                vuids: &["VUID-VkImageCreateInfo-usage-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        usage.validate_device(device).map_err(|err| {
+            err.add_context("usage")
+                .set_vuids(&["VUID-VkImageCreateInfo-usage-parameter"])
+        })?;
 
         if usage.is_empty() {
             return Err(Box::new(ValidationError {
@@ -1887,13 +1871,10 @@ impl ImageCreateInfo {
                 }));
             }
 
-            stencil_usage
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_usage".into(),
-                    vuids: &["VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            stencil_usage.validate_device(device).map_err(|err| {
+                err.add_context("stencil_usage")
+                    .set_vuids(&["VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter"])
+            })?;
 
             if stencil_usage.is_empty() {
                 return Err(Box::new(ValidationError {
@@ -1905,13 +1886,10 @@ impl ImageCreateInfo {
             }
         }
 
-        initial_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "initial_layout".into(),
-                vuids: &["VUID-VkImageCreateInfo-initialLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        initial_layout.validate_device(device).map_err(|err| {
+            err.add_context("initial_layout")
+                .set_vuids(&["VUID-VkImageCreateInfo-initialLayout-parameter"])
+        })?;
 
         if !matches!(
             initial_layout,
@@ -2528,10 +2506,9 @@ impl ImageCreateInfo {
 
             external_memory_handle_types
                 .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "external_memory_handle_types".into(),
-                    vuids: &["VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter"],
-                    ..ValidationError::from_requirement(err)
+                .map_err(|err| {
+                    err.add_context("external_memory_handle_types")
+                        .set_vuids(&["VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter"])
                 })?;
 
             if initial_layout != ImageLayout::Undefined {
@@ -2574,14 +2551,14 @@ impl ImageCreateInfo {
                     .drm_format_modifier_properties
                     .iter()
                     .find(|properties| properties.drm_format_modifier == drm_format_modifier)
-                    .ok_or(ValidationError {
+                    .ok_or_else(|| Box::new(ValidationError {
                         problem: "`drm_format_modifiers` has a length of 1, but \
                             `drm_format_modifiers[0]` is not one of the modifiers in \
                             `FormatProperties::drm_format_properties`, as returned by \
                             `PhysicalDevice::format_properties` for `format`".into(),
                         vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
                         ..Default::default()
-                    })?;
+                    }))?;
 
                 if drm_format_modifier_plane_layouts.len()
                     != drm_format_modifier_properties.drm_format_modifier_plane_count as usize
@@ -2710,14 +2687,16 @@ impl ImageCreateInfo {
                             ),
                             ..Default::default()
                         })
-                        .map_err(|_err| ValidationError {
-                            context: "PhysicalDevice::image_format_properties".into(),
-                            problem: "returned an error".into(),
-                            ..Default::default()
+                        .map_err(|_err| {
+                            Box::new(ValidationError {
+                                context: "PhysicalDevice::image_format_properties".into(),
+                                problem: "returned an error".into(),
+                                ..Default::default()
+                            })
                         })?
                 };
 
-                let image_format_properties = image_format_properties.ok_or(ValidationError {
+                let image_format_properties = image_format_properties.ok_or_else(|| Box::new(ValidationError {
                     problem: "the combination of parameters of this image is not \
                         supported by the physical device, as returned by \
                         `PhysicalDevice::image_format_properties`"
@@ -2727,7 +2706,7 @@ impl ImageCreateInfo {
                         "VUID-VkImageDrmFormatModifierListCreateInfoEXT-pDrmFormatModifiers-02263",
                     ],
                     ..Default::default()
-                })?;
+                }))?;
 
                 let ImageFormatProperties {
                     max_extent,

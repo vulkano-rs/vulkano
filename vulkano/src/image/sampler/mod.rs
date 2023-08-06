@@ -814,60 +814,43 @@ impl SamplerCreateInfo {
 
         let properties = device.physical_device().properties();
 
-        mag_filter
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "mag_filter".into(),
-                vuids: &["VUID-VkSamplerCreateInfo-magFilter-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        mag_filter.validate_device(device).map_err(|err| {
+            err.add_context("mag_filter")
+                .set_vuids(&["VUID-VkSamplerCreateInfo-magFilter-parameter"])
+        })?;
 
-        min_filter
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "min_filter".into(),
-                vuids: &["VUID-VkSamplerCreateInfo-minFilter-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        min_filter.validate_device(device).map_err(|err| {
+            err.add_context("min_filter")
+                .set_vuids(&["VUID-VkSamplerCreateInfo-minFilter-parameter"])
+        })?;
 
-        mipmap_mode
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "mipmap_mode".into(),
-                vuids: &["VUID-VkSamplerCreateInfo-mipmapMode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        mipmap_mode.validate_device(device).map_err(|err| {
+            err.add_context("mipmap_mode")
+                .set_vuids(&["VUID-VkSamplerCreateInfo-mipmapMode-parameter"])
+        })?;
 
         for (index, mode) in address_mode.into_iter().enumerate() {
-            mode.validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: format!("address_mode[{}]", index).into(),
-                    vuids: &[
+            mode.validate_device(device).map_err(|err| {
+                err.add_context(format!("address_mode[{}]", index))
+                    .set_vuids(&[
                         "VUID-VkSamplerCreateInfo-addressModeU-parameter",
                         "VUID-VkSamplerCreateInfo-addressModeV-parameter",
                         "VUID-VkSamplerCreateInfo-addressModeW-parameter",
-                    ],
-                    ..ValidationError::from_requirement(err)
-                })?;
+                    ])
+            })?;
         }
 
         if address_mode.contains(&SamplerAddressMode::ClampToBorder) {
-            border_color
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "border_color".into(),
-                    vuids: &["VUID-VkSamplerCreateInfo-addressModeU-01078"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            border_color.validate_device(device).map_err(|err| {
+                err.add_context("border_color")
+                    .set_vuids(&["VUID-VkSamplerCreateInfo-addressModeU-01078"])
+            })?;
         }
 
-        reduction_mode
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "reduction_mode".into(),
-                vuids: &["VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        reduction_mode.validate_device(device).map_err(|err| {
+            err.add_context("reduction_mode")
+                .set_vuids(&["VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter"])
+        })?;
 
         if address_mode.contains(&SamplerAddressMode::MirrorClampToEdge) {
             if !(device.enabled_features().sampler_mirror_clamp_to_edge
@@ -964,13 +947,10 @@ impl SamplerCreateInfo {
         }
 
         if let Some(compare_op) = compare {
-            compare_op
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "compare".into(),
-                    vuids: &["VUID-VkSamplerCreateInfo-compareEnable-01080"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            compare_op.validate_device(device).map_err(|err| {
+                err.add_context("compare")
+                    .set_vuids(&["VUID-VkSamplerCreateInfo-compareEnable-01080"])
+            })?;
 
             if reduction_mode != SamplerReductionMode::WeightedAverage {
                 return Err(Box::new(ValidationError {
@@ -1249,28 +1229,24 @@ impl ComponentMapping {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { r, g, b, a } = self;
 
-        r.validate_device(device).map_err(|err| ValidationError {
-            context: "r".into(),
-            vuids: &["VUID-VkComponentMapping-r-parameter"],
-            ..ValidationError::from_requirement(err)
+        r.validate_device(device).map_err(|err| {
+            err.add_context("r")
+                .set_vuids(&["VUID-VkComponentMapping-r-parameter"])
         })?;
 
-        g.validate_device(device).map_err(|err| ValidationError {
-            context: "g".into(),
-            vuids: &["VUID-VkComponentMapping-g-parameter"],
-            ..ValidationError::from_requirement(err)
+        g.validate_device(device).map_err(|err| {
+            err.add_context("g")
+                .set_vuids(&["VUID-VkComponentMapping-g-parameter"])
         })?;
 
-        b.validate_device(device).map_err(|err| ValidationError {
-            context: "b".into(),
-            vuids: &["VUID-VkComponentMapping-b-parameter"],
-            ..ValidationError::from_requirement(err)
+        b.validate_device(device).map_err(|err| {
+            err.add_context("b")
+                .set_vuids(&["VUID-VkComponentMapping-b-parameter"])
         })?;
 
-        a.validate_device(device).map_err(|err| ValidationError {
-            context: "a".into(),
-            vuids: &["VUID-VkComponentMapping-a-parameter"],
-            ..ValidationError::from_requirement(err)
+        a.validate_device(device).map_err(|err| {
+            err.add_context("a")
+                .set_vuids(&["VUID-VkComponentMapping-a-parameter"])
         })?;
 
         Ok(())

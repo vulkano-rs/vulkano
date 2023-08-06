@@ -523,13 +523,10 @@ impl FramebufferCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkFramebufferCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkFramebufferCreateInfo-flags-parameter"])
+        })?;
 
         for (index, image_view) in attachments.iter().enumerate() {
             assert_eq!(device, image_view.device().as_ref());

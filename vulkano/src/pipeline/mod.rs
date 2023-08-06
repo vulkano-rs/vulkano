@@ -344,24 +344,18 @@ impl PipelineShaderStageCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkPipelineShaderStageCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkPipelineShaderStageCreateInfo-flags-parameter"])
+        })?;
 
         let entry_point_info = entry_point.info();
         let stage_enum = ShaderStage::from(&entry_point_info.execution);
 
-        stage_enum
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "entry_point.info().execution".into(),
-                vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        stage_enum.validate_device(device).map_err(|err| {
+            err.add_context("entry_point.info().execution")
+                .set_vuids(&["VUID-VkPipelineShaderStageCreateInfo-stage-parameter"])
+        })?;
 
         // VUID-VkPipelineShaderStageCreateInfo-pName-00707
         // Guaranteed by definition of `EntryPoint`.

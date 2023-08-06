@@ -482,10 +482,9 @@ where
     ) -> Result<(), Box<ValidationError>> {
         pipeline_bind_point
             .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "pipeline_bind_point".into(),
-                vuids: &["VUID-vkCmdBindDescriptorSets-pipelineBindPoint-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("pipeline_bind_point")
+                    .set_vuids(&["VUID-vkCmdBindDescriptorSets-pipelineBindPoint-parameter"])
             })?;
 
         let queue_family_properties = self.queue_family_properties();
@@ -1185,10 +1184,9 @@ where
 
         pipeline_bind_point
             .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "pipeline_bind_point".into(),
-                vuids: &["VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("pipeline_bind_point")
+                    .set_vuids(&["VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-parameter"])
             })?;
 
         let queue_family_properties = self.queue_family_properties();

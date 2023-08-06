@@ -107,16 +107,18 @@ where
                     .inheritance_info()
                     .render_pass
                     .as_ref()
-                    .ok_or(Box::new(ValidationError {
-                        problem: format!(
-                            "a render pass instance is active, but \
+                    .ok_or_else(|| {
+                        Box::new(ValidationError {
+                            problem: format!(
+                                "a render pass instance is active, but \
                             `command_buffers[{}].inheritance_info().render_pass` is `None`",
-                            command_buffer_index
-                        )
-                        .into(),
-                        vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00096"],
-                        ..Default::default()
-                    }))?;
+                                command_buffer_index
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00096"],
+                            ..Default::default()
+                        })
+                    })?;
 
                 match (&render_pass_state.render_pass, inheritance_render_pass) {
                     (
@@ -406,17 +408,20 @@ where
                         let inherited_flags = command_buffer
                             .inheritance_info()
                             .occlusion_query
-                            .ok_or(Box::new(ValidationError {
-                                context: format!(
-                                    "command_buffers[{}].inheritance_info().occlusion_query",
-                                    command_buffer_index
-                                )
-                                .into(),
-                                problem: "is `None`, but an occlusion query is currently active"
+                            .ok_or_else(|| {
+                                Box::new(ValidationError {
+                                    context: format!(
+                                        "command_buffers[{}].inheritance_info().occlusion_query",
+                                        command_buffer_index
+                                    )
                                     .into(),
-                                vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00102"],
-                                ..Default::default()
-                            }))?;
+                                    problem:
+                                        "is `None`, but an occlusion query is currently active"
+                                            .into(),
+                                    vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00102"],
+                                    ..Default::default()
+                                })
+                            })?;
 
                         if !inherited_flags.contains(state.flags) {
                             return Err(Box::new(ValidationError {

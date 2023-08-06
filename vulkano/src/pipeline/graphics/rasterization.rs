@@ -156,21 +156,14 @@ impl RasterizationState {
 
         let properties = device.physical_device().properties();
 
-        polygon_mode
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "polygon_mode".into(),
-                vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        polygon_mode.validate_device(device).map_err(|err| {
+            err.add_context("polygon_mode")
+                .set_vuids(&["VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-parameter"])
+        })?;
 
         line_rasterization_mode
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "line_rasterization_mode".into(),
-                vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+            .map_err(|err| err.add_context("line_rasterization_mode").set_vuids(&["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-parameter"]))?;
 
         if depth_clamp_enable && !device.enabled_features().depth_clamp {
             return Err(Box::new(ValidationError {
@@ -234,13 +227,11 @@ impl RasterizationState {
 
         match cull_mode {
             StateMode::Fixed(cull_mode) => {
-                cull_mode
-                    .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: "cull_mode".into(),
-                        vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-cullMode-parameter"],
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                cull_mode.validate_device(device).map_err(|err| {
+                    err.add_context("cull_mode").set_vuids(&[
+                        "VUID-VkPipelineRasterizationStateCreateInfo-cullMode-parameter",
+                    ])
+                })?;
             }
             StateMode::Dynamic => {
                 if !(device.api_version() >= Version::V1_3
@@ -262,13 +253,11 @@ impl RasterizationState {
 
         match front_face {
             StateMode::Fixed(front_face) => {
-                front_face
-                    .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: "front_face".into(),
-                        vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-frontFace-parameter"],
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                front_face.validate_device(device).map_err(|err| {
+                    err.add_context("front_face").set_vuids(&[
+                        "VUID-VkPipelineRasterizationStateCreateInfo-frontFace-parameter",
+                    ])
+                })?;
             }
             StateMode::Dynamic => {
                 if !(device.api_version() >= Version::V1_3
