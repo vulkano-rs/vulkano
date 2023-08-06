@@ -1677,14 +1677,14 @@ pub unsafe trait DeviceOwnedVulkanObject {
     /// Assigns a human-readable name to the object for debugging purposes.
     ///
     /// If `object_name` is `None`, a previously set object name is removed.
-    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), OomError>;
+    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), VulkanError>;
 }
 
 unsafe impl<T> DeviceOwnedVulkanObject for T
 where
     T: DeviceOwned + VulkanObject,
 {
-    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), OomError> {
+    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), VulkanError> {
         self.device().set_debug_utils_object_name(self, object_name)
     }
 }
