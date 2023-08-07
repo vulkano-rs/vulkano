@@ -564,28 +564,62 @@ impl EntryPointInfo {
     pub(crate) fn local_size(
         &self,
         specialization_info: &HashMap<u32, SpecializationConstant>,
-    ) -> Result<Option<[u32; 3]>, ValidationError> {
+    ) -> Result<Option<[u32; 3]>, Box<ValidationError>> {
         if let ShaderExecution::Compute(execution) = self.execution {
             match execution {
-                ComputeShaderExecution::LocalSize(local_size) => Ok(Some(local_size)),
-                ComputeShaderExecution::LocalSizeId(local_size_id)
-                | ComputeShaderExecution::WorkgroupSizeId(local_size_id) => {
-                    let mut local_size = [0; 3];
-                    for (size, id) in local_size.iter_mut().zip(local_size_id) {
-                        if let Some(spec) = specialization_info
-                            .get(&id)
-                            .or(self.specialization_constants.get(&id))
-                        {
-                            if let SpecializationConstant::U32(x) = spec {
-                                *size = *x;
-                            } else {
-                                todo!("expected SpecializationConstant::U32(_), found {spec:?}");
+                ComputeShaderExecution::LocalSize(local_size)
+                | ComputeShaderExecution::LocalSizeId(local_size) => {
+                    let mut output = [0; 3];
+                    for (output, local_size) in output.iter_mut().zip(local_size) {
+                        let id = match local_size {
+                            LocalSize::Literal(literal) => {
+                                *output = literal;
+                                continue;
                             }
+                            LocalSize::SpecId(id) => id,
+                        };
+                        if let Some(default) = self.specialization_constants.get(&id) {
+                            let default_value = if let SpecializationConstant::U32(default_value) =
+                                default
+                            {
+                                default_value
+                            } else {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "`entry_point.info().specialization_constants[{id}]` is not a 32 bit integer"
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                }));
+                            };
+                            if let Some(provided) = specialization_info.get(&id) {
+                                if let SpecializationConstant::U32(provided_value) = provided {
+                                    *output = *provided_value;
+                                } else {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "`specialization_info[{0}]` does not have the same type as \
+                                            `entry_point.info().specialization_constants[{0}]`",
+                                            id,
+                                        )
+                                        .into(),
+                                        vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
+                                        ..Default::default()
+                                    }));
+                                }
+                            }
+                            *output = *default_value;
                         } else {
-                            todo!("Specialization (id = {id}) not found!");
+                            return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "specialization constant {id} not found in `entry_point.info().specialization_constants`"
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                }));
                         }
                     }
-                    Ok(Some(local_size))
+                    Ok(Some(output))
                 }
             }
         } else {
@@ -744,21 +778,30 @@ pub enum FragmentTestsStages {
     EarlyAndLate,
 }
 
+/// LocalSize.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalSize {
+    Literal(u32),
+    SpecId(u32),
+}
+
 /// The mode in which the compute shader executes.
+///
+/// The workgroup size is specified for x, y, and z dimensions.
+///
+/// Constants are resolved to literals, while specialization constants
+/// map to spec ids.
+///
+/// The `WorkgroupSize` builtin overrides the values specified in the
+/// execution mode. It can decorate a 3 component ConstantComposite or
+/// SpecConstantComposite vector.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComputeShaderExecution {
     /// Workgroup size in x, y, and z.
-    LocalSize([u32; 3]),
+    LocalSize([LocalSize; 3]),
     /// Requires spirv 1.2.
-    /// `LocalSize` but with ids instead of literals.
-    // TODO: In order to validate the spirv 1.2 req, should look at all execution
-    // modes again because `WorkgroupSizeId` discards this info.
-    LocalSizeId([u32; 3]),
-    /// Deprecated in spirv 1.6.
-    /// The ids are the components of a `ConstantComposite` or `SpecConstantComposite`
-    /// vector decorated with the `WorkgroupSize` builtin.
-    /// Functionally equivalent to `LocalSizeId`.
-    WorkgroupSizeId([u32; 3]),
+    /// Like `LocalSize`, but uses ids instead of literals.
+    LocalSizeId([LocalSize; 3]),
 }
 
 /// The requirements imposed by a shader on a binding within a descriptor set layout, and on any

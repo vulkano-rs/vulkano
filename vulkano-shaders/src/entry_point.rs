@@ -74,21 +74,44 @@ fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
             }
         }
         ShaderExecution::Compute(execution) => {
-            use ::vulkano::shader::ComputeShaderExecution;
+            use ::quote::ToTokens;
+            use ::vulkano::shader::{ComputeShaderExecution, LocalSize};
+
+            struct LocalSizeToTokens(LocalSize);
+
+            impl ToTokens for LocalSizeToTokens {
+                fn to_tokens(&self, tokens: &mut TokenStream) {
+                    match self.0 {
+                        LocalSize::Literal(literal) => quote! {
+                            ::vulkano::shader::LocalSize::Literal(#literal)
+                        },
+                        LocalSize::SpecId(id) => quote! {
+                            ::vulkano::shader::LocalSize::SpecId(#id)
+                        },
+                    }
+                    .to_tokens(tokens);
+                }
+            }
+
             match execution {
                 ComputeShaderExecution::LocalSize([x, y, z]) => {
+                    let [x, y, z] = [
+                        LocalSizeToTokens(*x),
+                        LocalSizeToTokens(*y),
+                        LocalSizeToTokens(*z),
+                    ];
                     quote! { ::vulkano::shader::ShaderExecution::Compute(
                         ::vulkano::shader::ComputeShaderExecution::LocalSize([#x, #y, #z])
                     ) }
                 }
                 ComputeShaderExecution::LocalSizeId([x, y, z]) => {
+                    let [x, y, z] = [
+                        LocalSizeToTokens(*x),
+                        LocalSizeToTokens(*y),
+                        LocalSizeToTokens(*z),
+                    ];
                     quote! { ::vulkano::shader::ShaderExecution::Compute(
                         ::vulkano::shader::ComputeShaderExecution::LocalSizeId([#x, #y, #z])
-                    ) }
-                }
-                ComputeShaderExecution::WorkgroupSizeId([x, y, z]) => {
-                    quote! { ::vulkano::shader::ShaderExecution::Compute(
-                        ::vulkano::shader::ComputeShaderExecution::WorkgroupSizeId([#x, #y, #z])
                     ) }
                 }
             }

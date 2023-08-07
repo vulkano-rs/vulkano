@@ -20,7 +20,7 @@ use crate::{
             Spirv, StorageClass,
         },
         ComputeShaderExecution, DescriptorIdentifier, DescriptorRequirements, EntryPointInfo,
-        GeometryShaderExecution, GeometryShaderInput, ShaderExecution, ShaderInterface,
+        GeometryShaderExecution, GeometryShaderInput, LocalSize, ShaderExecution, ShaderInterface,
         ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderScalarType, ShaderStage,
         SpecializationConstant,
     },
@@ -56,6 +56,8 @@ pub fn spirv_extensions(spirv: &Spirv) -> impl Iterator<Item = &str> {
 #[inline]
 pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ {
     let interface_variables = interface_variables(spirv);
+    let u32_constants = u32_constants(spirv);
+    let specialization_constant_ids = specialization_constant_ids(spirv);
     let workgroup_size_decorations = workgroup_size_decorations(spirv);
 
     spirv.iter_entry_point().filter_map(move |instruction| {
@@ -74,6 +76,8 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
             spirv,
             execution_model,
             function_id,
+            &u32_constants,
+            &specialization_constant_ids,
             &workgroup_size_decorations,
         );
         let stage = ShaderStage::from(&execution);
@@ -116,6 +120,62 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
     })
 }
 
+/// Extracts the u32 constants from `spirv`.
+fn u32_constants(spirv: &Spirv) -> HashMap<Id, u32> {
+    let type_u32s: HashSet<Id> = spirv
+        .iter_global()
+        .filter_map(|inst| {
+            if let Instruction::TypeInt {
+                result_id,
+                width,
+                signedness,
+            } = inst
+            {
+                if *width == 0 && *signedness == 0 {
+                    return Some(*result_id);
+                }
+            }
+            None
+        })
+        .collect();
+    spirv
+        .iter_decoration()
+        .filter_map(|inst| {
+            if let Instruction::Constant {
+                result_type_id,
+                result_id,
+                value,
+            } = inst
+            {
+                if type_u32s.contains(result_type_id) {
+                    if let [value] = value.as_slice() {
+                        return Some((*result_id, *value));
+                    }
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+/// Extracts the specialization constant ids from `spirv`.
+fn specialization_constant_ids(spirv: &Spirv) -> HashMap<Id, u32> {
+    spirv
+        .iter_decoration()
+        .filter_map(|inst| {
+            if let Instruction::Decorate { target, decoration } = inst {
+                if let Decoration::SpecId {
+                    specialization_constant_id,
+                } = decoration
+                {
+                    return Some((*target, *specialization_constant_id));
+                }
+            }
+            None
+        })
+        .collect()
+}
+
 /// Extracts the `WorkgroupSize` builtin Id's from `spirv`.
 fn workgroup_size_decorations(spirv: &Spirv) -> HashSet<Id> {
     spirv
@@ -138,6 +198,8 @@ fn shader_execution(
     spirv: &Spirv,
     execution_model: ExecutionModel,
     function_id: Id,
+    u32_constants: &HashMap<Id, u32>,
+    specialization_constant_ids: &HashMap<Id, u32>,
     workgroup_size_decorations: &HashSet<Id>,
 ) -> ShaderExecution {
     match execution_model {
@@ -213,7 +275,7 @@ fn shader_execution(
         }
 
         ExecutionModel::GLCompute => {
-            let mut execution = ComputeShaderExecution::LocalSize([1, 1, 1]);
+            let mut execution = ComputeShaderExecution::LocalSize([LocalSize::Literal(0); 3]);
             for instruction in spirv.iter_execution_mode() {
                 match instruction {
                     Instruction::ExecutionMode { entry_point, mode }
@@ -225,8 +287,11 @@ fn shader_execution(
                             z_size,
                         } = mode
                         {
-                            execution =
-                                ComputeShaderExecution::LocalSize([*x_size, *y_size, *z_size]);
+                            execution = ComputeShaderExecution::LocalSize([
+                                LocalSize::Literal(*x_size),
+                                LocalSize::Literal(*y_size),
+                                LocalSize::Literal(*z_size),
+                            ]);
                             break;
                         }
                     }
@@ -239,11 +304,19 @@ fn shader_execution(
                             z_size,
                         } = mode
                         {
-                            execution = ComputeShaderExecution::LocalSizeId([
-                                u32::from(*x_size),
-                                u32::from(*y_size),
-                                u32::from(*z_size),
-                            ]);
+                            let mut local_size = [LocalSize::Literal(0); 3];
+                            for (local_size, id) in
+                                local_size.iter_mut().zip([*x_size, *y_size, *z_size])
+                            {
+                                if let Some(constant) = u32_constants.get(&id) {
+                                    *local_size = LocalSize::Literal(*constant);
+                                } else if let Some(spec_id) = specialization_constant_ids.get(&id) {
+                                    *local_size = LocalSize::SpecId(*spec_id);
+                                } else {
+                                    todo!();
+                                }
+                            }
+                            execution = ComputeShaderExecution::LocalSizeId(local_size);
                             break;
                         }
                     }
@@ -261,30 +334,58 @@ fn shader_execution(
                             _ => {}
                         }
                     } else {
+                        let mut local_size = [LocalSize::Literal(0); 3];
                         match instruction {
                             Instruction::ConstantComposite {
                                 result_type_id: _,
                                 result_id,
                                 constituents,
+                            } => {
+                                if workgroup_size_decorations.contains(result_id) {
+                                    if constituents.len() != 3 {
+                                        todo!("must be 3 component vector");
+                                    }
+                                    for (local_size, id) in
+                                        local_size.iter_mut().zip(constituents.iter())
+                                    {
+                                        if let Some(constant) = u32_constants.get(id) {
+                                            *local_size = LocalSize::Literal(*constant);
+                                        } else {
+                                            todo!()
+                                        };
+                                    }
+                                }
                             }
-                            | Instruction::SpecConstantComposite {
+                            Instruction::SpecConstantComposite {
                                 result_type_id: _,
                                 result_id,
                                 constituents,
                             } => {
                                 if workgroup_size_decorations.contains(result_id) {
-                                    if let [x, y, z] = constituents.as_slice() {
-                                        execution = ComputeShaderExecution::WorkgroupSizeId([
-                                            u32::from(*x),
-                                            u32::from(*y),
-                                            u32::from(*z),
-                                        ]);
-                                        break;
+                                    if constituents.len() != 3 {
+                                        todo!("must be 3 component vector");
+                                    }
+                                    for (local_size, id) in
+                                        local_size.iter_mut().zip(constituents.iter())
+                                    {
+                                        if let Some(spec_id) = specialization_constant_ids.get(id) {
+                                            *local_size = LocalSize::SpecId(*spec_id);
+                                        } else {
+                                            todo!()
+                                        };
                                     }
                                 }
                             }
                             Instruction::FunctionEnd => break,
                             _ => continue,
+                        }
+                        match &mut execution {
+                            ComputeShaderExecution::LocalSize(output) => {
+                                *output = local_size;
+                            }
+                            ComputeShaderExecution::LocalSizeId(output) => {
+                                *output = local_size;
+                            }
                         }
                     }
                 }
