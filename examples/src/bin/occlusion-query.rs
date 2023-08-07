@@ -16,7 +16,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -43,11 +43,10 @@ use vulkano::{
     query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
+    sync::{self, GpuFuture},
+    Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -408,9 +407,9 @@ fn main() {
             }
 
             let (image_index, suboptimal, acquire_future) =
-                match acquire_next_image(swapchain.clone(), None) {
+                match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
                     Ok(r) => r,
-                    Err(AcquireError::OutOfDate) => {
+                    Err(VulkanError::OutOfDate) => {
                         recreate_swapchain = true;
                         return;
                     }
@@ -436,7 +435,9 @@ fn main() {
                     .reset_query_pool(query_pool.clone(), 0..3)
                     .unwrap()
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
                     .begin_render_pass(
                         RenderPassBeginInfo {
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), Some(1.0.into())],
@@ -444,7 +445,7 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        SubpassContents::Inline,
+                        Default::default(),
                     )
                     .unwrap()
                     // Begin query 0, then draw the red triangle. Enabling the
@@ -458,6 +459,7 @@ fn main() {
                     )
                     .unwrap()
                     .bind_vertex_buffers(0, triangle1.clone())
+                    .unwrap()
                     .draw(triangle1.len() as u32, 1, 0, 0)
                     .unwrap()
                     // End query 0.
@@ -467,6 +469,7 @@ fn main() {
                     .begin_query(query_pool.clone(), 1, QueryControlFlags::empty())
                     .unwrap()
                     .bind_vertex_buffers(0, triangle2.clone())
+                    .unwrap()
                     .draw(triangle2.len() as u32, 1, 0, 0)
                     .unwrap()
                     .end_query(query_pool.clone(), 1)
@@ -475,11 +478,12 @@ fn main() {
                     .begin_query(query_pool.clone(), 2, QueryControlFlags::empty())
                     .unwrap()
                     .bind_vertex_buffers(0, triangle3.clone())
+                    .unwrap()
                     .draw(triangle3.len() as u32, 1, 0, 0)
                     .unwrap()
                     .end_query(query_pool.clone(), 2)
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
             }
 
@@ -497,11 +501,11 @@ fn main() {
                 )
                 .then_signal_fence_and_flush();
 
-            match future {
+            match future.map_err(Validated::unwrap) {
                 Ok(future) => {
                     previous_frame_end = Some(future.boxed());
                 }
-                Err(FlushError::OutOfDate) => {
+                Err(VulkanError::OutOfDate) => {
                     recreate_swapchain = true;
                     previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
@@ -516,30 +520,28 @@ fn main() {
             // results to a Vulkano buffer. This could then be used to influence draw operations
             // further down the line, either in the same frame or a future frame.
             #[rustfmt::skip]
-            query_pool
-                .queries_range(0..3)
-                .unwrap()
-                .get_results(
-                    &mut query_results,
-                    // Block the function call until the results are available.
-                    // NOTE: If not all the queries have actually been executed, then this will 
-                    // wait forever for something that never happens!
-                    QueryResultFlags::WAIT
+            query_pool.get_results(
+                0..3,
+                &mut query_results,
+                // Block the function call until the results are available.
+                // NOTE: If not all the queries have actually been executed, then this will 
+                // wait forever for something that never happens!
+                QueryResultFlags::WAIT
 
-                    // Enable this flag to give partial results if available, instead of waiting
-                    // for the full results.
-                    // | QueryResultFlags::PARTIAL
+                // Enable this flag to give partial results if available, instead of waiting
+                // for the full results.
+                // | QueryResultFlags::PARTIAL
 
-                    // Blocking and waiting will ensure the results are always available after the 
-                    // function returns.
-                    //
-                    // If you disable waiting, then this flag can be enabled to include the
-                    // availability of each query's results. You need one extra element per query 
-                    // in your `query_results` buffer for this. This element will be filled with a 
-                    // zero/nonzero value indicating availability.
-                    // | QueryResultFlags::WITH_AVAILABILITY
-                )
-                .unwrap();
+                // Blocking and waiting will ensure the results are always available after the 
+                // function returns.
+                //
+                // If you disable waiting, then this flag can be enabled to include the
+                // availability of each query's results. You need one extra element per query 
+                // in your `query_results` buffer for this. This element will be filled with a 
+                // zero/nonzero value indicating availability.
+                // | QueryResultFlags::WITH_AVAILABILITY
+            )
+            .unwrap();
 
             // If the `precise` bit was not enabled, then you're only guaranteed to get a boolean
             // result here: zero if all pixels were occluded, nonzero if only some were occluded.

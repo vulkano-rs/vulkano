@@ -18,14 +18,9 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
     sync::{PipelineStage, PipelineStageAccessFlags, PipelineStages},
-    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    ops::Range,
-    sync::Arc,
-};
+use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
 impl<L, A> AutoCommandBufferBuilder<L, A>
@@ -45,12 +40,10 @@ where
         query_pool: Arc<QueryPool>,
         query: u32,
         flags: QueryControlFlags,
-    ) -> Result<&mut Self, QueryError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_query(&query_pool, query, flags)?;
 
-        self.begin_query_unchecked(query_pool, query, flags);
-
-        Ok(self)
+        Ok(self.begin_query_unchecked(query_pool, query, flags))
     }
 
     fn validate_begin_query(
@@ -58,97 +51,35 @@ where
         query_pool: &QueryPool,
         query: u32,
         flags: QueryControlFlags,
-    ) -> Result<(), QueryError> {
-        let queue_family_properties = self.queue_family_properties();
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_begin_query(query_pool, query, flags)?;
 
-        // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(QueryError::NotSupportedByQueueFamily);
-        }
-
-        let device = self.device();
-
-        // VUID-vkCmdBeginQuery-flags-parameter
-        flags.validate_device(device)?;
-
-        // VUID-vkCmdBeginQuery-commonparent
-        assert_eq!(device, query_pool.device());
-
-        // VUID-vkCmdBeginQuery-query-00802
-        query_pool.query(query).ok_or(QueryError::OutOfRange)?;
-
-        match query_pool.query_type() {
-            QueryType::Occlusion => {
-                // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
-                // // VUID-vkCmdBeginQuery-queryType-00803
-                if !queue_family_properties
-                    .queue_flags
-                    .intersects(QueueFlags::GRAPHICS)
-                {
-                    return Err(QueryError::NotSupportedByQueueFamily);
-                }
-
-                // VUID-vkCmdBeginQuery-queryType-00800
-                if flags.intersects(QueryControlFlags::PRECISE)
-                    && !device.enabled_features().occlusion_query_precise
-                {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`flags` contains `QueryControlFlags::PRECISE`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "occlusion_query_precise",
-                        )])]),
-                    });
-                }
-            }
-            QueryType::PipelineStatistics(statistic_flags) => {
-                // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
-                // VUID-vkCmdBeginQuery-queryType-00804
-                // VUID-vkCmdBeginQuery-queryType-00805
-                if statistic_flags.is_compute()
-                    && !queue_family_properties
-                        .queue_flags
-                        .intersects(QueueFlags::COMPUTE)
-                    || statistic_flags.is_graphics()
-                        && !queue_family_properties
-                            .queue_flags
-                            .intersects(QueueFlags::GRAPHICS)
-                {
-                    return Err(QueryError::NotSupportedByQueueFamily);
-                }
-
-                // VUID-vkCmdBeginQuery-queryType-00800
-                if flags.intersects(QueryControlFlags::PRECISE) {
-                    return Err(QueryError::InvalidFlags);
-                }
-            }
-            // VUID-vkCmdBeginQuery-queryType-02804
-            // VUID-vkCmdBeginQuery-queryType-04728
-            // VUID-vkCmdBeginQuery-queryType-06741
-            QueryType::Timestamp
-            | QueryType::AccelerationStructureCompactedSize
-            | QueryType::AccelerationStructureSerializationSize
-            | QueryType::AccelerationStructureSerializationBottomLevelPointers
-            | QueryType::AccelerationStructureSize => return Err(QueryError::NotPermitted),
-        }
-
-        // VUID-vkCmdBeginQuery-queryPool-01922
         if self
             .builder_state
             .queries
             .contains_key(&query_pool.query_type().into())
         {
-            return Err(QueryError::QueryIsActive);
+            return Err(Box::new(ValidationError {
+                problem: "a query with the same type as `query_pool.query_type()` is \
+                    already active"
+                    .into(),
+                vuids: &["VUID-vkCmdBeginQuery-queryPool-01922"],
+                ..Default::default()
+            }));
         }
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
-            // VUID-vkCmdBeginQuery-query-00808
             if query + render_pass_state.rendering_info.view_mask.count_ones()
                 > query_pool.query_count()
             {
-                return Err(QueryError::OutOfRangeMultiview);
+                return Err(Box::new(ValidationError {
+                    problem: "a render subpass with a non-zero `view_mask` is active, but \
+                        `query` + the number of views in `view_mask` is greater than \
+                        `query_pool.query_count()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdBeginQuery-query-00808"],
+                    ..Default::default()
+                }));
             }
         }
 
@@ -180,7 +111,7 @@ where
             "begin_query",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_query(&query_pool, query, flags);
+                out.begin_query_unchecked(&query_pool, query, flags);
             },
         );
 
@@ -192,33 +123,19 @@ where
         &mut self,
         query_pool: Arc<QueryPool>,
         query: u32,
-    ) -> Result<&mut Self, QueryError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_query(&query_pool, query)?;
 
-        unsafe {
-            self.end_query_unchecked(query_pool, query);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.end_query_unchecked(query_pool, query)) }
     }
 
-    fn validate_end_query(&self, query_pool: &QueryPool, query: u32) -> Result<(), QueryError> {
-        let queue_family_properties = self.queue_family_properties();
+    fn validate_end_query(
+        &self,
+        query_pool: &QueryPool,
+        query: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_end_query(query_pool, query)?;
 
-        // VUID-vkCmdEndQuery-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(QueryError::NotSupportedByQueueFamily);
-        }
-
-        let device = self.device();
-
-        // VUID-vkCmdEndQuery-commonparent
-        assert_eq!(device, query_pool.device());
-
-        // VUID-vkCmdEndQuery-None-01923
         if !self
             .builder_state
             .queries
@@ -227,18 +144,26 @@ where
                 *state.query_pool == *query_pool && state.query == query
             })
         {
-            return Err(QueryError::QueryNotActive);
+            return Err(Box::new(ValidationError {
+                problem: "no query with the same type as `query_pool.query_type()` is active"
+                    .into(),
+                vuids: &["VUID-vkCmdEndQuery-None-01923"],
+                ..Default::default()
+            }));
         }
 
-        // VUID-vkCmdEndQuery-query-00810
-        query_pool.query(query).ok_or(QueryError::OutOfRange)?;
-
         if let Some(render_pass_state) = &self.builder_state.render_pass {
-            // VUID-vkCmdEndQuery-query-00812
             if query + render_pass_state.rendering_info.view_mask.count_ones()
                 > query_pool.query_count()
             {
-                return Err(QueryError::OutOfRangeMultiview);
+                return Err(Box::new(ValidationError {
+                    problem: "a render subpass with a non-zero `view_mask` is active, but \
+                        `query` + the number of views in `view_mask` is greater than \
+                        `query_pool.query_count()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdEndQuery-query-00812"],
+                    ..Default::default()
+                }));
             }
         }
 
@@ -258,7 +183,7 @@ where
             "end_query",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.end_query(&query_pool, query);
+                out.end_query_unchecked(&query_pool, query);
             },
         );
 
@@ -276,12 +201,10 @@ where
         query_pool: Arc<QueryPool>,
         query: u32,
         stage: PipelineStage,
-    ) -> Result<&mut Self, QueryError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_write_timestamp(&query_pool, query, stage)?;
 
-        self.write_timestamp_unchecked(query_pool, query, stage);
-
-        Ok(self)
+        Ok(self.write_timestamp_unchecked(query_pool, query, stage))
     }
 
     fn validate_write_timestamp(
@@ -289,184 +212,22 @@ where
         query_pool: &QueryPool,
         query: u32,
         stage: PipelineStage,
-    ) -> Result<(), QueryError> {
-        let device = self.device();
-
-        if !device.enabled_features().synchronization2
-            && PipelineStages::from(stage).contains_flags2()
-        {
-            return Err(QueryError::RequirementNotMet {
-                required_for: "`stage` has flags set from `VkPipelineStageFlagBits2`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "synchronization2",
-                )])]),
-            });
-        }
-
-        // VUID-vkCmdWriteTimestamp2-stage-parameter
-        stage.validate_device(device)?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdWriteTimestamp2-commandBuffer-cmdpool
-        if !queue_family_properties.queue_flags.intersects(
-            QueueFlags::TRANSFER
-                | QueueFlags::GRAPHICS
-                | QueueFlags::COMPUTE
-                | QueueFlags::VIDEO_DECODE
-                | QueueFlags::VIDEO_ENCODE,
-        ) {
-            return Err(QueryError::NotSupportedByQueueFamily);
-        }
-
-        let device = self.device();
-
-        // VUID-vkCmdWriteTimestamp2-commonparent
-        assert_eq!(device, query_pool.device());
-
-        // VUID-vkCmdWriteTimestamp2-stage-03860
-        if !PipelineStages::from(queue_family_properties.queue_flags).contains_enum(stage) {
-            return Err(QueryError::StageNotSupported);
-        }
-
-        match stage {
-            PipelineStage::GeometryShader => {
-                // VUID-vkCmdWriteTimestamp2-stage-03929
-                if !device.enabled_features().geometry_shader {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::GeometryShader`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shadere",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::TessellationControlShader
-            | PipelineStage::TessellationEvaluationShader => {
-                // VUID-vkCmdWriteTimestamp2-stage-03930
-                if !device.enabled_features().tessellation_shader {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::TessellationControlShader` or \
-                            `PipelineStage::TessellationEvaluationShader`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::ConditionalRendering => {
-                // VUID-vkCmdWriteTimestamp2-stage-03931
-                if !device.enabled_features().conditional_rendering {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::ConditionalRendering`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "conditional_rendering",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::FragmentDensityProcess => {
-                // VUID-vkCmdWriteTimestamp2-stage-03932
-                if !device.enabled_features().fragment_density_map {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::FragmentDensityProcess`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "fragment_density_map",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::TransformFeedback => {
-                // VUID-vkCmdWriteTimestamp2-stage-03933
-                if !device.enabled_features().transform_feedback {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::TransformFeedback`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "transform_feedback",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::MeshShader => {
-                // VUID-vkCmdWriteTimestamp2-stage-03934
-                if !device.enabled_features().mesh_shader {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::MeshShader`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "mesh_shader",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::TaskShader => {
-                // VUID-vkCmdWriteTimestamp2-stage-03935
-                if !device.enabled_features().task_shader {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::TaskShader`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "task_shader",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::FragmentShadingRateAttachment => {
-                // VUID-vkCmdWriteTimestamp2-shadingRateImage-07316
-                if !(device.enabled_features().attachment_fragment_shading_rate
-                    || device.enabled_features().shading_rate_image)
-                {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::FragmentShadingRateAttachment`",
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                            RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
-                        ]),
-                    });
-                }
-            }
-            PipelineStage::SubpassShading => {
-                // VUID-vkCmdWriteTimestamp2-stage-04957
-                if !device.enabled_features().subpass_shading {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::SubpassShading`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "subpass_shading",
-                        )])]),
-                    });
-                }
-            }
-            PipelineStage::InvocationMask => {
-                // VUID-vkCmdWriteTimestamp2-stage-04995
-                if !device.enabled_features().invocation_mask {
-                    return Err(QueryError::RequirementNotMet {
-                        required_for: "`stage` is `PipelineStage::InvocationMask`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "invocation_mask",
-                        )])]),
-                    });
-                }
-            }
-            _ => (),
-        }
-
-        // VUID-vkCmdWriteTimestamp2-queryPool-03861
-        if !matches!(query_pool.query_type(), QueryType::Timestamp) {
-            return Err(QueryError::NotPermitted);
-        }
-
-        // VUID-vkCmdWriteTimestamp2-timestampValidBits-03863
-        if queue_family_properties.timestamp_valid_bits.is_none() {
-            return Err(QueryError::NoTimestampValidBits);
-        }
-
-        // VUID-vkCmdWriteTimestamp2-query-04903
-        query_pool.query(query).ok_or(QueryError::OutOfRange)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_write_timestamp(query_pool, query, stage)?;
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
-            // VUID-vkCmdWriteTimestamp2-query-03865
             if query + render_pass_state.rendering_info.view_mask.count_ones()
                 > query_pool.query_count()
             {
-                return Err(QueryError::OutOfRangeMultiview);
+                return Err(Box::new(ValidationError {
+                    problem: "a render subpass with a non-zero `view_mask` is active, but \
+                        `query` + the number of views in `view_mask` is greater than \
+                        `query_pool.query_count()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdWriteTimestamp2-query-03865"],
+                    ..Default::default()
+                }));
             }
         }
 
@@ -489,7 +250,7 @@ where
             "write_timestamp",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.write_timestamp(&query_pool, query, stage);
+                out.write_timestamp_unchecked(&query_pool, query, stage);
             },
         );
 
@@ -513,17 +274,15 @@ where
         queries: Range<u32>,
         destination: Subbuffer<[T]>,
         flags: QueryResultFlags,
-    ) -> Result<&mut Self, QueryError>
+    ) -> Result<&mut Self, Box<ValidationError>>
     where
         T: QueryResultElement,
     {
         self.validate_copy_query_pool_results(&query_pool, queries.clone(), &destination, flags)?;
 
         unsafe {
-            self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags);
+            Ok(self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags))
         }
-
-        Ok(self)
     }
 
     fn validate_copy_query_pool_results<T>(
@@ -532,70 +291,19 @@ where
         queries: Range<u32>,
         destination: &Subbuffer<[T]>,
         flags: QueryResultFlags,
-    ) -> Result<(), QueryError>
+    ) -> Result<(), Box<ValidationError>>
     where
         T: QueryResultElement,
     {
-        let queue_family_properties = self.queue_family_properties();
+        self.inner
+            .validate_copy_query_pool_results(query_pool, queries, destination, flags)?;
 
-        // VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(QueryError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdCopyQueryPoolResults-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(QueryError::ForbiddenInsideRenderPass);
-        }
-
-        let device = self.device();
-
-        // VUID-vkCmdCopyQueryPoolResults-commonparent
-        assert_eq!(device, destination.buffer().device());
-        assert_eq!(device, query_pool.device());
-
-        assert!(destination.len() > 0);
-
-        // VUID-vkCmdCopyQueryPoolResults-flags-00822
-        // VUID-vkCmdCopyQueryPoolResults-flags-00823
-        debug_assert!(destination.offset() % std::mem::size_of::<T>() as DeviceSize == 0);
-
-        // VUID-vkCmdCopyQueryPoolResults-firstQuery-00820
-        // VUID-vkCmdCopyQueryPoolResults-firstQuery-00821
-        query_pool
-            .queries_range(queries.clone())
-            .ok_or(QueryError::OutOfRange)?;
-
-        let count = queries.end - queries.start;
-        let per_query_len = query_pool.query_type().result_len()
-            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
-        let required_len = per_query_len * count as DeviceSize;
-
-        // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00824
-        if destination.len() < required_len {
-            return Err(QueryError::BufferTooSmall {
-                required_len,
-                actual_len: destination.len(),
-            });
-        }
-
-        // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825
-        if !destination
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
-            return Err(QueryError::DestinationMissingUsage);
-        }
-
-        // VUID-vkCmdCopyQueryPoolResults-queryType-00827
-        if matches!(query_pool.query_type(), QueryType::Timestamp)
-            && flags.intersects(QueryResultFlags::PARTIAL)
-        {
-            return Err(QueryError::InvalidFlags);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdCopyQueryPoolResults-renderpass"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -625,7 +333,12 @@ where
             .into_iter()
             .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_query_pool_results(&query_pool, queries.clone(), &destination, flags);
+                out.copy_query_pool_results_unchecked(
+                    &query_pool,
+                    queries.clone(),
+                    &destination,
+                    flags,
+                );
             },
         );
 
@@ -644,53 +357,39 @@ where
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-    ) -> Result<&mut Self, QueryError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_reset_query_pool(&query_pool, queries.clone())?;
 
-        self.reset_query_pool_unchecked(query_pool, queries);
-
-        Ok(self)
+        Ok(self.reset_query_pool_unchecked(query_pool, queries))
     }
 
     fn validate_reset_query_pool(
         &self,
         query_pool: &QueryPool,
         queries: Range<u32>,
-    ) -> Result<(), QueryError> {
-        // VUID-vkCmdResetQueryPool-renderpass
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_reset_query_pool(query_pool, queries.clone())?;
+
         if self.builder_state.render_pass.is_some() {
-            return Err(QueryError::ForbiddenInsideRenderPass);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdResetQueryPool-renderpass"],
+                ..Default::default()
+            }));
         }
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdResetQueryPool-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(QueryError::NotSupportedByQueueFamily);
-        }
-
-        let device = self.device();
-
-        // VUID-vkCmdResetQueryPool-commonparent
-        assert_eq!(device, query_pool.device());
-
-        // VUID-vkCmdResetQueryPool-firstQuery-00796
-        // VUID-vkCmdResetQueryPool-firstQuery-00797
-        query_pool
-            .queries_range(queries.clone())
-            .ok_or(QueryError::OutOfRange)?;
-
-        // VUID-vkCmdResetQueryPool-None-02841
         if self
             .builder_state
             .queries
             .values()
             .any(|state| *state.query_pool == *query_pool && queries.contains(&state.query))
         {
-            return Err(QueryError::QueryIsActive);
+            return Err(Box::new(ValidationError {
+                problem: "one of the `queries` in `query_pool` is currently active".into(),
+                vuids: &["VUID-vkCmdResetQueryPool-None-02841"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -706,7 +405,7 @@ where
             "reset_query_pool",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.reset_query_pool(&query_pool, queries.clone());
+                out.reset_query_pool_unchecked(&query_pool, queries.clone());
             },
         );
 
@@ -718,9 +417,158 @@ impl<A> UnsafeCommandBufferBuilder<A>
 where
     A: CommandBufferAllocator,
 {
-    /// Calls `vkCmdBeginQuery` on the builder.
-    #[inline]
     pub unsafe fn begin_query(
+        &mut self,
+        query_pool: &QueryPool,
+        query: u32,
+        flags: QueryControlFlags,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_begin_query(query_pool, query, flags)?;
+
+        Ok(self.begin_query_unchecked(query_pool, query, flags))
+    }
+
+    fn validate_begin_query(
+        &self,
+        query_pool: &QueryPool,
+        query: u32,
+        flags: QueryControlFlags,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics, compute, video decode or video encode operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBeginQuery-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let device = self.device();
+
+        flags
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-vkCmdBeginQuery-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-vkCmdBeginQuery-commonparent
+        assert_eq!(device, query_pool.device());
+
+        if query > query_pool.query_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`query` is greater than `query_pool.query_count()`".into(),
+                vuids: &["VUID-vkCmdBeginQuery-query-00802"],
+                ..Default::default()
+            }));
+        }
+
+        match query_pool.query_type() {
+            QueryType::Occlusion => {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::GRAPHICS)
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`query_pool.query_type()` is `QueryType::Occlusion`, but \
+                            the queue family of the command buffer does not support \
+                            graphics operations"
+                            .into(),
+                        vuids: &["VUID-vkCmdBeginQuery-queryType-00803"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            QueryType::PipelineStatistics(statistic_flags) => {
+                if statistic_flags.is_graphics()
+                    && !queue_family_properties
+                        .queue_flags
+                        .intersects(QueueFlags::GRAPHICS)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "query_pool.query_type()".into(),
+                        problem: "is `QueryType::PipelineStatistics`, and the \
+                            pipeline statistics flags include a graphics flag, but \
+                            the queue family of the command buffer does not support \
+                            graphics operations"
+                            .into(),
+                        vuids: &["VUID-vkCmdBeginQuery-queryType-00804"],
+                        ..Default::default()
+                    }));
+                }
+
+                if statistic_flags.is_compute()
+                    && !queue_family_properties
+                        .queue_flags
+                        .intersects(QueueFlags::COMPUTE)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "query_pool.query_type()".into(),
+                        problem: "is `QueryType::PipelineStatistics`, and the \
+                            pipeline statistics flags include a compute flag, but \
+                            the queue family of the command buffer does not support \
+                            compute operations"
+                            .into(),
+                        vuids: &["VUID-vkCmdBeginQuery-queryType-00805"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            QueryType::Timestamp
+            | QueryType::AccelerationStructureCompactedSize
+            | QueryType::AccelerationStructureSerializationSize
+            | QueryType::AccelerationStructureSerializationBottomLevelPointers
+            | QueryType::AccelerationStructureSize => {
+                return Err(Box::new(ValidationError {
+                    context: "query_pool.query_type()".into(),
+                    problem: "is not allowed for this command".into(),
+                    vuids: &[
+                        "VUID-vkCmdBeginQuery-queryType-02804",
+                        "VUID-vkCmdBeginQuery-queryType-04728",
+                        "VUID-vkCmdBeginQuery-queryType-06741",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if flags.intersects(QueryControlFlags::PRECISE) {
+            if !device.enabled_features().occlusion_query_precise {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `QueryControlFlags::PRECISE`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "occlusion_query_precise",
+                    )])]),
+                    vuids: &["VUID-vkCmdBeginQuery-queryType-00800"],
+                }));
+            }
+
+            if !matches!(query_pool.query_type(), QueryType::Occlusion) {
+                return Err(Box::new(ValidationError {
+                    problem: "`flags` contains `QueryControlFlags::PRECISE`, but \
+                        `query_pool.query_type()` is not `QueryType::Occlusion`"
+                        .into(),
+                    vuids: &["VUID-vkCmdBeginQuery-queryType-00800"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn begin_query_unchecked(
         &mut self,
         query_pool: &QueryPool,
         query: u32,
@@ -732,18 +580,294 @@ where
         self
     }
 
-    /// Calls `vkCmdEndQuery` on the builder.
-    #[inline]
-    pub unsafe fn end_query(&mut self, query_pool: &QueryPool, query: u32) -> &mut Self {
+    pub unsafe fn end_query(
+        &mut self,
+        query_pool: &QueryPool,
+        query: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_end_query(query_pool, query)?;
+
+        Ok(self.end_query_unchecked(query_pool, query))
+    }
+
+    fn validate_end_query(
+        &self,
+        query_pool: &QueryPool,
+        query: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics, compute, video decode or video encode operations"
+                    .into(),
+                vuids: &["VUID-vkCmdEndQuery-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let device = self.device();
+
+        // VUID-vkCmdEndQuery-commonparent
+        assert_eq!(device, query_pool.device());
+
+        if query > query_pool.query_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`query` is greater than `query_pool.query_count()`".into(),
+                vuids: &["VUID-vkCmdEndQuery-query-00810"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_query_unchecked(&mut self, query_pool: &QueryPool, query: u32) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_end_query)(self.handle(), query_pool.handle(), query);
 
         self
     }
 
-    /// Calls `vkCmdWriteTimestamp` on the builder.
-    #[inline]
     pub unsafe fn write_timestamp(
+        &mut self,
+        query_pool: &QueryPool,
+        query: u32,
+        stage: PipelineStage,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_write_timestamp(query_pool, query, stage)?;
+
+        Ok(self.write_timestamp_unchecked(query_pool, query, stage))
+    }
+
+    fn validate_write_timestamp(
+        &self,
+        query_pool: &QueryPool,
+        query: u32,
+        stage: PipelineStage,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::TRANSFER
+                | QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    transfer, graphics, compute, video decode or video encode operations"
+                    .into(),
+                vuids: &["VUID-vkCmdWriteTimestamp2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let device = self.device();
+
+        stage
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "stage".into(),
+                vuids: &["VUID-vkCmdWriteTimestamp2-stage-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if !device.enabled_features().synchronization2
+            && PipelineStages::from(stage).contains_flags2()
+        {
+            return Err(Box::new(ValidationError {
+                context: "stage".into(),
+                problem: "is a stage flag from `VkPipelineStageFlagBits2`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "synchronization2",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdWriteTimestamp2-commonparent
+        assert_eq!(device, query_pool.device());
+
+        if !PipelineStages::from(queue_family_properties.queue_flags).contains_enum(stage) {
+            return Err(Box::new(ValidationError {
+                context: "stage".into(),
+                problem: "is not supported by the queue family of the command buffer".into(),
+                vuids: &["VUID-vkCmdWriteTimestamp2-stage-03860"],
+                ..Default::default()
+            }));
+        }
+
+        match stage {
+            PipelineStage::GeometryShader => {
+                if !device.enabled_features().geometry_shader {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::GeometryShader`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "geometry_shadere",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-03929"],
+                    }));
+                }
+            }
+            PipelineStage::TessellationControlShader
+            | PipelineStage::TessellationEvaluationShader => {
+                if !device.enabled_features().tessellation_shader {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::TessellationControlShader` or \
+                            `PipelineStage::TessellationEvaluationShader`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "tessellation_shader",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-03930"],
+                    }));
+                }
+            }
+            PipelineStage::ConditionalRendering => {
+                if !device.enabled_features().conditional_rendering {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::ConditionalRendering`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "conditional_rendering",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-03931"],
+                    }));
+                }
+            }
+            PipelineStage::FragmentDensityProcess => {
+                if !device.enabled_features().fragment_density_map {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::FragmentDensityProcess`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "fragment_density_map",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-03932"],
+                    }));
+                }
+            }
+            PipelineStage::TransformFeedback => {
+                if !device.enabled_features().transform_feedback {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::TransformFeedback`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "transform_feedback",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-03933"],
+                    }));
+                }
+            }
+            PipelineStage::MeshShader => {
+                if !device.enabled_features().mesh_shader {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::MeshShader`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "mesh_shader",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-03934"],
+                    }));
+                }
+            }
+            PipelineStage::TaskShader => {
+                if !device.enabled_features().task_shader {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::TaskShader`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "task_shader",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-03935"],
+                    }));
+                }
+            }
+            PipelineStage::FragmentShadingRateAttachment => {
+                if !(device.enabled_features().attachment_fragment_shading_rate
+                    || device.enabled_features().shading_rate_image)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::FragmentShadingRateAttachment`".into(),
+                        requires_one_of: RequiresOneOf(&[
+                            RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                            RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        ]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-shadingRateImage-07316"],
+                    }));
+                }
+            }
+            PipelineStage::SubpassShading => {
+                if !device.enabled_features().subpass_shading {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::SubpassShading`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "subpass_shading",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-04957"],
+                    }));
+                }
+            }
+            PipelineStage::InvocationMask => {
+                if !device.enabled_features().invocation_mask {
+                    return Err(Box::new(ValidationError {
+                        context: "stage".into(),
+                        problem: "is `PipelineStage::InvocationMask`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "invocation_mask",
+                        )])]),
+                        vuids: &["VUID-vkCmdWriteTimestamp2-stage-04995"],
+                    }));
+                }
+            }
+            _ => (),
+        }
+
+        if !matches!(query_pool.query_type(), QueryType::Timestamp) {
+            return Err(Box::new(ValidationError {
+                context: "query_pool.query_type()".into(),
+                problem: "is not `QueryType::Timestamp`".into(),
+                vuids: &["VUID-vkCmdWriteTimestamp2-queryPool-03861"],
+                ..Default::default()
+            }));
+        }
+
+        if queue_family_properties.timestamp_valid_bits.is_none() {
+            return Err(Box::new(ValidationError {
+                problem: "the `timestamp_valid_bits` value of the queue family properties of \
+                    the command buffer is `None`"
+                    .into(),
+                vuids: &["VUID-vkCmdWriteTimestamp2-timestampValidBits-03863"],
+                ..Default::default()
+            }));
+        }
+
+        if query > query_pool.query_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`query` is greater than `query_pool.query_count()`".into(),
+                vuids: &["VUID-vkCmdWriteTimestamp2-query-04903"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn write_timestamp_unchecked(
         &mut self,
         query_pool: &QueryPool,
         query: u32,
@@ -774,8 +898,118 @@ where
         self
     }
 
-    /// Calls `vkCmdCopyQueryPoolResults` on the builder.
     pub unsafe fn copy_query_pool_results<T>(
+        &mut self,
+        query_pool: &QueryPool,
+        queries: Range<u32>,
+        destination: &Subbuffer<[T]>,
+        flags: QueryResultFlags,
+    ) -> Result<&mut Self, Box<ValidationError>>
+    where
+        T: QueryResultElement,
+    {
+        self.validate_copy_query_pool_results(query_pool, queries.clone(), destination, flags)?;
+
+        Ok(self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags))
+    }
+
+    fn validate_copy_query_pool_results<T>(
+        &self,
+        query_pool: &QueryPool,
+        queries: Range<u32>,
+        destination: &Subbuffer<[T]>,
+        flags: QueryResultFlags,
+    ) -> Result<(), Box<ValidationError>>
+    where
+        T: QueryResultElement,
+    {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics or compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let device = self.device();
+
+        // VUID-vkCmdCopyQueryPoolResults-commonparent
+        assert_eq!(device, destination.buffer().device());
+        assert_eq!(device, query_pool.device());
+
+        // VUID-vkCmdCopyQueryPoolResults-flags-00822
+        // VUID-vkCmdCopyQueryPoolResults-flags-00823
+        debug_assert!(destination.offset() % std::mem::size_of::<T>() as DeviceSize == 0);
+
+        if queries.end < queries.start {
+            return Err(Box::new(ValidationError {
+                context: "queries".into(),
+                problem: "`end` is less than `start`".into(),
+                ..Default::default()
+            }));
+        }
+
+        if queries.end > query_pool.query_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`queries.end` is greater than `query_pool.query_count()`".into(),
+                vuids: &[
+                    "VUID-vkCmdCopyQueryPoolResults-firstQuery-00820",
+                    "VUID-vkCmdCopyQueryPoolResults-firstQuery-00821",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        let count = queries.end - queries.start;
+        let per_query_len = query_pool.query_type().result_len()
+            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let required_len = per_query_len * count as DeviceSize;
+
+        if destination.len() < required_len {
+            return Err(Box::new(ValidationError {
+                problem: "`destination` is smaller than the size required to write the results"
+                    .into(),
+                vuids: &["VUID-vkCmdCopyQueryPoolResults-dstBuffer-00824"],
+                ..Default::default()
+            }));
+        }
+
+        if !destination
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
+            return Err(Box::new(ValidationError {
+                context: "destination.usage()".into(),
+                problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
+                vuids: &["VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825"],
+                ..Default::default()
+            }));
+        }
+
+        if matches!(query_pool.query_type(), QueryType::Timestamp)
+            && flags.intersects(QueryResultFlags::PARTIAL)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`query_pool.query_type()` is `QueryType::Timestamp`, but \
+                    `flags` contains `QueryResultFlags::PARTIAL`"
+                    .into(),
+                vuids: &["VUID-vkCmdCopyQueryPoolResults-queryType-00827"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_query_pool_results_unchecked<T>(
         &mut self,
         query_pool: &QueryPool,
         queries: Range<u32>,
@@ -804,9 +1038,68 @@ where
         self
     }
 
-    /// Calls `vkCmdResetQueryPool` on the builder.
-    #[inline]
     pub unsafe fn reset_query_pool(
+        &mut self,
+        query_pool: &QueryPool,
+        queries: Range<u32>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_reset_query_pool(query_pool, queries.clone())?;
+
+        Ok(self.reset_query_pool_unchecked(query_pool, queries))
+    }
+
+    fn validate_reset_query_pool(
+        &self,
+        query_pool: &QueryPool,
+        queries: Range<u32>,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties.queue_flags.intersects(
+            QueueFlags::GRAPHICS
+                | QueueFlags::COMPUTE
+                | QueueFlags::VIDEO_DECODE
+                | QueueFlags::VIDEO_ENCODE
+                | QueueFlags::OPTICAL_FLOW,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics, compute, video decode, video encode or optical flow operations"
+                    .into(),
+                vuids: &["VUID-vkCmdResetQueryPool-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let device = self.device();
+
+        // VUID-vkCmdResetQueryPool-commonparent
+        assert_eq!(device, query_pool.device());
+
+        if queries.end < queries.start {
+            return Err(Box::new(ValidationError {
+                context: "queries".into(),
+                problem: "`end` is less than `start`".into(),
+                ..Default::default()
+            }));
+        }
+
+        if queries.end > query_pool.query_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`queries.end` is greater than `query_pool.query_count()`".into(),
+                vuids: &[
+                    "VUID-vkCmdResetQueryPool-firstQuery-00796",
+                    "VUID-vkCmdResetQueryPool-firstQuery-00797",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reset_query_pool_unchecked(
         &mut self,
         query_pool: &QueryPool,
         queries: Range<u32>,
@@ -820,117 +1113,5 @@ where
         );
 
         self
-    }
-}
-
-/// Error that can happen when recording a query command.
-#[derive(Clone, Debug)]
-pub enum QueryError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The buffer is too small for the copy operation.
-    BufferTooSmall {
-        /// Required number of elements in the buffer.
-        required_len: DeviceSize,
-        /// Actual number of elements in the buffer.
-        actual_len: DeviceSize,
-    },
-
-    /// The destination buffer is missing the `transfer_dst` usage.
-    DestinationMissingUsage,
-
-    /// Operation forbidden inside of a render pass.
-    ForbiddenInsideRenderPass,
-
-    /// The provided flags are not allowed for this type of query.
-    InvalidFlags,
-
-    /// The queue family's `timestamp_valid_bits` value is `None`.
-    NoTimestampValidBits,
-
-    /// This operation is not permitted on this query type.
-    NotPermitted,
-
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
-
-    /// The provided query index is not valid for this pool.
-    OutOfRange,
-
-    /// The provided query index plus the number of views in the current render subpass is greater
-    /// than the number of queries in the pool.
-    OutOfRangeMultiview,
-
-    /// A query is active that conflicts with the current operation.
-    QueryIsActive,
-
-    /// This query was not active.
-    QueryNotActive,
-
-    /// The provided stage is not supported by the queue family.
-    StageNotSupported,
-}
-
-impl Error for QueryError {}
-
-impl Display for QueryError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::BufferTooSmall { .. } => {
-                write!(f, "the buffer is too small for the copy operation")
-            }
-            Self::DestinationMissingUsage => write!(
-                f,
-                "the destination buffer is missing the `transfer_dst` usage",
-            ),
-            Self::ForbiddenInsideRenderPass => {
-                write!(f, "operation forbidden inside of a render pass")
-            }
-            Self::InvalidFlags => write!(
-                f,
-                "the provided flags are not allowed for this type of query",
-            ),
-            Self::NoTimestampValidBits => {
-                write!(f, "the queue family's timestamp_valid_bits value is None")
-            }
-            Self::NotPermitted => write!(f, "this operation is not permitted on this query type"),
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::OutOfRange => write!(f, "the provided query index is not valid for this pool"),
-            Self::OutOfRangeMultiview => write!(
-                f,
-                "the provided query index plus the number of views in the current render subpass \
-                is greater than the number of queries in the pool",
-            ),
-            Self::QueryIsActive => write!(
-                f,
-                "a query is active that conflicts with the current operation"
-            ),
-            Self::QueryNotActive => write!(f, "this query was not active"),
-            Self::StageNotSupported => {
-                write!(f, "the provided stage is not supported by the queue family")
-            }
-        }
-    }
-}
-
-impl From<RequirementNotMet> for QueryError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
     }
 }

@@ -19,7 +19,7 @@
 #[allow(unused)]
 pub(crate) use self::pipeline::{PipelineStageAccess, PipelineStageAccessFlags};
 pub use self::{
-    future::{now, FlushError, GpuFuture},
+    future::{now, GpuFuture},
     pipeline::{
         AccessFlags, BufferMemoryBarrier, DependencyFlags, DependencyInfo, ImageMemoryBarrier,
         MemoryBarrier, PipelineStage, PipelineStages, QueueFamilyOwnershipTransfer,

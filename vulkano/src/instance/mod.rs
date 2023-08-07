@@ -80,7 +80,8 @@
 //! and must enable the appropriate features when creating the `Device` if you intend to use them.
 
 use self::debug::{
-    DebugUtilsMessengerCreateInfo, UserCallback, ValidationFeatureDisable, ValidationFeatureEnable,
+    DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo, ValidationFeatureDisable,
+    ValidationFeatureEnable,
 };
 pub use self::layers::LayerProperties;
 use crate::{
@@ -275,7 +276,7 @@ pub struct Instance {
     enabled_layers: Vec<String>,
     library: Arc<VulkanLibrary>,
     max_api_version: Version,
-    _user_callbacks: Vec<Box<UserCallback>>,
+    _user_callbacks: Vec<Arc<DebugUtilsMessengerCallback>>,
 
     physical_devices: WeakArcOnceCache<ash::vk::PhysicalDevice, PhysicalDevice>,
     physical_device_groups: RwLock<(bool, Vec<PhysicalDeviceGroupPropertiesRaw>)>,
@@ -290,29 +291,7 @@ impl Instance {
     #[inline]
     pub fn new(
         library: Arc<VulkanLibrary>,
-        create_info: InstanceCreateInfo,
-    ) -> Result<Arc<Instance>, Validated<VulkanError>> {
-        unsafe { Self::with_debug_utils_messengers(library, create_info, []) }
-    }
-
-    /// Creates a new `Instance` with debug messengers to use during the creation and destruction
-    /// of the instance.
-    ///
-    /// The debug messengers are not used at any other time,
-    /// [`DebugUtilsMessenger`](crate::instance::debug::DebugUtilsMessenger) should be used for
-    /// that.
-    ///
-    /// If `debug_utils_messengers` is not empty, the `ext_debug_utils` extension must be set in
-    /// `enabled_extensions`.
-    ///
-    /// # Safety
-    ///
-    /// - The `user_callback` of each element of `debug_utils_messengers` must not make any calls
-    ///   to the Vulkan API.
-    pub unsafe fn with_debug_utils_messengers(
-        library: Arc<VulkanLibrary>,
         mut create_info: InstanceCreateInfo,
-        debug_utils_messengers: impl IntoIterator<Item = DebugUtilsMessengerCreateInfo>,
     ) -> Result<Arc<Instance>, Validated<VulkanError>> {
         create_info.max_api_version.get_or_insert_with(|| {
             let api_version = library.api_version();
@@ -323,20 +302,14 @@ impl Instance {
             }
         });
 
-        let debug_utils_messengers: SmallVec<[_; 4]> = debug_utils_messengers.into_iter().collect();
-        Self::validate_new(&library, &create_info, &debug_utils_messengers)?;
+        Self::validate_new(&library, &create_info)?;
 
-        Ok(Self::with_debug_utils_messengers_unchecked(
-            library,
-            create_info,
-            debug_utils_messengers,
-        )?)
+        unsafe { Ok(Self::new_unchecked(library, create_info)?) }
     }
 
     fn validate_new(
         library: &VulkanLibrary,
         create_info: &InstanceCreateInfo,
-        debug_utils_messengers: &[DebugUtilsMessengerCreateInfo],
     ) -> Result<(), Box<ValidationError>> {
         // VUID-vkCreateInstance-pCreateInfo-parameter
         create_info
@@ -352,6 +325,7 @@ impl Instance {
             max_api_version,
             ref enabled_layers,
             ref enabled_extensions,
+            debug_utils_messengers: _,
             enabled_validation_features: _,
             disabled_validation_features: _,
             _ne,
@@ -371,41 +345,13 @@ impl Instance {
                 ..Default::default()
             })?;
 
-        if !debug_utils_messengers.is_empty() {
-            if !create_info.enabled_extensions.ext_debug_utils {
-                return Err(Box::new(ValidationError {
-                    context: "debug_utils_messengers".into(),
-                    problem: "is not empty".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                        Requires::InstanceExtension("ext_debug_utils"),
-                    ])]),
-                    vuids: &["VUID-VkInstanceCreateInfo-pNext-04926"],
-                }));
-            }
-
-            for (index, messenger_create_info) in debug_utils_messengers.iter().enumerate() {
-                messenger_create_info
-                    .validate_raw(api_version, enabled_extensions)
-                    .map_err(|err| err.add_context(format!("debug_utils_messengers[{}]", index)))?;
-            }
-        }
-
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         library: Arc<VulkanLibrary>,
-        create_info: InstanceCreateInfo,
-    ) -> Result<Arc<Instance>, VulkanError> {
-        Self::with_debug_utils_messengers_unchecked(library, create_info, [])
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn with_debug_utils_messengers_unchecked(
-        library: Arc<VulkanLibrary>,
         mut create_info: InstanceCreateInfo,
-        debug_utils_messengers: impl IntoIterator<Item = DebugUtilsMessengerCreateInfo>,
     ) -> Result<Arc<Instance>, VulkanError> {
         create_info.max_api_version.get_or_insert_with(|| {
             let api_version = library.api_version();
@@ -436,6 +382,7 @@ impl Instance {
             max_api_version,
             ref enabled_layers,
             ref enabled_extensions,
+            ref debug_utils_messengers,
             ref enabled_validation_features,
             ref disabled_validation_features,
             _ne: _,
@@ -531,32 +478,26 @@ impl Instance {
             create_info_vk.p_next = next as *const _ as *const _;
         }
 
-        let debug_utils_messengers = debug_utils_messengers.into_iter();
-        let mut debug_utils_messenger_create_infos_vk =
-            Vec::with_capacity(debug_utils_messengers.size_hint().0);
-        let mut user_callbacks = Vec::with_capacity(debug_utils_messengers.size_hint().0);
+        let mut debug_utils_messenger_create_infos_vk: Vec<_> = debug_utils_messengers
+            .iter()
+            .map(|create_info| {
+                let &DebugUtilsMessengerCreateInfo {
+                    message_type,
+                    message_severity,
+                    ref user_callback,
+                    _ne: _,
+                } = create_info;
 
-        for create_info in debug_utils_messengers {
-            let DebugUtilsMessengerCreateInfo {
-                message_type,
-                message_severity,
-                user_callback,
-                _ne: _,
-            } = create_info;
-
-            let user_callback = Box::new(user_callback);
-            let create_info = ash::vk::DebugUtilsMessengerCreateInfoEXT {
-                flags: ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-                message_severity: message_severity.into(),
-                message_type: message_type.into(),
-                pfn_user_callback: Some(trampoline),
-                p_user_data: &*user_callback as &Arc<_> as *const Arc<_> as *const c_void as *mut _,
-                ..Default::default()
-            };
-
-            debug_utils_messenger_create_infos_vk.push(create_info);
-            user_callbacks.push(user_callback);
-        }
+                ash::vk::DebugUtilsMessengerCreateInfoEXT {
+                    flags: ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+                    message_severity: message_severity.into(),
+                    message_type: message_type.into(),
+                    pfn_user_callback: Some(trampoline),
+                    p_user_data: user_callback.as_ptr() as *const c_void as *mut _,
+                    ..Default::default()
+                }
+            })
+            .collect();
 
         for i in 1..debug_utils_messenger_create_infos_vk.len() {
             debug_utils_messenger_create_infos_vk[i - 1].p_next =
@@ -576,12 +517,7 @@ impl Instance {
             output.assume_init()
         };
 
-        Ok(Self::from_handle(
-            library,
-            handle,
-            create_info,
-            user_callbacks,
-        ))
+        Ok(Self::from_handle(library, handle, create_info))
     }
 
     /// Creates a new `Instance` from a raw object handle.
@@ -594,7 +530,6 @@ impl Instance {
         library: Arc<VulkanLibrary>,
         handle: ash::vk::Instance,
         mut create_info: InstanceCreateInfo,
-        user_callbacks: Vec<Box<UserCallback>>,
     ) -> Arc<Self> {
         create_info.max_api_version.get_or_insert_with(|| {
             let api_version = library.api_version();
@@ -614,6 +549,7 @@ impl Instance {
             max_api_version,
             enabled_layers,
             enabled_extensions,
+            debug_utils_messengers,
             enabled_validation_features: _,
             disabled_validation_features: _,
             _ne: _,
@@ -637,7 +573,10 @@ impl Instance {
             enabled_layers,
             library,
             max_api_version,
-            _user_callbacks: user_callbacks,
+            _user_callbacks: debug_utils_messengers
+                .into_iter()
+                .map(|m| m.user_callback)
+                .collect(),
 
             physical_devices: WeakArcOnceCache::new(),
             physical_device_groups: RwLock::new((false, Vec::new())),
@@ -1012,6 +951,18 @@ pub struct InstanceCreateInfo {
     /// The default value is [`InstanceExtensions::empty()`].
     pub enabled_extensions: InstanceExtensions,
 
+    /// Creation parameters for debug messengers,
+    /// to use during the creation and destruction of the instance.
+    ///
+    /// The debug messengers are not used at any other time,
+    /// [`DebugUtilsMessenger`](crate::instance::debug::DebugUtilsMessenger) should be used for
+    /// that.
+    ///
+    /// If this is not empty, the `ext_debug_utils` extension must be set in `enabled_extensions`.
+    ///
+    /// The default value is empty.
+    pub debug_utils_messengers: Vec<DebugUtilsMessengerCreateInfo>,
+
     /// Features of the validation layer to enable.
     ///
     /// If not empty, the
@@ -1041,6 +992,7 @@ impl Default for InstanceCreateInfo {
             max_api_version: None,
             enabled_layers: Vec::new(),
             enabled_extensions: InstanceExtensions::empty(),
+            debug_utils_messengers: Vec::new(),
             enabled_validation_features: Vec::new(),
             disabled_validation_features: Vec::new(),
             _ne: crate::NonExhaustive(()),
@@ -1079,6 +1031,7 @@ impl InstanceCreateInfo {
             max_api_version,
             enabled_layers: _,
             ref enabled_extensions,
+            ref debug_utils_messengers,
             ref enabled_validation_features,
             ref disabled_validation_features,
             _ne: _,
@@ -1103,6 +1056,25 @@ impl InstanceCreateInfo {
                 vuids: &["VUID-VkInstanceCreateInfo-flags-parameter"],
                 ..ValidationError::from_requirement(err)
             })?;
+
+        if !debug_utils_messengers.is_empty() {
+            if !enabled_extensions.ext_debug_utils {
+                return Err(Box::new(ValidationError {
+                    context: "debug_utils_messengers".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                        Requires::InstanceExtension("ext_debug_utils"),
+                    ])]),
+                    vuids: &["VUID-VkInstanceCreateInfo-pNext-04926"],
+                }));
+            }
+
+            for (index, messenger_create_info) in debug_utils_messengers.iter().enumerate() {
+                messenger_create_info
+                    .validate_raw(api_version, enabled_extensions)
+                    .map_err(|err| err.add_context(format!("debug_utils_messengers[{}]", index)))?;
+            }
+        }
 
         if !enabled_validation_features.is_empty() {
             if !enabled_extensions.ext_validation_features {

@@ -213,12 +213,14 @@ fn main() {
         // anyway). In this example we would avoid cloning them since this is the last time we use
         // them, but in real code you would probably need to clone them.
         .bind_pipeline_compute(pipeline.clone())
+        .unwrap()
         .bind_descriptor_sets(
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
             set,
         )
+        .unwrap()
         .dispatch([1024, 1, 1])
         .unwrap();
 

@@ -507,12 +507,14 @@ mod tests {
         )
         .unwrap();
         cbb.bind_pipeline_compute(pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Compute,
                 pipeline.layout().clone(),
                 0,
                 set,
             )
+            .unwrap()
             .dispatch([1, 1, 1])
             .unwrap();
         let cb = cbb.build().unwrap();
@@ -635,12 +637,14 @@ mod tests {
         )
         .unwrap();
         cbb.bind_pipeline_compute(pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Compute,
                 pipeline.layout().clone(),
                 0,
                 set,
             )
+            .unwrap()
             .dispatch([128, 1, 1])
             .unwrap();
         let cb = cbb.build().unwrap();

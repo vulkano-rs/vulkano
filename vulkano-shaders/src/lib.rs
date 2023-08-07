@@ -230,7 +230,6 @@ use shaderc::{EnvVersion, SpirvVersion};
 use std::{
     env, fs, mem,
     path::{Path, PathBuf},
-    slice,
 };
 use structs::TypeRegistry;
 use syn::{
@@ -336,20 +335,10 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                 let bytes = fs::read(&full_path)
                     .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
 
-                if bytes.len() % 4 != 0 {
-                    bail!(path, "SPIR-V bytes must be an integer multiple of 4");
-                }
+                let words = vulkano::shader::spirv::bytes_to_words(&bytes)
+                    .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
 
-                // Here, we are praying that the system allocator of the user aligns allocations to
-                // at least 4, which *should* be the case on all targets.
-                assert_eq!(bytes.as_ptr() as usize % 4, 0);
-
-                // SAFETY: We checked that the bytes are aligned correctly for `u32`, and that
-                // there is an integer number of `u32`s contained.
-                let words =
-                    unsafe { slice::from_raw_parts(bytes.as_ptr().cast(), bytes.len() / 4) };
-
-                codegen::reflect(&input, path, name, words, Vec::new(), &mut type_registry)?
+                codegen::reflect(&input, path, name, &words, Vec::new(), &mut type_registry)?
             }
         };
 

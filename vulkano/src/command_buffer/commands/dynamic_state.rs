@@ -23,14 +23,10 @@ use crate::{
         },
         DynamicState,
     },
-    RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    ops::RangeInclusive,
-};
+use std::ops::RangeInclusive;
 
 /// # Commands to set dynamic state for pipelines.
 ///
@@ -40,11 +36,10 @@ where
     A: CommandBufferAllocator,
 {
     // Helper function for dynamic state setting.
-    fn validate_pipeline_fixed_state(
+    fn validate_graphics_pipeline_fixed_state(
         &self,
         state: DynamicState,
-    ) -> Result<(), SetDynamicStateError> {
-        // VUID-vkCmdDispatch-None-02859
+    ) -> Result<(), Box<ValidationError>> {
         if self
             .builder_state
             .pipeline_graphics
@@ -53,43 +48,35 @@ where
                 matches!(pipeline.dynamic_state(state), Some(false))
             })
         {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
+            return Err(Box::new(ValidationError {
+                problem: "the state for this value in the currently bound graphics pipeline \
+                    is fixed, and cannot be set"
+                    .into(),
+                vuids: &["VUID-vkCmdDispatch-None-08608", "VUID-vkCmdDraw-None-08608"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
     }
 
     /// Sets the dynamic blend constants for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_blend_constants(&mut self, constants: [f32; 4]) -> &mut Self {
-        self.validate_set_blend_constants(constants).unwrap();
+    pub fn set_blend_constants(
+        &mut self,
+        constants: [f32; 4],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_blend_constants(constants)?;
 
-        unsafe {
-            self.set_blend_constants_unchecked(constants);
-        }
-
-        self
+        unsafe { Ok(self.set_blend_constants_unchecked(constants)) }
     }
 
     fn validate_set_blend_constants(
         &self,
-        _constants: [f32; 4],
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::BlendConstants)?;
+        constants: [f32; 4],
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_blend_constants(constants)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetBlendConstants-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::BlendConstants)?;
 
         Ok(())
     }
@@ -101,7 +88,7 @@ where
             "set_blend_constants",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_blend_constants(constants);
+                out.set_blend_constants_unchecked(constants);
             },
         );
 
@@ -110,50 +97,22 @@ where
 
     /// Sets whether dynamic color writes should be enabled for each attachment in the
     /// framebuffer.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`color_write_enable`](crate::device::Features::color_write_enable)
-    ///   feature is not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - If there is a graphics pipeline with color blend state bound, `enables.len()` must equal
-    /// - [`attachments.len()`](crate::pipeline::graphics::color_blend::ColorBlendState::attachments).
-    pub fn set_color_write_enable(&mut self, enables: SmallVec<[bool; 4]>) -> &mut Self {
-        self.validate_set_color_write_enable(&enables).unwrap();
+    pub fn set_color_write_enable(
+        &mut self,
+        enables: SmallVec<[bool; 4]>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_color_write_enable(&enables)?;
 
-        unsafe {
-            self.set_color_write_enable_unchecked(enables);
-        }
-
-        self
+        unsafe { Ok(self.set_color_write_enable_unchecked(enables)) }
     }
 
     fn validate_set_color_write_enable(
         &self,
         enables: &[bool],
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::ColorWriteEnable)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_color_write_enable(enables)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetColorWriteEnableEXT-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetColorWriteEnableEXT-None-04803
-        if !self.device().enabled_features().color_write_enable {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_color_write_enable`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                    "ext_color_write_enable",
-                )])]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::ColorWriteEnable)?;
 
         if let Some(color_blend_state) = self
             .builder_state
@@ -161,15 +120,15 @@ where
             .as_ref()
             .and_then(|pipeline| pipeline.color_blend_state())
         {
-            // VUID-vkCmdSetColorWriteEnableEXT-attachmentCount-06656
             // Indirectly checked
             if enables.len() != color_blend_state.attachments.len() {
-                return Err(
-                    SetDynamicStateError::PipelineColorBlendAttachmentCountMismatch {
-                        provided_count: enables.len() as u32,
-                        required_count: color_blend_state.attachments.len() as u32,
-                    },
-                );
+                return Err(Box::new(ValidationError {
+                    problem: "the length of `enables` does not match the number of \
+                        color attachments in the subpass of the currently bound graphics pipeline"
+                        .into(),
+                    vuids: &["VUID-vkCmdSetColorWriteEnableEXT-attachmentCount-06656"],
+                    ..Default::default()
+                }));
             }
         }
 
@@ -186,7 +145,7 @@ where
             "set_color_write_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_color_write_enable(&enables);
+                out.set_color_write_enable_unchecked(&enables);
             },
         );
 
@@ -194,52 +153,19 @@ where
     }
 
     /// Sets the dynamic cull mode for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
-        self.validate_set_cull_mode(cull_mode).unwrap();
+    pub fn set_cull_mode(
+        &mut self,
+        cull_mode: CullMode,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_cull_mode(cull_mode)?;
 
-        unsafe {
-            self.set_cull_mode_unchecked(cull_mode);
-        }
-
-        self
+        unsafe { Ok(self.set_cull_mode_unchecked(cull_mode)) }
     }
 
-    fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::CullMode)?;
+    fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_cull_mode(cull_mode)?;
 
-        // VUID-vkCmdSetCullMode-cullMode-parameter
-        cull_mode.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetCullMode-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetCullMode-None-03384
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_cull_mode`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::CullMode)?;
 
         Ok(())
     }
@@ -251,7 +177,7 @@ where
             "set_cull_mode",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_cull_mode(cull_mode);
+                out.set_cull_mode_unchecked(cull_mode);
             },
         );
 
@@ -259,56 +185,27 @@ where
     }
 
     /// Sets the dynamic depth bias values for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - If the [`depth_bias_clamp`](crate::device::Features::depth_bias_clamp)
-    ///   feature is not enabled on the device, panics if `clamp` is not 0.0.
     pub fn set_depth_bias(
         &mut self,
         constant_factor: f32,
         clamp: f32,
         slope_factor: f32,
-    ) -> &mut Self {
-        self.validate_set_depth_bias(constant_factor, clamp, slope_factor)
-            .unwrap();
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bias(constant_factor, clamp, slope_factor)?;
 
-        unsafe {
-            self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor);
-        }
-
-        self
+        unsafe { Ok(self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor)) }
     }
 
     fn validate_set_depth_bias(
         &self,
-        _constant_factor: f32,
+        constant_factor: f32,
         clamp: f32,
-        _slope_factor: f32,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DepthBias)?;
+        slope_factor: f32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_depth_bias(constant_factor, clamp, slope_factor)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDepthBias-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetDepthBias-depthBiasClamp-00790
-        if clamp != 0.0 && !self.device().enabled_features().depth_bias_clamp {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`clamp` is not `0.0`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "depth_bias_clamp",
-                )])]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DepthBias)?;
 
         Ok(())
     }
@@ -329,7 +226,7 @@ where
             "set_depth_bias",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bias(constant_factor, clamp, slope_factor);
+                out.set_depth_bias_unchecked(constant_factor, clamp, slope_factor);
             },
         );
 
@@ -337,49 +234,19 @@ where
     }
 
     /// Sets whether dynamic depth bias is enabled for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
-        self.validate_set_depth_bias_enable(enable).unwrap();
+    pub fn set_depth_bias_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bias_enable(enable)?;
 
-        unsafe {
-            self.set_depth_bias_enable_unchecked(enable);
-        }
-
-        self
+        unsafe { Ok(self.set_depth_bias_enable_unchecked(enable)) }
     }
 
-    fn validate_set_depth_bias_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DepthBiasEnable)?;
+    fn validate_set_depth_bias_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_depth_bias_enable(enable)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDepthBiasEnable-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetDepthBiasEnable-None-04872
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state2)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_depth_bias_enable`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DepthBiasEnable)?;
 
         Ok(())
     }
@@ -391,7 +258,7 @@ where
             "set_depth_bias_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bias_enable(enable);
+                out.set_depth_bias_enable_unchecked(enable);
             },
         );
 
@@ -399,56 +266,22 @@ where
     }
 
     /// Sets the dynamic depth bounds for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - If the
-    ///   [`ext_depth_range_unrestricted`](crate::device::DeviceExtensions::ext_depth_range_unrestricted)
-    ///   device extension is not enabled, panics if the start and end of `bounds` are not between
-    ///   0.0 and 1.0 inclusive.
-    pub fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
-        self.validate_set_depth_bounds(bounds.clone()).unwrap();
+    pub fn set_depth_bounds(
+        &mut self,
+        bounds: RangeInclusive<f32>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bounds(bounds.clone())?;
 
-        unsafe {
-            self.set_depth_bounds_unchecked(bounds);
-        }
-
-        self
+        unsafe { Ok(self.set_depth_bounds_unchecked(bounds)) }
     }
 
     fn validate_set_depth_bounds(
         &self,
         bounds: RangeInclusive<f32>,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DepthBounds)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_depth_bounds(bounds)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDepthBounds-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetDepthBounds-minDepthBounds-00600
-        // VUID-vkCmdSetDepthBounds-maxDepthBounds-00601
-        if !self
-            .device()
-            .enabled_extensions()
-            .ext_depth_range_unrestricted
-            && !((0.0..=1.0).contains(bounds.start()) && (0.0..=1.0).contains(bounds.end()))
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`bounds` is not between `0.0` and `1.0` inclusive",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                    "ext_depth_range_unrestricted",
-                )])]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DepthBounds)?;
 
         Ok(())
     }
@@ -460,7 +293,7 @@ where
             "set_depth_bounds",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bounds(bounds.clone());
+                out.set_depth_bounds_unchecked(bounds.clone());
             },
         );
 
@@ -468,52 +301,22 @@ where
     }
 
     /// Sets whether dynamic depth bounds testing is enabled for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
-        self.validate_set_depth_bounds_test_enable(enable).unwrap();
+    pub fn set_depth_bounds_test_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bounds_test_enable(enable)?;
 
-        unsafe {
-            self.set_depth_bounds_test_enable_unchecked(enable);
-        }
-
-        self
+        unsafe { Ok(self.set_depth_bounds_test_enable_unchecked(enable)) }
     }
 
     fn validate_set_depth_bounds_test_enable(
         &self,
-        _enable: bool,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DepthBoundsTestEnable)?;
+        enable: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_depth_bounds_test_enable(enable)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDepthBoundsTestEnable-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetDepthBoundsTestEnable-None-03349
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_depth_bounds_test_enable`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DepthBoundsTestEnable)?;
 
         Ok(())
     }
@@ -525,7 +328,7 @@ where
             "set_depth_bounds_test_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_bounds_test_enable(enable);
+                out.set_depth_bounds_test_enable_unchecked(enable);
             },
         );
 
@@ -533,55 +336,22 @@ where
     }
 
     /// Sets the dynamic depth compare op for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
-        self.validate_set_depth_compare_op(compare_op).unwrap();
+    pub fn set_depth_compare_op(
+        &mut self,
+        compare_op: CompareOp,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_compare_op(compare_op)?;
 
-        unsafe {
-            self.set_depth_compare_op_unchecked(compare_op);
-        }
-
-        self
+        unsafe { Ok(self.set_depth_compare_op_unchecked(compare_op)) }
     }
 
     fn validate_set_depth_compare_op(
         &self,
         compare_op: CompareOp,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DepthCompareOp)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_depth_compare_op(compare_op)?;
 
-        // VUID-vkCmdSetDepthCompareOp-depthCompareOp-parameter
-        compare_op.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetDepthCompareOp-None-03353
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_depth_compare_op`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DepthCompareOp)?;
 
         Ok(())
     }
@@ -593,7 +363,7 @@ where
             "set_depth_compare_op",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_compare_op(compare_op);
+                out.set_depth_compare_op_unchecked(compare_op);
             },
         );
 
@@ -601,49 +371,19 @@ where
     }
 
     /// Sets whether dynamic depth testing is enabled for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
-        self.validate_set_depth_test_enable(enable).unwrap();
+    pub fn set_depth_test_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_test_enable(enable)?;
 
-        unsafe {
-            self.set_depth_test_enable_unchecked(enable);
-        }
-
-        self
+        unsafe { Ok(self.set_depth_test_enable_unchecked(enable)) }
     }
 
-    fn validate_set_depth_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DepthTestEnable)?;
+    fn validate_set_depth_test_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_depth_test_enable(enable)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDepthTestEnable-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetDepthTestEnable-None-03352
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_depth_test_enable`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DepthTestEnable)?;
 
         Ok(())
     }
@@ -655,7 +395,7 @@ where
             "set_depth_test_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_test_enable(enable);
+                out.set_depth_test_enable_unchecked(enable);
             },
         );
 
@@ -663,49 +403,19 @@ where
     }
 
     /// Sets whether dynamic depth write is enabled for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
-        self.validate_set_depth_write_enable(enable).unwrap();
+    pub fn set_depth_write_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_write_enable(enable)?;
 
-        unsafe {
-            self.set_depth_write_enable_unchecked(enable);
-        }
-
-        self
+        unsafe { Ok(self.set_depth_write_enable_unchecked(enable)) }
     }
 
-    fn validate_set_depth_write_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DepthWriteEnable)?;
+    fn validate_set_depth_write_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_depth_write_enable(enable)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDepthWriteEnable-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetDepthWriteEnable-None-03354
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_depth_write_enable`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DepthWriteEnable)?;
 
         Ok(())
     }
@@ -717,7 +427,7 @@ where
             "set_depth_write_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_depth_write_enable(enable);
+                out.set_depth_write_enable_unchecked(enable);
             },
         );
 
@@ -725,77 +435,25 @@ where
     }
 
     /// Sets the dynamic discard rectangles for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`ext_discard_rectangles`](crate::device::DeviceExtensions::ext_discard_rectangles)
-    ///   extension is not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - Panics if the highest discard rectangle slot being set is greater than the
-    ///   [`max_discard_rectangles`](crate::device::Properties::max_discard_rectangles) device
-    ///   property.
     pub fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
         rectangles: SmallVec<[Scissor; 2]>,
-    ) -> &mut Self {
-        self.validate_set_discard_rectangle(first_rectangle, &rectangles)
-            .unwrap();
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_discard_rectangle(first_rectangle, &rectangles)?;
 
-        unsafe {
-            self.set_discard_rectangle_unchecked(first_rectangle, rectangles);
-        }
-
-        self
+        unsafe { Ok(self.set_discard_rectangle_unchecked(first_rectangle, rectangles)) }
     }
 
     fn validate_set_discard_rectangle(
         &self,
         first_rectangle: u32,
         rectangles: &[Scissor],
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::DiscardRectangle)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_discard_rectangle(first_rectangle, rectangles)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetDiscardRectangle-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        if self.device().enabled_extensions().ext_discard_rectangles {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_discard_rectangle`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                    "ext_discard_rectangles",
-                )])]),
-            });
-        }
-
-        // VUID-vkCmdSetDiscardRectangleEXT-firstDiscardRectangle-00585
-        if first_rectangle + rectangles.len() as u32
-            > self
-                .device()
-                .physical_device()
-                .properties()
-                .max_discard_rectangles
-                .unwrap()
-        {
-            return Err(SetDynamicStateError::MaxDiscardRectanglesExceeded {
-                provided: first_rectangle + rectangles.len() as u32,
-                max: self
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .max_discard_rectangles
-                    .unwrap(),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::DiscardRectangle)?;
 
         Ok(())
     }
@@ -815,7 +473,7 @@ where
             "set_discard_rectangle",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_discard_rectangle(first_rectangle, &rectangles);
+                out.set_discard_rectangle_unchecked(first_rectangle, &rectangles);
             },
         );
 
@@ -823,52 +481,16 @@ where
     }
 
     /// Sets the dynamic front face for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
-        self.validate_set_front_face(face).unwrap();
+    pub fn set_front_face(&mut self, face: FrontFace) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_front_face(face)?;
 
-        unsafe {
-            self.set_front_face_unchecked(face);
-        }
-
-        self
+        unsafe { Ok(self.set_front_face_unchecked(face)) }
     }
 
-    fn validate_set_front_face(&self, face: FrontFace) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::FrontFace)?;
+    fn validate_set_front_face(&self, face: FrontFace) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_front_face(face)?;
 
-        // VUID-vkCmdSetFrontFace-frontFace-parameter
-        face.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetFrontFace-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetFrontFace-None-03383
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_front_face`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::FrontFace)?;
 
         Ok(())
     }
@@ -880,7 +502,7 @@ where
             "set_front_face",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_front_face(face);
+                out.set_front_face_unchecked(face);
             },
         );
 
@@ -888,54 +510,24 @@ where
     }
 
     /// Sets the dynamic line stipple values for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`ext_line_rasterization`](crate::device::DeviceExtensions::ext_line_rasterization)
-    ///   extension is not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - Panics if `factor` is not between 1 and 256 inclusive.
-    pub fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
-        self.validate_set_line_stipple(factor, pattern).unwrap();
+    pub fn set_line_stipple(
+        &mut self,
+        factor: u32,
+        pattern: u16,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_line_stipple(factor, pattern)?;
 
-        unsafe {
-            self.set_line_stipple_unchecked(factor, pattern);
-        }
-
-        self
+        unsafe { Ok(self.set_line_stipple_unchecked(factor, pattern)) }
     }
 
     fn validate_set_line_stipple(
         &self,
         factor: u32,
-        _pattern: u16,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::LineStipple)?;
+        pattern: u16,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_line_stipple(factor, pattern)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetLineStippleEXT-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        if !self.device().enabled_extensions().ext_line_rasterization {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_line_stipple`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                    "ext_line_rasterization",
-                )])]),
-            });
-        }
-
-        // VUID-vkCmdSetLineStippleEXT-lineStippleFactor-02776
-        if !(1..=256).contains(&factor) {
-            return Err(SetDynamicStateError::FactorOutOfRange);
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::LineStipple)?;
 
         Ok(())
     }
@@ -947,7 +539,7 @@ where
             "set_line_stipple",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_line_stipple(factor, pattern);
+                out.set_line_stipple_unchecked(factor, pattern);
             },
         );
 
@@ -955,45 +547,16 @@ where
     }
 
     /// Sets the dynamic line width for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - If the [`wide_lines`](crate::device::Features::wide_lines) feature is not enabled, panics
-    ///   if `line_width` is not 1.0.
-    pub fn set_line_width(&mut self, line_width: f32) -> &mut Self {
-        self.validate_set_line_width(line_width).unwrap();
+    pub fn set_line_width(&mut self, line_width: f32) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_line_width(line_width)?;
 
-        unsafe {
-            self.set_line_width_unchecked(line_width);
-        }
-
-        self
+        unsafe { Ok(self.set_line_width_unchecked(line_width)) }
     }
 
-    fn validate_set_line_width(&self, line_width: f32) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::LineWidth)?;
+    fn validate_set_line_width(&self, line_width: f32) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_line_width(line_width)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetLineWidth-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetLineWidth-lineWidth-00788
-        if !self.device().enabled_features().wide_lines && line_width != 1.0 {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`line_width` is not `1.0`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "wide_lines",
-                )])]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::LineWidth)?;
 
         Ok(())
     }
@@ -1005,7 +568,7 @@ where
             "set_line_width",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_line_width(line_width);
+                out.set_line_width_unchecked(line_width);
             },
         );
 
@@ -1013,53 +576,16 @@ where
     }
 
     /// Sets the dynamic logic op for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state2_logic_op`](crate::device::Features::extended_dynamic_state2_logic_op)
-    ///   feature is not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
-        self.validate_set_logic_op(logic_op).unwrap();
+    pub fn set_logic_op(&mut self, logic_op: LogicOp) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_logic_op(logic_op)?;
 
-        unsafe {
-            self.set_logic_op_unchecked(logic_op);
-        }
-
-        self
+        unsafe { Ok(self.set_logic_op_unchecked(logic_op)) }
     }
 
-    fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::LogicOp)?;
+    fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_logic_op(logic_op)?;
 
-        // VUID-vkCmdSetLogicOpEXT-logicOp-parameter
-        logic_op.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetLogicOpEXT-None-04867
-        if !self
-            .device()
-            .enabled_features()
-            .extended_dynamic_state2_logic_op
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_logic_op`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "extended_dynamic_state2_logic_op",
-                )])]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::LogicOp)?;
 
         Ok(())
     }
@@ -1071,7 +597,7 @@ where
             "set_logic_op",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_logic_op(logic_op);
+                out.set_logic_op_unchecked(logic_op);
             },
         );
 
@@ -1079,75 +605,19 @@ where
     }
 
     /// Sets the dynamic number of patch control points for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state2_patch_control_points`](crate::device::Features::extended_dynamic_state2_patch_control_points)
-    ///   feature is not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - Panics if `num` is 0.
-    /// - Panics if `num` is greater than the
-    ///   [`max_tessellation_patch_size`](crate::device::Properties::max_tessellation_patch_size)
-    ///   property of the device.
-    pub fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
-        self.validate_set_patch_control_points(num).unwrap();
+    pub fn set_patch_control_points(
+        &mut self,
+        num: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_patch_control_points(num)?;
 
-        unsafe {
-            self.set_patch_control_points_unchecked(num);
-        }
-
-        self
+        unsafe { Ok(self.set_patch_control_points_unchecked(num)) }
     }
 
-    fn validate_set_patch_control_points(&self, num: u32) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::PatchControlPoints)?;
+    fn validate_set_patch_control_points(&self, num: u32) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_patch_control_points(num)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetPatchControlPointsEXT-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetPatchControlPointsEXT-None-04873
-        if !self
-            .device()
-            .enabled_features()
-            .extended_dynamic_state2_patch_control_points
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_patch_control_points`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "extended_dynamic_state2_patch_control_points",
-                )])]),
-            });
-        }
-
-        // VUID-vkCmdSetPatchControlPointsEXT-patchControlPoints-04874
-        assert!(num > 0, "num must be greater than 0");
-
-        // VUID-vkCmdSetPatchControlPointsEXT-patchControlPoints-04874
-        if num
-            > self
-                .device()
-                .physical_device()
-                .properties()
-                .max_tessellation_patch_size
-        {
-            return Err(SetDynamicStateError::MaxTessellationPatchSizeExceeded {
-                provided: num,
-                max: self
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .max_tessellation_patch_size,
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::PatchControlPoints)?;
 
         Ok(())
     }
@@ -1159,7 +629,7 @@ where
             "set_patch_control_points",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_patch_control_points(num);
+                out.set_patch_control_points_unchecked(num);
             },
         );
 
@@ -1167,52 +637,22 @@ where
     }
 
     /// Sets whether dynamic primitive restart is enabled for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
-        self.validate_set_primitive_restart_enable(enable).unwrap();
+    pub fn set_primitive_restart_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_primitive_restart_enable(enable)?;
 
-        unsafe {
-            self.set_primitive_restart_enable_unchecked(enable);
-        }
-
-        self
+        unsafe { Ok(self.set_primitive_restart_enable_unchecked(enable)) }
     }
 
     fn validate_set_primitive_restart_enable(
         &self,
-        _enable: bool,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::PrimitiveRestartEnable)?;
+        enable: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_primitive_restart_enable(enable)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetPrimitiveRestartEnable-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetPrimitiveRestartEnable-None-04866
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state2)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_primitive_restart_enable`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::PrimitiveRestartEnable)?;
 
         Ok(())
     }
@@ -1224,7 +664,7 @@ where
             "set_primitive_restart_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_primitive_restart_enable(enable);
+                out.set_primitive_restart_enable_unchecked(enable);
             },
         );
 
@@ -1232,102 +672,22 @@ where
     }
 
     /// Sets the dynamic primitive topology for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - If the [`geometry_shader`](crate::device::Features::geometry_shader) feature is not
-    ///   enabled, panics if `topology` is a `WithAdjacency` topology.
-    /// - If the [`tessellation_shader`](crate::device::Features::tessellation_shader) feature is
-    ///   not enabled, panics if `topology` is `PatchList`.
-    pub fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
-        self.validate_set_primitive_topology(topology).unwrap();
+    pub fn set_primitive_topology(
+        &mut self,
+        topology: PrimitiveTopology,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_primitive_topology(topology)?;
 
-        unsafe {
-            self.set_primitive_topology_unchecked(topology);
-        }
-
-        self
+        unsafe { Ok(self.set_primitive_topology_unchecked(topology)) }
     }
 
     fn validate_set_primitive_topology(
         &self,
         topology: PrimitiveTopology,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::PrimitiveTopology)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_primitive_topology(topology)?;
 
-        // VUID-vkCmdSetPrimitiveTopology-primitiveTopology-parameter
-        topology.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetPrimitiveTopology-None-03347
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_primitive_topology`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
-
-        // VUID?
-        // Since these requirements exist for fixed state when creating the pipeline,
-        // I assume they exist for dynamic state as well.
-        match topology {
-            PrimitiveTopology::TriangleFan => {
-                if self.device().enabled_extensions().khr_portability_subset
-                    && !self.device().enabled_features().triangle_fans
-                {
-                    return Err(SetDynamicStateError::RequirementNotMet {
-                        required_for: "this device is a portability subset device, and `topology` \
-                            is `PrimitiveTopology::TriangleFan`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "triangle_fans",
-                        )])]),
-                    });
-                }
-            }
-            PrimitiveTopology::LineListWithAdjacency
-            | PrimitiveTopology::LineStripWithAdjacency
-            | PrimitiveTopology::TriangleListWithAdjacency
-            | PrimitiveTopology::TriangleStripWithAdjacency => {
-                if !self.device().enabled_features().geometry_shader {
-                    return Err(SetDynamicStateError::RequirementNotMet {
-                        required_for: "`topology` is `PrimitiveTopology::*WithAdjacency`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shader",
-                        )])]),
-                    });
-                }
-            }
-            PrimitiveTopology::PatchList => {
-                if !self.device().enabled_features().tessellation_shader {
-                    return Err(SetDynamicStateError::RequirementNotMet {
-                        required_for: "`topology` is `PrimitiveTopology::PatchList`",
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
-                    });
-                }
-            }
-            _ => (),
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::PrimitiveTopology)?;
 
         Ok(())
     }
@@ -1342,7 +702,7 @@ where
             "set_primitive_topology",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_primitive_topology(topology);
+                out.set_primitive_topology_unchecked(topology);
             },
         );
 
@@ -1350,52 +710,22 @@ where
     }
 
     /// Sets whether dynamic rasterizer discard is enabled for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
-        self.validate_set_rasterizer_discard_enable(enable).unwrap();
+    pub fn set_rasterizer_discard_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_rasterizer_discard_enable(enable)?;
 
-        unsafe {
-            self.set_rasterizer_discard_enable_unchecked(enable);
-        }
-
-        self
+        unsafe { Ok(self.set_rasterizer_discard_enable_unchecked(enable)) }
     }
 
     fn validate_set_rasterizer_discard_enable(
         &self,
-        _enable: bool,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::RasterizerDiscardEnable)?;
+        enable: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_rasterizer_discard_enable(enable)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetRasterizerDiscardEnable-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetRasterizerDiscardEnable-None-04871
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state2)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_rasterizer_discard_enable`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::RasterizerDiscardEnable)?;
 
         Ok(())
     }
@@ -1407,7 +737,7 @@ where
             "set_rasterizer_discard_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_rasterizer_discard_enable(enable);
+                out.set_rasterizer_discard_enable_unchecked(enable);
             },
         );
 
@@ -1415,77 +745,24 @@ where
     }
 
     /// Sets the dynamic scissors for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - Panics if the highest scissor slot being set is greater than the
-    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
-    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
-    ///   panics if `first_scissor` is not 0, or if more than 1 scissor is provided.
     pub fn set_scissor(
         &mut self,
         first_scissor: u32,
         scissors: SmallVec<[Scissor; 2]>,
-    ) -> &mut Self {
-        self.validate_set_scissor(first_scissor, &scissors).unwrap();
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_scissor(first_scissor, &scissors)?;
 
-        unsafe {
-            self.set_scissor_unchecked(first_scissor, scissors);
-        }
-
-        self
+        unsafe { Ok(self.set_scissor_unchecked(first_scissor, scissors)) }
     }
 
     fn validate_set_scissor(
         &self,
         first_scissor: u32,
         scissors: &[Scissor],
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::Scissor)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_scissor(first_scissor, scissors)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetScissor-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetScissor-firstScissor-00592
-        if first_scissor + scissors.len() as u32
-            > self.device().physical_device().properties().max_viewports
-        {
-            return Err(SetDynamicStateError::MaxViewportsExceeded {
-                provided: first_scissor + scissors.len() as u32,
-                max: self.device().physical_device().properties().max_viewports,
-            });
-        }
-
-        if !self.device().enabled_features().multi_viewport {
-            // VUID-vkCmdSetScissor-firstScissor-00593
-            if first_scissor != 0 {
-                return Err(SetDynamicStateError::RequirementNotMet {
-                    required_for: "`first_scissor` is not `0`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "multi_viewport",
-                    )])]),
-                });
-            }
-
-            // VUID-vkCmdSetScissor-scissorCount-00594
-            if scissors.len() > 1 {
-                return Err(SetDynamicStateError::RequirementNotMet {
-                    required_for: "`scissors.len()` is greater than `1`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "multi_viewport",
-                    )])]),
-                });
-            }
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::Scissor)?;
 
         Ok(())
     }
@@ -1507,7 +784,7 @@ where
             "set_scissor",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor(first_scissor, &scissors);
+                out.set_scissor_unchecked(first_scissor, &scissors);
             },
         );
 
@@ -1515,74 +792,22 @@ where
     }
 
     /// Sets the dynamic scissors with count for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - Panics if the highest scissor slot being set is greater than the
-    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
-    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
-    ///   panics if more than 1 scissor is provided.
-    pub fn set_scissor_with_count(&mut self, scissors: SmallVec<[Scissor; 2]>) -> &mut Self {
-        self.validate_set_scissor_with_count(&scissors).unwrap();
+    pub fn set_scissor_with_count(
+        &mut self,
+        scissors: SmallVec<[Scissor; 2]>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_scissor_with_count(&scissors)?;
 
-        unsafe {
-            self.set_scissor_with_count_unchecked(scissors);
-        }
-
-        self
+        unsafe { Ok(self.set_scissor_with_count_unchecked(scissors)) }
     }
 
     fn validate_set_scissor_with_count(
         &self,
         scissors: &[Scissor],
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::ScissorWithCount)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_scissor_with_count(scissors)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetScissorWithCount-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetScissorWithCount-None-03396
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_scissor_with_count`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
-
-        // VUID-vkCmdSetScissorWithCount-scissorCount-03397
-        if scissors.len() as u32 > self.device().physical_device().properties().max_viewports {
-            return Err(SetDynamicStateError::MaxViewportsExceeded {
-                provided: scissors.len() as u32,
-                max: self.device().physical_device().properties().max_viewports,
-            });
-        }
-
-        // VUID-vkCmdSetScissorWithCount-scissorCount-03398
-        if !self.device().enabled_features().multi_viewport && scissors.len() > 1 {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`scissors.len()` is greater than `1`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "multi_viewport",
-                )])]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::ScissorWithCount)?;
 
         Ok(())
     }
@@ -1597,7 +822,7 @@ where
             "set_scissor_with_count",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_scissor_with_count(&scissors);
+                out.set_scissor_with_count_unchecked(&scissors);
             },
         );
 
@@ -1605,45 +830,25 @@ where
     }
 
     /// Sets the dynamic stencil compare mask on one or both faces for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_stencil_compare_mask(
         &mut self,
         faces: StencilFaces,
         compare_mask: u32,
-    ) -> &mut Self {
-        self.validate_set_stencil_compare_mask(faces, compare_mask)
-            .unwrap();
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_compare_mask(faces, compare_mask)?;
 
-        unsafe {
-            self.set_stencil_compare_mask_unchecked(faces, compare_mask);
-        }
-
-        self
+        unsafe { Ok(self.set_stencil_compare_mask_unchecked(faces, compare_mask)) }
     }
 
     fn validate_set_stencil_compare_mask(
         &self,
         faces: StencilFaces,
-        _compare_mask: u32,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::StencilCompareMask)?;
+        compare_mask: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_stencil_compare_mask(faces, compare_mask)?;
 
-        // VUID-vkCmdSetStencilCompareMask-faceMask-parameter
-        faces.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::StencilCompareMask)?;
 
         Ok(())
     }
@@ -1668,7 +873,7 @@ where
             "set_stencil_compare_mask",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_compare_mask(faces, compare_mask);
+                out.set_stencil_compare_mask_unchecked(faces, compare_mask);
             },
         );
 
@@ -1676,14 +881,6 @@ where
     }
 
     /// Sets the dynamic stencil ops on one or both faces for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_stencil_op(
         &mut self,
         faces: StencilFaces,
@@ -1691,15 +888,12 @@ where
         pass_op: StencilOp,
         depth_fail_op: StencilOp,
         compare_op: CompareOp,
-    ) -> &mut Self {
-        self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)
-            .unwrap();
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)?;
 
         unsafe {
-            self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op);
+            Ok(self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op))
         }
-
-        self
     }
 
     fn validate_set_stencil_op(
@@ -1709,46 +903,11 @@ where
         pass_op: StencilOp,
         depth_fail_op: StencilOp,
         compare_op: CompareOp,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::StencilOp)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)?;
 
-        // VUID-vkCmdSetStencilOp-faceMask-parameter
-        faces.validate_device(self.device())?;
-
-        // VUID-vkCmdSetStencilOp-failOp-parameter
-        fail_op.validate_device(self.device())?;
-
-        // VUID-vkCmdSetStencilOp-passOp-parameter
-        pass_op.validate_device(self.device())?;
-
-        // VUID-vkCmdSetStencilOp-depthFailOp-parameter
-        depth_fail_op.validate_device(self.device())?;
-
-        // VUID-vkCmdSetStencilOp-compareOp-parameter
-        compare_op.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetStencilOp-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetStencilOp-None-03351
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_stencil_op`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::StencilOp)?;
 
         Ok(())
     }
@@ -1786,7 +945,7 @@ where
             "set_stencil_op",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op);
+                out.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op);
             },
         );
 
@@ -1794,41 +953,25 @@ where
     }
 
     /// Sets the dynamic stencil reference on one or both faces for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) -> &mut Self {
-        self.validate_set_stencil_reference(faces, reference)
-            .unwrap();
+    pub fn set_stencil_reference(
+        &mut self,
+        faces: StencilFaces,
+        reference: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_reference(faces, reference)?;
 
-        unsafe {
-            self.set_stencil_reference_unchecked(faces, reference);
-        }
-
-        self
+        unsafe { Ok(self.set_stencil_reference_unchecked(faces, reference)) }
     }
 
     fn validate_set_stencil_reference(
         &self,
         faces: StencilFaces,
-        _reference: u32,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::StencilReference)?;
+        reference: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_stencil_reference(faces, reference)?;
 
-        // VUID-vkCmdSetStencilReference-faceMask-parameter
-        faces.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetStencilReference-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::StencilReference)?;
 
         Ok(())
     }
@@ -1853,7 +996,7 @@ where
             "set_stencil_reference",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_reference(faces, reference);
+                out.set_stencil_reference_unchecked(faces, reference);
             },
         );
 
@@ -1861,49 +1004,19 @@ where
     }
 
     /// Sets whether dynamic stencil testing is enabled for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
-        self.validate_set_stencil_test_enable(enable).unwrap();
+    pub fn set_stencil_test_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_test_enable(enable)?;
 
-        unsafe {
-            self.set_stencil_test_enable_unchecked(enable);
-        }
-
-        self
+        unsafe { Ok(self.set_stencil_test_enable_unchecked(enable)) }
     }
 
-    fn validate_set_stencil_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::StencilTestEnable)?;
+    fn validate_set_stencil_test_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_stencil_test_enable(enable)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetStencilTestEnable-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetStencilTestEnable-None-03350
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_stencil_test_enable`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::StencilTestEnable)?;
 
         Ok(())
     }
@@ -1915,7 +1028,7 @@ where
             "set_stencil_test_enable",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_test_enable(enable);
+                out.set_stencil_test_enable_unchecked(enable);
             },
         );
 
@@ -1923,41 +1036,25 @@ where
     }
 
     /// Sets the dynamic stencil write mask on one or both faces for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    pub fn set_stencil_write_mask(&mut self, faces: StencilFaces, write_mask: u32) -> &mut Self {
-        self.validate_set_stencil_write_mask(faces, write_mask)
-            .unwrap();
+    pub fn set_stencil_write_mask(
+        &mut self,
+        faces: StencilFaces,
+        write_mask: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_write_mask(faces, write_mask)?;
 
-        unsafe {
-            self.set_stencil_write_mask_unchecked(faces, write_mask);
-        }
-
-        self
+        unsafe { Ok(self.set_stencil_write_mask_unchecked(faces, write_mask)) }
     }
 
     fn validate_set_stencil_write_mask(
         &self,
         faces: StencilFaces,
-        _write_mask: u32,
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::StencilWriteMask)?;
+        write_mask: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_stencil_write_mask(faces, write_mask)?;
 
-        // VUID-vkCmdSetStencilWriteMask-faceMask-parameter
-        faces.validate_device(self.device())?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::StencilWriteMask)?;
 
         Ok(())
     }
@@ -1982,7 +1079,7 @@ where
             "set_stencil_write_mask",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_stencil_write_mask(faces, write_mask);
+                out.set_stencil_write_mask_unchecked(faces, write_mask);
             },
         );
 
@@ -1990,78 +1087,25 @@ where
     }
 
     /// Sets the dynamic viewports for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - Panics if the highest viewport slot being set is greater than the
-    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
-    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
-    ///   panics if `first_viewport` is not 0, or if more than 1 viewport is provided.
     pub fn set_viewport(
         &mut self,
         first_viewport: u32,
         viewports: SmallVec<[Viewport; 2]>,
-    ) -> &mut Self {
-        self.validate_set_viewport(first_viewport, &viewports)
-            .unwrap();
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_viewport(first_viewport, &viewports)?;
 
-        unsafe {
-            self.set_viewport_unchecked(first_viewport, viewports);
-        }
-
-        self
+        unsafe { Ok(self.set_viewport_unchecked(first_viewport, viewports)) }
     }
 
     fn validate_set_viewport(
         &self,
         first_viewport: u32,
         viewports: &[Viewport],
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::Viewport)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_viewport(first_viewport, viewports)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetViewport-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetViewport-firstViewport-01223
-        if first_viewport + viewports.len() as u32
-            > self.device().physical_device().properties().max_viewports
-        {
-            return Err(SetDynamicStateError::MaxViewportsExceeded {
-                provided: first_viewport + viewports.len() as u32,
-                max: self.device().physical_device().properties().max_viewports,
-            });
-        }
-
-        if !self.device().enabled_features().multi_viewport {
-            // VUID-vkCmdSetViewport-firstViewport-01224
-            if first_viewport != 0 {
-                return Err(SetDynamicStateError::RequirementNotMet {
-                    required_for: "`first_scissors` is not `0`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "multi_viewport",
-                    )])]),
-                });
-            }
-
-            // VUID-vkCmdSetViewport-viewportCount-01225
-            if viewports.len() > 1 {
-                return Err(SetDynamicStateError::RequirementNotMet {
-                    required_for: "`viewports.len()` is greater than `1`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "multi_viewport",
-                    )])]),
-                });
-            }
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::Viewport)?;
 
         Ok(())
     }
@@ -2081,7 +1125,7 @@ where
             "set_viewport",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport(first_viewport, &viewports);
+                out.set_viewport_unchecked(first_viewport, &viewports);
             },
         );
 
@@ -2089,74 +1133,22 @@ where
     }
 
     /// Sets the dynamic viewports with count for future draw calls.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the device API version is less than 1.3 and the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
-    ///   not enabled on the device.
-    /// - Panics if the currently bound graphics pipeline already contains this state internally.
-    /// - Panics if the highest viewport slot being set is greater than the
-    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
-    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
-    ///   panics if more than 1 viewport is provided.
-    pub fn set_viewport_with_count(&mut self, viewports: SmallVec<[Viewport; 2]>) -> &mut Self {
-        self.validate_set_viewport_with_count(&viewports).unwrap();
+    pub fn set_viewport_with_count(
+        &mut self,
+        viewports: SmallVec<[Viewport; 2]>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_viewport_with_count(&viewports)?;
 
-        unsafe {
-            self.set_viewport_with_count_unchecked(viewports);
-        }
-
-        self
+        unsafe { Ok(self.set_viewport_with_count_unchecked(viewports)) }
     }
 
     fn validate_set_viewport_with_count(
         &self,
         viewports: &[Viewport],
-    ) -> Result<(), SetDynamicStateError> {
-        self.validate_pipeline_fixed_state(DynamicState::ViewportWithCount)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_viewport_with_count(viewports)?;
 
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdSetViewportWithCount-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdSetViewportWithCount-None-03393
-        if !(self.device().api_version() >= Version::V1_3
-            || self.device().enabled_features().extended_dynamic_state)
-        {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::set_viewport_with_count`",
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-            });
-        }
-
-        // VUID-vkCmdSetViewportWithCount-viewportCount-03394
-        if viewports.len() as u32 > self.device().physical_device().properties().max_viewports {
-            return Err(SetDynamicStateError::MaxViewportsExceeded {
-                provided: viewports.len() as u32,
-                max: self.device().physical_device().properties().max_viewports,
-            });
-        }
-
-        // VUID-vkCmdSetViewportWithCount-viewportCount-03395
-        if !self.device().enabled_features().multi_viewport && viewports.len() > 1 {
-            return Err(SetDynamicStateError::RequirementNotMet {
-                required_for: "`viewports.len()` is greater than `1`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "multi_viewport",
-                )])]),
-            });
-        }
+        self.validate_graphics_pipeline_fixed_state(DynamicState::ViewportWithCount)?;
 
         Ok(())
     }
@@ -2171,7 +1163,7 @@ where
             "set_viewport",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.set_viewport_with_count(&viewports);
+                out.set_viewport_with_count_unchecked(&viewports);
             },
         );
 
@@ -2183,24 +1175,92 @@ impl<A> UnsafeCommandBufferBuilder<A>
 where
     A: CommandBufferAllocator,
 {
-    /// Calls `vkCmdSetBlendConstants` on the builder.
-    #[inline]
-    pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) -> &mut Self {
+    pub unsafe fn set_blend_constants(
+        &mut self,
+        constants: [f32; 4],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_blend_constants(constants)?;
+
+        Ok(self.set_blend_constants_unchecked(constants))
+    }
+
+    fn validate_set_blend_constants(
+        &self,
+        _constants: [f32; 4],
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetBlendConstants-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_blend_constants_unchecked(&mut self, constants: [f32; 4]) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_blend_constants)(self.handle(), &constants);
 
         self
     }
 
-    /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_color_write_enable(&mut self, enables: &[bool]) -> &mut Self {
+    pub unsafe fn set_color_write_enable(
+        &mut self,
+        enables: &[bool],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_color_write_enable(enables)?;
+
+        Ok(self.set_color_write_enable_unchecked(enables))
+    }
+
+    fn validate_set_color_write_enable(
+        &self,
+        _enables: &[bool],
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device().enabled_features().color_write_enable {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_color_write_enable",
+                )])]),
+                vuids: &["VUID-vkCmdSetColorWriteEnableEXT-None-04803"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetColorWriteEnableEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_color_write_enable_unchecked(&mut self, enables: &[bool]) -> &mut Self {
         let enables = enables
             .iter()
             .copied()
             .map(|v| v as ash::vk::Bool32)
             .collect::<SmallVec<[_; 4]>>();
+
         if enables.is_empty() {
             return self;
         }
@@ -2215,9 +1275,56 @@ where
         self
     }
 
-    /// Calls `vkCmdSetCullModeEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
+    pub unsafe fn set_cull_mode(
+        &mut self,
+        cull_mode: CullMode,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_cull_mode(cull_mode)?;
+
+        Ok(self.set_cull_mode_unchecked(cull_mode))
+    }
+
+    fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetCullMode-None-03384"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetCullMode-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        cull_mode
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "cull_mode".into(),
+                vuids: &["VUID-vkCmdSetCullMode-cullMode-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_cull_mode_unchecked(&mut self, cull_mode: CullMode) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2229,9 +1336,53 @@ where
         self
     }
 
-    /// Calls `vkCmdSetDepthBias` on the builder.
-    #[inline]
     pub unsafe fn set_depth_bias(
+        &mut self,
+        constant_factor: f32,
+        clamp: f32,
+        slope_factor: f32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bias(constant_factor, clamp, slope_factor)?;
+
+        Ok(self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor))
+    }
+
+    fn validate_set_depth_bias(
+        &self,
+        _constant_factor: f32,
+        clamp: f32,
+        _slope_factor: f32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDepthBias-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if clamp != 0.0 && !self.device().enabled_features().depth_bias_clamp {
+            return Err(Box::new(ValidationError {
+                context: "clamp".into(),
+                problem: "is not `0.0`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "depth_bias_clamp",
+                )])]),
+                vuids: &["VUID-vkCmdSetDepthBias-depthBiasClamp-00790"],
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bias_unchecked(
         &mut self,
         constant_factor: f32,
         clamp: f32,
@@ -2243,9 +1394,48 @@ where
         self
     }
 
-    /// Calls `vkCmdSetDepthBiasEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
+    pub unsafe fn set_depth_bias_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bias_enable(enable)?;
+
+        Ok(self.set_depth_bias_enable_unchecked(enable))
+    }
+
+    fn validate_set_depth_bias_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state2)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                ]),
+                vuids: &["VUID-vkCmdSetDepthBiasEnable-None-04872"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDepthBiasEnable-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bias_enable_unchecked(&mut self, enable: bool) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2258,18 +1448,117 @@ where
         self
     }
 
-    /// Calls `vkCmdSetDepthBounds` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
+    pub unsafe fn set_depth_bounds(
+        &mut self,
+        bounds: RangeInclusive<f32>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bounds(bounds.clone())?;
+
+        Ok(self.set_depth_bounds_unchecked(bounds))
+    }
+
+    fn validate_set_depth_bounds(
+        &self,
+        bounds: RangeInclusive<f32>,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDepthBounds-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .device()
+            .enabled_extensions()
+            .ext_depth_range_unrestricted
+        {
+            if !(0.0..=1.0).contains(bounds.start()) {
+                return Err(Box::new(ValidationError {
+                    context: "bounds.start()".into(),
+                    problem: "is not between `0.0` and `1.0` inclusive".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_depth_range_unrestricted",
+                    )])]),
+                    vuids: &["VUID-vkCmdSetDepthBounds-minDepthBounds-00600"],
+                }));
+            }
+
+            if !(0.0..=1.0).contains(bounds.end()) {
+                return Err(Box::new(ValidationError {
+                    context: "bounds.end()".into(),
+                    problem: "is not between `0.0` and `1.0` inclusive".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_depth_range_unrestricted",
+                    )])]),
+                    vuids: &["VUID-vkCmdSetDepthBounds-maxDepthBounds-00601"],
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bounds_unchecked(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_depth_bounds)(self.handle(), *bounds.start(), *bounds.end());
 
         self
     }
 
-    /// Calls `vkCmdSetDepthBoundsTestEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
+    pub unsafe fn set_depth_bounds_test_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_bounds_test_enable(enable)?;
+
+        Ok(self.set_depth_bounds_test_enable_unchecked(enable))
+    }
+
+    fn validate_set_depth_bounds_test_enable(
+        &self,
+        _enable: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetDepthBoundsTestEnable-None-03349"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDepthBoundsTestEnable-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_bounds_test_enable_unchecked(&mut self, enable: bool) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2282,9 +1571,59 @@ where
         self
     }
 
-    /// Calls `vkCmdSetDepthCompareOpEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
+    pub unsafe fn set_depth_compare_op(
+        &mut self,
+        compare_op: CompareOp,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_compare_op(compare_op)?;
+
+        Ok(self.set_depth_compare_op_unchecked(compare_op))
+    }
+
+    fn validate_set_depth_compare_op(
+        &self,
+        compare_op: CompareOp,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetDepthCompareOp-None-03353"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        compare_op
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "compare_op".into(),
+                vuids: &["VUID-vkCmdSetDepthCompareOp-depthCompareOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_compare_op_unchecked(&mut self, compare_op: CompareOp) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2299,9 +1638,48 @@ where
         self
     }
 
-    /// Calls `vkCmdSetDepthTestEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
+    pub unsafe fn set_depth_test_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_test_enable(enable)?;
+
+        Ok(self.set_depth_test_enable_unchecked(enable))
+    }
+
+    fn validate_set_depth_test_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetDepthTestEnable-None-03352"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDepthTestEnable-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_test_enable_unchecked(&mut self, enable: bool) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2316,9 +1694,48 @@ where
         self
     }
 
-    /// Calls `vkCmdSetDepthWriteEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
+    pub unsafe fn set_depth_write_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_depth_write_enable(enable)?;
+
+        Ok(self.set_depth_write_enable_unchecked(enable))
+    }
+
+    fn validate_set_depth_write_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetDepthWriteEnable-None-03354"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDepthWriteEnable-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_depth_write_enable_unchecked(&mut self, enable: bool) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2331,10 +1748,61 @@ where
         self
     }
 
-    /// Calls `vkCmdSetDiscardRectangleEXT` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
     pub unsafe fn set_discard_rectangle(
+        &mut self,
+        first_rectangle: u32,
+        rectangles: &[Scissor],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_discard_rectangle(first_rectangle, rectangles)?;
+
+        Ok(self.set_discard_rectangle_unchecked(first_rectangle, rectangles))
+    }
+
+    fn validate_set_discard_rectangle(
+        &self,
+        first_rectangle: u32,
+        rectangles: &[Scissor],
+    ) -> Result<(), Box<ValidationError>> {
+        if self.device().enabled_extensions().ext_discard_rectangles {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_discard_rectangles",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDiscardRectangle-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if first_rectangle + rectangles.len() as u32 > properties.max_discard_rectangles.unwrap() {
+            return Err(Box::new(ValidationError {
+                problem: "`first_rectangle + rectangles.len()` exceeds the \
+                    `max_discard_rectangles` limit"
+                    .into(),
+                vuids: &["VUID-vkCmdSetDiscardRectangleEXT-firstDiscardRectangle-00585"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_discard_rectangle_unchecked(
         &mut self,
         first_rectangle: u32,
         rectangles: &[Scissor],
@@ -2358,9 +1826,55 @@ where
         self
     }
 
-    /// Calls `vkCmdSetFrontFaceEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
+    pub unsafe fn set_front_face(
+        &mut self,
+        face: FrontFace,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_front_face(face)?;
+
+        Ok(self.set_front_face_unchecked(face))
+    }
+
+    fn validate_set_front_face(&self, face: FrontFace) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetFrontFace-None-03383"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetFrontFace-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        face.validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "face".into(),
+                vuids: &["VUID-vkCmdSetFrontFace-frontFace-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_front_face_unchecked(&mut self, face: FrontFace) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2372,36 +1886,230 @@ where
         self
     }
 
-    /// Calls `vkCmdSetLineStippleEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
+    pub unsafe fn set_line_stipple(
+        &mut self,
+        factor: u32,
+        pattern: u16,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_line_stipple(factor, pattern)?;
+
+        Ok(self.set_line_stipple_unchecked(factor, pattern))
+    }
+
+    fn validate_set_line_stipple(
+        &self,
+        factor: u32,
+        _pattern: u16,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device().enabled_extensions().ext_line_rasterization {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_line_rasterization",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetLineStippleEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !(1..=256).contains(&factor) {
+            return Err(Box::new(ValidationError {
+                context: "factor".into(),
+                problem: "is not between 1 and 256 inclusive".into(),
+                vuids: &["VUID-vkCmdSetLineStippleEXT-lineStippleFactor-02776"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_line_stipple_unchecked(&mut self, factor: u32, pattern: u16) -> &mut Self {
         let fns = self.device().fns();
         (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle(), factor, pattern);
 
         self
     }
 
-    /// Calls `vkCmdSetLineWidth` on the builder.
-    #[inline]
-    pub unsafe fn set_line_width(&mut self, line_width: f32) -> &mut Self {
+    pub unsafe fn set_line_width(
+        &mut self,
+        line_width: f32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_line_width(line_width)?;
+
+        Ok(self.set_line_width_unchecked(line_width))
+    }
+
+    fn validate_set_line_width(&self, line_width: f32) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetLineWidth-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if line_width != 1.0 && !self.device().enabled_features().wide_lines {
+            return Err(Box::new(ValidationError {
+                context: "line_width".into(),
+                problem: "is not 1.0".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "wide_lines",
+                )])]),
+                vuids: &["VUID-vkCmdSetLineWidth-lineWidth-00788"],
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_line_width_unchecked(&mut self, line_width: f32) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_line_width)(self.handle(), line_width);
 
         self
     }
 
-    /// Calls `vkCmdSetLogicOpEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
+    pub unsafe fn set_logic_op(
+        &mut self,
+        logic_op: LogicOp,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_logic_op(logic_op)?;
+
+        Ok(self.set_logic_op_unchecked(logic_op))
+    }
+
+    fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), Box<ValidationError>> {
+        if !self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state2_logic_op
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "extended_dynamic_state2_logic_op",
+                )])]),
+                vuids: &["VUID-vkCmdSetLogicOpEXT-None-04867"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        logic_op
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "logic_op".into(),
+                vuids: &["VUID-vkCmdSetLogicOpEXT-logicOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_logic_op_unchecked(&mut self, logic_op: LogicOp) -> &mut Self {
         let fns = self.device().fns();
         (fns.ext_extended_dynamic_state2.cmd_set_logic_op_ext)(self.handle(), logic_op.into());
 
         self
     }
 
-    /// Calls `vkCmdSetPatchControlPointsEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
+    pub unsafe fn set_patch_control_points(
+        &mut self,
+        num: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_patch_control_points(num)?;
+
+        Ok(self.set_patch_control_points_unchecked(num))
+    }
+
+    fn validate_set_patch_control_points(&self, num: u32) -> Result<(), Box<ValidationError>> {
+        if !self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state2_patch_control_points
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "extended_dynamic_state2_patch_control_points",
+                )])]),
+                vuids: &["VUID-vkCmdSetPatchControlPointsEXT-None-04873"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetPatchControlPointsEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if num == 0 {
+            return Err(Box::new(ValidationError {
+                context: "num".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-vkCmdSetPatchControlPointsEXT-patchControlPoints-04874"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if num > properties.max_tessellation_patch_size {
+            return Err(Box::new(ValidationError {
+                context: "num".into(),
+                problem: "exceeds the `max_tessellation_patch_size` limit".into(),
+                vuids: &["VUID-vkCmdSetPatchControlPointsEXT-patchControlPoints-04874"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_patch_control_points_unchecked(&mut self, num: u32) -> &mut Self {
         let fns = self.device().fns();
         (fns.ext_extended_dynamic_state2
             .cmd_set_patch_control_points_ext)(self.handle(), num);
@@ -2409,9 +2117,51 @@ where
         self
     }
 
-    /// Calls `vkCmdSetPrimitiveRestartEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
+    pub unsafe fn set_primitive_restart_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_primitive_restart_enable(enable)?;
+
+        Ok(self.set_primitive_restart_enable_unchecked(enable))
+    }
+
+    fn validate_set_primitive_restart_enable(
+        &self,
+        _enable: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state2)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                ]),
+                vuids: &["VUID-vkCmdSetPrimitiveRestartEnable-None-04866"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetPrimitiveRestartEnable-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_primitive_restart_enable_unchecked(&mut self, enable: bool) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2424,9 +2174,109 @@ where
         self
     }
 
-    /// Calls `vkCmdSetPrimitiveTopologyEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
+    pub unsafe fn set_primitive_topology(
+        &mut self,
+        topology: PrimitiveTopology,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_primitive_topology(topology)?;
+
+        Ok(self.set_primitive_topology_unchecked(topology))
+    }
+
+    fn validate_set_primitive_topology(
+        &self,
+        topology: PrimitiveTopology,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetPrimitiveTopology-None-03347"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        topology
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "topology".into(),
+                vuids: &["VUID-vkCmdSetPrimitiveTopology-primitiveTopology-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID?
+        // Since these requirements exist for fixed state when creating the pipeline,
+        // I assume they exist for dynamic state as well.
+        match topology {
+            PrimitiveTopology::TriangleFan => {
+                if self.device().enabled_extensions().khr_portability_subset
+                    && !self.device().enabled_features().triangle_fans
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "this device is a portability subset device, and `topology` \
+                            is `PrimitiveTopology::TriangleFan`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "triangle_fans",
+                        )])]),
+                        ..Default::default()
+                    }));
+                }
+            }
+            PrimitiveTopology::LineListWithAdjacency
+            | PrimitiveTopology::LineStripWithAdjacency
+            | PrimitiveTopology::TriangleListWithAdjacency
+            | PrimitiveTopology::TriangleStripWithAdjacency => {
+                if !self.device().enabled_features().geometry_shader {
+                    return Err(Box::new(ValidationError {
+                        problem: "`topology` is `PrimitiveTopology::*WithAdjacency`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "geometry_shader",
+                        )])]),
+                        ..Default::default()
+                    }));
+                }
+            }
+            PrimitiveTopology::PatchList => {
+                if !self.device().enabled_features().tessellation_shader {
+                    return Err(Box::new(ValidationError {
+                        problem: "`topology` is `PrimitiveTopology::PatchList`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "tessellation_shader",
+                        )])]),
+                        ..Default::default()
+                    }));
+                }
+            }
+            _ => (),
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_primitive_topology_unchecked(
+        &mut self,
+        topology: PrimitiveTopology,
+    ) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2439,9 +2289,51 @@ where
         self
     }
 
-    /// Calls `vkCmdSetRasterizerDiscardEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
+    pub unsafe fn set_rasterizer_discard_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_rasterizer_discard_enable(enable)?;
+
+        Ok(self.set_rasterizer_discard_enable_unchecked(enable))
+    }
+
+    fn validate_set_rasterizer_discard_enable(
+        &self,
+        _enable: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state2)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                ]),
+                vuids: &["VUID-vkCmdSetRasterizerDiscardEnable-None-04871"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetRasterizerDiscardEnable-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_rasterizer_discard_enable_unchecked(&mut self, enable: bool) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2454,99 +2346,79 @@ where
         self
     }
 
-    /// Calls `vkCmdSetStencilCompareMask` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_compare_mask(
+    pub unsafe fn set_scissor(
         &mut self,
-        face_mask: StencilFaces,
-        compare_mask: u32,
-    ) -> &mut Self {
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle(), face_mask.into(), compare_mask);
+        first_scissor: u32,
+        scissors: &[Scissor],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_scissor(first_scissor, scissors)?;
 
-        self
+        Ok(self.set_scissor_unchecked(first_scissor, scissors))
     }
 
-    /// Calls `vkCmdSetStencilOpEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_op(
-        &mut self,
-        face_mask: StencilFaces,
-        fail_op: StencilOp,
-        pass_op: StencilOp,
-        depth_fail_op: StencilOp,
-        compare_op: CompareOp,
-    ) -> &mut Self {
-        let fns = self.device().fns();
-
-        if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_stencil_op)(
-                self.handle(),
-                face_mask.into(),
-                fail_op.into(),
-                pass_op.into(),
-                depth_fail_op.into(),
-                compare_op.into(),
-            );
-        } else {
-            (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
-                self.handle(),
-                face_mask.into(),
-                fail_op.into(),
-                pass_op.into(),
-                depth_fail_op.into(),
-                compare_op.into(),
-            );
+    fn validate_set_scissor(
+        &self,
+        first_scissor: u32,
+        scissors: &[Scissor],
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetScissor-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
         }
 
-        self
-    }
+        let properties = self.device().physical_device().properties();
 
-    /// Calls `vkCmdSetStencilReference` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_reference(
-        &mut self,
-        face_mask: StencilFaces,
-        reference: u32,
-    ) -> &mut Self {
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_reference)(self.handle(), face_mask.into(), reference);
-
-        self
-    }
-
-    /// Calls `vkCmdSetStencilTestEnableEXT` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
-        let fns = self.device().fns();
-
-        if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_set_stencil_test_enable)(self.handle(), enable.into());
-        } else {
-            (fns.ext_extended_dynamic_state
-                .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into());
+        if first_scissor + scissors.len() as u32 > properties.max_viewports {
+            return Err(Box::new(ValidationError {
+                problem: "`first_scissor + scissors.len()` exceeds the `max_viewports` limit"
+                    .into(),
+                vuids: &["VUID-vkCmdSetScissor-firstScissor-00592"],
+                ..Default::default()
+            }));
         }
 
-        self
+        if !self.device().enabled_features().multi_viewport {
+            if first_scissor != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: "`first_scissor` is not 0".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
+                    vuids: &["VUID-vkCmdSetScissor-firstScissor-00593"],
+                    ..Default::default()
+                }));
+            }
+
+            if scissors.len() > 1 {
+                return Err(Box::new(ValidationError {
+                    problem: "`scissors.len()` is greater than 1".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
+                    vuids: &["VUID-vkCmdSetScissor-scissorCount-00594"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
     }
 
-    /// Calls `vkCmdSetStencilWriteMask` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_write_mask(
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_scissor_unchecked(
         &mut self,
-        face_mask: StencilFaces,
-        write_mask: u32,
+        first_scissor: u32,
+        scissors: &[Scissor],
     ) -> &mut Self {
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), face_mask.into(), write_mask);
-
-        self
-    }
-
-    /// Calls `vkCmdSetScissor` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor(&mut self, first_scissor: u32, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
             .iter()
             .map(ash::vk::Rect2D::from)
@@ -2566,10 +2438,72 @@ where
         self
     }
 
-    /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_scissor_with_count(&mut self, scissors: &[Scissor]) -> &mut Self {
+    pub unsafe fn set_scissor_with_count(
+        &mut self,
+        scissors: &[Scissor],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_scissor_with_count(scissors)?;
+
+        Ok(self.set_scissor_with_count_unchecked(scissors))
+    }
+
+    fn validate_set_scissor_with_count(
+        &self,
+        scissors: &[Scissor],
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetScissorWithCount-None-03396"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetScissorWithCount-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if scissors.len() as u32 > properties.max_viewports {
+            return Err(Box::new(ValidationError {
+                problem: "`scissors.len()` exceeds the `max_viewports` limit".into(),
+                vuids: &["VUID-vkCmdSetScissorWithCount-scissorCount-03397"],
+                ..Default::default()
+            }));
+        }
+
+        if !self.device().enabled_features().multi_viewport && scissors.len() > 1 {
+            return Err(Box::new(ValidationError {
+                problem: "`scissors.len()` is greater than 1".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_viewport",
+                )])]),
+                vuids: &["VUID-vkCmdSetScissorWithCount-scissorCount-03398"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_scissor_with_count_unchecked(&mut self, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
             .iter()
             .map(ash::vk::Rect2D::from)
@@ -2598,10 +2532,410 @@ where
         self
     }
 
-    /// Calls `vkCmdSetViewport` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
+    pub unsafe fn set_stencil_compare_mask(
+        &mut self,
+        faces: StencilFaces,
+        compare_mask: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_compare_mask(faces, compare_mask)?;
+
+        Ok(self.set_stencil_compare_mask_unchecked(faces, compare_mask))
+    }
+
+    fn validate_set_stencil_compare_mask(
+        &self,
+        faces: StencilFaces,
+        _compare_mask: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        faces
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "faces".into(),
+                vuids: &["VUID-vkCmdSetStencilCompareMask-faceMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_compare_mask_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        compare_mask: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_stencil_compare_mask)(self.handle(), faces.into(), compare_mask);
+
+        self
+    }
+
+    pub unsafe fn set_stencil_op(
+        &mut self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)?;
+
+        Ok(self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op))
+    }
+
+    fn validate_set_stencil_op(
+        &self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetStencilOp-None-03351"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetStencilOp-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        faces
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "faces".into(),
+                vuids: &["VUID-vkCmdSetStencilOp-faceMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        fail_op
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "fail_op".into(),
+                vuids: &["VUID-vkCmdSetStencilOp-failOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        pass_op
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "pass_op".into(),
+                vuids: &["VUID-vkCmdSetStencilOp-passOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        depth_fail_op
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "depth_fail_op".into(),
+                vuids: &["VUID-vkCmdSetStencilOp-depthFailOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        compare_op
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "compare_op".into(),
+                vuids: &["VUID-vkCmdSetStencilOp-compareOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_op_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_stencil_op)(
+                self.handle(),
+                faces.into(),
+                fail_op.into(),
+                pass_op.into(),
+                depth_fail_op.into(),
+                compare_op.into(),
+            );
+        } else {
+            (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
+                self.handle(),
+                faces.into(),
+                fail_op.into(),
+                pass_op.into(),
+                depth_fail_op.into(),
+                compare_op.into(),
+            );
+        }
+
+        self
+    }
+
+    pub unsafe fn set_stencil_reference(
+        &mut self,
+        faces: StencilFaces,
+        reference: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_reference(faces, reference)?;
+
+        Ok(self.set_stencil_reference_unchecked(faces, reference))
+    }
+
+    fn validate_set_stencil_reference(
+        &self,
+        faces: StencilFaces,
+        _reference: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetStencilReference-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        faces
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "faces".into(),
+                vuids: &["VUID-vkCmdSetStencilReference-faceMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_reference_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        reference: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_stencil_reference)(self.handle(), faces.into(), reference);
+
+        self
+    }
+
+    pub unsafe fn set_stencil_test_enable(
+        &mut self,
+        enable: bool,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_test_enable(enable)?;
+
+        Ok(self.set_stencil_test_enable_unchecked(enable))
+    }
+
+    fn validate_set_stencil_test_enable(&self, _enable: bool) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetStencilTestEnable-None-03350"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetStencilTestEnable-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_test_enable_unchecked(&mut self, enable: bool) -> &mut Self {
+        let fns = self.device().fns();
+
+        if self.device().api_version() >= Version::V1_3 {
+            (fns.v1_3.cmd_set_stencil_test_enable)(self.handle(), enable.into());
+        } else {
+            (fns.ext_extended_dynamic_state
+                .cmd_set_stencil_test_enable_ext)(self.handle(), enable.into());
+        }
+
+        self
+    }
+
+    pub unsafe fn set_stencil_write_mask(
+        &mut self,
+        faces: StencilFaces,
+        write_mask: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_stencil_write_mask(faces, write_mask)?;
+
+        Ok(self.set_stencil_write_mask_unchecked(faces, write_mask))
+    }
+
+    fn validate_set_stencil_write_mask(
+        &self,
+        faces: StencilFaces,
+        _write_mask: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        faces
+            .validate_device(self.device())
+            .map_err(|err| ValidationError {
+                context: "faces".into(),
+                vuids: &["VUID-vkCmdSetStencilWriteMask-faceMask-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_stencil_write_mask_unchecked(
+        &mut self,
+        faces: StencilFaces,
+        write_mask: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), faces.into(), write_mask);
+
+        self
+    }
+
     pub unsafe fn set_viewport(
+        &mut self,
+        first_viewport: u32,
+        viewports: &[Viewport],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_viewport(first_viewport, viewports)?;
+
+        Ok(self.set_viewport_unchecked(first_viewport, viewports))
+    }
+
+    fn validate_set_viewport(
+        &self,
+        first_viewport: u32,
+        viewports: &[Viewport],
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetViewport-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if first_viewport + viewports.len() as u32 > properties.max_viewports {
+            return Err(Box::new(ValidationError {
+                problem: "`first_viewport + viewports.len()` exceeds the `max_viewports` limit"
+                    .into(),
+                vuids: &["VUID-vkCmdSetViewport-firstViewport-01223"],
+                ..Default::default()
+            }));
+        }
+
+        if !self.device().enabled_features().multi_viewport {
+            if first_viewport != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: "`first_viewport` is not 0".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
+                    vuids: &["VUID-vkCmdSetViewport-firstViewport-01224"],
+                    ..Default::default()
+                }));
+            }
+
+            if viewports.len() > 1 {
+                return Err(Box::new(ValidationError {
+                    problem: "`viewports.len()` is greater than 1".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_viewport",
+                    )])]),
+                    vuids: &["VUID-vkCmdSetViewport-viewportCount-01225"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_viewport_unchecked(
         &mut self,
         first_viewport: u32,
         viewports: &[Viewport],
@@ -2625,10 +2959,75 @@ where
         self
     }
 
-    /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
-    ///
-    /// If the list is empty then the command is automatically ignored.
-    pub unsafe fn set_viewport_with_count(&mut self, viewports: &[Viewport]) -> &mut Self {
+    pub unsafe fn set_viewport_with_count(
+        &mut self,
+        viewports: &[Viewport],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_viewport_with_count(viewports)?;
+
+        Ok(self.set_viewport_with_count_unchecked(viewports))
+    }
+
+    fn validate_set_viewport_with_count(
+        &self,
+        viewports: &[Viewport],
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                ]),
+                vuids: &["VUID-vkCmdSetViewportWithCount-None-03393"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetViewportWithCount-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if viewports.len() as u32 > properties.max_viewports {
+            return Err(Box::new(ValidationError {
+                problem: "`viewports.len()` exceeds the `max_viewports` limit".into(),
+                vuids: &["VUID-vkCmdSetViewportWithCount-viewportCount-03394"],
+                ..Default::default()
+            }));
+        }
+
+        if viewports.len() > 1 && !self.device().enabled_features().multi_viewport {
+            return Err(Box::new(ValidationError {
+                problem: "`viewports.len()` is greater than 1".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "multi_viewport",
+                )])]),
+                vuids: &["VUID-vkCmdSetViewportWithCount-viewportCount-03395"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_viewport_with_count_unchecked(
+        &mut self,
+        viewports: &[Viewport],
+    ) -> &mut Self {
         let viewports = viewports
             .iter()
             .map(|v| v.into())
@@ -2655,100 +3054,5 @@ where
         }
 
         self
-    }
-}
-
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
-pub(in super::super) enum SetDynamicStateError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The provided `factor` is not between 1 and 256 inclusive.
-    FactorOutOfRange,
-
-    /// The [`max_discard_rectangles`](crate::device::Properties::max_discard_rectangles)
-    /// limit has been exceeded.
-    MaxDiscardRectanglesExceeded { provided: u32, max: u32 },
-
-    /// The [`max_tessellation_patch_size`](crate::device::Properties::max_tessellation_patch_size)
-    /// limit has been exceeded.
-    MaxTessellationPatchSizeExceeded { provided: u32, max: u32 },
-
-    /// The [`max_viewports`](crate::device::Properties::max_viewports)
-    /// limit has been exceeded.
-    MaxViewportsExceeded { provided: u32, max: u32 },
-
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
-
-    /// The provided item count is different from the number of attachments in the color blend
-    /// state of the currently bound pipeline.
-    PipelineColorBlendAttachmentCountMismatch {
-        provided_count: u32,
-        required_count: u32,
-    },
-
-    /// The currently bound pipeline contains this state as internally fixed state, which cannot be
-    /// overridden with dynamic state.
-    PipelineHasFixedState,
-}
-
-impl Error for SetDynamicStateError {}
-
-impl Display for SetDynamicStateError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::FactorOutOfRange => write!(
-                f,
-                "the provided `factor` is not between 1 and 256 inclusive",
-            ),
-            Self::MaxDiscardRectanglesExceeded { .. } => {
-                write!(f, "the `max_discard_rectangles` limit has been exceeded")
-            }
-            Self::MaxTessellationPatchSizeExceeded { .. } => write!(
-                f,
-                "the `max_tessellation_patch_size` limit has been exceeded",
-            ),
-            Self::MaxViewportsExceeded { .. } => {
-                write!(f, "the `max_viewports` limit has been exceeded")
-            }
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::PipelineColorBlendAttachmentCountMismatch {
-                provided_count,
-                required_count,
-            } => write!(
-                f,
-                "the provided item count ({}) is different from the number of attachments in the \
-                color blend state of the currently bound pipeline ({})",
-                provided_count, required_count,
-            ),
-            Self::PipelineHasFixedState => write!(
-                f,
-                "the currently bound pipeline contains this state as internally fixed state, which \
-                cannot be overridden with dynamic state",
-            ),
-        }
-    }
-}
-
-impl From<RequirementNotMet> for SetDynamicStateError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
     }
 }

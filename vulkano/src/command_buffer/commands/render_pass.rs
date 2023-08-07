@@ -15,27 +15,21 @@ use crate::{
             RenderPassStateType, Resource,
         },
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferLevel, ResourceInCommand, SubpassContents,
     },
-    device::{DeviceOwned, QueueFlags},
-    format::{ClearColorValue, ClearValue, Format, NumericType},
-    image::{view::ImageView, ImageAspect, ImageAspects, ImageLayout, ImageUsage, SampleCount},
+    device::{Device, DeviceOwned, QueueFlags},
+    format::{ClearColorValue, ClearValue, NumericType},
+    image::{view::ImageView, ImageAspects, ImageLayout, ImageUsage, SampleCount},
     pipeline::graphics::subpass::PipelineRenderingCreateInfo,
     render_pass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, Framebuffer, RenderPass,
         ResolveMode, SubpassDescription,
     },
     sync::PipelineStageAccessFlags,
-    RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Version, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{
-    cmp::min,
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
-    ops::Range,
-    sync::Arc,
-};
+use std::{cmp::min, ops::Range, sync::Arc};
 
 /// # Commands for render passes.
 ///
@@ -53,354 +47,27 @@ where
     pub fn begin_render_pass(
         &mut self,
         render_pass_begin_info: RenderPassBeginInfo,
-        contents: SubpassContents,
-    ) -> Result<&mut Self, RenderPassError> {
-        self.validate_begin_render_pass(&render_pass_begin_info, contents)?;
+        subpass_begin_info: SubpassBeginInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_begin_render_pass(&render_pass_begin_info, &subpass_begin_info)?;
 
-        unsafe {
-            self.begin_render_pass_unchecked(render_pass_begin_info, contents);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.begin_render_pass_unchecked(render_pass_begin_info, subpass_begin_info)) }
     }
 
     fn validate_begin_render_pass(
         &self,
         render_pass_begin_info: &RenderPassBeginInfo,
-        contents: SubpassContents,
-    ) -> Result<(), RenderPassError> {
-        let device = self.device();
+        subpass_begin_info: &SubpassBeginInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_begin_render_pass(render_pass_begin_info, subpass_begin_info)?;
 
-        // VUID-VkSubpassBeginInfo-contents-parameter
-        contents.validate_device(device)?;
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBeginRenderPass2-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(RenderPassError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdBeginRenderPass2-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(RenderPassError::ForbiddenInsideRenderPass);
-        }
-
-        let RenderPassBeginInfo {
-            render_pass,
-            framebuffer,
-            render_area_offset,
-            render_area_extent,
-            clear_values,
-            _ne: _,
-        } = render_pass_begin_info;
-
-        // VUID-VkRenderPassBeginInfo-commonparent
-        // VUID-vkCmdBeginRenderPass2-framebuffer-02779
-        assert_eq!(device, framebuffer.device());
-
-        // VUID-VkRenderPassBeginInfo-renderPass-00904
-        if !render_pass.is_compatible_with(framebuffer.render_pass()) {
-            return Err(RenderPassError::FramebufferNotCompatible);
-        }
-
-        for i in 0..2 {
-            // VUID-VkRenderPassBeginInfo-pNext-02852
-            // VUID-VkRenderPassBeginInfo-pNext-02853
-            if render_area_offset[i] + render_area_extent[i] > framebuffer.extent()[i] {
-                return Err(RenderPassError::RenderAreaOutOfBounds);
-            }
-        }
-
-        for (attachment_index, (attachment_desc, image_view)) in render_pass
-            .attachments()
-            .iter()
-            .zip(framebuffer.attachments())
-            .enumerate()
-        {
-            let attachment_index = attachment_index as u32;
-            let &AttachmentDescription {
-                initial_layout,
-                final_layout,
-                stencil_initial_layout,
-                stencil_final_layout,
-                ..
-            } = attachment_desc;
-
-            for layout in [
-                Some(initial_layout),
-                Some(final_layout),
-                stencil_initial_layout,
-                stencil_final_layout,
-            ]
-            .into_iter()
-            .flatten()
-            {
-                match layout {
-                    ImageLayout::ColorAttachmentOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03094
-                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index,
-                                usage: "color_attachment",
-                            });
-                        }
-                    }
-                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
-                    | ImageLayout::DepthStencilAttachmentOptimal
-                    | ImageLayout::DepthStencilReadOnlyOptimal
-                    | ImageLayout::DepthAttachmentOptimal
-                    | ImageLayout::DepthReadOnlyOptimal
-                    | ImageLayout::StencilAttachmentOptimal
-                    | ImageLayout::StencilReadOnlyOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03096
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-02844
-                        if !image_view
-                            .usage()
-                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                        {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index,
-                                usage: "depth_stencil_attachment",
-                            });
-                        }
-                    }
-                    ImageLayout::ShaderReadOnlyOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03097
-                        if !image_view
-                            .usage()
-                            .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-                        {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index,
-                                usage: "sampled or input_attachment",
-                            });
-                        }
-                    }
-                    ImageLayout::TransferSrcOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03098
-                        if !image_view.usage().intersects(ImageUsage::TRANSFER_SRC) {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index,
-                                usage: "transfer_src",
-                            });
-                        }
-                    }
-                    ImageLayout::TransferDstOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03099
-                        if !image_view.usage().intersects(ImageUsage::TRANSFER_DST) {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index,
-                                usage: "transfer_dst",
-                            });
-                        }
-                    }
-                    ImageLayout::Undefined
-                    | ImageLayout::General
-                    | ImageLayout::Preinitialized
-                    | ImageLayout::PresentSrc => (),
-                }
-            }
-        }
-
-        for subpass_desc in render_pass.subpasses() {
-            let SubpassDescription {
-                flags: _,
-                view_mask: _,
-                input_attachments,
-                color_attachments,
-                color_resolve_attachments,
-                depth_stencil_attachment,
-                depth_stencil_resolve_attachment,
-                depth_resolve_mode: _,
-                stencil_resolve_mode: _,
-                preserve_attachments: _,
-                _ne: _,
-            } = subpass_desc;
-
-            for atch_ref in (input_attachments.iter().flatten())
-                .chain(color_attachments.iter().flatten())
-                .chain(color_resolve_attachments.iter().flatten())
-                .chain(depth_stencil_attachment.iter())
-                .chain(depth_stencil_resolve_attachment.iter())
-            {
-                let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
-
-                match atch_ref.layout {
-                    ImageLayout::ColorAttachmentOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03094
-                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index: atch_ref.attachment,
-                                usage: "color_attachment",
-                            });
-                        }
-                    }
-                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
-                    | ImageLayout::DepthStencilAttachmentOptimal
-                    | ImageLayout::DepthStencilReadOnlyOptimal
-                    | ImageLayout::DepthAttachmentOptimal
-                    | ImageLayout::DepthReadOnlyOptimal
-                    | ImageLayout::StencilAttachmentOptimal
-                    | ImageLayout::StencilReadOnlyOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03096
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-02844
-                        if !image_view
-                            .usage()
-                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                        {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index: atch_ref.attachment,
-                                usage: "depth_stencil_attachment",
-                            });
-                        }
-                    }
-                    ImageLayout::ShaderReadOnlyOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03097
-                        if !image_view
-                            .usage()
-                            .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-                        {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index: atch_ref.attachment,
-                                usage: "sampled or input_attachment",
-                            });
-                        }
-                    }
-                    ImageLayout::TransferSrcOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03098
-                        if !image_view.usage().intersects(ImageUsage::TRANSFER_SRC) {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index: atch_ref.attachment,
-                                usage: "transfer_src",
-                            });
-                        }
-                    }
-                    ImageLayout::TransferDstOptimal => {
-                        // VUID-vkCmdBeginRenderPass2-initialLayout-03099
-                        if !image_view.usage().intersects(ImageUsage::TRANSFER_DST) {
-                            return Err(RenderPassError::AttachmentImageMissingUsage {
-                                attachment_index: atch_ref.attachment,
-                                usage: "transfer_dst",
-                            });
-                        }
-                    }
-                    ImageLayout::Undefined
-                    | ImageLayout::General
-                    | ImageLayout::Preinitialized
-                    | ImageLayout::PresentSrc => (),
-                }
-            }
-        }
-
-        // VUID-VkRenderPassBeginInfo-clearValueCount-00902
-        if clear_values.len() < render_pass.attachments().len() {
-            return Err(RenderPassError::ClearValueMissing {
-                attachment_index: clear_values.len() as u32,
-            });
-        }
-
-        // VUID-VkRenderPassBeginInfo-clearValueCount-04962
-        for (attachment_index, (attachment_desc, &clear_value)) in render_pass
-            .attachments()
-            .iter()
-            .zip(clear_values)
-            .enumerate()
-        {
-            let attachment_index = attachment_index as u32;
-            let attachment_format = attachment_desc.format;
-
-            if attachment_desc.load_op == AttachmentLoadOp::Clear
-                || attachment_desc
-                    .stencil_load_op
-                    .unwrap_or(attachment_desc.load_op)
-                    == AttachmentLoadOp::Clear
-            {
-                let clear_value = match clear_value {
-                    Some(x) => x,
-                    None => return Err(RenderPassError::ClearValueMissing { attachment_index }),
-                };
-
-                if let (Some(numeric_type), AttachmentLoadOp::Clear) =
-                    (attachment_format.type_color(), attachment_desc.load_op)
-                {
-                    match numeric_type {
-                        NumericType::SFLOAT
-                        | NumericType::UFLOAT
-                        | NumericType::SNORM
-                        | NumericType::UNORM
-                        | NumericType::SSCALED
-                        | NumericType::USCALED
-                        | NumericType::SRGB => {
-                            if !matches!(clear_value, ClearValue::Float(_)) {
-                                return Err(RenderPassError::ClearValueNotCompatible {
-                                    clear_value,
-                                    attachment_index,
-                                    attachment_format,
-                                });
-                            }
-                        }
-                        NumericType::SINT => {
-                            if !matches!(clear_value, ClearValue::Int(_)) {
-                                return Err(RenderPassError::ClearValueNotCompatible {
-                                    clear_value,
-                                    attachment_index,
-                                    attachment_format,
-                                });
-                            }
-                        }
-                        NumericType::UINT => {
-                            if !matches!(clear_value, ClearValue::Uint(_)) {
-                                return Err(RenderPassError::ClearValueNotCompatible {
-                                    clear_value,
-                                    attachment_index,
-                                    attachment_format,
-                                });
-                            }
-                        }
-                    }
-                } else {
-                    let attachment_aspects = attachment_format.aspects();
-                    let need_depth = attachment_aspects.intersects(ImageAspects::DEPTH)
-                        && attachment_desc.load_op == AttachmentLoadOp::Clear;
-                    let need_stencil = attachment_aspects.intersects(ImageAspects::STENCIL)
-                        && attachment_desc
-                            .stencil_load_op
-                            .unwrap_or(attachment_desc.load_op)
-                            == AttachmentLoadOp::Clear;
-
-                    if need_depth && need_stencil {
-                        if !matches!(clear_value, ClearValue::DepthStencil(_)) {
-                            return Err(RenderPassError::ClearValueNotCompatible {
-                                clear_value,
-                                attachment_index,
-                                attachment_format,
-                            });
-                        }
-                    } else if need_depth {
-                        if !matches!(clear_value, ClearValue::Depth(_)) {
-                            return Err(RenderPassError::ClearValueNotCompatible {
-                                clear_value,
-                                attachment_index,
-                                attachment_format,
-                            });
-                        }
-                    } else if need_stencil {
-                        if !matches!(clear_value, ClearValue::Stencil(_)) {
-                            return Err(RenderPassError::ClearValueNotCompatible {
-                                clear_value,
-                                attachment_index,
-                                attachment_format,
-                            });
-                        }
-                    }
-                }
-            }
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is already active".into(),
+                vuids: &["VUID-vkCmdBeginRenderPass2-renderpass"],
+                ..Default::default()
+            }));
         }
 
         // VUID-vkCmdBeginRenderPass2-initialLayout-03100
@@ -423,7 +90,7 @@ where
     pub unsafe fn begin_render_pass_unchecked(
         &mut self,
         render_pass_begin_info: RenderPassBeginInfo,
-        contents: SubpassContents,
+        subpass_begin_info: SubpassBeginInfo,
     ) -> &mut Self {
         let &RenderPassBeginInfo {
             ref render_pass,
@@ -436,7 +103,7 @@ where
 
         let subpass = render_pass.clone().first_subpass();
         self.builder_state.render_pass = Some(RenderPassState {
-            contents,
+            contents: subpass_begin_info.contents,
             render_area_offset,
             render_area_extent,
 
@@ -483,7 +150,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_render_pass(&render_pass_begin_info, contents);
+                out.begin_render_pass_unchecked(&render_pass_begin_info, &subpass_begin_info);
             },
         );
 
@@ -493,68 +160,75 @@ where
     /// Advances to the next subpass of the render pass previously begun with `begin_render_pass`.
     pub fn next_subpass(
         &mut self,
-        contents: SubpassContents,
-    ) -> Result<&mut Self, RenderPassError> {
-        self.validate_next_subpass(contents)?;
+        subpass_end_info: SubpassEndInfo,
+        subpass_begin_info: SubpassBeginInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_next_subpass(&subpass_end_info, &subpass_begin_info)?;
 
-        unsafe {
-            self.next_subpass_unchecked(contents);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.next_subpass_unchecked(subpass_end_info, subpass_begin_info)) }
     }
 
-    fn validate_next_subpass(&self, contents: SubpassContents) -> Result<(), RenderPassError> {
-        let device = self.device();
+    fn validate_next_subpass(
+        &self,
+        subpass_end_info: &SubpassEndInfo,
+        subpass_begin_info: &SubpassBeginInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_next_subpass(subpass_end_info, subpass_begin_info)?;
 
-        // VUID-VkSubpassBeginInfo-contents-parameter
-        contents.validate_device(device)?;
-
-        // VUID-vkCmdNextSubpass2-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &["VUID-vkCmdNextSubpass2-renderpass"],
+                    ..Default::default()
+                }))?;
 
         let begin_render_pass_state = match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(state) => state,
             RenderPassStateType::BeginRendering(_) => {
-                return Err(RenderPassError::ForbiddenWithBeginRendering)
+                return Err(Box::new(ValidationError {
+                    problem: "the current render pass instance was not begun with \
+                        `begin_render_pass`"
+                        .into(),
+                    // vuids?
+                    ..Default::default()
+                }));
             }
         };
 
-        // VUID-vkCmdNextSubpass2-None-03102
         if begin_render_pass_state.subpass.is_last_subpass() {
-            return Err(RenderPassError::NoSubpassesRemaining {
-                current_subpass: begin_render_pass_state.subpass.index(),
-            });
+            return Err(Box::new(ValidationError {
+                problem: "the current subpass is the last subpass of the render pass".into(),
+                vuids: &["VUID-vkCmdNextSubpass2-None-03102"],
+                ..Default::default()
+            }));
         }
 
-        // VUID?
         if self
             .builder_state
             .queries
             .values()
             .any(|state| state.in_subpass)
         {
-            return Err(RenderPassError::QueryIsActive);
+            return Err(Box::new(ValidationError {
+                problem: "a query that was begun in the current subpass is still active".into(),
+                // vuids?
+                ..Default::default()
+            }));
         }
-
-        // VUID-vkCmdNextSubpass2-commandBuffer-cmdpool
-        debug_assert!(self
-            .queue_family_properties()
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS));
-
-        // VUID-vkCmdNextSubpass2-bufferlevel
-        // Ensured by the type of the impl block
 
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn next_subpass_unchecked(&mut self, contents: SubpassContents) -> &mut Self {
+    pub unsafe fn next_subpass_unchecked(
+        &mut self,
+        subpass_end_info: SubpassEndInfo,
+        subpass_begin_info: SubpassBeginInfo,
+    ) -> &mut Self {
         let render_pass_state = self.builder_state.render_pass.as_mut().unwrap();
         let begin_render_pass_state = match &mut render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(x) => x,
@@ -562,7 +236,7 @@ where
         };
 
         begin_render_pass_state.subpass.next_subpass();
-        render_pass_state.contents = contents;
+        render_pass_state.contents = subpass_begin_info.contents;
         render_pass_state.rendering_info =
             PipelineRenderingCreateInfo::from_subpass(&begin_render_pass_state.subpass);
         render_pass_state.attachments = Some(RenderPassStateAttachments::from_subpass(
@@ -580,7 +254,7 @@ where
             "next_subpass",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.next_subpass(contents);
+                out.next_subpass_unchecked(&subpass_end_info, &subpass_begin_info);
             },
         );
 
@@ -590,75 +264,80 @@ where
     /// Ends the render pass previously begun with `begin_render_pass`.
     ///
     /// This must be called after you went through all the subpasses.
-    pub fn end_render_pass(&mut self) -> Result<&mut Self, RenderPassError> {
-        self.validate_end_render_pass()?;
+    pub fn end_render_pass(
+        &mut self,
+        subpass_end_info: SubpassEndInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_end_render_pass(&subpass_end_info)?;
 
-        unsafe {
-            self.end_render_pass_unchecked();
-        }
-
-        Ok(self)
+        unsafe { Ok(self.end_render_pass_unchecked(subpass_end_info)) }
     }
 
-    fn validate_end_render_pass(&self) -> Result<(), RenderPassError> {
-        // VUID-vkCmdEndRenderPass2-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
+    fn validate_end_render_pass(
+        &self,
+        subpass_end_info: &SubpassEndInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_end_render_pass(subpass_end_info)?;
+
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &["VUID-vkCmdEndRenderPass2-renderpass"],
+                    ..Default::default()
+                }))?;
 
         let begin_render_pass_state = match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(state) => state,
             RenderPassStateType::BeginRendering(_) => {
-                return Err(RenderPassError::ForbiddenWithBeginRendering)
+                return Err(Box::new(ValidationError {
+                    problem: "the current render pass instance was not begun with \
+                        `begin_render_pass`"
+                        .into(),
+                    vuids: &["VUID-vkCmdEndRenderPass2-None-06171"],
+                    ..Default::default()
+                }));
             }
         };
 
-        // VUID-vkCmdEndRenderPass2-None-03103
         if !begin_render_pass_state.subpass.is_last_subpass() {
-            return Err(RenderPassError::SubpassesRemaining {
-                current_subpass: begin_render_pass_state.subpass.index(),
-                remaining_subpasses: begin_render_pass_state
-                    .subpass
-                    .render_pass()
-                    .subpasses()
-                    .len() as u32
-                    - begin_render_pass_state.subpass.index(),
-            });
+            return Err(Box::new(ValidationError {
+                problem: "the current subpass is not the last subpass of the render pass".into(),
+                vuids: &["VUID-vkCmdEndRenderPass2-None-03103"],
+                ..Default::default()
+            }));
         }
 
-        // VUID?
         if self
             .builder_state
             .queries
             .values()
             .any(|state| state.in_subpass)
         {
-            return Err(RenderPassError::QueryIsActive);
+            return Err(Box::new(ValidationError {
+                problem: "a query that was begun in the current subpass is still active".into(),
+                vuids: &["VUID-vkCmdEndRenderPass2-None-07005"],
+                ..Default::default()
+            }));
         }
-
-        // VUID-vkCmdEndRenderPass2-commandBuffer-cmdpool
-        debug_assert!(self
-            .queue_family_properties()
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS));
-
-        // VUID-vkCmdEndRenderPass2-bufferlevel
-        // Ensured by the type of the impl block
 
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn end_render_pass_unchecked(&mut self) -> &mut Self {
+    pub unsafe fn end_render_pass_unchecked(
+        &mut self,
+        subpass_end_info: SubpassEndInfo,
+    ) -> &mut Self {
         self.builder_state.render_pass = None;
 
         self.add_render_pass_end(
             "end_render_pass",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.end_render_pass();
+                out.end_render_pass_unchecked(&subpass_end_info);
             },
         );
 
@@ -676,655 +355,37 @@ where
     pub fn begin_rendering(
         &mut self,
         mut rendering_info: RenderingInfo,
-    ) -> Result<&mut Self, RenderPassError> {
-        rendering_info.set_extent_layers()?;
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        rendering_info.set_auto_extent_layers();
         self.validate_begin_rendering(&rendering_info)?;
 
-        unsafe {
-            self.begin_rendering_unchecked(rendering_info);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.begin_rendering_unchecked(rendering_info)) }
     }
 
     fn validate_begin_rendering(
         &self,
         rendering_info: &RenderingInfo,
-    ) -> Result<(), RenderPassError> {
-        let device = self.device();
-        let properties = device.physical_device().properties();
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_begin_rendering(rendering_info)?;
 
-        // VUID-vkCmdBeginRendering-dynamicRendering-06446
-        if !device.enabled_features().dynamic_rendering {
-            return Err(RenderPassError::RequirementNotMet {
-                required_for: "`AutoCommandBufferBuilder::begin_rendering`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "dynamic_rendering",
-                )])]),
-            });
-        }
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBeginRendering-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(RenderPassError::NotSupportedByQueueFamily);
-        }
-
-        // VUID-vkCmdBeginRendering-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(RenderPassError::ForbiddenInsideRenderPass);
-        }
-
-        let &RenderingInfo {
-            render_area_offset,
-            render_area_extent,
-            layer_count,
-            view_mask,
-            ref color_attachments,
-            ref depth_attachment,
-            ref stencil_attachment,
-            contents,
-            _ne: _,
-        } = rendering_info;
-
-        // VUID-VkRenderingInfo-flags-parameter
-        contents.validate_device(device)?;
-
-        // VUID-vkCmdBeginRendering-commandBuffer-06068
-        if self.inner.inheritance_info().is_some()
-            && contents == SubpassContents::SecondaryCommandBuffers
-        {
-            return Err(RenderPassError::ContentsForbiddenInSecondaryCommandBuffer);
-        }
-
-        // No VUID, but for sanity it makes sense to treat this the same as in framebuffers.
-        if view_mask != 0 && layer_count != 1 {
-            return Err(RenderPassError::MultiviewLayersInvalid);
-        }
-
-        // VUID-VkRenderingInfo-multiview-06127
-        if view_mask != 0 && !device.enabled_features().multiview {
-            return Err(RenderPassError::RequirementNotMet {
-                required_for: "`rendering_info.viewmask` is not `0`",
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
-            });
-        }
-
-        let view_count = u32::BITS - view_mask.leading_zeros();
-
-        // VUID-VkRenderingInfo-viewMask-06128
-        if view_count > properties.max_multiview_view_count.unwrap_or(0) {
-            return Err(RenderPassError::MaxMultiviewViewCountExceeded {
-                view_count,
-                max: properties.max_multiview_view_count.unwrap_or(0),
-            });
-        }
-
-        let mut samples = None;
-
-        // VUID-VkRenderingInfo-colorAttachmentCount-06106
-        if color_attachments.len() > properties.max_color_attachments as usize {
-            return Err(RenderPassError::MaxColorAttachmentsExceeded {
-                color_attachment_count: color_attachments.len() as u32,
-                max: properties.max_color_attachments,
-            });
-        }
-
-        for (attachment_index, attachment_info) in
-            color_attachments
-                .iter()
-                .enumerate()
-                .filter_map(|(index, attachment_info)| {
-                    attachment_info
-                        .as_ref()
-                        .map(|attachment_info| (index, attachment_info))
-                })
-        {
-            let attachment_index = attachment_index as u32;
-            let RenderingAttachmentInfo {
-                image_view,
-                image_layout,
-                resolve_info,
-                load_op,
-                store_op,
-                clear_value: _,
-                _ne: _,
-            } = attachment_info;
-
-            // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
-            image_layout.validate_device(device)?;
-
-            // VUID-VkRenderingAttachmentInfo-loadOp-parameter
-            load_op.validate_device(device)?;
-
-            // VUID-VkRenderingAttachmentInfo-storeOp-parameter
-            store_op.validate_device(device)?;
-
-            // VUID-VkRenderingInfo-colorAttachmentCount-06087
-            if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
-                return Err(RenderPassError::ColorAttachmentMissingUsage { attachment_index });
-            }
-
-            let image = image_view.image();
-            let image_extent = image.extent();
-
-            for i in 0..2 {
-                // VUID-VkRenderingInfo-pNext-06079
-                // VUID-VkRenderingInfo-pNext-06080
-                if render_area_offset[i] + render_area_extent[i] > image_extent[i] {
-                    return Err(RenderPassError::RenderAreaOutOfBounds);
-                }
-            }
-
-            // VUID-VkRenderingInfo-imageView-06070
-            match samples {
-                Some(samples) if samples == image.samples() => (),
-                Some(_) => {
-                    return Err(RenderPassError::ColorAttachmentSamplesMismatch {
-                        attachment_index,
-                    });
-                }
-                None => samples = Some(image.samples()),
-            }
-
-            // VUID-VkRenderingAttachmentInfo-imageView-06135
-            // VUID-VkRenderingAttachmentInfo-imageView-06145
-            if matches!(
-                image_layout,
-                ImageLayout::Undefined
-                    | ImageLayout::ShaderReadOnlyOptimal
-                    | ImageLayout::TransferSrcOptimal
-                    | ImageLayout::TransferDstOptimal
-                    | ImageLayout::Preinitialized
-                    | ImageLayout::PresentSrc
-            ) {
-                return Err(RenderPassError::ColorAttachmentLayoutInvalid { attachment_index });
-            }
-
-            // VUID-VkRenderingInfo-colorAttachmentCount-06090
-            // VUID-VkRenderingInfo-colorAttachmentCount-06096
-            // VUID-VkRenderingInfo-colorAttachmentCount-06100
-            if matches!(
-                image_layout,
-                ImageLayout::DepthStencilAttachmentOptimal
-                    | ImageLayout::DepthStencilReadOnlyOptimal
-                    | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
-                    | ImageLayout::DepthAttachmentOptimal
-                    | ImageLayout::DepthReadOnlyOptimal
-                    | ImageLayout::StencilAttachmentOptimal
-                    | ImageLayout::StencilReadOnlyOptimal
-            ) {
-                return Err(RenderPassError::ColorAttachmentLayoutInvalid { attachment_index });
-            }
-
-            if let Some(resolve_info) = resolve_info {
-                let &RenderingAttachmentResolveInfo {
-                    mode,
-                    image_view: ref resolve_image_view,
-                    image_layout: resolve_image_layout,
-                } = resolve_info;
-
-                // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
-                resolve_image_layout.validate_device(device)?;
-
-                // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
-                mode.validate_device(device)?;
-
-                let resolve_image = resolve_image_view.image();
-
-                match image_view.format().type_color().unwrap() {
-                    NumericType::SFLOAT
-                    | NumericType::UFLOAT
-                    | NumericType::SNORM
-                    | NumericType::UNORM
-                    | NumericType::SSCALED
-                    | NumericType::USCALED
-                    | NumericType::SRGB => {
-                        // VUID-VkRenderingAttachmentInfo-imageView-06129
-                        if mode != ResolveMode::Average {
-                            return Err(RenderPassError::ColorAttachmentResolveModeNotSupported {
-                                attachment_index,
-                            });
-                        }
-                    }
-                    NumericType::SINT | NumericType::UINT => {
-                        // VUID-VkRenderingAttachmentInfo-imageView-06130
-                        if mode != ResolveMode::SampleZero {
-                            return Err(RenderPassError::ColorAttachmentResolveModeNotSupported {
-                                attachment_index,
-                            });
-                        }
-                    }
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06132
-                if image.samples() == SampleCount::Sample1 {
-                    return Err(RenderPassError::ColorAttachmentWithResolveNotMultisampled {
-                        attachment_index,
-                    });
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06133
-                if resolve_image.samples() != SampleCount::Sample1 {
-                    return Err(RenderPassError::ColorAttachmentResolveMultisampled {
-                        attachment_index,
-                    });
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06134
-                if image_view.format() != resolve_image_view.format() {
-                    return Err(RenderPassError::ColorAttachmentResolveFormatMismatch {
-                        attachment_index,
-                    });
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06136
-                // VUID-VkRenderingAttachmentInfo-imageView-06146
-                if matches!(
-                    resolve_image_layout,
-                    ImageLayout::Undefined
-                        | ImageLayout::ShaderReadOnlyOptimal
-                        | ImageLayout::TransferSrcOptimal
-                        | ImageLayout::TransferDstOptimal
-                        | ImageLayout::Preinitialized
-                        | ImageLayout::PresentSrc
-                ) {
-                    return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
-                        attachment_index,
-                    });
-                }
-
-                // VUID-VkRenderingInfo-colorAttachmentCount-06091
-                // VUID-VkRenderingInfo-colorAttachmentCount-06097
-                // VUID-VkRenderingInfo-colorAttachmentCount-06101
-                if matches!(
-                    resolve_image_layout,
-                    ImageLayout::DepthStencilAttachmentOptimal
-                        | ImageLayout::DepthStencilReadOnlyOptimal
-                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
-                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
-                        | ImageLayout::DepthAttachmentOptimal
-                        | ImageLayout::DepthReadOnlyOptimal
-                        | ImageLayout::StencilAttachmentOptimal
-                        | ImageLayout::StencilReadOnlyOptimal
-                ) {
-                    return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
-                        attachment_index,
-                    });
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06136
-                if !resolve_image_layout.is_writable(ImageAspect::Color) {
-                    return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
-                        attachment_index,
-                    });
-                }
-            }
-        }
-
-        if let Some(attachment_info) = depth_attachment {
-            let RenderingAttachmentInfo {
-                image_view,
-                image_layout,
-                resolve_info,
-                load_op,
-                store_op,
-                clear_value: _,
-                _ne: _,
-            } = attachment_info;
-
-            // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
-            image_layout.validate_device(device)?;
-
-            // VUID-VkRenderingAttachmentInfo-loadOp-parameter
-            load_op.validate_device(device)?;
-
-            // VUID-VkRenderingAttachmentInfo-storeOp-parameter
-            store_op.validate_device(device)?;
-
-            let image_aspects = image_view.format().aspects();
-
-            // VUID-VkRenderingInfo-pDepthAttachment-06547
-            if !image_aspects.intersects(ImageAspects::DEPTH) {
-                return Err(RenderPassError::DepthAttachmentFormatUsageNotSupported);
-            }
-
-            // VUID-VkRenderingInfo-pDepthAttachment-06088
-            if !image_view
-                .usage()
-                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-            {
-                return Err(RenderPassError::DepthAttachmentMissingUsage);
-            }
-
-            let image = image_view.image();
-            let image_extent = image.extent();
-
-            for i in 0..2 {
-                // VUID-VkRenderingInfo-pNext-06079
-                // VUID-VkRenderingInfo-pNext-06080
-                if render_area_offset[i] + render_area_extent[i] > image_extent[i] {
-                    return Err(RenderPassError::RenderAreaOutOfBounds);
-                }
-            }
-
-            // VUID-VkRenderingInfo-imageView-06070
-            match samples {
-                Some(samples) if samples == image.samples() => (),
-                Some(_) => {
-                    return Err(RenderPassError::DepthAttachmentSamplesMismatch);
-                }
-                None => samples = Some(image.samples()),
-            }
-
-            // VUID-VkRenderingAttachmentInfo-imageView-06135
-            // VUID-VkRenderingAttachmentInfo-imageView-06145
-            if matches!(
-                image_layout,
-                ImageLayout::Undefined
-                    | ImageLayout::ShaderReadOnlyOptimal
-                    | ImageLayout::TransferSrcOptimal
-                    | ImageLayout::TransferDstOptimal
-                    | ImageLayout::Preinitialized
-                    | ImageLayout::PresentSrc
-            ) {
-                return Err(RenderPassError::DepthAttachmentLayoutInvalid);
-            }
-
-            // VUID-VkRenderingInfo-pDepthAttachment-06092
-            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
-                return Err(RenderPassError::DepthAttachmentLayoutInvalid);
-            }
-
-            if let Some(resolve_info) = resolve_info {
-                let &RenderingAttachmentResolveInfo {
-                    mode,
-                    image_view: ref resolve_image_view,
-                    image_layout: resolve_image_layout,
-                } = resolve_info;
-
-                // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
-                resolve_image_layout.validate_device(device)?;
-
-                // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
-                mode.validate_device(device)?;
-
-                // VUID-VkRenderingInfo-pDepthAttachment-06102
-                if !properties
-                    .supported_depth_resolve_modes
-                    .map_or(false, |modes| modes.contains_enum(mode))
-                {
-                    return Err(RenderPassError::DepthAttachmentResolveModeNotSupported);
-                }
-
-                let resolve_image = resolve_image_view.image();
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06132
-                if image.samples() == SampleCount::Sample1 {
-                    return Err(RenderPassError::DepthAttachmentWithResolveNotMultisampled);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06133
-                if resolve_image.samples() != SampleCount::Sample1 {
-                    return Err(RenderPassError::DepthAttachmentResolveMultisampled);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06134
-                if image_view.format() != resolve_image_view.format() {
-                    return Err(RenderPassError::DepthAttachmentResolveFormatMismatch);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06136
-                // VUID-VkRenderingAttachmentInfo-imageView-06146
-                if matches!(
-                    resolve_image_layout,
-                    ImageLayout::Undefined
-                        | ImageLayout::ShaderReadOnlyOptimal
-                        | ImageLayout::TransferSrcOptimal
-                        | ImageLayout::TransferDstOptimal
-                        | ImageLayout::Preinitialized
-                        | ImageLayout::PresentSrc
-                ) {
-                    return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
-                }
-
-                // VUID-VkRenderingInfo-pDepthAttachment-06093
-                if matches!(resolve_image_layout, ImageLayout::ColorAttachmentOptimal) {
-                    return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06136
-                // VUID-VkRenderingAttachmentInfo-imageView-06137
-                // VUID-VkRenderingInfo-pDepthAttachment-06098
-                if !resolve_image_layout.is_writable(ImageAspect::Depth) {
-                    return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
-                }
-            }
-        }
-
-        if let Some(attachment_info) = stencil_attachment {
-            let RenderingAttachmentInfo {
-                image_view,
-                image_layout,
-                resolve_info,
-                load_op,
-                store_op,
-                clear_value: _,
-                _ne: _,
-            } = attachment_info;
-
-            // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
-            image_layout.validate_device(device)?;
-
-            // VUID-VkRenderingAttachmentInfo-loadOp-parameter
-            load_op.validate_device(device)?;
-
-            // VUID-VkRenderingAttachmentInfo-storeOp-parameter
-            store_op.validate_device(device)?;
-
-            let image_aspects = image_view.format().aspects();
-
-            // VUID-VkRenderingInfo-pStencilAttachment-06548
-            if !image_aspects.intersects(ImageAspects::STENCIL) {
-                return Err(RenderPassError::StencilAttachmentFormatUsageNotSupported);
-            }
-
-            // VUID-VkRenderingInfo-pStencilAttachment-06089
-            if !image_view
-                .usage()
-                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-            {
-                return Err(RenderPassError::StencilAttachmentMissingUsage);
-            }
-
-            let image = image_view.image();
-            let image_extent = image.extent();
-
-            for i in 0..2 {
-                // VUID-VkRenderingInfo-pNext-06079
-                // VUID-VkRenderingInfo-pNext-06080
-                if render_area_offset[i] + render_area_extent[i] > image_extent[i] {
-                    return Err(RenderPassError::RenderAreaOutOfBounds);
-                }
-            }
-
-            // VUID-VkRenderingInfo-imageView-06070
-            match samples {
-                Some(samples) if samples == image.samples() => (),
-                Some(_) => {
-                    return Err(RenderPassError::StencilAttachmentSamplesMismatch);
-                }
-                None => (),
-            }
-
-            // VUID-VkRenderingAttachmentInfo-imageView-06135
-            // VUID-VkRenderingAttachmentInfo-imageView-06145
-            if matches!(
-                image_layout,
-                ImageLayout::Undefined
-                    | ImageLayout::ShaderReadOnlyOptimal
-                    | ImageLayout::TransferSrcOptimal
-                    | ImageLayout::TransferDstOptimal
-                    | ImageLayout::Preinitialized
-                    | ImageLayout::PresentSrc
-            ) {
-                return Err(RenderPassError::StencilAttachmentLayoutInvalid);
-            }
-
-            // VUID-VkRenderingInfo-pStencilAttachment-06094
-            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
-                return Err(RenderPassError::StencilAttachmentLayoutInvalid);
-            }
-
-            if let Some(resolve_info) = resolve_info {
-                let &RenderingAttachmentResolveInfo {
-                    mode,
-                    image_view: ref resolve_image_view,
-                    image_layout: resolve_image_layout,
-                } = resolve_info;
-
-                // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
-                resolve_image_layout.validate_device(device)?;
-
-                // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
-                mode.validate_device(device)?;
-
-                // VUID-VkRenderingInfo-pStencilAttachment-06103
-                if !properties
-                    .supported_stencil_resolve_modes
-                    .map_or(false, |modes| modes.contains_enum(mode))
-                {
-                    return Err(RenderPassError::StencilAttachmentResolveModeNotSupported);
-                }
-
-                let resolve_image = resolve_image_view.image();
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06132
-                if image.samples() == SampleCount::Sample1 {
-                    return Err(RenderPassError::StencilAttachmentWithResolveNotMultisampled);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06133
-                if resolve_image.samples() != SampleCount::Sample1 {
-                    return Err(RenderPassError::StencilAttachmentResolveMultisampled);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06134
-                if image_view.format() != resolve_image_view.format() {
-                    return Err(RenderPassError::StencilAttachmentResolveFormatMismatch);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06136
-                // VUID-VkRenderingAttachmentInfo-imageView-06146
-                if matches!(
-                    resolve_image_layout,
-                    ImageLayout::Undefined
-                        | ImageLayout::ShaderReadOnlyOptimal
-                        | ImageLayout::TransferSrcOptimal
-                        | ImageLayout::TransferDstOptimal
-                        | ImageLayout::Preinitialized
-                        | ImageLayout::PresentSrc
-                ) {
-                    return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
-                }
-
-                // VUID-VkRenderingInfo-pStencilAttachment-06095
-                if matches!(resolve_image_layout, ImageLayout::ColorAttachmentOptimal) {
-                    return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
-                }
-
-                // VUID-VkRenderingAttachmentInfo-imageView-06136
-                // VUID-VkRenderingAttachmentInfo-imageView-06137
-                // VUID-VkRenderingInfo-pStencilAttachment-06099
-                if !resolve_image_layout.is_writable(ImageAspect::Stencil) {
-                    return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
-                }
-            }
-        }
-
-        if let (Some(depth_attachment_info), Some(stencil_attachment_info)) =
-            (depth_attachment, stencil_attachment)
-        {
-            // VUID-VkRenderingInfo-pDepthAttachment-06085
-            if &depth_attachment_info.image_view != &stencil_attachment_info.image_view {
-                return Err(RenderPassError::DepthStencilAttachmentImageViewMismatch);
-            }
-
-            if depth_attachment_info.image_layout != stencil_attachment_info.image_layout
-                && !device.enabled_features().separate_depth_stencil_layouts
-            {
-                return Err(RenderPassError::RequirementNotMet {
-                    required_for: "`rendering_info.depth_attachment` and \
-                        `rendering_info.stencil_attachment` are both \
-                        `Some`, and `rendering_info.depth_attachment.image_layout` does not \
-                        equal `rendering_info.stencil_attachment.attachment_ref.layout`",
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "separate_depth_stencil_layouts",
-                    )])]),
-                });
-            }
-
-            match (
-                &depth_attachment_info.resolve_info,
-                &stencil_attachment_info.resolve_info,
-            ) {
-                (None, None) => (),
-                (None, Some(_)) | (Some(_), None) => {
-                    // VUID-VkRenderingInfo-pDepthAttachment-06104
-                    if !properties.independent_resolve_none.unwrap_or(false) {
-                        return Err(
-                            RenderPassError::DepthStencilAttachmentResolveModesNotSupported,
-                        );
-                    }
-                }
-                (Some(depth_resolve_info), Some(stencil_resolve_info)) => {
-                    if depth_resolve_info.image_layout != stencil_resolve_info.image_layout
-                        && !device.enabled_features().separate_depth_stencil_layouts
-                    {
-                        return Err(RenderPassError::RequirementNotMet {
-                            required_for: "`rendering_info.depth_attachment` and \
-                                `rendering_info.stencil_attachment` are both `Some`, and \
-                                `rendering_info.depth_attachment.resolve_info` and \
-                                `rendering_info.stencil_attachment.resolve_info` are also both \
-                                `Some`, and \
-                                `rendering_info.depth_attachment.resolve_info.image_layout` \
-                                does not equal \
-                                `rendering_info.stencil_attachment.resolve_info.image_layout`",
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "separate_depth_stencil_layouts",
-                            )])]),
-                        });
-                    }
-
-                    // VUID-VkRenderingInfo-pDepthAttachment-06105
-                    if !properties.independent_resolve.unwrap_or(false)
-                        && depth_resolve_info.mode != stencil_resolve_info.mode
-                    {
-                        return Err(
-                            RenderPassError::DepthStencilAttachmentResolveModesNotSupported,
-                        );
-                    }
-
-                    // VUID-VkRenderingInfo-pDepthAttachment-06086
-                    if &depth_resolve_info.image_view != &stencil_resolve_info.image_view {
-                        return Err(
-                            RenderPassError::DepthStencilAttachmentResolveImageViewMismatch,
-                        );
-                    }
-                }
-            }
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is already active".into(),
+                vuids: &["VUID-vkCmdBeginRendering-renderpass"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn begin_rendering_unchecked(&mut self, rendering_info: RenderingInfo) -> &mut Self {
+    pub unsafe fn begin_rendering_unchecked(
+        &mut self,
+        mut rendering_info: RenderingInfo,
+    ) -> &mut Self {
+        rendering_info.set_auto_extent_layers();
+
         let &RenderingInfo {
             render_area_offset,
             render_area_extent,
@@ -1517,7 +578,7 @@ where
             }))
             .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.begin_rendering(&rendering_info);
+                out.begin_rendering_unchecked(&rendering_info);
             },
         );
 
@@ -1525,43 +586,55 @@ where
     }
 
     /// Ends the render pass previously begun with `begin_rendering`.
-    pub fn end_rendering(&mut self) -> Result<&mut Self, RenderPassError> {
+    pub fn end_rendering(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_rendering()?;
 
-        unsafe {
-            self.end_rendering_unchecked();
-        }
-
-        Ok(self)
+        unsafe { Ok(self.end_rendering_unchecked()) }
     }
 
-    fn validate_end_rendering(&self) -> Result<(), RenderPassError> {
-        // VUID-vkCmdEndRendering-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
+    fn validate_end_rendering(&self) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_end_rendering()?;
 
-        // VUID?
-        if self.inner.inheritance_info().is_some() {
-            return Err(RenderPassError::ForbiddenWithInheritedRenderPass);
-        }
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &[
+                        "VUID-vkCmdEndRendering-renderpass",
+                        "VUID-vkCmdEndRendering-commandBuffer-06162",
+                    ],
+                    ..Default::default()
+                }))?;
 
-        // VUID-vkCmdEndRendering-None-06161
-        // VUID-vkCmdEndRendering-commandBuffer-06162
         match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(_) => {
-                return Err(RenderPassError::ForbiddenWithBeginRenderPass)
+                return Err(Box::new(ValidationError {
+                    problem: "the current render pass instance was not begun with \
+                        `begin_rendering`"
+                        .into(),
+                    vuids: &["VUID-vkCmdEndRendering-None-06161"],
+                    ..Default::default()
+                }))
             }
             RenderPassStateType::BeginRendering(_) => (),
         }
 
-        // VUID-vkCmdEndRendering-commandBuffer-cmdpool
-        debug_assert!(self
-            .queue_family_properties()
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS));
+        if self
+            .builder_state
+            .queries
+            .values()
+            .any(|state| state.in_subpass)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "a query that was begun in the current render pass instance \
+                    is still active"
+                    .into(),
+                vuids: &["VUID-vkCmdEndRendering-None-06999"],
+                ..Default::default()
+            }));
+        }
 
         Ok(())
     }
@@ -1574,7 +647,7 @@ where
             "end_rendering",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.end_rendering();
+                out.end_rendering_unchecked();
             },
         );
 
@@ -1597,40 +670,42 @@ where
         &mut self,
         attachments: SmallVec<[ClearAttachment; 4]>,
         rects: SmallVec<[ClearRect; 4]>,
-    ) -> Result<&mut Self, RenderPassError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_attachments(&attachments, &rects)?;
 
-        unsafe {
-            self.clear_attachments_unchecked(attachments, rects);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.clear_attachments_unchecked(attachments, rects)) }
     }
 
     fn validate_clear_attachments(
         &self,
         attachments: &[ClearAttachment],
         rects: &[ClearRect],
-    ) -> Result<(), RenderPassError> {
-        // VUID-vkCmdClearAttachments-renderpass
-        let render_pass_state = self
-            .builder_state
-            .render_pass
-            .as_ref()
-            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_clear_attachments(attachments, rects)?;
+
+        let render_pass_state =
+            self.builder_state
+                .render_pass
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    problem: "a render pass instance is not active".into(),
+                    vuids: &["VUID-vkCmdClearAttachments-renderpass"],
+                    ..Default::default()
+                }))?;
 
         if render_pass_state.contents != SubpassContents::Inline {
-            return Err(RenderPassError::ForbiddenWithSubpassContents {
-                contents: render_pass_state.contents,
-            });
+            return Err(Box::new(ValidationError {
+                problem: "the contents of the current subpass instance is not \
+                    `SubpassContents::Inline`"
+                    .into(),
+                // vuids?
+                ..Default::default()
+            }));
         }
 
-        //let subpass_desc = begin_render_pass_state.subpass.subpass_desc();
-        //let render_pass = begin_render_pass_state.subpass.render_pass();
-        let is_multiview = render_pass_state.rendering_info.view_mask != 0;
         let mut layer_count = u32::MAX;
 
-        for &clear_attachment in attachments {
+        for (clear_index, &clear_attachment) in attachments.iter().enumerate() {
             match clear_attachment {
                 ClearAttachment::Color {
                     color_attachment,
@@ -1640,35 +715,38 @@ where
                         .rendering_info
                         .color_attachment_formats
                         .get(color_attachment as usize)
-                        .ok_or(RenderPassError::ColorAttachmentIndexOutOfRange {
-                            color_attachment_index: color_attachment,
-                            num_color_attachments: render_pass_state
-                                .rendering_info
-                                .color_attachment_formats
-                                .len() as u32,
-                        })?;
+                        .ok_or(Box::new(ValidationError {
+                            context: format!("attachments[{}].color_attachment", clear_index)
+                                .into(),
+                            problem: "is not less than the number of color attachments in the \
+                                current subpass instance"
+                                .into(),
+                            vuids: &["VUID-vkCmdClearAttachments-aspectMask-07271"],
+                            ..Default::default()
+                        }))?;
 
-                    // VUID-vkCmdClearAttachments-aspectMask-02501
-                    if !attachment_format.map_or(false, |format| {
-                        matches!(
-                            (clear_value, format.type_color().unwrap()),
-                            (
-                                ClearColorValue::Float(_),
-                                NumericType::SFLOAT
-                                    | NumericType::UFLOAT
-                                    | NumericType::SNORM
-                                    | NumericType::UNORM
-                                    | NumericType::SSCALED
-                                    | NumericType::USCALED
-                                    | NumericType::SRGB
-                            ) | (ClearColorValue::Int(_), NumericType::SINT)
-                                | (ClearColorValue::Uint(_), NumericType::UINT)
-                        )
-                    }) {
-                        return Err(RenderPassError::ClearAttachmentNotCompatible {
-                            clear_attachment,
-                            attachment_format,
-                        });
+                    if let Some(attachment_format) = attachment_format {
+                        let required_numeric_type = attachment_format
+                            .numeric_format_color()
+                            .unwrap()
+                            .numeric_type();
+
+                        if clear_value.numeric_type() != required_numeric_type {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`attachments[{0}].clear_value` is `ClearColorValue::{1:?}`, \
+                                    but the color attachment specified by \
+                                    `attachments[{0}].color_attachment` requires a clear value \
+                                    of type `ClearColorValue::{2:?}`",
+                                    clear_index,
+                                    clear_value.numeric_type(),
+                                    required_numeric_type,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdClearAttachments-aspectMask-02501"],
+                                ..Default::default()
+                            }));
+                        }
                     }
 
                     let image_view = render_pass_state
@@ -1686,33 +764,46 @@ where
                 ClearAttachment::Depth(_)
                 | ClearAttachment::Stencil(_)
                 | ClearAttachment::DepthStencil(_) => {
-                    let depth_format = render_pass_state.rendering_info.depth_attachment_format;
-                    let stencil_format = render_pass_state.rendering_info.stencil_attachment_format;
-
-                    // VUID-vkCmdClearAttachments-aspectMask-02502
                     if matches!(
                         clear_attachment,
                         ClearAttachment::Depth(_) | ClearAttachment::DepthStencil(_)
-                    ) && !depth_format.map_or(false, |format| {
-                        format.aspects().intersects(ImageAspects::DEPTH)
-                    }) {
-                        return Err(RenderPassError::ClearAttachmentNotCompatible {
-                            clear_attachment,
-                            attachment_format: None,
-                        });
+                    ) && render_pass_state
+                        .rendering_info
+                        .depth_attachment_format
+                        .is_none()
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`attachments[{0}]` is `ClearAttachment::Depth` or \
+                                `ClearAttachment::DepthStencil`, but \
+                                the current subpass instance does not have a depth attachment",
+                                clear_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdClearAttachments-aspectMask-02502"],
+                            ..Default::default()
+                        }));
                     }
 
-                    // VUID-vkCmdClearAttachments-aspectMask-02503
                     if matches!(
                         clear_attachment,
                         ClearAttachment::Stencil(_) | ClearAttachment::DepthStencil(_)
-                    ) && !stencil_format.map_or(false, |format| {
-                        format.aspects().intersects(ImageAspects::STENCIL)
-                    }) {
-                        return Err(RenderPassError::ClearAttachmentNotCompatible {
-                            clear_attachment,
-                            attachment_format: None,
-                        });
+                    ) && render_pass_state
+                        .rendering_info
+                        .stencil_attachment_format
+                        .is_none()
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`attachments[{0}]` is `ClearAttachment::Stencil` or \
+                                `ClearAttachment::DepthStencil`, but \
+                                the current subpass instance does not have a stencil attachment",
+                                clear_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdClearAttachments-aspectMask-02503"],
+                            ..Default::default()
+                        }));
                     }
 
                     let image_view = render_pass_state
@@ -1732,46 +823,67 @@ where
 
         for (rect_index, rect) in rects.iter().enumerate() {
             for i in 0..2 {
-                // VUID-vkCmdClearAttachments-rect-02682
-                // VUID-vkCmdClearAttachments-rect-02683
-                if rect.extent[i] == 0 {
-                    return Err(RenderPassError::RectExtentZero { rect_index });
-                }
-
-                // VUID-vkCmdClearAttachments-pRects-00016
                 // TODO: This check will always pass in secondary command buffers because of how
                 // it's set in `with_level`.
                 // It needs to be checked during `execute_commands` instead.
-                if rect.offset[i] < render_pass_state.render_area_offset[i]
-                    || rect.offset[i] + rect.extent[i]
-                        > render_pass_state.render_area_offset[i]
-                            + render_pass_state.render_area_extent[i]
+
+                if rect.offset[i] < render_pass_state.render_area_offset[i] {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`rects[{0}].offset[{i}]` is less than \
+                            `render_area_offset[{i}]` of the current render pass instance",
+                            rect_index
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdClearAttachments-pRects-00016"],
+                        ..Default::default()
+                    }));
+                }
+
+                if rect.offset[i] + rect.extent[i]
+                    > render_pass_state.render_area_offset[i]
+                        + render_pass_state.render_area_extent[i]
                 {
-                    return Err(RenderPassError::RectOutOfBounds { rect_index });
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`rects[{0}].offset[{i}] + rects[{0}].extent[{i}]` is \
+                            greater than `render_area_offset[{i}] + render_area_extent[{i}]` \
+                            of the current render pass instance",
+                            rect_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdClearAttachments-pRects-00016"],
+                        ..Default::default()
+                    }));
                 }
             }
 
-            // VUID-vkCmdClearAttachments-layerCount-01934
-            if rect.array_layers.is_empty() {
-                return Err(RenderPassError::RectArrayLayersEmpty { rect_index });
-            }
-
-            // VUID-vkCmdClearAttachments-pRects-00017
             if rect.array_layers.end > layer_count {
-                return Err(RenderPassError::RectArrayLayersOutOfBounds { rect_index });
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`rects[{}].array_layers.end` is greater than the number of \
+                        array layers in the current render pass instance",
+                        rect_index
+                    )
+                    .into(),
+                    vuids: &["VUID-vkCmdClearAttachments-pRects-06937"],
+                    ..Default::default()
+                }));
             }
 
-            // VUID-vkCmdClearAttachments-baseArrayLayer-00018
-            if is_multiview && rect.array_layers != (0..1) {
-                return Err(RenderPassError::MultiviewRectArrayLayersInvalid { rect_index });
+            if render_pass_state.rendering_info.view_mask != 0 && rect.array_layers != (0..1) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "the current render pass instance has a non-zero `view_mask`, but \
+                        `rects[{}].array_layers` is not `0..1`",
+                        rect_index
+                    )
+                    .into(),
+                    vuids: &["VUID-vkCmdClearAttachments-baseArrayLayer-00018"],
+                    ..Default::default()
+                }));
             }
         }
-
-        // VUID-vkCmdClearAttachments-commandBuffer-cmdpool
-        debug_assert!(self
-            .queue_family_properties()
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS));
 
         Ok(())
     }
@@ -1786,7 +898,7 @@ where
             "clear_attachments",
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.clear_attachments(&attachments, &rects);
+                out.clear_attachments_unchecked(&attachments, &rects);
             },
         );
 
@@ -1798,12 +910,354 @@ impl<A> UnsafeCommandBufferBuilder<A>
 where
     A: CommandBufferAllocator,
 {
-    /// Calls `vkCmdBeginRenderPass` on the builder.
-    #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,
         render_pass_begin_info: &RenderPassBeginInfo,
-        contents: SubpassContents,
+        subpass_begin_info: &SubpassBeginInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_begin_render_pass(render_pass_begin_info, subpass_begin_info)?;
+
+        Ok(self.begin_render_pass_unchecked(render_pass_begin_info, subpass_begin_info))
+    }
+
+    fn validate_begin_render_pass(
+        &self,
+        render_pass_begin_info: &RenderPassBeginInfo,
+        subpass_begin_info: &SubpassBeginInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if self.level() != CommandBufferLevel::Primary {
+            return Err(Box::new(ValidationError {
+                problem: "this command buffer is not a primary command buffer".into(),
+                vuids: &["VUID-vkCmdBeginRenderPass2-bufferlevel"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBeginRenderPass2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        render_pass_begin_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("render_pass_begin_info"))?;
+
+        subpass_begin_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("subpass_begin_info"))?;
+
+        let RenderPassBeginInfo {
+            render_pass,
+            framebuffer,
+            render_area_offset: _,
+            render_area_extent: _,
+            clear_values: _,
+            _ne: _,
+        } = render_pass_begin_info;
+
+        for (attachment_index, (attachment_desc, image_view)) in render_pass
+            .attachments()
+            .iter()
+            .zip(framebuffer.attachments())
+            .enumerate()
+        {
+            let attachment_index = attachment_index as u32;
+            let &AttachmentDescription {
+                initial_layout,
+                final_layout,
+                stencil_initial_layout,
+                stencil_final_layout,
+                ..
+            } = attachment_desc;
+
+            for layout in [
+                Some(initial_layout),
+                Some(final_layout),
+                stencil_initial_layout,
+                stencil_final_layout,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                match layout {
+                    ImageLayout::ColorAttachmentOptimal => {
+                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::ColorAttachmentOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::COLOR_ATTACHMENT`",
+                                    attachment_index,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03094"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal => {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the \
+                                    `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`, \
+                                    `ImageLayout::DepthAttachmentStencilReadOnlyOptimal`, \
+                                    `ImageLayout::DepthStencilAttachmentOptimal`, \
+                                    `ImageLayout::DepthStencilReadOnlyOptimal`, \
+                                    `ImageLayout::DepthAttachmentOptimal`, \
+                                    `ImageLayout::DepthReadOnlyOptimal`, \
+                                    `ImageLayout::StencilAttachmentOptimal` or \
+                                    `ImageLayout::StencilReadOnlyOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::DEPTH_STENCIL_ATTACHMENT`",
+                                    attachment_index,
+                                )
+                                .into(),
+                                vuids: &[
+                                    "VUID-vkCmdBeginRenderPass2-initialLayout-03096",
+                                    "VUID-vkCmdBeginRenderPass2-initialLayout-02844",
+                                ],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::ShaderReadOnlyOptimal => {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::ShaderReadOnlyOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::SAMPLED` or `ImageUsage::INPUT_ATTACHMENT",
+                                    attachment_index,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03097"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::TransferSrcOptimal => {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_SRC) {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::TransferSrcOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::TRANSFER_SRC",
+                                    attachment_index,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03098"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::TransferDstOptimal => {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_DST) {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::TransferDstOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::TRANSFER_DST",
+                                    attachment_index,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03099"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::Undefined
+                    | ImageLayout::General
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc => (),
+                }
+            }
+        }
+
+        for subpass_desc in render_pass.subpasses() {
+            let SubpassDescription {
+                flags: _,
+                view_mask: _,
+                input_attachments,
+                color_attachments,
+                color_resolve_attachments,
+                depth_stencil_attachment,
+                depth_stencil_resolve_attachment,
+                depth_resolve_mode: _,
+                stencil_resolve_mode: _,
+                preserve_attachments: _,
+                _ne: _,
+            } = subpass_desc;
+
+            for atch_ref in (input_attachments.iter().flatten())
+                .chain(color_attachments.iter().flatten())
+                .chain(color_resolve_attachments.iter().flatten())
+                .chain(depth_stencil_attachment.iter())
+                .chain(depth_stencil_resolve_attachment.iter())
+            {
+                let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
+
+                match atch_ref.layout {
+                    ImageLayout::ColorAttachmentOptimal => {
+                        if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::ColorAttachmentOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::COLOR_ATTACHMENT`",
+                                    atch_ref.attachment,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03094"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal => {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the \
+                                    `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`, \
+                                    `ImageLayout::DepthAttachmentStencilReadOnlyOptimal`, \
+                                    `ImageLayout::DepthStencilAttachmentOptimal`, \
+                                    `ImageLayout::DepthStencilReadOnlyOptimal`, \
+                                    `ImageLayout::DepthAttachmentOptimal`, \
+                                    `ImageLayout::DepthReadOnlyOptimal`, \
+                                    `ImageLayout::StencilAttachmentOptimal` or \
+                                    `ImageLayout::StencilReadOnlyOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::DEPTH_STENCIL_ATTACHMENT`",
+                                    atch_ref.attachment,
+                                )
+                                .into(),
+                                vuids: &[
+                                    "VUID-vkCmdBeginRenderPass2-initialLayout-03096",
+                                    "VUID-vkCmdBeginRenderPass2-initialLayout-02844",
+                                ],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::ShaderReadOnlyOptimal => {
+                        if !image_view
+                            .usage()
+                            .intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::ShaderReadOnlyOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::SAMPLED` or `ImageUsage::INPUT_ATTACHMENT",
+                                    atch_ref.attachment,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03097"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::TransferSrcOptimal => {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_SRC) {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::TransferSrcOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::TRANSFER_SRC",
+                                    atch_ref.attachment,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03098"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::TransferDstOptimal => {
+                        if !image_view.usage().intersects(ImageUsage::TRANSFER_DST) {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`framebuffer.attachments()[{0}]` is used in `render_pass` \
+                                    with the `ImageLayout::TransferDstOptimal` layout, but \
+                                    `framebuffer.attachments()[{0}].usage()` does not contain \
+                                    `ImageUsage::TRANSFER_DST",
+                                    atch_ref.attachment,
+                                )
+                                .into(),
+                                vuids: &["VUID-vkCmdBeginRenderPass2-initialLayout-03099"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ImageLayout::Undefined
+                    | ImageLayout::General
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc => (),
+                }
+            }
+        }
+
+        // VUID-vkCmdBeginRenderPass2-initialLayout-03100
+        // TODO:
+
+        // VUID-vkCmdBeginRenderPass2-srcStageMask-06453
+        // TODO:
+
+        // VUID-vkCmdBeginRenderPass2-dstStageMask-06454
+        // TODO:
+
+        // VUID-vkCmdBeginRenderPass2-framebuffer-02533
+        // For any attachment in framebuffer that is used by renderPass and is bound to memory locations that are also bound to another attachment used by renderPass, and if at least one of those uses causes either
+        // attachment to be written to, both attachments must have had the VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn begin_render_pass_unchecked(
+        &mut self,
+        render_pass_begin_info: &RenderPassBeginInfo,
+        subpass_begin_info: &SubpassBeginInfo,
     ) -> &mut Self {
         let &RenderPassBeginInfo {
             ref render_pass,
@@ -1837,6 +1291,8 @@ where
             p_clear_values: clear_values_vk.as_ptr(),
             ..Default::default()
         };
+
+        let &SubpassBeginInfo { contents, _ne: _ } = subpass_begin_info;
 
         let subpass_begin_info = ash::vk::SubpassBeginInfo {
             contents: contents.into(),
@@ -1874,60 +1330,165 @@ where
         self
     }
 
-    /// Calls `vkCmdNextSubpass` on the builder.
-    #[inline]
-    pub unsafe fn next_subpass(&mut self, contents: SubpassContents) -> &mut Self {
+    pub unsafe fn next_subpass(
+        &mut self,
+        subpass_end_info: &SubpassEndInfo,
+        subpass_begin_info: &SubpassBeginInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_next_subpass(subpass_end_info, subpass_begin_info)?;
+
+        Ok(self.next_subpass_unchecked(subpass_end_info, subpass_begin_info))
+    }
+
+    fn validate_next_subpass(
+        &self,
+        subpass_end_info: &SubpassEndInfo,
+        subpass_begin_info: &SubpassBeginInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if self.level() != CommandBufferLevel::Primary {
+            return Err(Box::new(ValidationError {
+                problem: "this command buffer is not a primary command buffer".into(),
+                vuids: &["VUID-vkCmdNextSubpass2-bufferlevel"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdNextSubpass2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        subpass_end_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("subpass_end_info"))?;
+
+        subpass_begin_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("subpass_begin_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn next_subpass_unchecked(
+        &mut self,
+        subpass_end_info: &SubpassEndInfo,
+        subpass_begin_info: &SubpassBeginInfo,
+    ) -> &mut Self {
         let fns = self.device().fns();
 
-        let subpass_begin_info = ash::vk::SubpassBeginInfo {
+        let &SubpassEndInfo { _ne: _ } = subpass_end_info;
+
+        let subpass_end_info_vk = ash::vk::SubpassEndInfo::default();
+
+        let &SubpassBeginInfo { contents, _ne: _ } = subpass_begin_info;
+
+        let subpass_begin_info_vk = ash::vk::SubpassBeginInfo {
             contents: contents.into(),
             ..Default::default()
         };
-
-        let subpass_end_info = ash::vk::SubpassEndInfo::default();
 
         if self.device().api_version() >= Version::V1_2
             || self.device().enabled_extensions().khr_create_renderpass2
         {
             if self.device().api_version() >= Version::V1_2 {
-                (fns.v1_2.cmd_next_subpass2)(self.handle(), &subpass_begin_info, &subpass_end_info);
+                (fns.v1_2.cmd_next_subpass2)(
+                    self.handle(),
+                    &subpass_begin_info_vk,
+                    &subpass_end_info_vk,
+                );
             } else {
                 (fns.khr_create_renderpass2.cmd_next_subpass2_khr)(
                     self.handle(),
-                    &subpass_begin_info,
-                    &subpass_end_info,
+                    &subpass_begin_info_vk,
+                    &subpass_end_info_vk,
                 );
             }
         } else {
-            debug_assert!(subpass_begin_info.p_next.is_null());
-            debug_assert!(subpass_end_info.p_next.is_null());
+            debug_assert!(subpass_begin_info_vk.p_next.is_null());
+            debug_assert!(subpass_end_info_vk.p_next.is_null());
 
-            (fns.v1_0.cmd_next_subpass)(self.handle(), subpass_begin_info.contents);
+            (fns.v1_0.cmd_next_subpass)(self.handle(), subpass_begin_info_vk.contents);
         }
 
         self
     }
 
-    /// Calls `vkCmdEndRenderPass` on the builder.
-    #[inline]
-    pub unsafe fn end_render_pass(&mut self) -> &mut Self {
+    pub unsafe fn end_render_pass(
+        &mut self,
+        subpass_end_info: &SubpassEndInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_end_render_pass(subpass_end_info)?;
+
+        Ok(self.end_render_pass_unchecked(subpass_end_info))
+    }
+
+    fn validate_end_render_pass(
+        &self,
+        subpass_end_info: &SubpassEndInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if self.level() != CommandBufferLevel::Primary {
+            return Err(Box::new(ValidationError {
+                problem: "this command buffer is not a primary command buffer".into(),
+                vuids: &["VUID-vkCmdEndRenderPass2-bufferlevel"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdEndRenderPass2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        subpass_end_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("subpass_end_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_render_pass_unchecked(
+        &mut self,
+        subpass_end_info: &SubpassEndInfo,
+    ) -> &mut Self {
         let fns = self.device().fns();
 
-        let subpass_end_info = ash::vk::SubpassEndInfo::default();
+        let &SubpassEndInfo { _ne: _ } = subpass_end_info;
+
+        let subpass_end_info_vk = ash::vk::SubpassEndInfo::default();
 
         if self.device().api_version() >= Version::V1_2
             || self.device().enabled_extensions().khr_create_renderpass2
         {
             if self.device().api_version() >= Version::V1_2 {
-                (fns.v1_2.cmd_end_render_pass2)(self.handle(), &subpass_end_info);
+                (fns.v1_2.cmd_end_render_pass2)(self.handle(), &subpass_end_info_vk);
             } else {
                 (fns.khr_create_renderpass2.cmd_end_render_pass2_khr)(
                     self.handle(),
-                    &subpass_end_info,
+                    &subpass_end_info_vk,
                 );
             }
         } else {
-            debug_assert!(subpass_end_info.p_next.is_null());
+            debug_assert!(subpass_end_info_vk.p_next.is_null());
 
             (fns.v1_0.cmd_end_render_pass)(self.handle());
         }
@@ -1935,9 +1496,81 @@ where
         self
     }
 
-    /// Calls `vkCmdBeginRendering` on the builder.
-    #[inline]
-    pub unsafe fn begin_rendering(&mut self, rendering_info: &RenderingInfo) -> &mut Self {
+    pub unsafe fn begin_rendering(
+        &mut self,
+        rendering_info: &RenderingInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_begin_rendering(rendering_info)?;
+
+        Ok(self.begin_rendering_unchecked(rendering_info))
+    }
+
+    fn validate_begin_rendering(
+        &self,
+        rendering_info: &RenderingInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        let device = self.device();
+
+        if !device.enabled_features().dynamic_rendering {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "dynamic_rendering",
+                )])]),
+                vuids: &["VUID-vkCmdBeginRendering-dynamicRendering-06446"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBeginRendering-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        rendering_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("rendering_info"))?;
+
+        let &RenderingInfo {
+            render_area_offset: _,
+            render_area_extent: _,
+            layer_count: _,
+            view_mask: _,
+            color_attachments: _,
+            depth_attachment: _,
+            stencil_attachment: _,
+            contents,
+            _ne: _,
+        } = rendering_info;
+
+        if self.level() == CommandBufferLevel::Secondary
+            && contents == SubpassContents::SecondaryCommandBuffers
+        {
+            return Err(Box::new(ValidationError {
+                problem: "this command buffer is a secondary command buffer, but \
+                    `rendering_info.contents` is `SubpassContents::SecondaryCommandBuffers`"
+                    .into(),
+                vuids: &["VUID-vkCmdBeginRendering-commandBuffer-06068"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn begin_rendering_unchecked(
+        &mut self,
+        rendering_info: &RenderingInfo,
+    ) -> &mut Self {
         let &RenderingInfo {
             render_area_offset,
             render_area_extent,
@@ -2035,9 +1668,32 @@ where
         self
     }
 
-    /// Calls `vkCmdEndRendering` on the builder.
-    #[inline]
-    pub unsafe fn end_rendering(&mut self) -> &mut Self {
+    pub unsafe fn end_rendering(&mut self) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_end_rendering()?;
+
+        Ok(self.end_rendering_unchecked())
+    }
+
+    fn validate_end_rendering(&self) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdEndRendering-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_rendering_unchecked(&mut self) -> &mut Self {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
@@ -2049,11 +1705,81 @@ where
         self
     }
 
-    /// Calls `vkCmdClearAttachments` on the builder.
-    ///
-    /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
-    /// no-op and isn't a valid usage of the command anyway.
     pub unsafe fn clear_attachments(
+        &mut self,
+        attachments: &[ClearAttachment],
+        rects: &[ClearRect],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_clear_attachments(attachments, rects)?;
+
+        Ok(self.clear_attachments_unchecked(attachments, rects))
+    }
+
+    fn validate_clear_attachments(
+        &self,
+        attachments: &[ClearAttachment],
+        rects: &[ClearRect],
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdClearAttachments-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        for (clear_index, clear_attachment) in attachments.iter().enumerate() {
+            clear_attachment
+                .validate(self.device())
+                .map_err(|err| err.add_context(format!("attachments[{}]", clear_index)))?;
+        }
+
+        for (rect_index, rect) in rects.iter().enumerate() {
+            let ClearRect {
+                offset: _,
+                extent,
+                ref array_layers,
+            } = rect;
+
+            if extent[0] == 0 {
+                return Err(Box::new(ValidationError {
+                    context: format!("rects[{}].extent[0]", rect_index).into(),
+                    problem: "is 0".into(),
+                    vuids: &["VUID-vkCmdClearAttachments-rect-02682"],
+                    ..Default::default()
+                }));
+            }
+
+            if extent[1] == 0 {
+                return Err(Box::new(ValidationError {
+                    context: format!("rects[{}].extent[1]", rect_index).into(),
+                    problem: "is 0".into(),
+                    vuids: &["VUID-vkCmdClearAttachments-rect-02683"],
+                    ..Default::default()
+                }));
+            }
+
+            if array_layers.is_empty() {
+                return Err(Box::new(ValidationError {
+                    context: format!("rects[{}].array_layers", rect_index).into(),
+                    problem: "is empty".into(),
+                    vuids: &["VUID-vkCmdClearAttachments-layerCount-01934"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn clear_attachments_unchecked(
         &mut self,
         attachments: &[ClearAttachment],
         rects: &[ClearRect],
@@ -2150,6 +1876,192 @@ impl RenderPassBeginInfo {
             clear_values: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref render_pass,
+            ref framebuffer,
+            render_area_offset,
+            render_area_extent,
+            ref clear_values,
+            _ne,
+        } = self;
+
+        // VUID-VkRenderPassBeginInfo-commonparent
+        // VUID-vkCmdBeginRenderPass2-framebuffer-02779
+        assert_eq!(device, framebuffer.device().as_ref());
+
+        if !render_pass.is_compatible_with(framebuffer.render_pass()) {
+            return Err(Box::new(ValidationError {
+                problem: "`render_pass` is not compatible with `framebuffer.render_pass()`".into(),
+                vuids: &["VUID-VkRenderPassBeginInfo-renderPass-00904"],
+                ..Default::default()
+            }));
+        }
+
+        if render_area_extent[0] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "render_area_extent[0]".into(),
+                problem: "is 0".into(),
+                vuids: &["VUID-VkRenderPassBeginInfo-None-08996"],
+                ..Default::default()
+            }));
+        }
+
+        if render_area_extent[1] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "render_area_extent[1]".into(),
+                problem: "is 0".into(),
+                vuids: &["VUID-VkRenderPassBeginInfo-None-08997"],
+                ..Default::default()
+            }));
+        }
+
+        if render_area_offset[0] + render_area_extent[0] > framebuffer.extent()[0] {
+            return Err(Box::new(ValidationError {
+                problem: "`render_area_offset[0] + render_area_extent[0]` is greater than \
+                    `framebuffer.extent()[0]`"
+                    .into(),
+                vuids: &["VUID-VkRenderPassBeginInfo-pNext-02852"],
+                ..Default::default()
+            }));
+        }
+
+        if render_area_offset[1] + render_area_extent[1] > framebuffer.extent()[1] {
+            return Err(Box::new(ValidationError {
+                problem: "`render_area_offset[1] + render_area_extent[1]` is greater than \
+                    `framebuffer.extent()[1]`"
+                    .into(),
+                vuids: &["VUID-VkRenderPassBeginInfo-pNext-02853"],
+                ..Default::default()
+            }));
+        }
+
+        if clear_values.len() != render_pass.attachments().len() {
+            return Err(Box::new(ValidationError {
+                problem: "`clear_values.len()` is not equal to `render_pass.attachments().len()`"
+                    .into(),
+                vuids: &["VUID-VkRenderPassBeginInfo-clearValueCount-00902"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-VkRenderPassBeginInfo-clearValueCount-04962
+        for (attachment_index, (attachment_desc, clear_value)) in render_pass
+            .attachments()
+            .iter()
+            .zip(clear_values)
+            .enumerate()
+        {
+            match (clear_value, attachment_desc.required_clear_value()) {
+                (None, None) => continue,
+                (None, Some(_)) => {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`render_pass.attachments()[{0}]` requires a clear value, but \
+                            `clear_values[{0}]` is `None`",
+                            attachment_index
+                        )
+                        .into(),
+                        ..Default::default()
+                    }));
+                }
+                (Some(_), None) => {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`render_pass.attachments()[{0}]` does not require a clear value, but \
+                            `clear_values[{0}]` is `Some`",
+                            attachment_index
+                        )
+                        .into(),
+                        ..Default::default()
+                    }));
+                }
+                (Some(clear_value), Some(required_clear_value)) => {
+                    if required_clear_value != clear_value.clear_value_type() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`clear_values[{0}]` is `ClearValue::{1:?}`, but \
+                                `render_pass.attachments()[{0}]` requires a clear value of type \
+                                `ClearValue::{2:?}`",
+                                attachment_index,
+                                clear_value.clear_value_type(),
+                                required_clear_value,
+                            )
+                            .into(),
+                            ..Default::default()
+                        }));
+                    }
+
+                    clear_value.validate(device).map_err(|err| {
+                        err.add_context(format!("clear_values[{}]", attachment_index))
+                    })?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Parameters to begin a new subpass within a render pass.
+#[derive(Clone, Debug)]
+pub struct SubpassBeginInfo {
+    /// What kinds of commands will be recorded in the subpass.
+    ///
+    /// The default value is [`SubpassContents::Inline`].
+    pub contents: SubpassContents,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SubpassBeginInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            contents: SubpassContents::Inline,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl SubpassBeginInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self { contents, _ne: _ } = self;
+
+        contents
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "contents".into(),
+                vuids: &["VUID-VkSubpassBeginInfo-contents-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        Ok(())
+    }
+}
+
+/// Parameters to end the current subpass within a render pass.
+#[derive(Clone, Debug)]
+pub struct SubpassEndInfo {
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SubpassEndInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl SubpassEndInfo {
+    pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self { _ne: _ } = self;
+
+        Ok(())
     }
 }
 
@@ -2250,7 +2162,7 @@ impl Default for RenderingInfo {
 }
 
 impl RenderingInfo {
-    pub(crate) fn set_extent_layers(&mut self) -> Result<(), RenderPassError> {
+    pub(crate) fn set_auto_extent_layers(&mut self) {
         let &mut RenderingInfo {
             render_area_offset,
             ref mut render_area_extent,
@@ -2263,16 +2175,22 @@ impl RenderingInfo {
             _ne: _,
         } = self;
 
-        let auto_extent = render_area_extent[0] == 0 || render_area_extent[1] == 0;
-        let auto_layers = *layer_count == 0;
+        let is_auto_extent = render_area_extent[0] == 0 || render_area_extent[1] == 0;
+        let is_auto_layers = *layer_count == 0;
 
-        // Set the values based on the attachment sizes.
-        if auto_extent || auto_layers {
-            if auto_extent {
+        if (is_auto_extent || is_auto_layers)
+            && !(color_attachments.is_empty()
+                && depth_attachment.is_none()
+                && stencil_attachment.is_none())
+        {
+            let mut auto_extent = [u32::MAX, u32::MAX];
+            let mut auto_layers = if view_mask != 0 { 1 } else { u32::MAX };
+
+            if is_auto_extent {
                 *render_area_extent = [u32::MAX, u32::MAX];
             }
 
-            if auto_layers {
+            if is_auto_layers {
                 if view_mask != 0 {
                     *layer_count = 1;
                 } else {
@@ -2292,41 +2210,630 @@ impl RenderingInfo {
                     )
                 })
             {
-                if auto_extent {
-                    let extent = image_view.image().extent();
+                let image_view_extent = image_view.image().extent();
+                let image_view_array_layers =
+                    image_view.subresource_range().array_layers.len() as u32;
 
-                    for i in 0..2 {
-                        render_area_extent[i] = min(render_area_extent[i], extent[i]);
-                    }
-                }
-
-                if auto_layers {
-                    let subresource_range = image_view.subresource_range();
-                    let array_layers =
-                        subresource_range.array_layers.end - subresource_range.array_layers.start;
-
-                    *layer_count = min(*layer_count, array_layers);
-                }
+                auto_extent[0] = auto_extent[0].min(image_view_extent[0]);
+                auto_extent[1] = auto_extent[1].min(image_view_extent[1]);
+                auto_layers = auto_layers.min(image_view_array_layers);
             }
 
-            if auto_extent {
-                if *render_area_extent == [u32::MAX, u32::MAX] {
-                    return Err(RenderPassError::AutoExtentAttachmentsEmpty);
-                }
-
+            if is_auto_extent {
                 // Subtract the offset from the calculated max extent.
                 // If there is an underflow, then the offset is too large, and validation should
                 // catch that later.
                 for i in 0..2 {
-                    render_area_extent[i] = render_area_extent[i]
+                    render_area_extent[i] = auto_extent[i]
                         .checked_sub(render_area_offset[i])
                         .unwrap_or(1);
                 }
             }
 
-            if auto_layers {
-                if *layer_count == u32::MAX {
-                    return Err(RenderPassError::AutoLayersAttachmentsEmpty);
+            if is_auto_layers {
+                *layer_count = auto_layers;
+            }
+        }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            render_area_offset,
+            render_area_extent,
+            layer_count,
+            view_mask,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
+            contents,
+            _ne: _,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        contents
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "contents".into(),
+                vuids: &["VUID-VkRenderingInfo-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if render_area_extent[0] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "render_area_extent[0]".into(),
+                problem: "is 0".into(),
+                vuids: &["VUID-VkRenderingInfo-None-08994"],
+                ..Default::default()
+            }));
+        }
+
+        if render_area_extent[1] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "render_area_extent[1]".into(),
+                problem: "is 0".into(),
+                vuids: &["VUID-VkRenderingInfo-None-08995"],
+                ..Default::default()
+            }));
+        }
+
+        if render_area_offset[0] + render_area_extent[0] > properties.max_framebuffer_width {
+            return Err(Box::new(ValidationError {
+                problem: "`render_area_offset[0] + render_area_extent[0]` is greater than the \
+                    `max_framebuffer_width` limit"
+                    .into(),
+                vuids: &["VUID-VkRenderingInfo-pNext-07815"],
+                ..Default::default()
+            }));
+        }
+
+        if render_area_offset[1] + render_area_extent[1] > properties.max_framebuffer_height {
+            return Err(Box::new(ValidationError {
+                problem: "`render_area_offset[1] + render_area_extent[1]` is greater than the \
+                    `max_framebuffer_height` limit"
+                    .into(),
+                vuids: &["VUID-VkRenderingInfo-pNext-07816"],
+                ..Default::default()
+            }));
+        }
+
+        // No VUID, but for sanity it makes sense to treat this the same as in framebuffers.
+        if view_mask != 0 && layer_count != 1 {
+            return Err(Box::new(ValidationError {
+                problem: "`view_mask` is not 0, but `layer_count` is not 1".into(),
+                // vuids?
+                ..Default::default()
+            }));
+        }
+
+        if view_mask != 0 && !device.enabled_features().multiview {
+            return Err(Box::new(ValidationError {
+                context: "view_mask".into(),
+                problem: "is not 0".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                vuids: &["VUID-VkRenderingInfo-multiview-06127"],
+            }));
+        }
+
+        let highest_view_index = u32::BITS - view_mask.leading_zeros();
+
+        if highest_view_index > properties.max_multiview_view_count.unwrap_or(0) {
+            return Err(Box::new(ValidationError {
+                context: "view_mask".into(),
+                problem: "the highest enabled view index is not less than the \
+                    `max_multiview_view_count` limit"
+                    .into(),
+                vuids: &["VUID-VkRenderingInfo-viewMask-06128"],
+                ..Default::default()
+            }));
+        }
+
+        let mut samples = None;
+
+        if color_attachments.len() > properties.max_color_attachments as usize {
+            return Err(Box::new(ValidationError {
+                context: "color_attachments".into(),
+                problem: "the number of elements is greater than the `max_color_attachments` limit"
+                    .into(),
+                vuids: &["VUID-VkRenderingInfo-colorAttachmentCount-06106"],
+                ..Default::default()
+            }));
+        }
+
+        for (attachment_index, attachment_info) in
+            color_attachments
+                .iter()
+                .enumerate()
+                .filter_map(|(index, attachment_info)| {
+                    attachment_info
+                        .as_ref()
+                        .map(|attachment_info| (index, attachment_info))
+                })
+        {
+            attachment_info.validate(device).map_err(|err| {
+                err.add_context(format!("color_attachments[{}]", attachment_index))
+            })?;
+
+            let RenderingAttachmentInfo {
+                image_view,
+                image_layout,
+                resolve_info,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
+                _ne: _,
+            } = attachment_info;
+
+            if !image_view.usage().intersects(ImageUsage::COLOR_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    context: format!("color_attachments[{}].image_view.usage()", attachment_index)
+                        .into(),
+                    problem: "does not contain `ImageUsage::COLOR_ATTACHMENT".into(),
+                    vuids: &["VUID-VkRenderingInfo-colorAttachmentCount-06087"],
+                    ..Default::default()
+                }));
+            }
+
+            if render_area_offset[0] + render_area_extent[0] > image_view.image().extent()[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`render_area_offset[0] + render_area_extent[0]` is greater than \
+                        `color_attachments[{}].image_view.image().extent()[0]`",
+                        attachment_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkRenderingInfo-pNext-06079"],
+                    ..Default::default()
+                }));
+            }
+
+            if render_area_offset[1] + render_area_extent[1] > image_view.image().extent()[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`render_area_offset[1] + render_area_extent[1]` is greater than \
+                        `color_attachments[{}].image_view.image().extent()[1]`",
+                        attachment_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkRenderingInfo-pNext-06080"],
+                    ..Default::default()
+                }));
+            }
+
+            match samples {
+                Some(samples) => {
+                    if samples != image_view.image().samples() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`color_attachments[{0}].image_view.image().samples()` \
+                                is not equal to the number of samples of the other attachments",
+                                attachment_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkRenderingInfo-imageView-06070"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                None => samples = Some(image_view.image().samples()),
+            }
+
+            if matches!(
+                image_layout,
+                ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthAttachmentOptimal
+                    | ImageLayout::DepthReadOnlyOptimal
+                    | ImageLayout::StencilAttachmentOptimal
+                    | ImageLayout::StencilReadOnlyOptimal
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: format!("color_attachments[{0}].image_layout", attachment_index)
+                        .into(),
+                    problem: "is `ImageLayout::DepthStencilAttachmentOptimal`, \
+                        `ImageLayout::DepthStencilReadOnlyOptimal`, \
+                        `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`, \
+                        `ImageLayout::DepthAttachmentStencilReadOnlyOptimal`, \
+                        `ImageLayout::DepthAttachmentOptimal`, \
+                        `ImageLayout::DepthReadOnlyOptimal`, \
+                        `ImageLayout::StencilAttachmentOptimal` or \
+                        `ImageLayout::StencilReadOnlyOptimal`"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkRenderingInfo-colorAttachmentCount-06090",
+                        "VUID-VkRenderingInfo-colorAttachmentCount-06096",
+                        "VUID-VkRenderingInfo-colorAttachmentCount-06100",
+                    ],
+                    ..Default::default()
+                }));
+            }
+
+            if let Some(resolve_info) = resolve_info {
+                let &RenderingAttachmentResolveInfo {
+                    mode: _,
+                    image_view: _,
+                    image_layout: resolve_image_layout,
+                } = resolve_info;
+
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::DepthStencilAttachmentOptimal
+                        | ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                        | ImageLayout::DepthAttachmentOptimal
+                        | ImageLayout::DepthReadOnlyOptimal
+                        | ImageLayout::StencilAttachmentOptimal
+                        | ImageLayout::StencilReadOnlyOptimal
+                ) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "color_attachments[{0}].resolve_info.image_layout",
+                            attachment_index
+                        )
+                        .into(),
+                        problem: "is `ImageLayout::DepthStencilAttachmentOptimal`, \
+                            `ImageLayout::DepthStencilReadOnlyOptimal`, \
+                            `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`, \
+                            `ImageLayout::DepthAttachmentStencilReadOnlyOptimal`, \
+                            `ImageLayout::DepthAttachmentOptimal`, \
+                            `ImageLayout::DepthReadOnlyOptimal`, \
+                            `ImageLayout::StencilAttachmentOptimal` or \
+                            `ImageLayout::StencilReadOnlyOptimal`"
+                            .into(),
+                        vuids: &[
+                            "VUID-VkRenderingInfo-colorAttachmentCount-06091",
+                            "VUID-VkRenderingInfo-colorAttachmentCount-06097",
+                            "VUID-VkRenderingInfo-colorAttachmentCount-06101",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if let Some(attachment_info) = depth_attachment {
+            attachment_info
+                .validate(device)
+                .map_err(|err| err.add_context("depth_attachment"))?;
+
+            let RenderingAttachmentInfo {
+                image_view,
+                image_layout,
+                resolve_info,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
+                _ne: _,
+            } = attachment_info;
+
+            if !image_view
+                .format()
+                .aspects()
+                .intersects(ImageAspects::DEPTH)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "depth_attachment.image_view.format()".into(),
+                    problem: "does not have a depth aspect".into(),
+                    vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06547"],
+                    ..Default::default()
+                }));
+            }
+
+            if !image_view
+                .usage()
+                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "depth_attachment.image_view.usage()".into(),
+                    problem: "does not contain `ImageUsage::DEPTH_STENCIL_ATTACHMENT`".into(),
+                    vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06088"],
+                    ..Default::default()
+                }));
+            }
+
+            if render_area_offset[0] + render_area_extent[0] > image_view.image().extent()[0] {
+                return Err(Box::new(ValidationError {
+                    problem: "`render_area_offset[0] + render_area_extent[0]` is greater than \
+                        `depth_attachment.image_view.image().extent()[0]`"
+                        .into(),
+                    vuids: &["VUID-VkRenderingInfo-pNext-06079"],
+                    ..Default::default()
+                }));
+            }
+
+            if render_area_offset[1] + render_area_extent[1] > image_view.image().extent()[1] {
+                return Err(Box::new(ValidationError {
+                    problem: "`render_area_offset[1] + render_area_extent[1]` is greater than \
+                        `depth_attachment.image_view.image().extent()[1]`"
+                        .into(),
+                    vuids: &["VUID-VkRenderingInfo-pNext-06080"],
+                    ..Default::default()
+                }));
+            }
+
+            match samples {
+                Some(samples) => {
+                    if samples != image_view.image().samples() {
+                        return Err(Box::new(ValidationError {
+                            problem: "`depth_attachment.image_view.image().samples()` \
+                                is not equal to the number of samples of the other attachments"
+                                .into(),
+                            vuids: &["VUID-VkRenderingInfo-imageView-06070"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                None => samples = Some(image_view.image().samples()),
+            }
+
+            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
+                return Err(Box::new(ValidationError {
+                    context: "depth_attachment.image_layout".into(),
+                    problem: "is `ImageLayout::ColorAttachmentOptimal`".into(),
+                    vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06092"],
+                    ..Default::default()
+                }));
+            }
+
+            if let Some(resolve_info) = resolve_info {
+                let &RenderingAttachmentResolveInfo {
+                    mode,
+                    image_view: _,
+                    image_layout: resolve_image_layout,
+                } = resolve_info;
+
+                if !properties
+                    .supported_depth_resolve_modes
+                    .map_or(false, |modes| modes.contains_enum(mode))
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`depth_attachment.resolve_info.mode` is not one of the modes in \
+                            the `supported_depth_resolve_modes` device property"
+                            .into(),
+                        vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06102"],
+                        ..Default::default()
+                    }));
+                }
+
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::ColorAttachmentOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                ) {
+                    return Err(Box::new(ValidationError {
+                        context: "depth_attachment.resolve_info.image_layout".into(),
+                        problem: "is `ImageLayout::ColorAttachmentOptimal` or \
+                            `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`"
+                            .into(),
+                        vuids: &[
+                            "VUID-VkRenderingInfo-pDepthAttachment-06093",
+                            "VUID-VkRenderingInfo-pDepthAttachment-06098",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if let Some(attachment_info) = stencil_attachment {
+            attachment_info
+                .validate(device)
+                .map_err(|err| err.add_context("stencil_attachment"))?;
+
+            let RenderingAttachmentInfo {
+                image_view,
+                image_layout,
+                resolve_info,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
+                _ne: _,
+            } = attachment_info;
+
+            if !image_view
+                .format()
+                .aspects()
+                .intersects(ImageAspects::STENCIL)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_attachment.image_view.format()".into(),
+                    problem: "does not have a stencil aspect".into(),
+                    vuids: &["VUID-VkRenderingInfo-pStencilAttachment-06548"],
+                    ..Default::default()
+                }));
+            }
+
+            if !image_view
+                .usage()
+                .intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_attachment.image_view.usage()".into(),
+                    problem: "does not contain `ImageUsage::DEPTH_STENCIL_ATTACHMENT`".into(),
+                    vuids: &["VUID-VkRenderingInfo-pStencilAttachment-06089"],
+                    ..Default::default()
+                }));
+            }
+
+            if render_area_offset[0] + render_area_extent[0] > image_view.image().extent()[0] {
+                return Err(Box::new(ValidationError {
+                    problem: "`render_area_offset[0] + render_area_extent[0]` is greater than \
+                        `stencil_attachment.image_view.image().extent()[0]`"
+                        .into(),
+                    vuids: &["VUID-VkRenderingInfo-pNext-06079"],
+                    ..Default::default()
+                }));
+            }
+
+            if render_area_offset[1] + render_area_extent[1] > image_view.image().extent()[1] {
+                return Err(Box::new(ValidationError {
+                    problem: "`render_area_offset[1] + render_area_extent[1]` is greater than \
+                        `stencil_attachment.image_view.image().extent()[1]`"
+                        .into(),
+                    vuids: &["VUID-VkRenderingInfo-pNext-06080"],
+                    ..Default::default()
+                }));
+            }
+
+            if let Some(samples) = samples {
+                if samples != image_view.image().samples() {
+                    return Err(Box::new(ValidationError {
+                        problem: "`stencil_attachment.image_view.image().samples()` \
+                            is not equal to the number of samples of the other attachments"
+                            .into(),
+                        vuids: &["VUID-VkRenderingInfo-imageView-06070"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if matches!(image_layout, ImageLayout::ColorAttachmentOptimal) {
+                return Err(Box::new(ValidationError {
+                    context: "stencil_attachment.image_layout".into(),
+                    problem: "is `ImageLayout::ColorAttachmentOptimal`".into(),
+                    vuids: &["VUID-VkRenderingInfo-pStencilAttachment-06094"],
+                    ..Default::default()
+                }));
+            }
+
+            if let Some(resolve_info) = resolve_info {
+                let &RenderingAttachmentResolveInfo {
+                    mode,
+                    image_view: _,
+                    image_layout: resolve_image_layout,
+                } = resolve_info;
+
+                if !properties
+                    .supported_stencil_resolve_modes
+                    .map_or(false, |modes| modes.contains_enum(mode))
+                {
+                    return Err(Box::new(ValidationError {
+                        problem:
+                            "`stencil_attachment.resolve_info.mode` is not one of the modes in \
+                            the `supported_stencil_resolve_modes` device property"
+                                .into(),
+                        vuids: &["VUID-VkRenderingInfo-pStencilAttachment-06103"],
+                        ..Default::default()
+                    }));
+                }
+
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::ColorAttachmentOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                ) {
+                    return Err(Box::new(ValidationError {
+                        context: "stencil_attachment.resolve_info.image_layout".into(),
+                        problem: "is `ImageLayout::ColorAttachmentOptimal` or \
+                            `ImageLayout::DepthReadOnlyStencilAttachmentOptimal`"
+                            .into(),
+                        vuids: &[
+                            "VUID-VkRenderingInfo-pStencilAttachment-06095",
+                            "VUID-VkRenderingInfo-pStencilAttachment-06099",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if let (Some(depth_attachment_info), Some(stencil_attachment_info)) =
+            (depth_attachment, stencil_attachment)
+        {
+            if &depth_attachment_info.image_view != &stencil_attachment_info.image_view {
+                return Err(Box::new(ValidationError {
+                    problem: "`depth_attachment` and `stencil_attachment` are both `Some`, but \
+                        `depth_attachment.image_view` does not equal \
+                        `stencil_attachment.image_view`"
+                        .into(),
+                    vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06085"],
+                    ..Default::default()
+                }));
+            }
+
+            if depth_attachment_info.image_layout != stencil_attachment_info.image_layout
+                && !device.enabled_features().separate_depth_stencil_layouts
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`depth_attachment` and `stencil_attachment` are both `Some`, and \
+                        `depth_attachment.image_layout` does not equal \
+                        `stencil_attachment.attachment_ref.layout`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "separate_depth_stencil_layouts",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            match (
+                &depth_attachment_info.resolve_info,
+                &stencil_attachment_info.resolve_info,
+            ) {
+                (None, None) => (),
+                (None, Some(_)) | (Some(_), None) => {
+                    if !properties.independent_resolve_none.unwrap_or(false) {
+                        return Err(Box::new(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and the `independent_resolve_none` device property is \
+                                `false`, but one of `depth_attachment.resolve_info` and \
+                                `stencil_attachment.resolve_info` is `Some` while the other is \
+                                `None`"
+                                .into(),
+                            vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06104"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                (Some(depth_resolve_info), Some(stencil_resolve_info)) => {
+                    if depth_resolve_info.image_layout != stencil_resolve_info.image_layout
+                        && !device.enabled_features().separate_depth_stencil_layouts
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and `depth_attachment.resolve_info` and \
+                                `stencil_attachment.resolve_info` are also both `Some`, and \
+                                `depth_attachment.resolve_info.image_layout` does not equal \
+                                `stencil_attachment.resolve_info.image_layout`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "separate_depth_stencil_layouts",
+                            )])]),
+                            ..Default::default()
+                        }));
+                    }
+
+                    if !properties.independent_resolve.unwrap_or(false)
+                        && depth_resolve_info.mode != stencil_resolve_info.mode
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and `depth_attachment.resolve_info` and \
+                                `stencil_attachment.resolve_info` are also both `Some`, and \
+                                the `independent_resolve` device property is `false`, but \
+                                `depth_attachment.resolve_info.mode` does not equal \
+                                `stencil_attachment.resolve_info.mode`"
+                                .into(),
+                            vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06105"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if &depth_resolve_info.image_view != &stencil_resolve_info.image_view {
+                        return Err(Box::new(ValidationError {
+                            problem: "`depth_attachment` and `stencil_attachment` are both \
+                                `Some`, and `depth_attachment.resolve_info` and \
+                                `stencil_attachment.resolve_info` are also both `Some`, but \
+                                `depth_attachment.resolve_info.image_view` does not equal \
+                                `stencil_attachment.resolve_info.image_view`"
+                                .into(),
+                            vuids: &["VUID-VkRenderingInfo-pDepthAttachment-06086"],
+                            ..Default::default()
+                        }));
+                    }
                 }
             }
         }
@@ -2397,6 +2904,127 @@ impl RenderingAttachmentInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref image_view,
+            image_layout,
+            ref resolve_info,
+            load_op,
+            store_op,
+            ref clear_value,
+            _ne,
+        } = self;
+
+        image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "image_layout".into(),
+                vuids: &["VUID-VkRenderingAttachmentInfo-imageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        load_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "load_op".into(),
+                vuids: &["VUID-VkRenderingAttachmentInfo-loadOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        store_op
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "store_op".into(),
+                vuids: &["VUID-VkRenderingAttachmentInfo-storeOp-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if matches!(
+            image_layout,
+            ImageLayout::Undefined
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::TransferDstOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::PresentSrc
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "image_layout".into(),
+                problem: "is `ImageLayout::Undefined`, \
+                    `ImageLayout::ShaderReadOnlyOptimal`, \
+                    `ImageLayout::TransferSrcOptimal`, \
+                    `ImageLayout::TransferDstOptimal`, \
+                    `ImageLayout::Preinitialized` or \
+                    `ImageLayout::PresentSrc`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkRenderingAttachmentInfo-imageView-06135",
+                    "VUID-VkRenderingAttachmentInfo-imageView-06145",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if let Some(resolve_info) = resolve_info {
+            resolve_info
+                .validate(device)
+                .map_err(|err| err.add_context("resolve_info"))?;
+
+            let &RenderingAttachmentResolveInfo {
+                mode: _,
+                image_view: ref resolve_image_view,
+                image_layout: _,
+            } = resolve_info;
+
+            if image_view.image().samples() == SampleCount::Sample1 {
+                return Err(Box::new(ValidationError {
+                    problem: "`resolve_info` is `Some`, but \
+                        `image_view.image().samples()` is `SampleCount::Sample1`"
+                        .into(),
+                    vuids: &["VUID-VkRenderingAttachmentInfo-imageView-06132"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_view.format() != resolve_image_view.format() {
+                return Err(Box::new(ValidationError {
+                    problem: "`resolve_info.image_view.format()` does not equal \
+                        `image_view.format()`"
+                        .into(),
+                    vuids: &["VUID-VkRenderingAttachmentInfo-imageView-06134"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        match (clear_value, load_op == AttachmentLoadOp::Clear) {
+            (None, false) => (),
+            (None, true) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`load_op` is `AttachmentLoadOp::Clear`, but \
+                        `clear_value` is `None`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+            (Some(_), false) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`load_op` is not `AttachmentLoadOp::Clear`, but \
+                        `clear_value` is `Some`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+            (Some(clear_value), true) => {
+                clear_value
+                    .validate(device)
+                    .map_err(|err| err.add_context("clear_value"))?;
+            }
+        };
+
+        Ok(())
+    }
 }
 
 /// Parameters to specify the resolve behavior of an attachment.
@@ -2437,6 +3065,100 @@ impl RenderingAttachmentResolveInfo {
             image_layout,
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            mode,
+            ref image_view,
+            image_layout,
+        } = self;
+
+        mode.validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "mode".into(),
+                vuids: &["VUID-VkRenderingAttachmentInfo-resolveMode-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "image_layout".into(),
+                vuids: &["VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        if let Some(numeric_format) = image_view.format().numeric_format_color() {
+            match numeric_format.numeric_type() {
+                NumericType::Float => {
+                    if mode != ResolveMode::Average {
+                        return Err(Box::new(ValidationError {
+                            problem: "`image_view.format()` is a floating-point color format, but \
+                                `mode` is not `ResolveMode::Average`"
+                                .into(),
+                            vuids: &["VUID-VkRenderingAttachmentInfo-imageView-06129"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                NumericType::Int | NumericType::Uint => {
+                    if mode != ResolveMode::SampleZero {
+                        return Err(Box::new(ValidationError {
+                            problem: "`image_view.format()` is an integer color format, but \
+                                `mode` is not `ResolveMode::SampleZero`"
+                                .into(),
+                            vuids: &["VUID-VkRenderingAttachmentInfo-imageView-06130"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+        }
+
+        if image_view.image().samples() != SampleCount::Sample1 {
+            return Err(Box::new(ValidationError {
+                context: "image_view.image().samples()".into(),
+                problem: "is not `SampleCount::Sample1`".into(),
+                vuids: &["VUID-VkRenderingAttachmentInfo-imageView-06133"],
+                ..Default::default()
+            }));
+        }
+
+        if matches!(
+            image_layout,
+            ImageLayout::Undefined
+                | ImageLayout::ShaderReadOnlyOptimal
+                | ImageLayout::TransferSrcOptimal
+                | ImageLayout::TransferDstOptimal
+                | ImageLayout::Preinitialized
+                | ImageLayout::PresentSrc
+                | ImageLayout::DepthStencilReadOnlyOptimal
+                | ImageLayout::DepthReadOnlyOptimal
+                | ImageLayout::StencilReadOnlyOptimal
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "image_layout".into(),
+                problem: "is `ImageLayout::Undefined`, \
+                    `ImageLayout::ShaderReadOnlyOptimal`, \
+                    `ImageLayout::TransferSrcOptimal`, \
+                    `ImageLayout::TransferDstOptimal`, \
+                    `ImageLayout::Preinitialized`, \
+                    `ImageLayout::PresentSrc`, \
+                    `ImageLayout::DepthStencilReadOnlyOptimal`, \
+                    `ImageLayout::DepthReadOnlyOptimal` or \
+                    `ImageLayout::StencilReadOnlyOptimal`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkRenderingAttachmentInfo-imageView-06136",
+                    "VUID-VkRenderingAttachmentInfo-imageView-06137",
+                    "VUID-VkRenderingAttachmentInfo-imageView-06146",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
 }
 
 /// Clear attachment type, used in [`clear_attachments`] command.
@@ -2458,6 +3180,29 @@ pub enum ClearAttachment {
 
     /// Clear the depth and stencil attachments with the specified depth and stencil values.
     DepthStencil((f32, u32)),
+}
+
+impl ClearAttachment {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        if let ClearAttachment::Depth(depth) | ClearAttachment::DepthStencil((depth, _)) = self {
+            if !(0.0..=1.0).contains(depth)
+                && !device.enabled_extensions().ext_depth_range_unrestricted
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "is `ClearAttachment::Depth` or `ClearAttachment::DepthStencil`, and \
+                        the depth value is not between 0.0 and 1.0 inclusive"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_depth_range_unrestricted",
+                    )])]),
+                    vuids: &["VUID-VkClearDepthStencilValue-depth-00022"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl From<ClearAttachment> for ash::vk::ClearAttachment {
@@ -2515,531 +3260,4 @@ pub struct ClearRect {
 
     /// The range of array layers to be cleared.
     pub array_layers: Range<u32>,
-}
-
-/// Error that can happen when recording a render pass command.
-#[derive(Clone, Debug)]
-pub enum RenderPassError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// A framebuffer image did not have the required usage enabled.
-    AttachmentImageMissingUsage {
-        attachment_index: u32,
-        usage: &'static str,
-    },
-
-    /// One of the elements of `render_pass_extent` is zero, but no attachment images were given to
-    /// calculate the extent from.
-    AutoExtentAttachmentsEmpty,
-
-    /// `layer_count` is zero, but no attachment images were given to calculate the number of layers
-    /// from.
-    AutoLayersAttachmentsEmpty,
-
-    /// A clear attachment value is not compatible with the attachment's format.
-    ClearAttachmentNotCompatible {
-        clear_attachment: ClearAttachment,
-        attachment_format: Option<Format>,
-    },
-
-    /// A clear value for a render pass attachment is missing.
-    ClearValueMissing { attachment_index: u32 },
-
-    /// A clear value provided for a render pass attachment is not compatible with the attachment's
-    /// format.
-    ClearValueNotCompatible {
-        clear_value: ClearValue,
-        attachment_index: u32,
-        attachment_format: Format,
-    },
-
-    /// An attachment clear value specifies a `color_attachment` index that is not less than the
-    /// number of color attachments in the subpass.
-    ColorAttachmentIndexOutOfRange {
-        color_attachment_index: u32,
-        num_color_attachments: u32,
-    },
-
-    /// A color attachment has a layout that is not supported.
-    ColorAttachmentLayoutInvalid { attachment_index: u32 },
-
-    /// A color attachment is missing the `color_attachment` usage.
-    ColorAttachmentMissingUsage { attachment_index: u32 },
-
-    /// A color resolve attachment has a `format` value different from the corresponding color
-    /// attachment.
-    ColorAttachmentResolveFormatMismatch { attachment_index: u32 },
-
-    /// A color resolve attachment has a layout that is not supported.
-    ColorAttachmentResolveLayoutInvalid { attachment_index: u32 },
-
-    /// A color resolve attachment has a resolve mode that is not supported.
-    ColorAttachmentResolveModeNotSupported { attachment_index: u32 },
-
-    /// A color resolve attachment has a `samples` value other than [`SampleCount::Sample1`].
-    ColorAttachmentResolveMultisampled { attachment_index: u32 },
-
-    /// A color attachment has a `samples` value that is different from the first
-    /// color attachment.
-    ColorAttachmentSamplesMismatch { attachment_index: u32 },
-
-    /// A color attachment with a resolve attachment has a `samples` value of
-    /// [`SampleCount::Sample1`].
-    ColorAttachmentWithResolveNotMultisampled { attachment_index: u32 },
-
-    /// The contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a secondary
-    /// command buffer.
-    ContentsForbiddenInSecondaryCommandBuffer,
-
-    /// The depth attachment has a format that does not support that usage.
-    DepthAttachmentFormatUsageNotSupported,
-
-    /// The depth attachment has a layout that is not supported.
-    DepthAttachmentLayoutInvalid,
-
-    /// The depth attachment is missing the `depth_stencil_attachment` usage.
-    DepthAttachmentMissingUsage,
-
-    /// The depth resolve attachment has a `format` value different from the corresponding depth
-    /// attachment.
-    DepthAttachmentResolveFormatMismatch,
-
-    /// The depth resolve attachment has a layout that is not supported.
-    DepthAttachmentResolveLayoutInvalid,
-
-    /// The depth resolve attachment has a resolve mode that is not supported.
-    DepthAttachmentResolveModeNotSupported,
-
-    /// The depth resolve attachment has a `samples` value other than [`SampleCount::Sample1`].
-    DepthAttachmentResolveMultisampled,
-
-    /// The depth attachment has a `samples` value that is different from the first
-    /// color attachment.
-    DepthAttachmentSamplesMismatch,
-
-    /// The depth attachment has a resolve attachment and has a `samples` value of
-    /// [`SampleCount::Sample1`].
-    DepthAttachmentWithResolveNotMultisampled,
-
-    /// The depth and stencil attachments have different image views.
-    DepthStencilAttachmentImageViewMismatch,
-
-    /// The depth and stencil resolve attachments have different image views.
-    DepthStencilAttachmentResolveImageViewMismatch,
-
-    /// The combination of depth and stencil resolve modes is not supported by the device.
-    DepthStencilAttachmentResolveModesNotSupported,
-
-    /// Operation forbidden inside a render pass.
-    ForbiddenInsideRenderPass,
-
-    /// Operation forbidden outside a render pass.
-    ForbiddenOutsideRenderPass,
-
-    /// Operation forbidden inside a render pass instance that was begun with `begin_rendering`.
-    ForbiddenWithBeginRendering,
-
-    /// Operation forbidden inside a render pass instance that was begun with `begin_render_pass`.
-    ForbiddenWithBeginRenderPass,
-
-    /// Operation forbidden inside a render pass instance that is inherited by a secondary command
-    /// buffer.
-    ForbiddenWithInheritedRenderPass,
-
-    /// Operation forbidden inside a render subpass with the specified contents.
-    ForbiddenWithSubpassContents { contents: SubpassContents },
-
-    /// The framebuffer is not compatible with the render pass.
-    FramebufferNotCompatible,
-
-    /// The `max_color_attachments` limit has been exceeded.
-    MaxColorAttachmentsExceeded {
-        color_attachment_count: u32,
-        max: u32,
-    },
-
-    /// The `max_multiview_view_count` limit has been exceeded.
-    MaxMultiviewViewCountExceeded { view_count: u32, max: u32 },
-
-    /// The render pass uses multiview, but `layer_count` was not 0 or 1.
-    MultiviewLayersInvalid,
-
-    /// The render pass uses multiview, and in a clear rectangle, `array_layers` was not `0..1`.
-    MultiviewRectArrayLayersInvalid { rect_index: usize },
-
-    /// Tried to advance to the next subpass, but there are no subpasses remaining in the render
-    /// pass.
-    NoSubpassesRemaining { current_subpass: u32 },
-
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
-
-    /// A query is active that conflicts with the current operation.
-    QueryIsActive,
-
-    /// A clear rectangle's `array_layers` is empty.
-    RectArrayLayersEmpty { rect_index: usize },
-
-    /// A clear rectangle's `array_layers` is outside the range of layers of the attachments.
-    RectArrayLayersOutOfBounds { rect_index: usize },
-
-    /// A clear rectangle's `extent` is zero.
-    RectExtentZero { rect_index: usize },
-
-    /// A clear rectangle's `offset` and `extent` are outside the render area of the render pass
-    /// instance.
-    RectOutOfBounds { rect_index: usize },
-
-    /// The render area's `offset` and `extent` are outside the extent of the framebuffer.
-    RenderAreaOutOfBounds,
-
-    /// The stencil attachment has a format that does not support that usage.
-    StencilAttachmentFormatUsageNotSupported,
-
-    /// The stencil attachment has a layout that is not supported.
-    StencilAttachmentLayoutInvalid,
-
-    /// The stencil attachment is missing the `depth_stencil_attachment` usage.
-    StencilAttachmentMissingUsage,
-
-    /// The stencil resolve attachment has a `format` value different from the corresponding stencil
-    /// attachment.
-    StencilAttachmentResolveFormatMismatch,
-
-    /// The stencil resolve attachment has a layout that is not supported.
-    StencilAttachmentResolveLayoutInvalid,
-
-    /// The stencil resolve attachment has a resolve mode that is not supported.
-    StencilAttachmentResolveModeNotSupported,
-
-    /// The stencil resolve attachment has a `samples` value other than [`SampleCount::Sample1`].
-    StencilAttachmentResolveMultisampled,
-
-    /// The stencil attachment has a `samples` value that is different from the first
-    /// color attachment or the depth attachment.
-    StencilAttachmentSamplesMismatch,
-
-    /// The stencil attachment has a resolve attachment and has a `samples` value of
-    /// [`SampleCount::Sample1`].
-    StencilAttachmentWithResolveNotMultisampled,
-
-    /// Tried to end a render pass with subpasses still remaining in the render pass.
-    SubpassesRemaining {
-        current_subpass: u32,
-        remaining_subpasses: u32,
-    },
-}
-
-impl Error for RenderPassError {}
-
-impl Display for RenderPassError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::AttachmentImageMissingUsage {
-                attachment_index,
-                usage,
-            } => write!(
-                f,
-                "the framebuffer image attached to attachment index {} did not have the required \
-                usage {} enabled",
-                attachment_index, usage,
-            ),
-            Self::AutoExtentAttachmentsEmpty => write!(
-                f,
-                "one of the elements of `render_pass_extent` is zero, but no attachment images \
-                were given to calculate the extent from",
-            ),
-            Self::AutoLayersAttachmentsEmpty => write!(
-                f,
-                "`layer_count` is zero, but no attachment images were given to calculate the \
-                number of layers from",
-            ),
-            Self::ClearAttachmentNotCompatible {
-                clear_attachment,
-                attachment_format,
-            } => write!(
-                f,
-                "a clear attachment value ({:?}) is not compatible with the attachment's format \
-                ({:?})",
-                clear_attachment, attachment_format,
-            ),
-            Self::ClearValueMissing { attachment_index } => write!(
-                f,
-                "a clear value for render pass attachment {} is missing",
-                attachment_index,
-            ),
-            Self::ClearValueNotCompatible {
-                clear_value,
-                attachment_index,
-                attachment_format,
-            } => write!(
-                f,
-                "a clear value ({:?}) provided for render pass attachment {} is not compatible \
-                with the attachment's format ({:?})",
-                clear_value, attachment_index, attachment_format,
-            ),
-            Self::ColorAttachmentIndexOutOfRange {
-                color_attachment_index,
-                num_color_attachments,
-            } => write!(
-                f,
-                "an attachment clear value specifies a `color_attachment` index {} that is not \
-                less than the number of color attachments in the subpass ({})",
-                color_attachment_index, num_color_attachments,
-            ),
-            Self::ColorAttachmentLayoutInvalid { attachment_index } => write!(
-                f,
-                "color attachment {} has a layout that is not supported",
-                attachment_index,
-            ),
-            Self::ColorAttachmentMissingUsage { attachment_index } => write!(
-                f,
-                "color attachment {} is missing the `color_attachment` usage",
-                attachment_index,
-            ),
-            Self::ColorAttachmentResolveFormatMismatch { attachment_index } => write!(
-                f,
-                "color attachment {} has a `format` value different from the corresponding color \
-                attachment",
-                attachment_index,
-            ),
-            Self::ColorAttachmentResolveLayoutInvalid { attachment_index } => write!(
-                f,
-                "color resolve attachment {} has a layout that is not supported",
-                attachment_index,
-            ),
-            Self::ColorAttachmentResolveModeNotSupported { attachment_index } => write!(
-                f,
-                "color resolve attachment {} has a resolve mode that is not supported",
-                attachment_index,
-            ),
-            Self::ColorAttachmentResolveMultisampled { attachment_index } => write!(
-                f,
-                "color resolve attachment {} has a `samples` value other than \
-                `SampleCount::Sample1`",
-                attachment_index,
-            ),
-            Self::ColorAttachmentSamplesMismatch { attachment_index } => write!(
-                f,
-                "color attachment {} has a `samples` value that is different from the first color \
-                attachment",
-                attachment_index,
-            ),
-            Self::ColorAttachmentWithResolveNotMultisampled { attachment_index } => write!(
-                f,
-                "color attachment {} with a resolve attachment has a `samples` value of \
-                `SampleCount::Sample1`",
-                attachment_index,
-            ),
-            Self::ContentsForbiddenInSecondaryCommandBuffer => write!(
-                f,
-                "the contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a \
-                secondary command buffer",
-            ),
-            Self::DepthAttachmentFormatUsageNotSupported => write!(
-                f,
-                "the depth attachment has a format that does not support that usage",
-            ),
-            Self::DepthAttachmentLayoutInvalid => {
-                write!(f, "the depth attachment has a layout that is not supported")
-            }
-            Self::DepthAttachmentMissingUsage => write!(
-                f,
-                "the depth attachment is missing the `depth_stencil_attachment` usage",
-            ),
-            Self::DepthAttachmentResolveFormatMismatch => write!(
-                f,
-                "the depth resolve attachment has a `format` value different from the \
-                corresponding depth attachment",
-            ),
-            Self::DepthAttachmentResolveLayoutInvalid => write!(
-                f,
-                "the depth resolve attachment has a layout that is not supported",
-            ),
-            Self::DepthAttachmentResolveModeNotSupported => write!(
-                f,
-                "the depth resolve attachment has a resolve mode that is not supported",
-            ),
-            Self::DepthAttachmentResolveMultisampled => write!(
-                f,
-                "the depth resolve attachment has a `samples` value other than \
-                `SampleCount::Sample1`",
-            ),
-            Self::DepthAttachmentSamplesMismatch => write!(
-                f,
-                "the depth attachment has a `samples` value that is different from the first color \
-                attachment",
-            ),
-            Self::DepthAttachmentWithResolveNotMultisampled => write!(
-                f,
-                "the depth attachment has a resolve attachment and has a `samples` value of \
-                `SampleCount::Sample1`",
-            ),
-            Self::DepthStencilAttachmentImageViewMismatch => write!(
-                f,
-                "the depth and stencil attachments have different image views",
-            ),
-            Self::DepthStencilAttachmentResolveImageViewMismatch => write!(
-                f,
-                "the depth and stencil resolve attachments have different image views",
-            ),
-            Self::DepthStencilAttachmentResolveModesNotSupported => write!(
-                f,
-                "the combination of depth and stencil resolve modes is not supported by the device",
-            ),
-            Self::ForbiddenInsideRenderPass => {
-                write!(f, "operation forbidden inside a render pass")
-            }
-            Self::ForbiddenOutsideRenderPass => {
-                write!(f, "operation forbidden outside a render pass")
-            }
-            Self::ForbiddenWithBeginRendering => write!(
-                f,
-                "operation forbidden inside a render pass instance that was begun with \
-                `begin_rendering`",
-            ),
-            Self::ForbiddenWithBeginRenderPass => write!(
-                f,
-                "operation forbidden inside a render pass instance that was begun with \
-                `begin_render_pass`",
-            ),
-            Self::ForbiddenWithInheritedRenderPass => write!(
-                f,
-                "operation forbidden inside a render pass instance that is inherited by a \
-                secondary command buffer",
-            ),
-            Self::ForbiddenWithSubpassContents {
-                contents: subpass_contents,
-            } => write!(
-                f,
-                "operation forbidden inside a render subpass with contents {:?}",
-                subpass_contents,
-            ),
-            Self::FramebufferNotCompatible => {
-                write!(f, "the framebuffer is not compatible with the render pass")
-            }
-            Self::MaxColorAttachmentsExceeded { .. } => {
-                write!(f, "the `max_color_attachments` limit has been exceeded")
-            }
-            Self::MaxMultiviewViewCountExceeded { .. } => {
-                write!(f, "the `max_multiview_view_count` limit has been exceeded")
-            }
-            Self::MultiviewLayersInvalid => write!(
-                f,
-                "the render pass uses multiview, but `layer_count` was not 0 or 1",
-            ),
-            Self::MultiviewRectArrayLayersInvalid { rect_index } => write!(
-                f,
-                "the render pass uses multiview, and in clear rectangle index {}, `array_layers` \
-                was not `0..1`",
-                rect_index,
-            ),
-            Self::NoSubpassesRemaining { current_subpass } => write!(
-                f,
-                "tried to advance to the next subpass after subpass {}, but there are no subpasses \
-                remaining in the render pass",
-                current_subpass,
-            ),
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::QueryIsActive => write!(
-                f,
-                "a query is active that conflicts with the current operation",
-            ),
-            Self::RectArrayLayersEmpty { rect_index } => write!(
-                f,
-                "clear rectangle index {} `array_layers` is empty",
-                rect_index,
-            ),
-            Self::RectArrayLayersOutOfBounds { rect_index } => write!(
-                f,
-                "clear rectangle index {} `array_layers` is outside the range of layers of the \
-                attachments",
-                rect_index,
-            ),
-            Self::RectExtentZero { rect_index } => {
-                write!(f, "clear rectangle index {} `extent` is zero", rect_index)
-            }
-            Self::RectOutOfBounds { rect_index } => write!(
-                f,
-                "clear rectangle index {} `offset` and `extent` are outside the render area of the \
-                render pass instance",
-                rect_index,
-            ),
-            Self::RenderAreaOutOfBounds => write!(
-                f,
-                "the render area's `offset` and `extent` are outside the extent of the framebuffer",
-            ),
-            Self::StencilAttachmentFormatUsageNotSupported => write!(
-                f,
-                "the stencil attachment has a format that does not support that usage",
-            ),
-            Self::StencilAttachmentLayoutInvalid => write!(
-                f,
-                "the stencil attachment has a layout that is not supported",
-            ),
-            Self::StencilAttachmentMissingUsage => write!(
-                f,
-                "the stencil attachment is missing the `depth_stencil_attachment` usage",
-            ),
-            Self::StencilAttachmentResolveFormatMismatch => write!(
-                f,
-                "the stencil resolve attachment has a `format` value different from the \
-                corresponding stencil attachment",
-            ),
-            Self::StencilAttachmentResolveLayoutInvalid => write!(
-                f,
-                "the stencil resolve attachment has a layout that is not supported",
-            ),
-            Self::StencilAttachmentResolveModeNotSupported => write!(
-                f,
-                "the stencil resolve attachment has a resolve mode that is not supported",
-            ),
-            Self::StencilAttachmentResolveMultisampled => write!(
-                f,
-                "the stencil resolve attachment has a `samples` value other than \
-                `SampleCount::Sample1`",
-            ),
-            Self::StencilAttachmentSamplesMismatch => write!(
-                f,
-                "the stencil attachment has a `samples` value that is different from the first \
-                color attachment",
-            ),
-            Self::StencilAttachmentWithResolveNotMultisampled => write!(
-                f,
-                "the stencil attachment has a resolve attachment and has a `samples` value of \
-                `SampleCount::Sample1`",
-            ),
-            Self::SubpassesRemaining {
-                current_subpass,
-                remaining_subpasses,
-            } => write!(
-                f,
-                "tried to end a render pass at subpass {}, with {} subpasses still remaining in \
-                the render pass",
-                current_subpass, remaining_subpasses,
-            ),
-        }
-    }
-}
-
-impl From<RequirementNotMet> for RenderPassError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
 }

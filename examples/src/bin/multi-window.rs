@@ -21,7 +21,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -45,11 +45,10 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
+    sync::{self, GpuFuture},
+    Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
     event::{ElementState, Event, KeyboardInput, WindowEvent},
@@ -434,9 +433,9 @@ fn main() {
             }
 
             let (image_index, suboptimal, acquire_future) =
-                match acquire_next_image(swapchain.clone(), None) {
+                match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
                     Ok(r) => r,
-                    Err(AcquireError::OutOfDate) => {
+                    Err(VulkanError::OutOfDate) => {
                         *recreate_swapchain = true;
                         return;
                     }
@@ -462,15 +461,18 @@ fn main() {
                             framebuffers[image_index as usize].clone(),
                         )
                     },
-                    SubpassContents::Inline,
+                    Default::default(),
                 )
                 .unwrap()
                 .set_viewport(0, [viewport.clone()].into_iter().collect())
+                .unwrap()
                 .bind_pipeline_graphics(pipeline.clone())
+                .unwrap()
                 .bind_vertex_buffers(0, vertex_buffer.clone())
+                .unwrap()
                 .draw(vertex_buffer.len() as u32, 1, 0, 0)
                 .unwrap()
-                .end_render_pass()
+                .end_render_pass(Default::default())
                 .unwrap();
             let command_buffer = builder.build().unwrap();
 
@@ -486,11 +488,11 @@ fn main() {
                 )
                 .then_signal_fence_and_flush();
 
-            match future {
+            match future.map_err(Validated::unwrap) {
                 Ok(future) => {
                     *previous_frame_end = Some(future.boxed());
                 }
-                Err(FlushError::OutOfDate) => {
+                Err(VulkanError::OutOfDate) => {
                     *recreate_swapchain = true;
                     *previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }

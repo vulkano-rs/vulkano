@@ -100,14 +100,13 @@ use super::{fence::Fence, semaphore::Semaphore};
 use crate::{
     buffer::Buffer,
     command_buffer::{
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
-        ResourceUseRef, SubmitInfo,
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{Image, ImageLayout},
     memory::BindSparseInfo,
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
-    DeviceSize, OomError, VulkanError,
+    DeviceSize, Validated, VulkanError,
 };
 use smallvec::SmallVec;
 use std::{
@@ -158,14 +157,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Once the caller has submitted the submission and has determined that the GPU has finished
     /// executing it, it should call `signal_finished`. Failure to do so will incur a large runtime
     /// overhead, as the future will have to block to make sure that it is finished.
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError>;
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>>;
 
     /// Flushes the future and submits to the GPU the actions that will permit this future to
     /// occur.
     ///
     /// The implementation must remember that it was flushed. If the function is called multiple
     /// times, only the first time must result in a flush.
-    fn flush(&self) -> Result<(), FlushError>;
+    fn flush(&self) -> Result<(), Validated<VulkanError>>;
 
     /// Sets the future to its "complete" state, meaning that it can safely be destroyed.
     ///
@@ -297,7 +296,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// on two different queues, then you would need two submits anyway and it is always
     /// advantageous to submit A as soon as possible.
     #[inline]
-    fn then_signal_semaphore_and_flush(self) -> Result<SemaphoreSignalFuture<Self>, FlushError>
+    fn then_signal_semaphore_and_flush(
+        self,
+    ) -> Result<SemaphoreSignalFuture<Self>, Validated<VulkanError>>
     where
         Self: Sized,
     {
@@ -323,7 +324,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// This is a just a shortcut for `then_signal_fence()` followed with `flush()`.
     #[inline]
-    fn then_signal_fence_and_flush(self) -> Result<FenceSignalFuture<Self>, FlushError>
+    fn then_signal_fence_and_flush(self) -> Result<FenceSignalFuture<Self>, Validated<VulkanError>>
     where
         Self: Sized,
     {
@@ -405,11 +406,11 @@ where
         (**self).cleanup_finished()
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         (**self).build_submission()
     }
 
-    fn flush(&self) -> Result<(), FlushError> {
+    fn flush(&self) -> Result<(), Validated<VulkanError>> {
         (**self).flush()
     }
 
@@ -478,9 +479,6 @@ impl SubmitAnyBuilder {
 /// Access to a resource was denied.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AccessError {
-    /// Exclusive access is denied.
-    ExclusiveDenied,
-
     /// The resource is already in use, and there is no tracking of concurrent usages.
     AlreadyInUse,
 
@@ -496,9 +494,6 @@ pub enum AccessError {
         requested: ImageLayout,
     },
 
-    /// Trying to use a buffer that still contains garbage data.
-    BufferNotInitialized,
-
     /// Trying to use a swapchain image without depending on a corresponding acquire image future.
     SwapchainImageNotAcquired,
 }
@@ -511,7 +506,6 @@ impl Display for AccessError {
             f,
             "{}",
             match self {
-                AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
                 AccessError::AlreadyInUse => {
                     "the resource is already in use, and there is no tracking of concurrent usages"
                 }
@@ -521,9 +515,6 @@ impl Display for AccessError {
                 AccessError::ImageNotInitialized { .. } => {
                     "trying to use an image without transitioning it from the undefined or \
                     preinitialized layouts first"
-                }
-                AccessError::BufferNotInitialized => {
-                    "trying to use a buffer that still contains garbage data"
                 }
                 AccessError::SwapchainImageNotAcquired => {
                     "trying to use a swapchain image without depending on a corresponding acquire \
@@ -561,125 +552,5 @@ impl Display for AccessCheckError {
 impl From<AccessError> for AccessCheckError {
     fn from(err: AccessError) -> AccessCheckError {
         AccessCheckError::Denied(err)
-    }
-}
-
-/// Error that can happen when creating a graphics pipeline.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum FlushError {
-    /// Access to a resource has been denied.
-    AccessError(AccessError),
-
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// The connection to the device has been lost.
-    DeviceLost,
-
-    /// The surface is no longer accessible and must be recreated.
-    SurfaceLost,
-
-    /// The surface has changed in a way that makes the swapchain unusable. You must query the
-    /// surface's new properties and recreate a new swapchain if you want to continue drawing.
-    OutOfDate,
-
-    /// The swapchain has lost or doesn't have full screen exclusivity possibly for
-    /// implementation-specific reasons outside of the application’s control.
-    FullScreenExclusiveModeLost,
-
-    /// The flush operation needed to block, but the timeout has elapsed.
-    Timeout,
-
-    /// A non-zero present_id must be greater than any non-zero present_id passed previously
-    /// for the same swapchain.
-    PresentIdLessThanOrEqual,
-
-    /// A new present mode was provided, but this mode was not one of the valid present modes
-    /// that the swapchain was created with.
-    PresentModeNotValid,
-
-    /// Access to a resource has been denied.
-    ResourceAccessError {
-        error: AccessError,
-        use_ref: Option<ResourceUseRef>,
-    },
-
-    /// The command buffer or one of the secondary command buffers it executes was created with the
-    /// "one time submit" flag, but has already been submitted it the past.
-    OneTimeSubmitAlreadySubmitted,
-
-    /// The command buffer or one of the secondary command buffers it executes is already in use by
-    /// the GPU and was not created with the "concurrent" flag.
-    ExclusiveAlreadyInUse,
-}
-
-impl Error for FlushError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::AccessError(err) => Some(err),
-            Self::OomError(err) => Some(err),
-            Self::ResourceAccessError { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl Display for FlushError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::AccessError(_) => "access to a resource has been denied",
-                Self::OomError(_) => "not enough memory",
-                Self::DeviceLost => "the connection to the device has been lost",
-                Self::SurfaceLost => "the surface of this swapchain is no longer valid",
-                Self::OutOfDate => "the swapchain needs to be recreated",
-                Self::FullScreenExclusiveModeLost => {
-                    "the swapchain no longer has full screen exclusivity"
-                }
-                Self::Timeout => {
-                    "the flush operation needed to block, but the timeout has elapsed"
-                }
-                Self::PresentIdLessThanOrEqual => {
-                    "present id is less than or equal to previous"
-                }
-                Self::PresentModeNotValid => {
-                    "a new present mode was provided, but this mode was not one of the valid \
-                    present modes that the swapchain was created with"
-                }
-                Self::ResourceAccessError { .. } => "access to a resource has been denied",
-                Self::OneTimeSubmitAlreadySubmitted => {
-                    "the command buffer or one of the secondary command buffers it executes was \
-                    created with the \"one time submit\" flag, but has already been submitted in \
-                    the past"
-                }
-                Self::ExclusiveAlreadyInUse => {
-                    "the command buffer or one of the secondary command buffers it executes is \
-                    already in use was not created with the \"concurrent\" flag"
-                }
-            }
-        )
-    }
-}
-
-impl From<AccessError> for FlushError {
-    fn from(err: AccessError) -> FlushError {
-        Self::AccessError(err)
-    }
-}
-
-impl From<VulkanError> for FlushError {
-    fn from(err: VulkanError) -> Self {
-        match err {
-            VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
-                Self::OomError(err.into())
-            }
-            VulkanError::DeviceLost => Self::DeviceLost,
-            VulkanError::SurfaceLost => Self::SurfaceLost,
-            VulkanError::OutOfDate => Self::OutOfDate,
-            VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
-            _ => panic!("unexpected error: {:?}", err),
-        }
     }
 }

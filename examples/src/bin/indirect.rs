@@ -31,7 +31,7 @@ use vulkano::{
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        DrawIndirectCommand, RenderPassBeginInfo, SubpassContents,
+        DrawIndirectCommand, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -61,11 +61,10 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     single_pass_renderpass,
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainPresentInfo,
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
+    sync::{self, GpuFuture},
+    Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -412,9 +411,9 @@ fn main() {
                 }
 
                 let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(swapchain.clone(), None) {
+                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
                         Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
+                        Err(VulkanError::OutOfDate) => {
                             recreate_swapchain = true;
                             return;
                         }
@@ -474,12 +473,14 @@ fn main() {
                 // vertices and fill out the draw call arguments.
                 builder
                     .bind_pipeline_compute(compute_pipeline.clone())
+                    .unwrap()
                     .bind_descriptor_sets(
                         PipelineBindPoint::Compute,
                         compute_pipeline.layout().clone(),
                         0,
                         cs_desciptor_set,
                     )
+                    .unwrap()
                     .dispatch([1, 1, 1])
                     .unwrap()
                     .begin_render_pass(
@@ -489,17 +490,20 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        SubpassContents::Inline,
+                        Default::default(),
                     )
                     .unwrap()
                     .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
                     .bind_pipeline_graphics(render_pipeline.clone())
+                    .unwrap()
                     .bind_vertex_buffers(0, vertices)
+                    .unwrap()
                     // The indirect draw call is placed in the command buffer with a reference to
                     // the buffer that will contain the arguments for the draw.
                     .draw_indirect(indirect_buffer)
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
                 let command_buffer = builder.build().unwrap();
 
@@ -515,11 +519,11 @@ fn main() {
                     )
                     .then_signal_fence_and_flush();
 
-                match future {
+                match future.map_err(Validated::unwrap) {
                     Ok(future) => {
                         previous_frame_end = Some(future.boxed());
                     }
-                    Err(FlushError::OutOfDate) => {
+                    Err(VulkanError::OutOfDate) => {
                         recreate_swapchain = true;
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }

@@ -276,9 +276,10 @@
 //! as last parameter the old swapchain.
 //!
 //! ```
-//! use vulkano::swapchain;
-//! use vulkano::swapchain::{AcquireError, SwapchainCreateInfo, SwapchainPresentInfo};
-//! use vulkano::sync::GpuFuture;
+//! use vulkano::{
+//!     swapchain::{self, SwapchainCreateInfo, SwapchainPresentInfo},
+//!     sync::GpuFuture, Validated, VulkanError,
+//! };
 //!
 //! // let (swapchain, images) = Swapchain::new(...);
 //! # let mut swapchain: ::std::sync::Arc<::vulkano::swapchain::Swapchain> = return;
@@ -298,11 +299,12 @@
 //!         recreate_swapchain = false;
 //!     }
 //!
-//!     let (image_index, suboptimal, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
-//!         Ok(r) => r,
-//!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
-//!         Err(err) => panic!("{:?}", err),
-//!     };
+//!     let (image_index, suboptimal, acq_future) =
+//!         match swapchain::acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+//!             Ok(r) => r,
+//!             Err(VulkanError::OutOfDate) => { recreate_swapchain = true; continue; },
+//!             Err(err) => panic!("{:?}", err),
+//!         };
 //!
 //!     // ...
 //!

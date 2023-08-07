@@ -17,7 +17,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
+        CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -50,7 +50,7 @@ use vulkano::{
         SwapchainPresentInfo,
     },
     sync::{self, future::FenceSignalFuture, GpuFuture},
-    VulkanLibrary,
+    Validated, VulkanLibrary,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -582,14 +582,17 @@ fn main() {
                 builder
                     // Push constants for compute shader.
                     .push_constants(compute_pipeline.layout().clone(), 0, push_constants)
+                    .unwrap()
                     // Perform compute operation to update particle positions.
                     .bind_pipeline_compute(compute_pipeline.clone())
+                    .unwrap()
                     .bind_descriptor_sets(
                         PipelineBindPoint::Compute,
                         compute_pipeline.layout().clone(),
                         0, // Bind this descriptor set to index 0.
                         descriptor_set.clone(),
                     )
+                    .unwrap()
                     .dispatch([PARTICLE_COUNT as u32 / 128, 1, 1])
                     .unwrap()
                     // Use render-pass to draw particles to swapchain.
@@ -600,14 +603,16 @@ fn main() {
                                 framebuffers[image_index as usize].clone(),
                             )
                         },
-                        SubpassContents::Inline,
+                        Default::default(),
                     )
                     .unwrap()
                     .bind_pipeline_graphics(graphics_pipeline.clone())
+                    .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .unwrap()
                     .draw(PARTICLE_COUNT as u32, 1, 0, 0)
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
                 let command_buffer = builder.build().unwrap();
 
@@ -622,7 +627,7 @@ fn main() {
                     .then_signal_fence_and_flush();
 
                 // Update this frame's future with current fence.
-                fences[image_index as usize] = match future {
+                fences[image_index as usize] = match future.map_err(Validated::unwrap) {
                     // Success, store result into vector.
                     Ok(future) => Some(Arc::new(future)),
 

@@ -18,13 +18,11 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
-    DeviceSize, OomError, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, VulkanError,
-    VulkanObject,
+    DeviceSize, RequirementNotMet, Requires, RequiresAllOf, RequiresOneOf, Validated,
+    ValidationError, VulkanError, VulkanObject,
 };
 use std::{
-    error::Error,
     ffi::c_void,
-    fmt::{Display, Error as FmtError, Formatter},
     mem::{size_of_val, MaybeUninit},
     num::NonZeroU64,
     ops::Range,
@@ -45,42 +43,36 @@ pub struct QueryPool {
 
 impl QueryPool {
     /// Creates a new `QueryPool`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `create_info.query_count` is `0`.
+    #[inline]
     pub fn new(
         device: Arc<Device>,
         create_info: QueryPoolCreateInfo,
-    ) -> Result<Arc<QueryPool>, QueryPoolCreationError> {
-        let QueryPoolCreateInfo {
-            query_type,
+    ) -> Result<Arc<QueryPool>, Validated<VulkanError>> {
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: QueryPoolCreateInfo,
+    ) -> Result<Arc<QueryPool>, VulkanError> {
+        let &QueryPoolCreateInfo {
+            ref query_type,
             query_count,
             _ne: _,
-        } = create_info;
+        } = &create_info;
 
-        // VUID-VkQueryPoolCreateInfo-queryType-parameter
-        query_type.validate_device(&device)?;
-
-        // VUID-VkQueryPoolCreateInfo-queryCount-02763
-        assert!(query_count != 0);
-
-        let pipeline_statistics = match &query_type {
-            &QueryType::PipelineStatistics(flags) => {
-                // VUID-VkQueryPoolCreateInfo-queryType-00791
-                if !device.enabled_features().pipeline_statistics_query {
-                    return Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled);
-                }
-
-                // VUID-VkQueryPoolCreateInfo-queryType-00792
-                flags.into()
-            }
-            _ => ash::vk::QueryPipelineStatisticFlags::empty(),
+        let pipeline_statistics = if let &QueryType::PipelineStatistics(flags) = query_type {
+            flags.into()
+        } else {
+            ash::vk::QueryPipelineStatisticFlags::empty()
         };
 
-        let create_info = ash::vk::QueryPoolCreateInfo {
+        let create_info_vk = ash::vk::QueryPoolCreateInfo {
             flags: ash::vk::QueryPoolCreateFlags::empty(),
-            query_type: (&query_type).into(),
+            query_type: query_type.into(),
             query_count,
             pipeline_statistics,
             ..Default::default()
@@ -91,7 +83,7 @@ impl QueryPool {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_query_pool)(
                 device.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -100,13 +92,18 @@ impl QueryPool {
             output.assume_init()
         };
 
-        Ok(Arc::new(QueryPool {
-            handle,
-            device: InstanceOwnedDebugWrapper(device),
-            id: Self::next_id(),
-            query_type,
-            query_count,
-        }))
+        Ok(Self::from_handle(device, handle, create_info))
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &QueryPoolCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
     }
 
     /// Creates a new `QueryPool` from a raw object handle.
@@ -148,29 +145,158 @@ impl QueryPool {
         self.query_count
     }
 
-    /// Returns a reference to a single query slot, or `None` if the index is out of range.
+    /// Copies the results of a range of queries to a buffer on the CPU.
+    ///
+    /// [`self.ty().result_len()`] will be written for each query in the range, plus 1 extra
+    /// element per query if [`WITH_AVAILABILITY`] is enabled. The provided buffer must be large
+    /// enough to hold the data.
+    ///
+    /// `true` is returned if every result was available and written to the buffer. `false`
+    /// is returned if some results were not yet available; these will not be written to the buffer.
+    ///
+    /// See also [`copy_query_pool_results`].
+    ///
+    /// [`self.ty().result_len()`]: QueryType::result_len
+    /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
+    /// [`copy_query_pool_results`]: crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results
     #[inline]
-    pub fn query(&self, index: u32) -> Option<Query<'_>> {
-        if index < self.query_count {
-            Some(Query { pool: self, index })
-        } else {
-            None
-        }
+    pub fn get_results<T>(
+        &self,
+        range: Range<u32>,
+        destination: &mut [T],
+        flags: QueryResultFlags,
+    ) -> Result<bool, Validated<VulkanError>>
+    where
+        T: QueryResultElement,
+    {
+        self.validate_get_results(range.clone(), destination, flags)?;
+
+        unsafe { Ok(self.get_results_unchecked(range, destination, flags)?) }
     }
 
-    /// Returns a reference to a range of queries, or `None` if out of range.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the range is empty.
-    #[inline]
-    pub fn queries_range(&self, range: Range<u32>) -> Option<QueriesRange<'_>> {
-        assert!(!range.is_empty());
+    fn validate_get_results<T>(
+        &self,
+        range: Range<u32>,
+        destination: &[T],
+        flags: QueryResultFlags,
+    ) -> Result<(), Box<ValidationError>>
+    where
+        T: QueryResultElement,
+    {
+        flags
+            .validate_device(&self.device)
+            .map_err(|err| ValidationError {
+                context: "flags".into(),
+                vuids: &["VUID-vkGetQueryPoolResults-flags-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-        if range.end <= self.query_count {
-            Some(QueriesRange { pool: self, range })
-        } else {
-            None
+        if destination.is_empty() {
+            return Err(Box::new(ValidationError {
+                context: "destination".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-vkGetQueryPoolResults-dataSize-arraylength"],
+                ..Default::default()
+            }));
+        }
+
+        if range.is_empty() {
+            return Err(Box::new(ValidationError {
+                context: "range".into(),
+                problem: "is empty".into(),
+                // vuids?
+                ..Default::default()
+            }));
+        }
+
+        if range.end > self.query_count {
+            return Err(Box::new(ValidationError {
+                problem: "`range.end` is greater than `self.query_count`".into(),
+                vuids: &[
+                    "VUID-vkGetQueryPoolResults-firstQuery-00813",
+                    "VUID-vkGetQueryPoolResults-firstQuery-00816",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkGetQueryPoolResults-flags-02828
+        // VUID-vkGetQueryPoolResults-flags-00815
+        // Ensured by the Rust alignment of T.
+
+        // VUID-vkGetQueryPoolResults-stride-08993
+        // Ensured by choosing the stride ourselves.
+
+        let per_query_len = self.query_type.result_len()
+            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let required_len = per_query_len * range.len() as DeviceSize;
+
+        if (destination.len() as DeviceSize) < required_len {
+            return Err(Box::new(ValidationError {
+                context: "destination.len()".into(),
+                problem: "is less than the number of elements required for the query type, and \
+                    the provided range and flags"
+                    .into(),
+                vuids: &["VUID-vkGetQueryPoolResults-dataSize-00817"],
+                ..Default::default()
+            }));
+        }
+
+        match &self.query_type {
+            QueryType::Timestamp => {
+                if flags.intersects(QueryResultFlags::PARTIAL) {
+                    return Err(Box::new(ValidationError {
+                        problem: "`self.query_type()` is `QueryType::Timestamp`, but \
+                            `flags` contains `QueryResultFlags::PARTIAL`"
+                            .into(),
+                        vuids: &["VUID-vkGetQueryPoolResults-queryType-00818"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            QueryType::Occlusion
+            | QueryType::PipelineStatistics(_)
+            | QueryType::AccelerationStructureCompactedSize
+            | QueryType::AccelerationStructureSerializationSize
+            | QueryType::AccelerationStructureSerializationBottomLevelPointers
+            | QueryType::AccelerationStructureSize => (),
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn get_results_unchecked<T>(
+        &self,
+        range: Range<u32>,
+        destination: &mut [T],
+        flags: QueryResultFlags,
+    ) -> Result<bool, VulkanError>
+    where
+        T: QueryResultElement,
+    {
+        let per_query_len = self.query_type.result_len()
+            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
+
+        let result = unsafe {
+            let fns = self.device.fns();
+            (fns.v1_0.get_query_pool_results)(
+                self.device.handle(),
+                self.handle(),
+                range.start,
+                range.len() as u32,
+                size_of_val(destination),
+                destination.as_mut_ptr() as *mut c_void,
+                stride,
+                ash::vk::QueryResultFlags::from(flags) | T::FLAG,
+            )
+        };
+
+        match result {
+            ash::vk::Result::SUCCESS => Ok(true),
+            ash::vk::Result::NOT_READY => Ok(false),
+            err => Err(VulkanError::from(err)),
         }
     }
 }
@@ -229,305 +355,62 @@ impl QueryPoolCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
-}
 
-/// Error that can happen when creating a query pool.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum QueryPoolCreationError {
-    /// Not enough memory.
-    OomError(OomError),
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref query_type,
+            query_count,
+            _ne: _,
+        } = self;
 
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
+        query_type
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "query_type".into(),
+                vuids: &["VUID-VkQueryPoolCreateInfo-queryType-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
 
-    /// A pipeline statistics pool was requested but the corresponding feature wasn't enabled.
-    PipelineStatisticsQueryFeatureNotEnabled,
-}
+        match query_type {
+            QueryType::PipelineStatistics(flags) => {
+                if !device.enabled_features().pipeline_statistics_query {
+                    return Err(Box::new(ValidationError {
+                        context: "query_type".into(),
+                        problem: "is `QueryType::PipelineStatistics`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "pipeline_statistics_query",
+                        )])]),
+                        vuids: &["VUID-VkQueryPoolCreateInfo-queryType-00791"],
+                    }));
+                }
 
-impl Error for QueryPoolCreationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            QueryPoolCreationError::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for QueryPoolCreationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::PipelineStatisticsQueryFeatureNotEnabled => write!(
-                f,
-                "a pipeline statistics pool was requested but the corresponding feature \
-                    wasn't enabled"
-            ),
-        }
-    }
-}
-
-impl From<OomError> for QueryPoolCreationError {
-    fn from(err: OomError) -> QueryPoolCreationError {
-        QueryPoolCreationError::OomError(err)
-    }
-}
-
-impl From<RequirementNotMet> for QueryPoolCreationError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-impl From<VulkanError> for QueryPoolCreationError {
-    fn from(err: VulkanError) -> QueryPoolCreationError {
-        match err {
-            err @ VulkanError::OutOfHostMemory => {
-                QueryPoolCreationError::OomError(OomError::from(err))
+                flags
+                    .validate_device(device)
+                    .map_err(|err| ValidationError {
+                        context: "query_type.flags".into(),
+                        vuids: &["VUID-VkQueryPoolCreateInfo-queryType-00792"],
+                        ..ValidationError::from_requirement(err)
+                    })?;
             }
-            err @ VulkanError::OutOfDeviceMemory => {
-                QueryPoolCreationError::OomError(OomError::from(err))
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-/// A reference to a single query slot.
-///
-/// This is created through [`QueryPool::query`].
-#[derive(Clone, Debug)]
-pub struct Query<'a> {
-    pool: &'a QueryPool,
-    index: u32,
-}
-
-impl<'a> Query<'a> {
-    /// Returns a reference to the query pool.
-    #[inline]
-    pub fn pool(&self) -> &'a QueryPool {
-        self.pool
-    }
-
-    /// Returns the index of the query represented.
-    #[inline]
-    pub fn index(&self) -> u32 {
-        self.index
-    }
-}
-
-/// A reference to a range of queries.
-///
-/// This is created through [`QueryPool::queries_range`].
-#[derive(Clone, Debug)]
-pub struct QueriesRange<'a> {
-    pool: &'a QueryPool,
-    range: Range<u32>,
-}
-
-impl<'a> QueriesRange<'a> {
-    /// Returns a reference to the query pool.
-    #[inline]
-    pub fn pool(&self) -> &'a QueryPool {
-        self.pool
-    }
-
-    /// Returns the range of queries represented.
-    #[inline]
-    pub fn range(&self) -> Range<u32> {
-        self.range.clone()
-    }
-
-    /// Copies the results of this range of queries to a buffer on the CPU.
-    ///
-    /// [`self.pool().ty().result_len()`] will be written for each query in the range, plus 1 extra
-    /// element per query if [`WITH_AVAILABILITY`] is enabled. The provided buffer must be large
-    /// enough to hold the data.
-    ///
-    /// `true` is returned if every result was available and written to the buffer. `false`
-    /// is returned if some results were not yet available; these will not be written to the buffer.
-    ///
-    /// See also [`copy_query_pool_results`].
-    ///
-    /// [`self.pool().ty().result_len()`]: QueryType::result_len
-    /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
-    /// [`copy_query_pool_results`]: crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results
-    #[inline]
-    pub fn get_results<T>(
-        &self,
-        destination: &mut [T],
-        flags: QueryResultFlags,
-    ) -> Result<bool, GetResultsError>
-    where
-        T: QueryResultElement,
-    {
-        // VUID-vkGetQueryPoolResults-flags-parameter
-        // VUID-vkCmdCopyQueryPoolResults-flags-parameter
-        flags.validate_device(&self.pool.device)?;
-
-        assert!(!destination.is_empty());
-
-        // VUID-vkGetQueryPoolResults-flags-02828
-        // VUID-vkGetQueryPoolResults-flags-00815
-        debug_assert!(
-            destination.as_ptr() as DeviceSize % std::mem::size_of::<T>() as DeviceSize == 0
-        );
-
-        let count = self.range.end - self.range.start;
-        let per_query_len = self.pool.query_type.result_len()
-            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
-        let required_len = per_query_len * count as DeviceSize;
-
-        // VUID-vkGetQueryPoolResults-dataSize-00817
-        if (destination.len() as DeviceSize) < required_len {
-            return Err(GetResultsError::BufferTooSmall {
-                required_len: required_len as DeviceSize,
-                actual_len: destination.len() as DeviceSize,
-            });
-        }
-
-        if let QueryType::Timestamp = &self.pool.query_type {
-            // VUID-vkGetQueryPoolResults-queryType-00818
-            if flags.intersects(QueryResultFlags::PARTIAL) {
-                return Err(GetResultsError::InvalidFlags);
-            }
-        }
-
-        let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
-
-        let result = unsafe {
-            let fns = self.pool.device.fns();
-            (fns.v1_0.get_query_pool_results)(
-                self.pool.device.handle(),
-                self.pool.handle(),
-                self.range.start,
-                self.range.end - self.range.start,
-                size_of_val(destination),
-                destination.as_mut_ptr() as *mut c_void,
-                stride,
-                ash::vk::QueryResultFlags::from(flags) | T::FLAG,
-            )
+            QueryType::Occlusion
+            | QueryType::Timestamp
+            | QueryType::AccelerationStructureCompactedSize
+            | QueryType::AccelerationStructureSerializationSize
+            | QueryType::AccelerationStructureSerializationBottomLevelPointers
+            | QueryType::AccelerationStructureSize => (),
         };
 
-        match result {
-            ash::vk::Result::SUCCESS => Ok(true),
-            ash::vk::Result::NOT_READY => Ok(false),
-            err => Err(VulkanError::from(err).into()),
+        if query_count == 0 {
+            return Err(Box::new(ValidationError {
+                context: "query_count".into(),
+                problem: "is 0".into(),
+                vuids: &["VUID-VkQueryPoolCreateInfo-queryCount-02763"],
+                ..Default::default()
+            }));
         }
+
+        Ok(())
     }
-}
-
-/// Error that can happen when calling [`QueriesRange::get_results`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum GetResultsError {
-    /// The connection to the device has been lost.
-    DeviceLost,
-
-    /// Not enough memory.
-    OomError(OomError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// The buffer is too small for the operation.
-    BufferTooSmall {
-        /// Required number of elements in the buffer.
-        required_len: DeviceSize,
-        /// Actual number of elements in the buffer.
-        actual_len: DeviceSize,
-    },
-
-    /// The provided flags are not allowed for this type of query.
-    InvalidFlags,
-}
-
-impl Error for GetResultsError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::OomError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for GetResultsError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::DeviceLost => write!(f, "the connection to the device has been lost"),
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::BufferTooSmall { .. } => write!(f, "the buffer is too small for the operation"),
-            Self::InvalidFlags => write!(
-                f,
-                "the provided flags are not allowed for this type of query"
-            ),
-        }
-    }
-}
-
-impl From<VulkanError> for GetResultsError {
-    fn from(err: VulkanError) -> Self {
-        match err {
-            VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
-                Self::OomError(OomError::from(err))
-            }
-            VulkanError::DeviceLost => Self::DeviceLost,
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for GetResultsError {
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<RequirementNotMet> for GetResultsError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-/// A trait for elements of buffers that can be used as a destination for query results.
-///
-/// # Safety
-/// This is implemented for `u32` and `u64`. Unless you really know what you're doing, you should
-/// not implement this trait for any other type.
-pub unsafe trait QueryResultElement: BufferContents + Sized {
-    const FLAG: ash::vk::QueryResultFlags;
-}
-
-unsafe impl QueryResultElement for u32 {
-    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::empty();
-}
-
-unsafe impl QueryResultElement for u64 {
-    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::TYPE_64;
 }
 
 /// The type of query that a query pool should perform.
@@ -790,6 +673,23 @@ vulkan_bitflags! {
     ]),*/
 }
 
+/// A trait for elements of buffers that can be used as a destination for query results.
+///
+/// # Safety
+/// This is implemented for `u32` and `u64`. Unless you really know what you're doing, you should
+/// not implement this trait for any other type.
+pub unsafe trait QueryResultElement: BufferContents + Sized {
+    const FLAG: ash::vk::QueryResultFlags;
+}
+
+unsafe impl QueryResultElement for u32 {
+    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::empty();
+}
+
+unsafe impl QueryResultElement for u64 {
+    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::TYPE_64;
+}
+
 vulkan_bitflags! {
     #[non_exhaustive]
 
@@ -823,21 +723,24 @@ vulkan_bitflags! {
 #[cfg(test)]
 mod tests {
     use super::QueryPoolCreateInfo;
-    use crate::query::{QueryPipelineStatisticFlags, QueryPool, QueryPoolCreationError, QueryType};
+    use crate::{
+        query::{QueryPipelineStatisticFlags, QueryPool, QueryType},
+        Validated,
+    };
 
     #[test]
     fn pipeline_statistics_feature() {
         let (device, _) = gfx_dev_and_queue!();
         let query_type = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::empty());
-        match QueryPool::new(
-            device,
-            QueryPoolCreateInfo {
-                query_count: 256,
-                ..QueryPoolCreateInfo::query_type(query_type)
-            },
-        ) {
-            Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => (),
-            _ => panic!(),
-        };
+        assert!(matches!(
+            QueryPool::new(
+                device,
+                QueryPoolCreateInfo {
+                    query_count: 256,
+                    ..QueryPoolCreateInfo::query_type(query_type)
+                },
+            ),
+            Err(Validated::ValidationError(_)),
+        ));
     }
 }

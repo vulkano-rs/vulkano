@@ -250,12 +250,14 @@ fn main() {
     #[allow(clippy::erasing_op, clippy::identity_op)]
     builder
         .bind_pipeline_compute(pipeline.clone())
+        .unwrap()
         .bind_descriptor_sets(
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
             set.clone().offsets([0 * align as u32]),
         )
+        .unwrap()
         .dispatch([12, 1, 1])
         .unwrap()
         .bind_descriptor_sets(
@@ -264,6 +266,7 @@ fn main() {
             0,
             set.clone().offsets([1 * align as u32]),
         )
+        .unwrap()
         .dispatch([12, 1, 1])
         .unwrap()
         .bind_descriptor_sets(
@@ -272,6 +275,7 @@ fn main() {
             0,
             set.offsets([2 * align as u32]),
         )
+        .unwrap()
         .dispatch([12, 1, 1])
         .unwrap();
     let command_buffer = builder.build().unwrap();

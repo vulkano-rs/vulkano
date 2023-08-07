@@ -53,6 +53,9 @@ Changes to command buffers:
 - `UnsafeCommandBuffer(Builder)` now takes ownership of the command buffer allocation, and has a type parameter for the allocator.
 - `CommandPoolResetError` is renamed to `ResetCommandPoolError`.
 - Command pool creation and resetting now take `CommandPoolCreateFlags` and `CommandPoolResetFlags` respectively.
+- All validated binding and dynamic state commands now return `Result` instead of panicking, just like the other commands.
+- The `begin_render_pass`, `next_subpass` and `end_render_pass` commands now take `SubpassBeginInfo` and/or `SubpassEndInfo` parameters. Nothing has changed functionally, but this allows for future-compatibility.
+- `UnsafeCommandBufferBuilder` now performs some validation, when it does not rely on tracking any state. The old, completely unvalidated commands have been renamed with `_unchecked` added to the end.
 
 Changes to descriptor sets and descriptor set layouts:
 - `PersistentDescriptorSet::new` now takes an additional parameter, specifying descriptor set copy operations.
@@ -67,6 +70,9 @@ Changes to render pass objects:
 
 Changes to instances:
 - `InstanceCreateInfo::enumerate_portability` has been replaced with a more generic `flags` field.
+- `DebugUtilsMessengerCreateInfo::user_callback` is now a custom type `DebugUtilsMessengerCallback`, and is unsafe to create.
+- The debug messenger callback now takes three parameters instead of one, corresponding to the first three parameters of the Vulkan callback (the fourth, user data, is represented by the closure itself).
+- `InstanceCreateInfo` now has a `debug_utils_messengers` field. The `Instance::with_debug_utils_messengers` constructor is removed, as the unsafety has been moved to the user callback construction itself.
 
 Changes to `DescriptorPool`:
 - `DescriptorPool::new` now returns validation errors instead of panicking.
@@ -78,6 +84,7 @@ Changes to pipeline caches:
 Changes to `Swapchain`:
 - Swapchain creation no longer returns an error when the swapchain extent doesn't match the current surface extent. This requirement is ill-defined in the spec, as detailed here: [TOCTOU race condition on minImageExtent/maxImageExtent?](https://github.com/KhronosGroup/Vulkan-Docs/issues/1144).
 - Renamed `acquire_full_screen_exclusive` and `release_full_screen_exclusive` to `acquire_full_screen_exclusive_mode` and `release_full_screen_exclusive_mode` to match the Vulkan names.
+- `acquire_next_image` and `wait_for_present` now return `Validated<VulkanError>` as their error type.
 
 Changes to samplers:
 - The `sampler` module is now a submodule of `image`.
@@ -85,6 +92,8 @@ Changes to samplers:
 Changes to `Format`:
 - The following objects now use `Format` instead of `Option<Format>`: `BufferView`, `Image`, `ImageView`, `SamplerYcbcrConversion`.
 - The `block_size` method no longer returns an `Option`.
+- The `type_color`, `type_depth` and `type_stencil` methods are renamed to `numeric_format_color`, `numeric_format_depth` and `numeric_format_stencil`, and the returned type is renamed to `NumericFormat`.
+- `ShaderScalarType` is renamed to `NumericType`.
 
 Changes to memory allocation:
 - `AllocationCreateInfo::usage` and `SubbufferAllocatorCreateInfo::memory_usage` were replaced by a `memory_type_filter` field, to allow for a more flexible selection of the memory type. Additionally, `SubbufferAllocatorCreateInfo::memory_type_filter` defaults to `MemoryTypeFilter::PREFER_DEVICE` for consistency with `AllocationCreateInfo`, unlike the previous default of `MemoryUsage::Upload`.
@@ -95,6 +104,12 @@ Changes to synchronization primitives:
 - The `set_raw` and `reset_raw` methods of `Event` are removed.
 - `Event::reset` is now `unsafe`, as it has preconditions that cannot be validated.
 - `FenceCreateInfo::signaled` is replaced with a `flags` field.
+
+Changes to queries:
+- `Query` and `QueriesRange` are removed. The `get_results` method is moved to `QueryPool` directly.
+
+Changes to futures:
+- `FlushError` is replaced with `Validated<VulkanError>`.
 
 ### Additions
 
@@ -120,6 +135,7 @@ Changes to synchronization primitives:
 - Support for the `ext_image_2d_view_of_3d` extension.
 - Added `Format::UNDEFINED`, and implemented `Default` which returns this value.
 - `ShaderModule` is now constructed with a `new` method, which takes a `ShaderModuleCreateInfo` struct. The old constructors `from_words` and `from_bytes` are deprecated.
+- Added a `set_debug_utils_object_name` method to the `DeviceOwned` trait.
 
 ### Bugs fixed
 
@@ -130,6 +146,7 @@ Changes to synchronization primitives:
 - `Device::set_debug_utils_object_name` no longer exhibits use-after-free UB.
 - [#2248](https://github.com/vulkano-rs/vulkano/issues/2248): Meanings of | and & operators for extensions were swapped.
 - Fixed validation for the `AllocationType` of allocations in `RawImage::bind_memory`, where the image tiling wasn't taken into consideration.
+- vulkano-shaders: Use a placeholder name instead of erroring out, when the shader doesn't contain a name for a struct.
 
 # Version 0.33.0 (2023-04-01)
 

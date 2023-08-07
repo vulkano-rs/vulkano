@@ -12,7 +12,7 @@ use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo, SubpassContents,
+        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
@@ -111,7 +111,10 @@ impl RenderPassPlaceOverFrame {
                     clear_values: vec![Some([0.0; 4].into())],
                     ..RenderPassBeginInfo::framebuffer(framebuffer)
                 },
-                SubpassContents::SecondaryCommandBuffers,
+                SubpassBeginInfo {
+                    contents: SubpassContents::SecondaryCommandBuffers,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -122,7 +125,9 @@ impl RenderPassPlaceOverFrame {
         command_buffer_builder.execute_commands(cb).unwrap();
 
         // End render pass.
-        command_buffer_builder.end_render_pass().unwrap();
+        command_buffer_builder
+            .end_render_pass(Default::default())
+            .unwrap();
 
         // Build command buffer.
         let command_buffer = command_buffer_builder.build().unwrap();

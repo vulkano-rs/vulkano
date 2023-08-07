@@ -13,20 +13,18 @@ use crate::{
         allocator::CommandBufferAllocator, auto::Resource, sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, ResourceInCommand,
     },
-    device::{DeviceOwned, QueueFlags},
-    format::{Format, FormatFeatures, NumericType},
+    device::{Device, DeviceOwned, QueueFlags},
+    format::{Format, FormatFeatures},
     image::{
         mip_level_extent, sampler::Filter, Image, ImageAspects, ImageLayout,
-        ImageSubresourceLayers, ImageType, ImageUsage, SampleCount, SampleCounts,
+        ImageSubresourceLayers, ImageTiling, ImageType, ImageUsage, SampleCount,
     },
     sync::PipelineStageAccessFlags,
-    DeviceSize, RequirementNotMet, RequiresOneOf, Version, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
 use std::{
     cmp::{max, min},
-    error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
     mem::size_of,
     sync::Arc,
 };
@@ -45,134 +43,25 @@ where
     pub fn copy_buffer(
         &mut self,
         copy_buffer_info: impl Into<CopyBufferInfo>,
-    ) -> Result<&mut Self, CopyError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         let copy_buffer_info = copy_buffer_info.into();
         self.validate_copy_buffer(&copy_buffer_info)?;
 
-        unsafe {
-            self.copy_buffer_unchecked(copy_buffer_info);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.copy_buffer_unchecked(copy_buffer_info)) }
     }
 
-    fn validate_copy_buffer(&self, copy_buffer_info: &CopyBufferInfo) -> Result<(), CopyError> {
-        let device = self.device();
+    fn validate_copy_buffer(
+        &self,
+        copy_buffer_info: &CopyBufferInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_copy_buffer(copy_buffer_info)?;
 
-        // VUID-vkCmdCopyBuffer2-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(CopyError::ForbiddenInsideRenderPass);
-        }
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdCopyBuffer2-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(CopyError::NotSupportedByQueueFamily);
-        }
-
-        let &CopyBufferInfo {
-            ref src_buffer,
-            ref dst_buffer,
-            ref regions,
-            _ne: _,
-        } = copy_buffer_info;
-
-        // VUID-VkCopyBufferInfo2-commonparent
-        assert_eq!(device, src_buffer.device());
-        assert_eq!(device, dst_buffer.device());
-
-        // VUID-VkCopyBufferInfo2-srcBuffer-00118
-        if !src_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_SRC)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Source,
-                usage: "transfer_src",
-            });
-        }
-
-        // VUID-VkCopyBufferInfo2-dstBuffer-00120
-        if !dst_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Destination,
-                usage: "transfer_dst",
-            });
-        }
-
-        let same_buffer = src_buffer.buffer() == dst_buffer.buffer();
-        let mut overlap_indices = None;
-
-        for (region_index, region) in regions.iter().enumerate() {
-            let &BufferCopy {
-                src_offset,
-                dst_offset,
-                size,
-                _ne: _,
-            } = region;
-
-            // VUID-VkBufferCopy2-size-01988
-            assert!(size != 0);
-
-            // VUID-VkCopyBufferInfo2-srcOffset-00113
-            // VUID-VkCopyBufferInfo2-size-00115
-            if src_offset + size > src_buffer.size() {
-                return Err(CopyError::RegionOutOfBufferBounds {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    offset_range_end: src_offset + size,
-                    buffer_size: src_buffer.size(),
-                });
-            }
-
-            // VUID-VkCopyBufferInfo2-dstOffset-00114
-            // VUID-VkCopyBufferInfo2-size-00116
-            if dst_offset + size > dst_buffer.size() {
-                return Err(CopyError::RegionOutOfBufferBounds {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    offset_range_end: dst_offset + size,
-                    buffer_size: dst_buffer.size(),
-                });
-            }
-
-            // VUID-VkCopyBufferInfo2-pRegions-00117
-            if same_buffer {
-                let src_region_index = region_index;
-                let src_range =
-                    src_buffer.offset() + src_offset..src_buffer.offset() + src_offset + size;
-
-                for (dst_region_index, dst_region) in regions.iter().enumerate() {
-                    let &BufferCopy { dst_offset, .. } = dst_region;
-
-                    let dst_range =
-                        dst_buffer.offset() + dst_offset..dst_buffer.offset() + dst_offset + size;
-
-                    if src_range.start >= dst_range.end || dst_range.start >= src_range.end {
-                        // The regions do not overlap
-                        continue;
-                    }
-
-                    overlap_indices = Some((src_region_index, dst_region_index));
-                }
-            }
-        }
-
-        // VUID-VkCopyBufferInfo2-pRegions-00117
-        if let Some((src_region_index, dst_region_index)) = overlap_indices {
-            return Err(CopyError::OverlappingRegions {
-                src_region_index,
-                dst_region_index,
-            });
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdCopyBuffer2-renderpass"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -224,7 +113,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_buffer(&copy_buffer_info);
+                out.copy_buffer_unchecked(&copy_buffer_info);
             },
         );
 
@@ -251,672 +140,27 @@ where
     ///
     /// - Panics if `src_image` or `dst_image` were not created from the same device
     ///   as `self`.
-    pub fn copy_image(&mut self, copy_image_info: CopyImageInfo) -> Result<&mut Self, CopyError> {
+    pub fn copy_image(
+        &mut self,
+        copy_image_info: CopyImageInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image(&copy_image_info)?;
 
-        unsafe {
-            self.copy_image_unchecked(copy_image_info);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.copy_image_unchecked(copy_image_info)) }
     }
 
-    fn validate_copy_image(&self, copy_image_info: &CopyImageInfo) -> Result<(), CopyError> {
-        let device = self.device();
+    fn validate_copy_image(
+        &self,
+        copy_image_info: &CopyImageInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_copy_image(copy_image_info)?;
 
-        // VUID-vkCmdCopyImage2-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(CopyError::ForbiddenInsideRenderPass);
-        }
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdCopyImage2-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(CopyError::NotSupportedByQueueFamily);
-        }
-
-        let &CopyImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = copy_image_info;
-
-        // VUID-VkCopyImageInfo2-srcImageLayout-parameter
-        src_image_layout.validate_device(device)?;
-
-        // VUID-VkCopyImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate_device(device)?;
-
-        // VUID-VkCopyImageInfo2-commonparent
-        assert_eq!(device, src_image.device());
-        assert_eq!(device, dst_image.device());
-
-        let copy_2d_3d_supported =
-            device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1;
-        let mut src_image_aspects = src_image.format().aspects();
-        let mut dst_image_aspects = dst_image.format().aspects();
-
-        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
-            // VUID-VkCopyImageInfo2-srcImage-01995
-            if !src_image
-                .format_features()
-                .intersects(FormatFeatures::TRANSFER_SRC)
-            {
-                return Err(CopyError::MissingFormatFeature {
-                    resource: CopyErrorResource::Source,
-                    format_feature: "transfer_src",
-                });
-            }
-
-            // VUID-VkCopyImageInfo2-dstImage-01996
-            if !dst_image
-                .format_features()
-                .intersects(FormatFeatures::TRANSFER_DST)
-            {
-                return Err(CopyError::MissingFormatFeature {
-                    resource: CopyErrorResource::Destination,
-                    format_feature: "transfer_dst",
-                });
-            }
-        }
-
-        // VUID-VkCopyImageInfo2-srcImage-00136
-        if src_image.samples() != dst_image.samples() {
-            return Err(CopyError::SampleCountMismatch {
-                src_sample_count: src_image.samples(),
-                dst_sample_count: dst_image.samples(),
-            });
-        }
-
-        if !(src_image_aspects.intersects(ImageAspects::COLOR)
-            || dst_image_aspects.intersects(ImageAspects::COLOR))
-        {
-            // VUID-VkCopyImageInfo2-srcImage-01548
-            if src_image.format() != dst_image.format() {
-                return Err(CopyError::FormatsMismatch {
-                    src_format: src_image.format(),
-                    dst_format: dst_image.format(),
-                });
-            }
-        }
-
-        // VUID-VkCopyImageInfo2-srcImageLayout-01917
-        if !matches!(
-            src_image_layout,
-            ImageLayout::TransferSrcOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Source,
-                image_layout: src_image_layout,
-            });
-        }
-
-        // VUID-VkCopyImageInfo2-dstImageLayout-01395
-        if !matches!(
-            dst_image_layout,
-            ImageLayout::TransferDstOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Destination,
-                image_layout: dst_image_layout,
-            });
-        }
-
-        let extent_alignment = match queue_family_properties.min_image_transfer_granularity {
-            [0, 0, 0] => None,
-            min_image_transfer_granularity => {
-                let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
-                    if is_multi_plane {
-                        // Assume planes always have 1x1 blocks
-                        min_image_transfer_granularity
-                    } else {
-                        // "The value returned in minImageTransferGranularity has a unit of
-                        // compressed texel blocks for images having a block-compressed format, and
-                        // a unit of texels otherwise."
-                        [
-                            min_image_transfer_granularity[0] * block_extent[0],
-                            min_image_transfer_granularity[1] * block_extent[1],
-                            min_image_transfer_granularity[2] * block_extent[2],
-                        ]
-                    }
-                };
-
-                Some((
-                    granularity(
-                        src_image.format().block_extent(),
-                        src_image_aspects.intersects(ImageAspects::PLANE_0),
-                    ),
-                    granularity(
-                        dst_image.format().block_extent(),
-                        dst_image_aspects.intersects(ImageAspects::PLANE_0),
-                    ),
-                ))
-            }
-        };
-
-        if src_image_aspects.intersects(ImageAspects::PLANE_0) {
-            // VUID-VkCopyImageInfo2-srcImage-01552
-            // VUID-VkCopyImageInfo2-srcImage-01553
-            src_image_aspects -= ImageAspects::COLOR;
-        }
-
-        if dst_image_aspects.intersects(ImageAspects::PLANE_0) {
-            // VUID-VkCopyImageInfo2-dstImage-01554
-            // VUID-VkCopyImageInfo2-dstImage-01555
-            dst_image_aspects -= ImageAspects::COLOR;
-        }
-
-        let mut src_image_aspects_used = ImageAspects::empty();
-        let mut dst_image_aspects_used = ImageAspects::empty();
-        let is_same_image = src_image == dst_image;
-        let mut overlap_subresource_indices = None;
-        let mut overlap_extent_indices = None;
-
-        for (region_index, region) in regions.iter().enumerate() {
-            let &ImageCopy {
-                ref src_subresource,
-                src_offset,
-                ref dst_subresource,
-                dst_offset,
-                extent,
-                _ne,
-            } = region;
-
-            let check_subresource = |resource: CopyErrorResource,
-                                     image: &Image,
-                                     image_aspects: ImageAspects,
-                                     subresource: &ImageSubresourceLayers|
-             -> Result<_, CopyError> {
-                // VUID-VkCopyImageInfo2-srcSubresource-01696
-                // VUID-VkCopyImageInfo2-dstSubresource-01697
-                if subresource.mip_level >= image.mip_levels() {
-                    return Err(CopyError::MipLevelsOutOfRange {
-                        resource,
-                        region_index,
-                        mip_levels_range_end: subresource.mip_level + 1,
-                        image_mip_levels: image.mip_levels(),
-                    });
-                }
-
-                // VUID-VkImageSubresourceLayers-layerCount-01700
-                assert!(!subresource.array_layers.is_empty());
-
-                // VUID-VkCopyImageInfo2-srcSubresource-01698
-                // VUID-VkCopyImageInfo2-dstSubresource-01699
-                // VUID-VkCopyImageInfo2-srcImage-04443
-                // VUID-VkCopyImageInfo2-dstImage-04444
-                if subresource.array_layers.end > image.array_layers() {
-                    return Err(CopyError::ArrayLayersOutOfRange {
-                        resource,
-                        region_index,
-                        array_layers_range_end: subresource.array_layers.end,
-                        image_array_layers: image.array_layers(),
-                    });
-                }
-
-                // VUID-VkImageSubresourceLayers-aspectMask-parameter
-                subresource.aspects.validate_device(device)?;
-
-                // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-                assert!(!subresource.aspects.is_empty());
-
-                // VUID-VkCopyImageInfo2-aspectMask-00142
-                // VUID-VkCopyImageInfo2-aspectMask-00143
-                if !image_aspects.contains(subresource.aspects) {
-                    return Err(CopyError::AspectsNotAllowed {
-                        resource,
-                        region_index,
-                        aspects: subresource.aspects,
-                        allowed_aspects: image_aspects,
-                    });
-                }
-
-                let (subresource_format, subresource_extent) =
-                    if image_aspects.intersects(ImageAspects::PLANE_0) {
-                        // VUID-VkCopyImageInfo2-srcImage-01552
-                        // VUID-VkCopyImageInfo2-srcImage-01553
-                        // VUID-VkCopyImageInfo2-dstImage-01554
-                        // VUID-VkCopyImageInfo2-dstImage-01555
-                        if subresource.aspects.count() != 1 {
-                            return Err(CopyError::MultipleAspectsNotAllowed {
-                                resource,
-                                region_index,
-                                aspects: subresource.aspects,
-                            });
-                        }
-
-                        if subresource.aspects.intersects(ImageAspects::PLANE_0) {
-                            (image.format().planes()[0], image.extent())
-                        } else if subresource.aspects.intersects(ImageAspects::PLANE_1) {
-                            (
-                                image.format().planes()[1],
-                                image
-                                    .format()
-                                    .ycbcr_chroma_sampling()
-                                    .unwrap()
-                                    .subsampled_extent(image.extent()),
-                            )
-                        } else {
-                            (
-                                image.format().planes()[2],
-                                image
-                                    .format()
-                                    .ycbcr_chroma_sampling()
-                                    .unwrap()
-                                    .subsampled_extent(image.extent()),
-                            )
-                        }
-                    } else {
-                        (
-                            image.format(),
-                            mip_level_extent(image.extent(), subresource.mip_level).unwrap(),
-                        )
-                    };
-
-                Ok((subresource_format, subresource_extent))
-            };
-
-            src_image_aspects_used |= src_subresource.aspects;
-            dst_image_aspects_used |= dst_subresource.aspects;
-
-            let (src_subresource_format, src_subresource_extent) = check_subresource(
-                CopyErrorResource::Source,
-                src_image,
-                src_image_aspects,
-                src_subresource,
-            )?;
-            let (dst_subresource_format, dst_subresource_extent) = check_subresource(
-                CopyErrorResource::Destination,
-                dst_image,
-                dst_image_aspects,
-                dst_subresource,
-            )?;
-
-            if !(src_image_aspects.intersects(ImageAspects::PLANE_0)
-                || dst_image_aspects.intersects(ImageAspects::PLANE_0))
-            {
-                // VUID-VkCopyImageInfo2-srcImage-01551
-                if src_subresource.aspects != dst_subresource.aspects {
-                    return Err(CopyError::AspectsMismatch {
-                        region_index,
-                        src_aspects: src_subresource.aspects,
-                        dst_aspects: dst_subresource.aspects,
-                    });
-                }
-            }
-
-            // VUID-VkCopyImageInfo2-srcImage-01548
-            // VUID-VkCopyImageInfo2-None-01549
-            // Color formats must be size-compatible.
-            if src_subresource_format.block_size() != dst_subresource_format.block_size() {
-                return Err(CopyError::FormatsNotCompatible {
-                    src_format: src_subresource_format,
-                    dst_format: dst_subresource_format,
-                });
-            }
-
-            // TODO:
-            // "When copying between compressed and uncompressed formats the extent members
-            // represent the texel dimensions of the source image and not the destination."
-            let mut src_extent = extent;
-            let mut dst_extent = extent;
-            let src_layer_count =
-                src_subresource.array_layers.end - src_subresource.array_layers.start;
-            let dst_layer_count =
-                dst_subresource.array_layers.end - dst_subresource.array_layers.start;
-
-            if copy_2d_3d_supported {
-                match (src_image.image_type(), dst_image.image_type()) {
-                    (ImageType::Dim2d, ImageType::Dim3d) => {
-                        src_extent[2] = 1;
-
-                        // VUID-vkCmdCopyImage-srcImage-01791
-                        if dst_extent[2] != src_layer_count {
-                            return Err(CopyError::ArrayLayerCountMismatch {
-                                region_index,
-                                src_layer_count,
-                                dst_layer_count: dst_extent[2],
-                            });
-                        }
-                    }
-                    (ImageType::Dim3d, ImageType::Dim2d) => {
-                        dst_extent[2] = 1;
-
-                        // VUID-vkCmdCopyImage-dstImage-01792
-                        if src_extent[2] != dst_layer_count {
-                            return Err(CopyError::ArrayLayerCountMismatch {
-                                region_index,
-                                src_layer_count: src_extent[2],
-                                dst_layer_count,
-                            });
-                        }
-                    }
-                    _ => {
-                        // VUID-VkImageCopy2-extent-00140
-                        if src_layer_count != dst_layer_count {
-                            return Err(CopyError::ArrayLayerCountMismatch {
-                                region_index,
-                                src_layer_count,
-                                dst_layer_count,
-                            });
-                        }
-                    }
-                }
-            } else {
-                // VUID-VkImageCopy2-extent-00140
-                if src_layer_count != dst_layer_count {
-                    return Err(CopyError::ArrayLayerCountMismatch {
-                        region_index,
-                        src_layer_count,
-                        dst_layer_count,
-                    });
-                }
-            };
-
-            if let Some((src_extent_alignment, dst_extent_alignment)) = extent_alignment {
-                let check_offset_extent = |resource: CopyErrorResource,
-                                           extent_alignment: [u32; 3],
-                                           subresource_extent: [u32; 3],
-                                           offset: [u32; 3],
-                                           extent: [u32; 3]|
-                 -> Result<_, CopyError> {
-                    for i in 0..3 {
-                        // VUID-VkImageCopy2-extent-06668
-                        // VUID-VkImageCopy2-extent-06669
-                        // VUID-VkImageCopy2-extent-06670
-                        assert!(extent[i] != 0);
-
-                        // VUID-VkCopyImageInfo2-srcOffset-00144
-                        // VUID-VkCopyImageInfo2-srcOffset-00145
-                        // VUID-VkCopyImageInfo2-srcOffset-00147
-                        // VUID-VkCopyImageInfo2-dstOffset-00150
-                        // VUID-VkCopyImageInfo2-dstOffset-00151
-                        // VUID-VkCopyImageInfo2-dstOffset-00153
-                        if offset[i] + extent[i] > subresource_extent[i] {
-                            return Err(CopyError::RegionOutOfImageBounds {
-                                resource,
-                                region_index,
-                                offset_range_end: [
-                                    offset[0] + extent[0],
-                                    offset[1] + extent[1],
-                                    offset[2] + extent[2],
-                                ],
-                                subresource_extent,
-                            });
-                        }
-
-                        // VUID-VkCopyImageInfo2-srcImage-01727
-                        // VUID-VkCopyImageInfo2-dstImage-01731
-                        // VUID-VkCopyImageInfo2-srcOffset-01783
-                        // VUID-VkCopyImageInfo2-dstOffset-01784
-                        if offset[i] % extent_alignment[i] != 0 {
-                            return Err(CopyError::OffsetNotAlignedForImage {
-                                resource,
-                                region_index,
-                                offset,
-                                required_alignment: extent_alignment,
-                            });
-                        }
-
-                        // VUID-VkCopyImageInfo2-srcImage-01728
-                        // VUID-VkCopyImageInfo2-srcImage-01729
-                        // VUID-VkCopyImageInfo2-srcImage-01730
-                        // VUID-VkCopyImageInfo2-dstImage-01732
-                        // VUID-VkCopyImageInfo2-dstImage-01733
-                        // VUID-VkCopyImageInfo2-dstImage-01734
-                        if offset[i] + extent[i] != subresource_extent[i]
-                            && extent[i] % extent_alignment[i] != 0
-                        {
-                            return Err(CopyError::ExtentNotAlignedForImage {
-                                resource,
-                                region_index,
-                                extent,
-                                required_alignment: extent_alignment,
-                            });
-                        }
-                    }
-
-                    Ok(())
-                };
-
-                check_offset_extent(
-                    CopyErrorResource::Source,
-                    src_extent_alignment,
-                    src_subresource_extent,
-                    src_offset,
-                    src_extent,
-                )?;
-                check_offset_extent(
-                    CopyErrorResource::Destination,
-                    dst_extent_alignment,
-                    dst_subresource_extent,
-                    dst_offset,
-                    dst_extent,
-                )?;
-
-                // VUID-VkCopyImageInfo2-pRegions-00124
-                if is_same_image {
-                    let src_region_index = region_index;
-                    let src_subresource_axes = [
-                        src_subresource.mip_level..src_subresource.mip_level + 1,
-                        src_subresource.array_layers.start..src_subresource.array_layers.end,
-                    ];
-                    let src_extent_axes = [
-                        src_offset[0]..src_offset[0] + extent[0],
-                        src_offset[1]..src_offset[1] + extent[1],
-                        src_offset[2]..src_offset[2] + extent[2],
-                    ];
-
-                    for (dst_region_index, dst_region) in regions.iter().enumerate() {
-                        let &ImageCopy {
-                            ref dst_subresource,
-                            dst_offset,
-                            ..
-                        } = dst_region;
-
-                        // For a single-plane image, the aspects must always be identical anyway
-                        if src_image_aspects.intersects(ImageAspects::PLANE_0)
-                            && src_subresource.aspects != dst_subresource.aspects
-                        {
-                            continue;
-                        }
-
-                        let dst_subresource_axes = [
-                            dst_subresource.mip_level..dst_subresource.mip_level + 1,
-                            src_subresource.array_layers.start..src_subresource.array_layers.end,
-                        ];
-
-                        if src_subresource_axes.iter().zip(dst_subresource_axes).any(
-                            |(src_range, dst_range)| {
-                                src_range.start >= dst_range.end || dst_range.start >= src_range.end
-                            },
-                        ) {
-                            continue;
-                        }
-
-                        // If the subresource axes all overlap, then the source and destination must
-                        // have the same layout.
-                        overlap_subresource_indices = Some((src_region_index, dst_region_index));
-
-                        let dst_extent_axes = [
-                            dst_offset[0]..dst_offset[0] + extent[0],
-                            dst_offset[1]..dst_offset[1] + extent[1],
-                            dst_offset[2]..dst_offset[2] + extent[2],
-                        ];
-
-                        // There is only overlap if all of the axes overlap.
-                        if src_extent_axes.iter().zip(dst_extent_axes).any(
-                            |(src_range, dst_range)| {
-                                src_range.start >= dst_range.end || dst_range.start >= src_range.end
-                            },
-                        ) {
-                            continue;
-                        }
-
-                        overlap_extent_indices = Some((src_region_index, dst_region_index));
-                    }
-                }
-            } else {
-                // If granularity is `None`, then we can only copy whole subresources.
-                let check_offset_extent = |resource: CopyErrorResource,
-                                           subresource_extent: [u32; 3],
-                                           offset: [u32; 3],
-                                           extent: [u32; 3]|
-                 -> Result<_, CopyError> {
-                    // VUID-VkCopyImageInfo2-srcImage-01727
-                    // VUID-VkCopyImageInfo2-dstImage-01731
-                    // VUID-vkCmdCopyImage-srcOffset-01783
-                    // VUID-vkCmdCopyImage-dstOffset-01784
-                    if offset != [0, 0, 0] {
-                        return Err(CopyError::OffsetNotAlignedForImage {
-                            resource,
-                            region_index,
-                            offset,
-                            required_alignment: subresource_extent,
-                        });
-                    }
-
-                    // VUID-VkCopyImageInfo2-srcImage-01728
-                    // VUID-VkCopyImageInfo2-srcImage-01729
-                    // VUID-VkCopyImageInfo2-srcImage-01730
-                    // VUID-VkCopyImageInfo2-dstImage-01732
-                    // VUID-VkCopyImageInfo2-dstImage-01733
-                    // VUID-VkCopyImageInfo2-dstImage-01734
-                    if extent != subresource_extent {
-                        return Err(CopyError::ExtentNotAlignedForImage {
-                            resource,
-                            region_index,
-                            extent,
-                            required_alignment: subresource_extent,
-                        });
-                    }
-
-                    Ok(())
-                };
-
-                check_offset_extent(
-                    CopyErrorResource::Source,
-                    src_subresource_extent,
-                    src_offset,
-                    src_extent,
-                )?;
-                check_offset_extent(
-                    CopyErrorResource::Destination,
-                    dst_subresource_extent,
-                    dst_offset,
-                    dst_extent,
-                )?;
-
-                // VUID-VkCopyImageInfo2-pRegions-00124
-                // A simpler version that assumes the region covers the full extent.
-                if is_same_image {
-                    let src_region_index = region_index;
-                    let src_axes = [
-                        src_subresource.mip_level..src_subresource.mip_level + 1,
-                        src_subresource.array_layers.start..src_subresource.array_layers.end,
-                    ];
-
-                    for (dst_region_index, dst_region) in regions.iter().enumerate() {
-                        let &ImageCopy {
-                            ref dst_subresource,
-                            dst_offset: _,
-                            ..
-                        } = dst_region;
-
-                        if src_image_aspects.intersects(ImageAspects::PLANE_0)
-                            && src_subresource.aspects != dst_subresource.aspects
-                        {
-                            continue;
-                        }
-
-                        let dst_axes = [
-                            dst_subresource.mip_level..dst_subresource.mip_level + 1,
-                            src_subresource.array_layers.start..src_subresource.array_layers.end,
-                        ];
-
-                        // There is only overlap if all of the axes overlap.
-                        if src_axes.iter().zip(dst_axes).any(|(src_range, dst_range)| {
-                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
-                        }) {
-                            continue;
-                        }
-
-                        overlap_extent_indices = Some((src_region_index, dst_region_index));
-                    }
-                }
-            }
-        }
-
-        // VUID-VkCopyImageInfo2-aspect-06662
-        if !(src_image_aspects_used - ImageAspects::STENCIL).is_empty()
-            && !src_image.usage().intersects(ImageUsage::TRANSFER_SRC)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Source,
-                usage: "transfer_src",
-            });
-        }
-
-        // VUID-VkCopyImageInfo2-aspect-06663
-        if !(dst_image_aspects_used - ImageAspects::STENCIL).is_empty()
-            && !dst_image.usage().intersects(ImageUsage::TRANSFER_DST)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Destination,
-                usage: "transfer_dst",
-            });
-        }
-
-        // VUID-VkCopyImageInfo2-aspect-06664
-        if src_image_aspects_used.intersects(ImageAspects::STENCIL)
-            && !src_image
-                .stencil_usage()
-                .intersects(ImageUsage::TRANSFER_SRC)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Source,
-                usage: "transfer_src",
-            });
-        }
-
-        // VUID-VkCopyImageInfo2-aspect-06665
-        if dst_image_aspects_used.intersects(ImageAspects::STENCIL)
-            && !dst_image
-                .stencil_usage()
-                .intersects(ImageUsage::TRANSFER_DST)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Destination,
-                usage: "transfer_dst",
-            });
-        }
-
-        // VUID-VkCopyImageInfo2-pRegions-00124
-        if let Some((src_region_index, dst_region_index)) = overlap_extent_indices {
-            return Err(CopyError::OverlappingRegions {
-                src_region_index,
-                dst_region_index,
-            });
-        }
-
-        // VUID-VkCopyImageInfo2-srcImageLayout-00128
-        // VUID-VkCopyImageInfo2-dstImageLayout-00133
-        if let Some((src_region_index, dst_region_index)) = overlap_subresource_indices {
-            if src_image_layout != dst_image_layout {
-                return Err(CopyError::OverlappingSubresourcesLayoutMismatch {
-                    src_region_index,
-                    dst_region_index,
-                    src_image_layout,
-                    dst_image_layout,
-                });
-            }
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdCopyImage2-renderpass"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -972,7 +216,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_image(&copy_image_info);
+                out.copy_image_unchecked(&copy_image_info);
             },
         );
 
@@ -983,433 +227,26 @@ where
     pub fn copy_buffer_to_image(
         &mut self,
         copy_buffer_to_image_info: CopyBufferToImageInfo,
-    ) -> Result<&mut Self, CopyError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_buffer_to_image(&copy_buffer_to_image_info)?;
 
-        unsafe {
-            self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info)) }
     }
 
     fn validate_copy_buffer_to_image(
         &self,
         copy_buffer_to_image_info: &CopyBufferToImageInfo,
-    ) -> Result<(), CopyError> {
-        let device = self.device();
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_copy_buffer_to_image(copy_buffer_to_image_info)?;
 
-        // VUID-vkCmdCopyBufferToImage2-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(CopyError::ForbiddenInsideRenderPass);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdCopyBufferToImage2-renderpass"],
+                ..Default::default()
+            }));
         }
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdCopyBufferToImage2-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(CopyError::NotSupportedByQueueFamily);
-        }
-
-        let &CopyBufferToImageInfo {
-            ref src_buffer,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = copy_buffer_to_image_info;
-
-        // VUID-VkCopyBufferToImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate_device(device)?;
-
-        // VUID-VkCopyBufferToImageInfo2-commonparent
-        assert_eq!(device, src_buffer.device());
-        assert_eq!(device, dst_image.device());
-
-        let mut image_aspects = dst_image.format().aspects();
-
-        // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-            && !image_aspects.intersects(ImageAspects::COLOR)
-        {
-            return Err(CopyError::DepthStencilNotSupportedByQueueFamily);
-        }
-
-        // VUID-VkCopyBufferToImageInfo2-srcBuffer-00174
-        if !src_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_SRC)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Source,
-                usage: "transfer_src",
-            });
-        }
-
-        // VUID-VkCopyBufferToImageInfo2-dstImage-00177
-        if !dst_image.usage().intersects(ImageUsage::TRANSFER_DST) {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Destination,
-                usage: "transfer_dst",
-            });
-        }
-
-        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
-            // VUID-VkCopyBufferToImageInfo2-dstImage-01997
-            if !dst_image
-                .format_features()
-                .intersects(FormatFeatures::TRANSFER_DST)
-            {
-                return Err(CopyError::MissingFormatFeature {
-                    resource: CopyErrorResource::Destination,
-                    format_feature: "transfer_dst",
-                });
-            }
-        }
-
-        // VUID-VkCopyBufferToImageInfo2-dstImage-00179
-        if dst_image.samples() != SampleCount::Sample1 {
-            return Err(CopyError::SampleCountInvalid {
-                resource: CopyErrorResource::Destination,
-                sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts::SAMPLE_1,
-            });
-        }
-
-        // VUID-VkCopyBufferToImageInfo2-dstImageLayout-01396
-        if !matches!(
-            dst_image_layout,
-            ImageLayout::TransferDstOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Destination,
-                image_layout: dst_image_layout,
-            });
-        }
-
-        let extent_alignment = match queue_family_properties.min_image_transfer_granularity {
-            [0, 0, 0] => None,
-            min_image_transfer_granularity => {
-                let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
-                    if is_multi_plane {
-                        // Assume planes always have 1x1 blocks
-                        min_image_transfer_granularity
-                    } else {
-                        // "The value returned in minImageTransferGranularity has a unit of
-                        // compressed texel blocks for images having a block-compressed format, and
-                        // a unit of texels otherwise."
-                        [
-                            min_image_transfer_granularity[0] * block_extent[0],
-                            min_image_transfer_granularity[1] * block_extent[1],
-                            min_image_transfer_granularity[2] * block_extent[2],
-                        ]
-                    }
-                };
-
-                Some(granularity(
-                    dst_image.format().block_extent(),
-                    image_aspects.intersects(ImageAspects::PLANE_0),
-                ))
-            }
-        };
-
-        if image_aspects.intersects(ImageAspects::PLANE_0) {
-            // VUID-VkCopyBufferToImageInfo2-aspectMask-01560
-            image_aspects -= ImageAspects::COLOR;
-        }
-
-        for (region_index, region) in regions.iter().enumerate() {
-            let &BufferImageCopy {
-                buffer_offset,
-                buffer_row_length,
-                buffer_image_height,
-                ref image_subresource,
-                image_offset,
-                image_extent,
-                _ne: _,
-            } = region;
-
-            // VUID-VkCopyBufferToImageInfo2-imageSubresource-01701
-            if image_subresource.mip_level >= dst_image.mip_levels() {
-                return Err(CopyError::MipLevelsOutOfRange {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    mip_levels_range_end: image_subresource.mip_level + 1,
-                    image_mip_levels: dst_image.mip_levels(),
-                });
-            }
-
-            // VUID-VkImageSubresourceLayers-layerCount-01700
-            // VUID-VkCopyBufferToImageInfo2-baseArrayLayer-00213
-            assert!(!image_subresource.array_layers.is_empty());
-
-            // VUID-VkCopyBufferToImageInfo2-imageSubresource-01702
-            // VUID-VkCopyBufferToImageInfo2-baseArrayLayer-00213
-            if image_subresource.array_layers.end > dst_image.array_layers() {
-                return Err(CopyError::ArrayLayersOutOfRange {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    array_layers_range_end: image_subresource.array_layers.end,
-                    image_array_layers: dst_image.array_layers(),
-                });
-            }
-
-            // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-            assert!(!image_subresource.aspects.is_empty());
-
-            // VUID-VkCopyBufferToImageInfo2-aspectMask-00211
-            if !image_aspects.contains(image_subresource.aspects) {
-                return Err(CopyError::AspectsNotAllowed {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    aspects: image_subresource.aspects,
-                    allowed_aspects: image_aspects,
-                });
-            }
-
-            // VUID-VkBufferImageCopy2-aspectMask-00212
-            // VUID-VkCopyBufferToImageInfo2-aspectMask-01560
-            if image_subresource.aspects.count() != 1 {
-                return Err(CopyError::MultipleAspectsNotAllowed {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    aspects: image_subresource.aspects,
-                });
-            }
-
-            let (image_subresource_format, image_subresource_extent) =
-                if image_aspects.intersects(ImageAspects::PLANE_0) {
-                    if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
-                        (dst_image.format().planes()[0], dst_image.extent())
-                    } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
-                        (
-                            dst_image.format().planes()[1],
-                            dst_image
-                                .format()
-                                .ycbcr_chroma_sampling()
-                                .unwrap()
-                                .subsampled_extent(dst_image.extent()),
-                        )
-                    } else {
-                        (
-                            dst_image.format().planes()[2],
-                            dst_image
-                                .format()
-                                .ycbcr_chroma_sampling()
-                                .unwrap()
-                                .subsampled_extent(dst_image.extent()),
-                        )
-                    }
-                } else {
-                    (
-                        dst_image.format(),
-                        mip_level_extent(dst_image.extent(), image_subresource.mip_level).unwrap(),
-                    )
-                };
-
-            if let Some(extent_alignment) = extent_alignment {
-                for i in 0..3 {
-                    // VUID-VkBufferImageCopy2-imageExtent-06659
-                    // VUID-VkBufferImageCopy2-imageExtent-06660
-                    // VUID-VkBufferImageCopy2-imageExtent-06661
-                    assert!(image_extent[i] != 0);
-
-                    // VUID-VkCopyBufferToImageInfo2-pRegions-06223
-                    // VUID-VkCopyBufferToImageInfo2-pRegions-06224
-                    // VUID-VkCopyBufferToImageInfo2-imageOffset-00200
-                    if image_offset[i] + image_extent[i] > image_subresource_extent[i] {
-                        return Err(CopyError::RegionOutOfImageBounds {
-                            resource: CopyErrorResource::Destination,
-                            region_index,
-                            offset_range_end: [
-                                image_offset[0] + image_extent[0],
-                                image_offset[1] + image_extent[1],
-                                image_offset[2] + image_extent[2],
-                            ],
-                            subresource_extent: image_subresource_extent,
-                        });
-                    }
-
-                    // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
-                    // VUID-VkCopyBufferToImageInfo2-imageOffset-00205
-                    if image_offset[i] % extent_alignment[i] != 0 {
-                        return Err(CopyError::OffsetNotAlignedForImage {
-                            resource: CopyErrorResource::Destination,
-                            region_index,
-                            offset: image_offset,
-                            required_alignment: extent_alignment,
-                        });
-                    }
-
-                    // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
-                    // VUID-VkCopyBufferToImageInfo2-imageExtent-00207
-                    // VUID-VkCopyBufferToImageInfo2-imageExtent-00208
-                    // VUID-VkCopyBufferToImageInfo2-imageExtent-00209
-                    if image_offset[i] + image_extent[i] != image_subresource_extent[i]
-                        && image_extent[i] % extent_alignment[i] != 0
-                    {
-                        return Err(CopyError::ExtentNotAlignedForImage {
-                            resource: CopyErrorResource::Destination,
-                            region_index,
-                            extent: image_extent,
-                            required_alignment: extent_alignment,
-                        });
-                    }
-                }
-            } else {
-                // If granularity is `None`, then we can only copy whole subresources.
-
-                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
-                if image_offset != [0, 0, 0] {
-                    return Err(CopyError::OffsetNotAlignedForImage {
-                        resource: CopyErrorResource::Destination,
-                        region_index,
-                        offset: image_offset,
-                        required_alignment: image_subresource_extent,
-                    });
-                }
-
-                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
-                if image_extent != image_subresource_extent {
-                    return Err(CopyError::ExtentNotAlignedForImage {
-                        resource: CopyErrorResource::Destination,
-                        region_index,
-                        extent: image_extent,
-                        required_alignment: image_subresource_extent,
-                    });
-                }
-            }
-
-            // VUID-VkBufferImageCopy2-bufferRowLength-00195
-            if !(buffer_row_length == 0 || buffer_row_length >= image_extent[0]) {
-                return Err(CopyError::BufferRowLengthTooSmall {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    row_length: buffer_row_length,
-                    min: image_extent[0],
-                });
-            }
-
-            // VUID-VkBufferImageCopy2-bufferImageHeight-00196
-            if !(buffer_image_height == 0 || buffer_image_height >= image_extent[1]) {
-                return Err(CopyError::BufferImageHeightTooSmall {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    image_height: buffer_image_height,
-                    min: image_extent[1],
-                });
-            }
-
-            let image_subresource_block_extent = image_subresource_format.block_extent();
-
-            // VUID-VkCopyBufferToImageInfo2-bufferRowLength-00203
-            if buffer_row_length % image_subresource_block_extent[0] != 0 {
-                return Err(CopyError::BufferRowLengthNotAligned {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    row_length: buffer_row_length,
-                    required_alignment: image_subresource_block_extent[0],
-                });
-            }
-
-            // VUID-VkCopyBufferToImageInfo2-bufferImageHeight-00204
-            if buffer_image_height % image_subresource_block_extent[1] != 0 {
-                return Err(CopyError::BufferImageHeightNotAligned {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    image_height: buffer_image_height,
-                    required_alignment: image_subresource_block_extent[1],
-                });
-            }
-
-            // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
-            let image_subresource_block_size =
-                if image_subresource.aspects.intersects(ImageAspects::STENCIL) {
-                    1
-                } else if image_subresource.aspects.intersects(ImageAspects::DEPTH) {
-                    match image_subresource_format {
-                        Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
-                        Format::D32_SFLOAT
-                        | Format::D32_SFLOAT_S8_UINT
-                        | Format::X8_D24_UNORM_PACK32
-                        | Format::D24_UNORM_S8_UINT => 4,
-                        _ => unreachable!(),
-                    }
-                } else {
-                    image_subresource_format.block_size()
-                };
-
-            // VUID-VkCopyBufferToImageInfo2-pRegions-04725
-            // VUID-VkCopyBufferToImageInfo2-pRegions-04726
-            if (buffer_row_length / image_subresource_block_extent[0]) as DeviceSize
-                * image_subresource_block_size
-                > 0x7FFFFFFF
-            {
-                return Err(CopyError::BufferRowLengthTooLarge {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    buffer_row_length,
-                });
-            }
-
-            let buffer_offset_alignment =
-                if image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
-                    4
-                } else {
-                    let mut buffer_offset_alignment = image_subresource_block_size;
-
-                    // VUID-VkCopyBufferToImageInfo2-commandBuffer-04052
-                    // Make the alignment a multiple of 4.
-                    if !queue_family_properties
-                        .queue_flags
-                        .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-                    {
-                        if buffer_offset_alignment % 2 != 0 {
-                            buffer_offset_alignment *= 2;
-                        }
-
-                        if buffer_offset_alignment % 4 != 0 {
-                            buffer_offset_alignment *= 2;
-                        }
-                    }
-
-                    buffer_offset_alignment
-                };
-
-            // VUID-VkCopyBufferToImageInfo2-bufferOffset-00206
-            // VUID-VkCopyBufferToImageInfo2-bufferOffset-01558
-            // VUID-VkCopyBufferToImageInfo2-bufferOffset-01559
-            // VUID-VkCopyBufferToImageInfo2-srcImage-04053
-            if (src_buffer.offset() + buffer_offset) % buffer_offset_alignment != 0 {
-                return Err(CopyError::OffsetNotAlignedForBuffer {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    offset: src_buffer.offset() + buffer_offset,
-                    required_alignment: buffer_offset_alignment,
-                });
-            }
-
-            let buffer_copy_size = region.buffer_copy_size(image_subresource_format);
-
-            // VUID-VkCopyBufferToImageInfo2-pRegions-00171
-            if buffer_offset + buffer_copy_size > src_buffer.size() {
-                return Err(CopyError::RegionOutOfBufferBounds {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    offset_range_end: buffer_offset + buffer_copy_size,
-                    buffer_size: src_buffer.size(),
-                });
-            }
-        }
-
-        // VUID-VkCopyBufferToImageInfo2-pRegions-00173
-        // Can't occur as long as memory aliasing isn't allowed.
 
         Ok(())
     }
@@ -1466,7 +303,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_buffer_to_image(&copy_buffer_to_image_info);
+                out.copy_buffer_to_image_unchecked(&copy_buffer_to_image_info);
             },
         );
 
@@ -1477,422 +314,26 @@ where
     pub fn copy_image_to_buffer(
         &mut self,
         copy_image_to_buffer_info: CopyImageToBufferInfo,
-    ) -> Result<&mut Self, CopyError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image_to_buffer(&copy_image_to_buffer_info)?;
 
-        unsafe {
-            self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info)) }
     }
 
     fn validate_copy_image_to_buffer(
         &self,
         copy_image_to_buffer_info: &CopyImageToBufferInfo,
-    ) -> Result<(), CopyError> {
-        let device = self.device();
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_copy_image_to_buffer(copy_image_to_buffer_info)?;
 
-        // VUID-vkCmdCopyImageToBuffer2-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(CopyError::ForbiddenInsideRenderPass);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdCopyImageToBuffer2-renderpass"],
+                ..Default::default()
+            }));
         }
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdCopyImageToBuffer2-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-        {
-            return Err(CopyError::NotSupportedByQueueFamily);
-        }
-
-        let &CopyImageToBufferInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_buffer,
-            ref regions,
-            _ne: _,
-        } = copy_image_to_buffer_info;
-
-        // VUID-VkCopyImageToBufferInfo2-srcImageLayout-parameter
-        src_image_layout.validate_device(device)?;
-
-        // VUID-VkCopyImageToBufferInfo2-commonparent
-        assert_eq!(device, dst_buffer.device());
-        assert_eq!(device, src_image.device());
-
-        let mut image_aspects = src_image.format().aspects();
-
-        // VUID-VkCopyImageToBufferInfo2-srcImage-00186
-        if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Source,
-                usage: "transfer_src",
-            });
-        }
-
-        // VUID-VkCopyImageToBufferInfo2-dstBuffer-00191
-        if !dst_buffer
-            .buffer()
-            .usage()
-            .intersects(BufferUsage::TRANSFER_DST)
-        {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Destination,
-                usage: "transfer_dst",
-            });
-        }
-
-        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
-            // VUID-VkCopyImageToBufferInfo2-srcImage-01998
-            if !src_image
-                .format_features()
-                .intersects(FormatFeatures::TRANSFER_SRC)
-            {
-                return Err(CopyError::MissingFormatFeature {
-                    resource: CopyErrorResource::Source,
-                    format_feature: "transfer_src",
-                });
-            }
-        }
-
-        // VUID-VkCopyImageToBufferInfo2-srcImage-00188
-        if src_image.samples() != SampleCount::Sample1 {
-            return Err(CopyError::SampleCountInvalid {
-                resource: CopyErrorResource::Source,
-                sample_count: src_image.samples(),
-                allowed_sample_counts: SampleCounts::SAMPLE_1,
-            });
-        }
-
-        // VUID-VkCopyImageToBufferInfo2-srcImageLayout-01397
-        if !matches!(
-            src_image_layout,
-            ImageLayout::TransferSrcOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Source,
-                image_layout: src_image_layout,
-            });
-        }
-
-        let extent_alignment = match queue_family_properties.min_image_transfer_granularity {
-            [0, 0, 0] => None,
-            min_image_transfer_granularity => {
-                let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
-                    if is_multi_plane {
-                        // Assume planes always have 1x1 blocks
-                        min_image_transfer_granularity
-                    } else {
-                        // "The value returned in minImageTransferGranularity has a unit of
-                        // compressed texel blocks for images having a block-compressed format, and
-                        // a unit of texels otherwise."
-                        [
-                            min_image_transfer_granularity[0] * block_extent[0],
-                            min_image_transfer_granularity[1] * block_extent[1],
-                            min_image_transfer_granularity[2] * block_extent[2],
-                        ]
-                    }
-                };
-
-                Some(granularity(
-                    src_image.format().block_extent(),
-                    image_aspects.intersects(ImageAspects::PLANE_0),
-                ))
-            }
-        };
-
-        if image_aspects.intersects(ImageAspects::PLANE_0) {
-            // VUID-VkCopyImageToBufferInfo2-aspectMask-01560
-            image_aspects -= ImageAspects::COLOR;
-        }
-
-        for (region_index, region) in regions.iter().enumerate() {
-            let &BufferImageCopy {
-                buffer_offset,
-                buffer_row_length,
-                buffer_image_height,
-                ref image_subresource,
-                image_offset,
-                image_extent,
-                _ne: _,
-            } = region;
-
-            // VUID-VkCopyImageToBufferInfo2-imageSubresource-01703
-            if image_subresource.mip_level >= src_image.mip_levels() {
-                return Err(CopyError::MipLevelsOutOfRange {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    mip_levels_range_end: image_subresource.mip_level + 1,
-                    image_mip_levels: src_image.mip_levels(),
-                });
-            }
-
-            // VUID-VkImageSubresourceLayers-layerCount-01700
-            assert!(!image_subresource.array_layers.is_empty());
-
-            // VUID-VkCopyImageToBufferInfo2-imageSubresource-01704
-            // VUID-VkCopyImageToBufferInfo2-baseArrayLayer-00213
-            if image_subresource.array_layers.end > src_image.array_layers() {
-                return Err(CopyError::ArrayLayersOutOfRange {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    array_layers_range_end: image_subresource.array_layers.end,
-                    image_array_layers: src_image.array_layers(),
-                });
-            }
-
-            // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-            assert!(!image_subresource.aspects.is_empty());
-
-            // VUID-VkCopyImageToBufferInfo2-aspectMask-00211
-            if !image_aspects.contains(image_subresource.aspects) {
-                return Err(CopyError::AspectsNotAllowed {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    aspects: image_subresource.aspects,
-                    allowed_aspects: image_aspects,
-                });
-            }
-
-            // VUID-VkBufferImageCopy2-aspectMask-00212
-            if image_subresource.aspects.count() != 1 {
-                return Err(CopyError::MultipleAspectsNotAllowed {
-                    resource: CopyErrorResource::Source,
-                    region_index,
-                    aspects: image_subresource.aspects,
-                });
-            }
-
-            let (image_subresource_format, image_subresource_extent) =
-                if image_aspects.intersects(ImageAspects::PLANE_0) {
-                    if image_subresource.aspects.intersects(ImageAspects::PLANE_0) {
-                        (src_image.format().planes()[0], src_image.extent())
-                    } else if image_subresource.aspects.intersects(ImageAspects::PLANE_1) {
-                        (
-                            src_image.format().planes()[1],
-                            src_image
-                                .format()
-                                .ycbcr_chroma_sampling()
-                                .unwrap()
-                                .subsampled_extent(src_image.extent()),
-                        )
-                    } else {
-                        (
-                            src_image.format().planes()[2],
-                            src_image
-                                .format()
-                                .ycbcr_chroma_sampling()
-                                .unwrap()
-                                .subsampled_extent(src_image.extent()),
-                        )
-                    }
-                } else {
-                    (
-                        src_image.format(),
-                        mip_level_extent(src_image.extent(), image_subresource.mip_level).unwrap(),
-                    )
-                };
-
-            if let Some(extent_alignment) = extent_alignment {
-                for i in 0..3 {
-                    // VUID-VkBufferImageCopy2-imageExtent-06659
-                    // VUID-VkBufferImageCopy2-imageExtent-06660
-                    // VUID-VkBufferImageCopy2-imageExtent-06661
-                    assert!(image_extent[i] != 0);
-
-                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00197
-                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00198
-                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00200
-                    if image_offset[i] + image_extent[i] > image_subresource_extent[i] {
-                        return Err(CopyError::RegionOutOfImageBounds {
-                            resource: CopyErrorResource::Source,
-                            region_index,
-                            offset_range_end: [
-                                image_offset[0] + image_extent[0],
-                                image_offset[1] + image_extent[1],
-                                image_offset[2] + image_extent[2],
-                            ],
-                            subresource_extent: image_subresource_extent,
-                        });
-                    }
-
-                    // VUID-VkCopyImageToBufferInfo2-imageOffset-01794
-                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00205
-                    if image_offset[i] % extent_alignment[i] != 0 {
-                        return Err(CopyError::OffsetNotAlignedForImage {
-                            resource: CopyErrorResource::Source,
-                            region_index,
-                            offset: image_offset,
-                            required_alignment: extent_alignment,
-                        });
-                    }
-
-                    // VUID-VkCopyImageToBufferInfo2-imageOffset-01794
-                    // VUID-VkCopyImageToBufferInfo2-imageExtent-00207
-                    // VUID-VkCopyImageToBufferInfo2-imageExtent-00208
-                    // VUID-VkCopyImageToBufferInfo2-imageExtent-00209
-                    if image_offset[i] + image_extent[i] != image_subresource_extent[i]
-                        && image_extent[i] % extent_alignment[i] != 0
-                    {
-                        return Err(CopyError::ExtentNotAlignedForImage {
-                            resource: CopyErrorResource::Source,
-                            region_index,
-                            extent: image_extent,
-                            required_alignment: extent_alignment,
-                        });
-                    }
-                }
-            } else {
-                // If granularity is `None`, then we can only copy whole subresources.
-
-                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
-                if image_offset != [0, 0, 0] {
-                    return Err(CopyError::OffsetNotAlignedForImage {
-                        resource: CopyErrorResource::Source,
-                        region_index,
-                        offset: image_offset,
-                        required_alignment: image_subresource_extent,
-                    });
-                }
-
-                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
-                if image_extent != image_subresource_extent {
-                    return Err(CopyError::ExtentNotAlignedForImage {
-                        resource: CopyErrorResource::Source,
-                        region_index,
-                        extent: image_extent,
-                        required_alignment: image_subresource_extent,
-                    });
-                }
-            }
-
-            // VUID-VkBufferImageCopy2-bufferRowLength-00195
-            if !(buffer_row_length == 0 || buffer_row_length >= image_extent[0]) {
-                return Err(CopyError::BufferRowLengthTooSmall {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    row_length: buffer_row_length,
-                    min: image_extent[0],
-                });
-            }
-
-            // VUID-VkBufferImageCopy2-bufferImageHeight-00196
-            if !(buffer_image_height == 0 || buffer_image_height >= image_extent[1]) {
-                return Err(CopyError::BufferImageHeightTooSmall {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    image_height: buffer_image_height,
-                    min: image_extent[1],
-                });
-            }
-
-            let image_subresource_block_extent = image_subresource_format.block_extent();
-
-            // VUID-VkCopyImageToBufferInfo2-bufferRowLength-00203
-            if buffer_row_length % image_subresource_block_extent[0] != 0 {
-                return Err(CopyError::BufferRowLengthNotAligned {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    row_length: buffer_row_length,
-                    required_alignment: image_subresource_block_extent[0],
-                });
-            }
-
-            // VUID-VkCopyImageToBufferInfo2-bufferImageHeight-00204
-            if buffer_image_height % image_subresource_block_extent[1] != 0 {
-                return Err(CopyError::BufferImageHeightNotAligned {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    image_height: buffer_image_height,
-                    required_alignment: image_subresource_block_extent[1],
-                });
-            }
-
-            // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
-            let image_subresource_block_size =
-                if image_subresource.aspects.intersects(ImageAspects::STENCIL) {
-                    1
-                } else if image_subresource.aspects.intersects(ImageAspects::DEPTH) {
-                    match image_subresource_format {
-                        Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
-                        Format::D32_SFLOAT
-                        | Format::D32_SFLOAT_S8_UINT
-                        | Format::X8_D24_UNORM_PACK32
-                        | Format::D24_UNORM_S8_UINT => 4,
-                        _ => unreachable!(),
-                    }
-                } else {
-                    image_subresource_format.block_size()
-                };
-
-            // VUID-VkCopyImageToBufferInfo2-pRegions-04725
-            // VUID-VkCopyImageToBufferInfo2-pRegions-04726
-            if (buffer_row_length / image_subresource_block_extent[0]) as DeviceSize
-                * image_subresource_block_size
-                > 0x7FFFFFFF
-            {
-                return Err(CopyError::BufferRowLengthTooLarge {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    buffer_row_length,
-                });
-            }
-
-            let buffer_offset_alignment =
-                if image_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
-                    4
-                } else {
-                    let mut buffer_offset_alignment = image_subresource_block_size;
-
-                    // VUID-VkCopyImageToBufferInfo2-commandBuffer-04052
-                    // Make the alignment a multiple of 4.
-                    if !queue_family_properties
-                        .queue_flags
-                        .intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
-                    {
-                        if buffer_offset_alignment % 2 != 0 {
-                            buffer_offset_alignment *= 2;
-                        }
-
-                        if buffer_offset_alignment % 4 != 0 {
-                            buffer_offset_alignment *= 2;
-                        }
-                    }
-
-                    buffer_offset_alignment
-                };
-
-            // VUID-VkCopyImageToBufferInfo2-bufferOffset-01558
-            // VUID-VkCopyImageToBufferInfo2-bufferOffset-01559
-            // VUID-VkCopyImageToBufferInfo2-bufferOffset-00206
-            // VUID-VkCopyImageToBufferInfo2-srcImage-04053
-            if (dst_buffer.offset() + buffer_offset) % buffer_offset_alignment != 0 {
-                return Err(CopyError::OffsetNotAlignedForBuffer {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    offset: dst_buffer.offset() + buffer_offset,
-                    required_alignment: buffer_offset_alignment,
-                });
-            }
-
-            let buffer_copy_size = region.buffer_copy_size(image_subresource_format);
-
-            // VUID-VkCopyImageToBufferInfo2-pRegions-00183
-            if buffer_offset + buffer_copy_size > dst_buffer.size() {
-                return Err(CopyError::RegionOutOfBufferBounds {
-                    resource: CopyErrorResource::Destination,
-                    region_index,
-                    offset_range_end: buffer_offset + buffer_copy_size,
-                    buffer_size: dst_buffer.size(),
-                });
-            }
-        }
-
-        // VUID-VkCopyImageToBufferInfo2-pRegions-00184
-        // Can't occur as long as memory aliasing isn't allowed.
 
         Ok(())
     }
@@ -1949,7 +390,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.copy_image_to_buffer(&copy_image_to_buffer_info);
+                out.copy_image_to_buffer_unchecked(&copy_image_to_buffer_info);
             },
         );
 
@@ -1986,496 +427,27 @@ where
     /// # Panics
     ///
     /// - Panics if the source or the destination was not created with `device`.
-    pub fn blit_image(&mut self, blit_image_info: BlitImageInfo) -> Result<&mut Self, CopyError> {
+    pub fn blit_image(
+        &mut self,
+        blit_image_info: BlitImageInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_blit_image(&blit_image_info)?;
 
-        unsafe {
-            self.blit_image_unchecked(blit_image_info);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.blit_image_unchecked(blit_image_info)) }
     }
 
-    fn validate_blit_image(&self, blit_image_info: &BlitImageInfo) -> Result<(), CopyError> {
-        let device = self.device();
+    fn validate_blit_image(
+        &self,
+        blit_image_info: &BlitImageInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_blit_image(blit_image_info)?;
 
-        // VUID-vkCmdBlitImage2-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(CopyError::ForbiddenInsideRenderPass);
-        }
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdBlitImage2-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(CopyError::NotSupportedByQueueFamily);
-        }
-
-        let &BlitImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            filter,
-            _ne: _,
-        } = blit_image_info;
-
-        // VUID-VkBlitImageInfo2-srcImageLayout-parameter
-        src_image_layout.validate_device(device)?;
-
-        // VUID-VkBlitImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate_device(device)?;
-
-        // VUID-VkBlitImageInfo2-filter-parameter
-        filter.validate_device(device)?;
-
-        // VUID-VkBlitImageInfo2-commonparent
-        assert_eq!(device, src_image.device());
-        assert_eq!(device, dst_image.device());
-
-        let src_image_aspects = src_image.format().aspects();
-        let dst_image_aspects = dst_image.format().aspects();
-        let src_image_type = src_image.image_type();
-        let dst_image_type = dst_image.image_type();
-
-        // VUID-VkBlitImageInfo2-srcImage-00219
-        if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Source,
-                usage: "transfer_src",
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-dstImage-00224
-        if !dst_image.usage().intersects(ImageUsage::TRANSFER_DST) {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Destination,
-                usage: "transfer_dst",
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-srcImage-01999
-        if !src_image
-            .format_features()
-            .intersects(FormatFeatures::BLIT_SRC)
-        {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Source,
-                format_feature: "blit_src",
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-dstImage-02000
-        if !dst_image
-            .format_features()
-            .intersects(FormatFeatures::BLIT_DST)
-        {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Destination,
-                format_feature: "blit_dst",
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-srcImage-06421
-        if src_image.format().ycbcr_chroma_sampling().is_some() {
-            return Err(CopyError::FormatNotSupported {
-                resource: CopyErrorResource::Source,
-                format: src_image.format(),
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-dstImage-06422
-        if dst_image.format().ycbcr_chroma_sampling().is_some() {
-            return Err(CopyError::FormatNotSupported {
-                resource: CopyErrorResource::Destination,
-                format: src_image.format(),
-            });
-        }
-
-        if !(src_image_aspects.intersects(ImageAspects::COLOR)
-            && dst_image_aspects.intersects(ImageAspects::COLOR))
-        {
-            // VUID-VkBlitImageInfo2-srcImage-00231
-            if src_image.format() != dst_image.format() {
-                return Err(CopyError::FormatsMismatch {
-                    src_format: src_image.format(),
-                    dst_format: dst_image.format(),
-                });
-            }
-        } else {
-            // VUID-VkBlitImageInfo2-srcImage-00229
-            // VUID-VkBlitImageInfo2-srcImage-00230
-            if !matches!(
-                (
-                    src_image.format().type_color().unwrap(),
-                    dst_image.format().type_color().unwrap(),
-                ),
-                (
-                    NumericType::SFLOAT
-                        | NumericType::UFLOAT
-                        | NumericType::SNORM
-                        | NumericType::UNORM
-                        | NumericType::SSCALED
-                        | NumericType::USCALED
-                        | NumericType::SRGB,
-                    NumericType::SFLOAT
-                        | NumericType::UFLOAT
-                        | NumericType::SNORM
-                        | NumericType::UNORM
-                        | NumericType::SSCALED
-                        | NumericType::USCALED
-                        | NumericType::SRGB,
-                ) | (NumericType::SINT, NumericType::SINT)
-                    | (NumericType::UINT, NumericType::UINT)
-            ) {
-                return Err(CopyError::FormatsNotCompatible {
-                    src_format: src_image.format(),
-                    dst_format: dst_image.format(),
-                });
-            }
-        }
-
-        // VUID-VkBlitImageInfo2-srcImage-00233
-        if src_image.samples() != SampleCount::Sample1 {
-            return Err(CopyError::SampleCountInvalid {
-                resource: CopyErrorResource::Destination,
-                sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts::SAMPLE_1,
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-dstImage-00234
-        if dst_image.samples() != SampleCount::Sample1 {
-            return Err(CopyError::SampleCountInvalid {
-                resource: CopyErrorResource::Destination,
-                sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts::SAMPLE_1,
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-srcImageLayout-01398
-        if !matches!(
-            src_image_layout,
-            ImageLayout::TransferSrcOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Source,
-                image_layout: src_image_layout,
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-dstImageLayout-01399
-        if !matches!(
-            dst_image_layout,
-            ImageLayout::TransferDstOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Destination,
-                image_layout: dst_image_layout,
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-srcImage-00232
-        if !src_image_aspects.intersects(ImageAspects::COLOR) && filter != Filter::Nearest {
-            return Err(CopyError::FilterNotSupportedByFormat);
-        }
-
-        match filter {
-            Filter::Nearest => (),
-            Filter::Linear => {
-                // VUID-VkBlitImageInfo2-filter-02001
-                if !src_image
-                    .format_features()
-                    .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR)
-                {
-                    return Err(CopyError::FilterNotSupportedByFormat);
-                }
-            }
-            Filter::Cubic => {
-                // VUID-VkBlitImageInfo2-filter-02002
-                if !src_image
-                    .format_features()
-                    .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC)
-                {
-                    return Err(CopyError::FilterNotSupportedByFormat);
-                }
-
-                // VUID-VkBlitImageInfo2-filter-00237
-                if !matches!(src_image.image_type(), ImageType::Dim2d) {
-                    return Err(CopyError::FilterNotSupportedForImageType);
-                }
-            }
-        }
-
-        let is_same_image = src_image == dst_image;
-        let mut overlap_subresource_indices = None;
-        let mut overlap_extent_indices = None;
-
-        for (region_index, region) in regions.iter().enumerate() {
-            let &ImageBlit {
-                ref src_subresource,
-                src_offsets,
-                ref dst_subresource,
-                dst_offsets,
-                _ne: _,
-            } = region;
-
-            let check_subresource = |resource: CopyErrorResource,
-                                     image: &Image,
-                                     image_aspects: ImageAspects,
-                                     subresource: &ImageSubresourceLayers|
-             -> Result<_, CopyError> {
-                // VUID-VkBlitImageInfo2-srcSubresource-01705
-                // VUID-VkBlitImageInfo2-dstSubresource-01706
-                if subresource.mip_level >= image.mip_levels() {
-                    return Err(CopyError::MipLevelsOutOfRange {
-                        resource,
-                        region_index,
-                        mip_levels_range_end: subresource.mip_level + 1,
-                        image_mip_levels: image.mip_levels(),
-                    });
-                }
-
-                // VUID-VkImageSubresourceLayers-layerCount-01700
-                assert!(!subresource.array_layers.is_empty());
-
-                // VUID-VkBlitImageInfo2-srcSubresource-01707
-                // VUID-VkBlitImageInfo2-dstSubresource-01708
-                // VUID-VkBlitImageInfo2-srcImage-00240
-                if subresource.array_layers.end > image.array_layers() {
-                    return Err(CopyError::ArrayLayersOutOfRange {
-                        resource,
-                        region_index,
-                        array_layers_range_end: subresource.array_layers.end,
-                        image_array_layers: image.array_layers(),
-                    });
-                }
-
-                // VUID-VkImageSubresourceLayers-aspectMask-parameter
-                subresource.aspects.validate_device(device)?;
-
-                // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-                assert!(!subresource.aspects.is_empty());
-
-                // VUID-VkBlitImageInfo2-aspectMask-00241
-                // VUID-VkBlitImageInfo2-aspectMask-00242
-                if !image_aspects.contains(subresource.aspects) {
-                    return Err(CopyError::AspectsNotAllowed {
-                        resource,
-                        region_index,
-                        aspects: subresource.aspects,
-                        allowed_aspects: image_aspects,
-                    });
-                }
-
-                Ok(mip_level_extent(image.extent(), subresource.mip_level).unwrap())
-            };
-
-            let src_subresource_extent = check_subresource(
-                CopyErrorResource::Source,
-                src_image,
-                src_image_aspects,
-                src_subresource,
-            )?;
-            let dst_subresource_extent = check_subresource(
-                CopyErrorResource::Destination,
-                dst_image,
-                dst_image_aspects,
-                dst_subresource,
-            )?;
-
-            // VUID-VkImageBlit2-aspectMask-00238
-            if src_subresource.aspects != dst_subresource.aspects {
-                return Err(CopyError::AspectsMismatch {
-                    region_index,
-                    src_aspects: src_subresource.aspects,
-                    dst_aspects: dst_subresource.aspects,
-                });
-            }
-
-            let src_layer_count =
-                src_subresource.array_layers.end - src_subresource.array_layers.start;
-            let dst_layer_count =
-                dst_subresource.array_layers.end - dst_subresource.array_layers.start;
-
-            // VUID-VkImageBlit2-layerCount-00239
-            // VUID-VkBlitImageInfo2-srcImage-00240
-            if src_layer_count != dst_layer_count {
-                return Err(CopyError::ArrayLayerCountMismatch {
-                    region_index,
-                    src_layer_count,
-                    dst_layer_count,
-                });
-            }
-
-            let check_offset_extent = |resource: CopyErrorResource,
-                                       image_type: ImageType,
-                                       subresource_extent: [u32; 3],
-                                       offsets: [[u32; 3]; 2]|
-             -> Result<_, CopyError> {
-                match image_type {
-                    ImageType::Dim1d => {
-                        // VUID-VkBlitImageInfo2-srcImage-00245
-                        // VUID-VkBlitImageInfo2-dstImage-00250
-                        if !(offsets[0][1] == 0 && offsets[1][1] == 1) {
-                            return Err(CopyError::OffsetsInvalidForImageType {
-                                resource,
-                                region_index,
-                                offsets: [offsets[0][1], offsets[1][1]],
-                            });
-                        }
-
-                        // VUID-VkBlitImageInfo2-srcImage-00247
-                        // VUID-VkBlitImageInfo2-dstImage-00252
-                        if !(offsets[0][2] == 0 && offsets[1][2] == 1) {
-                            return Err(CopyError::OffsetsInvalidForImageType {
-                                resource,
-                                region_index,
-                                offsets: [offsets[0][2], offsets[1][2]],
-                            });
-                        }
-                    }
-                    ImageType::Dim2d => {
-                        // VUID-VkBlitImageInfo2-srcImage-00247
-                        // VUID-VkBlitImageInfo2-dstImage-00252
-                        if !(offsets[0][2] == 0 && offsets[1][2] == 1) {
-                            return Err(CopyError::OffsetsInvalidForImageType {
-                                resource,
-                                region_index,
-                                offsets: [offsets[0][2], offsets[1][2]],
-                            });
-                        }
-                    }
-                    ImageType::Dim3d => (),
-                }
-
-                let offset_range_end = [
-                    max(offsets[0][0], offsets[1][0]),
-                    max(offsets[0][1], offsets[1][1]),
-                    max(offsets[0][2], offsets[1][2]),
-                ];
-
-                for i in 0..3 {
-                    // VUID-VkBlitImageInfo2-srcOffset-00243
-                    // VUID-VkBlitImageInfo2-srcOffset-00244
-                    // VUID-VkBlitImageInfo2-srcOffset-00246
-                    // VUID-VkBlitImageInfo2-dstOffset-00248
-                    // VUID-VkBlitImageInfo2-dstOffset-00249
-                    // VUID-VkBlitImageInfo2-dstOffset-00251
-                    if offset_range_end[i] > subresource_extent[i] {
-                        return Err(CopyError::RegionOutOfImageBounds {
-                            resource,
-                            region_index,
-                            offset_range_end,
-                            subresource_extent,
-                        });
-                    }
-                }
-
-                Ok(())
-            };
-
-            check_offset_extent(
-                CopyErrorResource::Source,
-                src_image_type,
-                src_subresource_extent,
-                src_offsets,
-            )?;
-            check_offset_extent(
-                CopyErrorResource::Destination,
-                dst_image_type,
-                dst_subresource_extent,
-                dst_offsets,
-            )?;
-
-            // VUID-VkBlitImageInfo2-pRegions-00217
-            if is_same_image {
-                let src_region_index = region_index;
-                let src_subresource_axes = [
-                    src_subresource.mip_level..src_subresource.mip_level + 1,
-                    src_subresource.array_layers.start..src_subresource.array_layers.end,
-                ];
-                let src_extent_axes = [
-                    min(src_offsets[0][0], src_offsets[1][0])
-                        ..max(src_offsets[0][0], src_offsets[1][0]),
-                    min(src_offsets[0][1], src_offsets[1][1])
-                        ..max(src_offsets[0][1], src_offsets[1][1]),
-                    min(src_offsets[0][2], src_offsets[1][2])
-                        ..max(src_offsets[0][2], src_offsets[1][2]),
-                ];
-
-                for (dst_region_index, dst_region) in regions.iter().enumerate() {
-                    let &ImageBlit {
-                        ref dst_subresource,
-                        dst_offsets,
-                        ..
-                    } = dst_region;
-
-                    let dst_subresource_axes = [
-                        dst_subresource.mip_level..dst_subresource.mip_level + 1,
-                        src_subresource.array_layers.start..src_subresource.array_layers.end,
-                    ];
-
-                    if src_subresource_axes.iter().zip(dst_subresource_axes).any(
-                        |(src_range, dst_range)| {
-                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
-                        },
-                    ) {
-                        continue;
-                    }
-
-                    // If the subresource axes all overlap, then the source and destination must
-                    // have the same layout.
-                    overlap_subresource_indices = Some((src_region_index, dst_region_index));
-
-                    let dst_extent_axes = [
-                        min(dst_offsets[0][0], dst_offsets[1][0])
-                            ..max(dst_offsets[0][0], dst_offsets[1][0]),
-                        min(dst_offsets[0][1], dst_offsets[1][1])
-                            ..max(dst_offsets[0][1], dst_offsets[1][1]),
-                        min(dst_offsets[0][2], dst_offsets[1][2])
-                            ..max(dst_offsets[0][2], dst_offsets[1][2]),
-                    ];
-
-                    if src_extent_axes
-                        .iter()
-                        .zip(dst_extent_axes)
-                        .any(|(src_range, dst_range)| {
-                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
-                        })
-                    {
-                        continue;
-                    }
-
-                    // If the extent axes *also* overlap, then that's an error.
-                    overlap_extent_indices = Some((src_region_index, dst_region_index));
-                }
-            }
-        }
-
-        // VUID-VkBlitImageInfo2-pRegions-00217
-        if let Some((src_region_index, dst_region_index)) = overlap_extent_indices {
-            return Err(CopyError::OverlappingRegions {
-                src_region_index,
-                dst_region_index,
-            });
-        }
-
-        // VUID-VkBlitImageInfo2-srcImageLayout-00221
-        // VUID-VkBlitImageInfo2-dstImageLayout-00226
-        if let Some((src_region_index, dst_region_index)) = overlap_subresource_indices {
-            if src_image_layout != dst_image_layout {
-                return Err(CopyError::OverlappingSubresourcesLayoutMismatch {
-                    src_region_index,
-                    dst_region_index,
-                    src_image_layout,
-                    dst_image_layout,
-                });
-            }
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdBlitImage2-renderpass"],
+                ..Default::default()
+            }));
         }
 
         Ok(())
@@ -2531,7 +503,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.blit_image(&blit_image_info);
+                out.blit_image_unchecked(&blit_image_info);
             },
         );
 
@@ -2547,263 +519,25 @@ where
     pub fn resolve_image(
         &mut self,
         resolve_image_info: ResolveImageInfo,
-    ) -> Result<&mut Self, CopyError> {
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_resolve_image(&resolve_image_info)?;
 
-        unsafe {
-            self.resolve_image_unchecked(resolve_image_info);
-        }
-
-        Ok(self)
+        unsafe { Ok(self.resolve_image_unchecked(resolve_image_info)) }
     }
 
     fn validate_resolve_image(
         &self,
         resolve_image_info: &ResolveImageInfo,
-    ) -> Result<(), CopyError> {
-        let device = self.device();
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_resolve_image(resolve_image_info)?;
 
-        // VUID-vkCmdResolveImage2-renderpass
         if self.builder_state.render_pass.is_some() {
-            return Err(CopyError::ForbiddenInsideRenderPass);
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is active".into(),
+                vuids: &["VUID-vkCmdResolveImage2-renderpass"],
+                ..Default::default()
+            }));
         }
-
-        let queue_family_properties = self.queue_family_properties();
-
-        // VUID-vkCmdResolveImage2-commandBuffer-cmdpool
-        if !queue_family_properties
-            .queue_flags
-            .intersects(QueueFlags::GRAPHICS)
-        {
-            return Err(CopyError::NotSupportedByQueueFamily);
-        }
-
-        let &ResolveImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = resolve_image_info;
-
-        // VUID-VkResolveImageInfo2-srcImageLayout-parameter
-        src_image_layout.validate_device(device)?;
-
-        // VUID-VkResolveImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate_device(device)?;
-
-        // VUID-VkResolveImageInfo2-commonparent
-        assert_eq!(device, src_image.device());
-        assert_eq!(device, dst_image.device());
-
-        let src_image_type = src_image.image_type();
-        let dst_image_type = dst_image.image_type();
-
-        // VUID-VkResolveImageInfo2-srcImage-00257
-        if src_image.samples() == SampleCount::Sample1 {
-            return Err(CopyError::SampleCountInvalid {
-                resource: CopyErrorResource::Source,
-                sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts::SAMPLE_2
-                    | SampleCounts::SAMPLE_4
-                    | SampleCounts::SAMPLE_8
-                    | SampleCounts::SAMPLE_16
-                    | SampleCounts::SAMPLE_32
-                    | SampleCounts::SAMPLE_64,
-            });
-        }
-
-        // VUID-VkResolveImageInfo2-dstImage-00259
-        if dst_image.samples() != SampleCount::Sample1 {
-            return Err(CopyError::SampleCountInvalid {
-                resource: CopyErrorResource::Destination,
-                sample_count: dst_image.samples(),
-                allowed_sample_counts: SampleCounts::SAMPLE_1,
-            });
-        }
-
-        // VUID-VkResolveImageInfo2-dstImage-02003
-        if !dst_image
-            .format_features()
-            .intersects(FormatFeatures::COLOR_ATTACHMENT)
-        {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Destination,
-                format_feature: "color_attachment",
-            });
-        }
-
-        // VUID-VkResolveImageInfo2-srcImage-01386
-        if src_image.format() != dst_image.format() {
-            return Err(CopyError::FormatsMismatch {
-                src_format: src_image.format(),
-                dst_format: dst_image.format(),
-            });
-        }
-
-        // VUID-VkResolveImageInfo2-srcImageLayout-01400
-        if !matches!(
-            src_image_layout,
-            ImageLayout::TransferSrcOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Source,
-                image_layout: src_image_layout,
-            });
-        }
-
-        // VUID-VkResolveImageInfo2-dstImageLayout-01401
-        if !matches!(
-            dst_image_layout,
-            ImageLayout::TransferDstOptimal | ImageLayout::General
-        ) {
-            return Err(CopyError::ImageLayoutInvalid {
-                resource: CopyErrorResource::Destination,
-                image_layout: dst_image_layout,
-            });
-        }
-
-        // Should be guaranteed by the requirement that formats match, and that the destination
-        // image format features support color attachments.
-        debug_assert!(
-            src_image.format().aspects().intersects(ImageAspects::COLOR)
-                && dst_image.format().aspects().intersects(ImageAspects::COLOR)
-        );
-
-        for (region_index, region) in regions.iter().enumerate() {
-            let &ImageResolve {
-                ref src_subresource,
-                src_offset,
-                ref dst_subresource,
-                dst_offset,
-                extent,
-                _ne: _,
-            } = region;
-
-            let check_subresource = |resource: CopyErrorResource,
-                                     image: &Image,
-                                     subresource: &ImageSubresourceLayers|
-             -> Result<_, CopyError> {
-                // VUID-VkResolveImageInfo2-srcSubresource-01709
-                // VUID-VkResolveImageInfo2-dstSubresource-01710
-                if subresource.mip_level >= image.mip_levels() {
-                    return Err(CopyError::MipLevelsOutOfRange {
-                        resource,
-                        region_index,
-                        mip_levels_range_end: subresource.mip_level + 1,
-                        image_mip_levels: image.mip_levels(),
-                    });
-                }
-
-                // VUID-VkImageSubresourceLayers-layerCount-01700
-                // VUID-VkResolveImageInfo2-srcImage-04446
-                // VUID-VkResolveImageInfo2-srcImage-04447
-                assert!(!subresource.array_layers.is_empty());
-
-                // VUID-VkResolveImageInfo2-srcSubresource-01711
-                // VUID-VkResolveImageInfo2-dstSubresource-01712
-                // VUID-VkResolveImageInfo2-srcImage-04446
-                // VUID-VkResolveImageInfo2-srcImage-04447
-                if subresource.array_layers.end > image.array_layers() {
-                    return Err(CopyError::ArrayLayersOutOfRange {
-                        resource: CopyErrorResource::Destination,
-                        region_index,
-                        array_layers_range_end: subresource.array_layers.end,
-                        image_array_layers: image.array_layers(),
-                    });
-                }
-
-                // VUID-VkImageSubresourceLayers-aspectMask-parameter
-                subresource.aspects.validate_device(device)?;
-
-                // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-                // VUID-VkImageResolve2-aspectMask-00266
-                if subresource.aspects != (ImageAspects::COLOR) {
-                    return Err(CopyError::AspectsNotAllowed {
-                        resource,
-                        region_index,
-                        aspects: subresource.aspects,
-                        allowed_aspects: ImageAspects::COLOR,
-                    });
-                }
-
-                Ok(mip_level_extent(image.extent(), subresource.mip_level).unwrap())
-            };
-
-            let src_subresource_extent =
-                check_subresource(CopyErrorResource::Source, src_image, src_subresource)?;
-            let dst_subresource_extent =
-                check_subresource(CopyErrorResource::Destination, dst_image, dst_subresource)?;
-
-            let src_layer_count =
-                src_subresource.array_layers.end - src_subresource.array_layers.start;
-            let dst_layer_count =
-                dst_subresource.array_layers.end - dst_subresource.array_layers.start;
-
-            // VUID-VkImageResolve2-layerCount-00267
-            // VUID-VkResolveImageInfo2-srcImage-04446
-            // VUID-VkResolveImageInfo2-srcImage-04447
-            if src_layer_count != dst_layer_count {
-                return Err(CopyError::ArrayLayerCountMismatch {
-                    region_index,
-                    src_layer_count,
-                    dst_layer_count,
-                });
-            }
-
-            // No VUID, but it makes sense?
-            assert!(extent[0] != 0 && extent[1] != 0 && extent[2] != 0);
-
-            let check_offset_extent = |resource: CopyErrorResource,
-                                       _image_type: ImageType,
-                                       subresource_extent: [u32; 3],
-                                       offset: [u32; 3]|
-             -> Result<_, CopyError> {
-                for i in 0..3 {
-                    // No VUID, but makes sense?
-                    assert!(extent[i] != 0);
-
-                    // VUID-VkResolveImageInfo2-srcOffset-00269
-                    // VUID-VkResolveImageInfo2-srcOffset-00270
-                    // VUID-VkResolveImageInfo2-srcOffset-00272
-                    // VUID-VkResolveImageInfo2-dstOffset-00274
-                    // VUID-VkResolveImageInfo2-dstOffset-00275
-                    // VUID-VkResolveImageInfo2-dstOffset-00277
-                    if offset[i] + extent[i] > subresource_extent[i] {
-                        return Err(CopyError::RegionOutOfImageBounds {
-                            resource,
-                            region_index,
-                            offset_range_end: [
-                                offset[0] + extent[0],
-                                offset[1] + extent[1],
-                                offset[2] + extent[2],
-                            ],
-                            subresource_extent,
-                        });
-                    }
-                }
-
-                Ok(())
-            };
-
-            check_offset_extent(
-                CopyErrorResource::Source,
-                src_image_type,
-                src_subresource_extent,
-                src_offset,
-            )?;
-            check_offset_extent(
-                CopyErrorResource::Destination,
-                dst_image_type,
-                dst_subresource_extent,
-                dst_offset,
-            )?;
-        }
-
-        // VUID-VkResolveImageInfo2-pRegions-00255
-        // Can't occur as long as memory aliasing isn't allowed, because `src_image` and
-        // `dst_image` must have different sample counts and therefore can never be the same image.
 
         Ok(())
     }
@@ -2861,7 +595,7 @@ where
                 })
                 .collect(),
             move |out: &mut UnsafeCommandBufferBuilder<A>| {
-                out.resolve_image(&resolve_image_info);
+                out.resolve_image_unchecked(&resolve_image_info);
             },
         );
 
@@ -2873,12 +607,42 @@ impl<A> UnsafeCommandBufferBuilder<A>
 where
     A: CommandBufferAllocator,
 {
-    /// Calls `vkCmdCopyBuffer` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: &CopyBufferInfo) -> &mut Self {
+    pub unsafe fn copy_buffer(
+        &mut self,
+        copy_buffer_info: &CopyBufferInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_copy_buffer(copy_buffer_info)?;
+
+        Ok(self.copy_buffer_unchecked(copy_buffer_info))
+    }
+
+    fn validate_copy_buffer(
+        &self,
+        copy_buffer_info: &CopyBufferInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    transfer, graphics or compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdCopyBuffer2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        copy_buffer_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("copy_buffer_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_buffer_unchecked(&mut self, copy_buffer_info: &CopyBufferInfo) -> &mut Self {
         let CopyBufferInfo {
             src_buffer,
             dst_buffer,
@@ -2958,12 +722,312 @@ where
         self
     }
 
-    /// Calls `vkCmdCopyImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo) -> &mut Self {
+    pub unsafe fn copy_image(
+        &mut self,
+        copy_image_info: &CopyImageInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_copy_image(copy_image_info)?;
+
+        Ok(self.copy_image_unchecked(copy_image_info))
+    }
+
+    fn validate_copy_image(
+        &self,
+        copy_image_info: &CopyImageInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    transfer, graphics or compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdCopyImage2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        copy_image_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("copy_image_info"))?;
+
+        let &CopyImageInfo {
+            ref src_image,
+            src_image_layout: _,
+            ref dst_image,
+            dst_image_layout: _,
+            ref regions,
+            _ne: _,
+        } = copy_image_info;
+
+        let src_image_format = src_image.format();
+        let src_image_format_subsampled_extent = src_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(src_image.extent(), |s| {
+                s.subsampled_extent(src_image.extent())
+            });
+
+        let dst_image_format = dst_image.format();
+        let dst_image_format_subsampled_extent = dst_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(dst_image.extent(), |s| {
+                s.subsampled_extent(dst_image.extent())
+            });
+
+        let min_image_transfer_granularity =
+            // `[1; 3]` means the granularity is 1x1x1 texel, so we can ignore it.
+            // Only check this if there are values greater than 1.
+            (queue_family_properties.min_image_transfer_granularity != [1; 3]).then(|| {
+                // `[0; 3]` means only the whole subresource can be copied.
+                (queue_family_properties.min_image_transfer_granularity != [0; 3]).then(|| {
+                    // Spec:
+                    // "The value returned in minImageTransferGranularity has a unit of
+                    // compressed texel blocks for images having a block-compressed format,
+                    // and a unit of texels otherwise.""
+
+                    let src_granularity = if src_image_format.compression().is_some() {
+                        let granularity = queue_family_properties.min_image_transfer_granularity;
+                        let block_extent = src_image_format.block_extent();
+
+                        [
+                            granularity[0] * block_extent[0],
+                            granularity[1] * block_extent[1],
+                            granularity[2] * block_extent[2],
+                        ]
+                    } else {
+                        queue_family_properties.min_image_transfer_granularity
+                    };
+
+                    let dst_granularity = if dst_image_format.compression().is_some() {
+                        let granularity = queue_family_properties.min_image_transfer_granularity;
+                        let block_extent = dst_image_format.block_extent();
+
+                        [
+                            granularity[0] * block_extent[0],
+                            granularity[1] * block_extent[1],
+                            granularity[2] * block_extent[2],
+                        ]
+                    } else {
+                        queue_family_properties.min_image_transfer_granularity
+                    };
+
+                    (src_granularity, dst_granularity)
+                })
+            });
+
+        if min_image_transfer_granularity.is_some() {
+            for (region_index, region) in regions.iter().enumerate() {
+                let &ImageCopy {
+                    ref src_subresource,
+                    src_offset,
+                    ref dst_subresource,
+                    dst_offset,
+                    extent,
+                    _ne: _,
+                } = region;
+
+                if let Some(min_image_transfer_granularity) = &min_image_transfer_granularity {
+                    let mut src_subresource_extent =
+                        mip_level_extent(src_image.extent(), src_subresource.mip_level).unwrap();
+
+                    if matches!(
+                        src_subresource.aspects,
+                        ImageAspects::PLANE_1 | ImageAspects::PLANE_2
+                    ) {
+                        src_subresource_extent = src_image_format_subsampled_extent;
+                    }
+
+                    let mut dst_subresource_extent =
+                        mip_level_extent(dst_image.extent(), dst_subresource.mip_level).unwrap();
+
+                    if matches!(
+                        dst_subresource.aspects,
+                        ImageAspects::PLANE_1 | ImageAspects::PLANE_2
+                    ) {
+                        dst_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+
+                    if let Some((src_granularity, dst_granularity)) =
+                        &min_image_transfer_granularity
+                    {
+                        /*
+                           Check src
+                        */
+
+                        for i in 0..3 {
+                            if src_offset[i] % src_granularity[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is not `[0; 3]`, but \
+                                    `regions[{}].src_offset[{1}]` is not a multiple of \
+                                    `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-srcOffset-01783"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if src_offset[i] + extent[i] != src_subresource_extent[i]
+                                && extent[i] % src_granularity[i] != 0
+                            {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is not `[0; 3]`, and \
+                                    `regions[{0}].src_offset[{1}] + regions[{0}].extent[{1}]` \
+                                    is not equal to coordinate {1} of the extent of the \
+                                    subresource of `src_image` selected by \
+                                    `regions[{0}].src_subresource`, but \
+                                    `regions[{}].extent[{1}]` is not a multiple of \
+                                    `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-srcOffset-01783"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+
+                        /*
+                           Check dst
+                        */
+
+                        for i in 0..3 {
+                            if dst_offset[i] % dst_granularity[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is not `[0; 3]`, but \
+                                    `regions[{}].dst_offset[{1}]` is not a multiple of \
+                                    `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-dstOffset-01784"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if dst_offset[i] + extent[i] != dst_subresource_extent[i]
+                                && extent[i] % dst_granularity[i] != 0
+                            {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is not `[0; 3]`, and \
+                                    `regions[{0}].dst_offset[{1}] + regions[{0}].extent[{1}]` \
+                                    is not equal to coordinate {1} of the extent of the \
+                                    subresource of `dst_image` selected by \
+                                    `regions[{0}].dst_subresource`, but \
+                                    `regions[{}].extent[{1}]` is not a multiple of \
+                                    `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-dstOffset-01784"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    } else {
+                        /*
+                           Check src
+                        */
+
+                        for i in 0..3 {
+                            if src_offset[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is `[0; 3]`, but \
+                                    `regions[{}].src_offset[{}]` is not 0",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-srcOffset-01783"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if src_offset[i] + extent[i] != src_subresource_extent[i] {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is `[0; 3]`, but \
+                                    `regions[{0}].src_offset[{1}] + regions[{0}].extent[{1}]` \
+                                    is not equal to coordinate {1} of the extent of the \
+                                    subresource of `src_image` selected by \
+                                    `regions[{0}].src_subresource`",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-srcOffset-01783"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+
+                        /*
+                           Check dst
+                        */
+
+                        for i in 0..3 {
+                            if dst_offset[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is `[0; 3]`, but \
+                                    `regions[{}].dst_offset[{}]` is not 0",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-dstOffset-01784"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if dst_offset[i] + extent[i] != dst_subresource_extent[i] {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                    queue family of the command buffer is `[0; 3]`, but \
+                                    `regions[{0}].dst_offset[{1}] + regions[{0}].extent[{1}]` \
+                                    is not equal to coordinate {1} of the extent of the \
+                                    subresource of `dst_image` selected by \
+                                    `regions[{0}].dst_subresource`",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-VkCopyImageInfo2-dstOffset-01784"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_image_unchecked(&mut self, copy_image_info: &CopyImageInfo) -> &mut Self {
         let &CopyImageInfo {
             ref src_image,
             src_image_layout,
@@ -3081,12 +1145,232 @@ where
         self
     }
 
-    /// Calls `vkCmdCopyBufferToImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
     pub unsafe fn copy_buffer_to_image(
+        &mut self,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_copy_buffer_to_image(copy_buffer_to_image_info)?;
+
+        Ok(self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info))
+    }
+
+    fn validate_copy_buffer_to_image(
+        &self,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    transfer, graphics or compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdCopyBufferToImage2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        copy_buffer_to_image_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("copy_buffer_to_image_info"))?;
+
+        let &CopyBufferToImageInfo {
+            src_buffer: _,
+            ref dst_image,
+            dst_image_layout: _,
+            ref regions,
+            _ne,
+        } = copy_buffer_to_image_info;
+
+        let dst_image_format = dst_image.format();
+        let dst_image_format_subsampled_extent = dst_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(dst_image.extent(), |s| {
+                s.subsampled_extent(dst_image.extent())
+            });
+
+        let min_image_transfer_granularity =
+            // `[1; 3]` means the granularity is 1x1x1 texel, so we can ignore it.
+            // Only check this if there are values greater than 1.
+            (queue_family_properties.min_image_transfer_granularity != [1; 3]).then(|| {
+                // `[0; 3]` means only the whole subresource can be copied.
+                (queue_family_properties.min_image_transfer_granularity != [0; 3]).then(|| {
+                    // Spec:
+                    // "The value returned in minImageTransferGranularity has a unit of
+                    // compressed texel blocks for images having a block-compressed format,
+                    // and a unit of texels otherwise.""
+
+                    if dst_image_format.compression().is_some() {
+                        let granularity = queue_family_properties.min_image_transfer_granularity;
+                        let block_extent = dst_image_format.block_extent();
+
+                        [
+                            granularity[0] * block_extent[0],
+                            granularity[1] * block_extent[1],
+                            granularity[2] * block_extent[2],
+                        ]
+                    } else {
+                        queue_family_properties.min_image_transfer_granularity
+                    }
+                })
+            });
+
+        let queue_family_no_graphics = !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS);
+        let queue_family_no_compute = !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE);
+
+        if min_image_transfer_granularity.is_some() || queue_family_no_graphics {
+            for (region_index, region) in regions.iter().enumerate() {
+                let &BufferImageCopy {
+                    buffer_offset,
+                    buffer_row_length: _,
+                    buffer_image_height: _,
+                    ref image_subresource,
+                    image_offset,
+                    image_extent,
+                    _ne,
+                } = region;
+
+                if queue_family_no_graphics {
+                    if queue_family_no_compute && buffer_offset % 4 != 0 {
+                        return Err(Box::new(ValidationError {
+                            context: "create_info".into(),
+                            problem: format!(
+                                "the queue family of the command buffer does not support \
+                                graphics or compute operations, but \
+                                `regions[{}].buffer_offset` is not a multiple of 4",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdCopyBufferToImage2-commandBuffer-07737"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_subresource
+                        .aspects
+                        .intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
+                    {
+                        return Err(Box::new(ValidationError {
+                            context: "create_info".into(),
+                            problem: format!(
+                                "the queue family of the command buffer does not support \
+                                graphics operations, but \
+                                `regions[{}].image_subresource.aspects` contains \
+                                `ImageAspects::DEPTH` or `ImageAspects::STENCIL`",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-vkCmdCopyBufferToImage2-commandBuffer-07739"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+
+                if let Some(min_image_transfer_granularity) = &min_image_transfer_granularity {
+                    let mut image_subresource_extent =
+                        mip_level_extent(dst_image.extent(), image_subresource.mip_level).unwrap();
+
+                    if matches!(
+                        image_subresource.aspects,
+                        ImageAspects::PLANE_1 | ImageAspects::PLANE_2
+                    ) {
+                        image_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+
+                    if let Some(dst_granularity) = &min_image_transfer_granularity {
+                        for i in 0..3 {
+                            if image_offset[i] % dst_granularity[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is not `[0; 3]`, but \
+                                        `regions[{}].image_offset[{1}]` is not a multiple of \
+                                        `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyBufferToImage2-imageOffset-07738"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if image_offset[i] + image_extent[i] != image_subresource_extent[i]
+                                && image_extent[i] % dst_granularity[i] != 0
+                            {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is not `[0; 3]`, and \
+                                        `regions[{0}].image_offset[{1}] + \
+                                        regions[{0}].image_extent[{1}]` \
+                                        is not equal to coordinate {1} of the extent of the \
+                                        subresource of `dst_image` selected by \
+                                        `regions[{0}].image_subresource`, but \
+                                        `regions[{}].image_extent[{1}]` is not a multiple of \
+                                        `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyBufferToImage2-imageOffset-07738"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    } else {
+                        for i in 0..3 {
+                            if image_offset[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is `[0; 3]`, but \
+                                        `regions[{}].image_offset[{}]` is not 0",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyBufferToImage2-imageOffset-07738"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if image_offset[i] + image_extent[i] != image_subresource_extent[i] {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is `[0; 3]`, but \
+                                        `regions[{0}].image_offset[{1}] + \
+                                        regions[{0}].image_extent[{1}]` \
+                                        is not equal to coordinate {1} of the extent of the \
+                                        subresource of `dst_image` selected by \
+                                        `regions[{0}].image_subresource`",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyBufferToImage2-imageOffset-07738"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_buffer_to_image_unchecked(
         &mut self,
         copy_buffer_to_image_info: &CopyBufferToImageInfo,
     ) -> &mut Self {
@@ -3203,12 +1487,211 @@ where
         self
     }
 
-    /// Calls `vkCmdCopyImageToBuffer` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
     pub unsafe fn copy_image_to_buffer(
+        &mut self,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_copy_image_to_buffer(copy_image_to_buffer_info)?;
+
+        Ok(self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info))
+    }
+
+    fn validate_copy_image_to_buffer(
+        &self,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        let queue_family_properties = self.queue_family_properties();
+
+        if !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::TRANSFER | QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    transfer, graphics or compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdCopyImageToBuffer2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        copy_image_to_buffer_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("copy_image_to_buffer_info"))?;
+
+        let &CopyImageToBufferInfo {
+            ref src_image,
+            src_image_layout: _,
+            dst_buffer: _,
+            ref regions,
+            _ne,
+        } = copy_image_to_buffer_info;
+
+        let src_image_format = src_image.format();
+        let src_image_format_subsampled_extent = src_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(src_image.extent(), |s| {
+                s.subsampled_extent(src_image.extent())
+            });
+
+        let min_image_transfer_granularity =
+            // `[1; 3]` means the granularity is 1x1x1 texel, so we can ignore it.
+            // Only check this if there are values greater than 1.
+            (queue_family_properties.min_image_transfer_granularity != [1; 3]).then(|| {
+                // `[0; 3]` means only the whole subresource can be copied.
+                (queue_family_properties.min_image_transfer_granularity != [0; 3]).then(|| {
+                    // Spec:
+                    // "The value returned in minImageTransferGranularity has a unit of
+                    // compressed texel blocks for images having a block-compressed format,
+                    // and a unit of texels otherwise.""
+
+                    if src_image_format.compression().is_some() {
+                        let granularity = queue_family_properties.min_image_transfer_granularity;
+                        let block_extent = src_image_format.block_extent();
+
+                        [
+                            granularity[0] * block_extent[0],
+                            granularity[1] * block_extent[1],
+                            granularity[2] * block_extent[2],
+                        ]
+                    } else {
+                        queue_family_properties.min_image_transfer_granularity
+                    }
+                })
+            });
+
+        let queue_family_no_graphics = !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS);
+        let queue_family_no_compute = !queue_family_properties
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE);
+
+        if min_image_transfer_granularity.is_some() || queue_family_no_graphics {
+            for (region_index, region) in regions.iter().enumerate() {
+                let &BufferImageCopy {
+                    buffer_offset,
+                    buffer_row_length: _,
+                    buffer_image_height: _,
+                    ref image_subresource,
+                    image_offset,
+                    image_extent,
+                    _ne,
+                } = region;
+
+                if queue_family_no_graphics && queue_family_no_compute && buffer_offset % 4 != 0 {
+                    return Err(Box::new(ValidationError {
+                        context: "create_info".into(),
+                        problem: format!(
+                            "the queue family of the command buffer does not support \
+                                graphics or compute operations, but \
+                                `regions[{}].buffer_offset` is not a multiple of 4",
+                            region_index
+                        )
+                        .into(),
+                        vuids: &["VUID-vkCmdCopyImageToBuffer2-commandBuffer-07746"],
+                        ..Default::default()
+                    }));
+                }
+
+                if let Some(min_image_transfer_granularity) = &min_image_transfer_granularity {
+                    let mut image_subresource_extent =
+                        mip_level_extent(src_image.extent(), image_subresource.mip_level).unwrap();
+
+                    if matches!(
+                        image_subresource.aspects,
+                        ImageAspects::PLANE_1 | ImageAspects::PLANE_2
+                    ) {
+                        image_subresource_extent = src_image_format_subsampled_extent;
+                    }
+
+                    if let Some(src_granularity) = &min_image_transfer_granularity {
+                        for i in 0..3 {
+                            if image_offset[i] % src_granularity[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is not `[0; 3]`, but \
+                                        `regions[{}].image_offset[{1}]` is not a multiple of \
+                                        `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyImageToBuffer2-imageOffset-07747"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if image_offset[i] + image_extent[i] != image_subresource_extent[i]
+                                && image_extent[i] % src_granularity[i] != 0
+                            {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is not `[0; 3]`, and \
+                                        `regions[{0}].image_offset[{1}] + \
+                                        regions[{0}].image_extent[{1}]` \
+                                        is not equal to coordinate {1} of the extent of the \
+                                        subresource of `src_image` selected by \
+                                        `regions[{0}].image_subresource`, but \
+                                        `regions[{}].image_extent[{1}]` is not a multiple of \
+                                        `min_image_transfer_granularity[{1}]` texel blocks",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyImageToBuffer2-imageOffset-07747"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    } else {
+                        for i in 0..3 {
+                            if image_offset[i] != 0 {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is `[0; 3]`, but \
+                                        `regions[{}].image_offset[{}]` is not 0",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyImageToBuffer2-imageOffset-07747"],
+                                    ..Default::default()
+                                }));
+                            }
+
+                            if image_offset[i] + image_extent[i] != image_subresource_extent[i] {
+                                return Err(Box::new(ValidationError {
+                                    context: "copy_image_info".into(),
+                                    problem: format!(
+                                        "the `min_image_transfer_granularity` property of the \
+                                        queue family of the command buffer is `[0; 3]`, but \
+                                        `regions[{0}].image_offset[{1}] + \
+                                        regions[{0}].image_extent[{1}]` \
+                                        is not equal to coordinate {1} of the extent of the \
+                                        subresource of `src_image` selected by \
+                                        `regions[{0}].image_subresource`",
+                                        region_index, i,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdCopyImageToBuffer2-imageOffset-07747"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn copy_image_to_buffer_unchecked(
         &mut self,
         copy_image_to_buffer_info: &CopyImageToBufferInfo,
     ) -> &mut Self {
@@ -3325,12 +1808,42 @@ where
         self
     }
 
-    /// Calls `vkCmdBlitImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn blit_image(&mut self, blit_image_info: &BlitImageInfo) -> &mut Self {
+    pub unsafe fn blit_image(
+        &mut self,
+        blit_image_info: &BlitImageInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_blit_image(blit_image_info)?;
+
+        Ok(self.blit_image_unchecked(blit_image_info))
+    }
+
+    fn validate_blit_image(
+        &self,
+        blit_image_info: &BlitImageInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                     graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBlitImage2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        blit_image_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("blit_image_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn blit_image_unchecked(&mut self, blit_image_info: &BlitImageInfo) -> &mut Self {
         let &BlitImageInfo {
             ref src_image,
             src_image_layout,
@@ -3467,12 +1980,45 @@ where
         self
     }
 
-    /// Calls `vkCmdResolveImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn resolve_image(&mut self, resolve_image_info: &ResolveImageInfo) -> &mut Self {
+    pub unsafe fn resolve_image(
+        &mut self,
+        resolve_image_info: &ResolveImageInfo,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_resolve_image(resolve_image_info)?;
+
+        Ok(self.resolve_image_unchecked(resolve_image_info))
+    }
+
+    fn validate_resolve_image(
+        &self,
+        resolve_image_info: &ResolveImageInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                     graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdResolveImage2-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        resolve_image_info
+            .validate(self.device())
+            .map_err(|err| err.add_context("resolve_image_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn resolve_image_unchecked(
+        &mut self,
+        resolve_image_info: &ResolveImageInfo,
+    ) -> &mut Self {
         let &ResolveImageInfo {
             ref src_image,
             src_image_layout,
@@ -3633,6 +2179,129 @@ impl CopyBufferInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_buffer,
+            ref dst_buffer,
+            ref regions,
+            _ne: _,
+        } = self;
+
+        // VUID-VkCopyBufferInfo2-commonparent
+        assert_eq!(device, src_buffer.device().as_ref());
+        assert_eq!(device, dst_buffer.device().as_ref());
+
+        if !src_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_SRC)
+        {
+            return Err(Box::new(ValidationError {
+                context: "src_buffer.buffer().usage()".into(),
+                problem: "does not contain `BufferUsage::TRANSFER_SRC`".into(),
+                vuids: &["VUID-VkCopyBufferInfo2-srcBuffer-00118"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
+            return Err(Box::new(ValidationError {
+                context: "dst_buffer.buffer().usage()".into(),
+                problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
+                vuids: &["VUID-VkCopyBufferInfo2-dstBuffer-00120"],
+                ..Default::default()
+            }));
+        }
+
+        let same_buffer = src_buffer.buffer() == dst_buffer.buffer();
+        let mut overlap_indices = None;
+
+        for (region_index, region) in regions.iter().enumerate() {
+            region
+                .validate(device)
+                .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
+
+            let &BufferCopy {
+                src_offset,
+                dst_offset,
+                size,
+                _ne: _,
+            } = region;
+
+            if src_offset + size > src_buffer.size() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset + regions[{0}].size` is greater than \
+                        `src_buffer.size()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkCopyBufferInfo2-srcOffset-00113",
+                        "VUID-VkCopyBufferInfo2-size-00115",
+                    ],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset + size > dst_buffer.size() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset + regions[{0}].size` is greater than \
+                        `dst_buffer.size()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkCopyBufferInfo2-dstOffset-00114",
+                        "VUID-VkCopyBufferInfo2-size-00116",
+                    ],
+                    ..Default::default()
+                }));
+            }
+
+            // VUID-VkCopyBufferInfo2-pRegions-00117
+            if same_buffer {
+                let src_region_index = region_index;
+                let src_range =
+                    src_buffer.offset() + src_offset..src_buffer.offset() + src_offset + size;
+
+                for (dst_region_index, dst_region) in regions.iter().enumerate() {
+                    let &BufferCopy { dst_offset, .. } = dst_region;
+
+                    let dst_range =
+                        dst_buffer.offset() + dst_offset..dst_buffer.offset() + dst_offset + size;
+
+                    if src_range.start >= dst_range.end || dst_range.start >= src_range.end {
+                        // The regions do not overlap
+                        continue;
+                    }
+
+                    overlap_indices = Some((src_region_index, dst_region_index));
+                }
+            }
+        }
+
+        if let Some((src_region_index, dst_region_index)) = overlap_indices {
+            return Err(Box::new(ValidationError {
+                problem: format!(
+                    "`src_buffer.buffer()` is equal to `dst_buffer.buffer()`, and \
+                    the source of `regions[{}]` overlaps with the destination of `regions[{}]`",
+                    src_region_index, dst_region_index
+                )
+                .into(),
+                vuids: &["VUID-VkCopyBufferInfo2-pRegions-00117"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
 }
 
 /// Parameters to copy data from a buffer to another buffer, with type information.
@@ -3735,6 +2404,28 @@ impl Default for BufferCopy {
     }
 }
 
+impl BufferCopy {
+    pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            src_offset: _,
+            dst_offset: _,
+            size,
+            _ne: _,
+        } = self;
+
+        if size == 0 {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkBufferCopy2-size-01988"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
 /// Parameters to copy data from an image to another image.
 #[derive(Clone, Debug)]
 pub struct CopyImageInfo {
@@ -3812,6 +2503,1189 @@ impl CopyImageInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = self;
+
+        src_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_image_layout".into(),
+                vuids: &["VUID-VkCopyImageInfo2-srcImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_image_layout".into(),
+                vuids: &["VUID-VkCopyImageInfo2-dstImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkCopyImageInfo2-commonparent
+        assert_eq!(device, src_image.device().as_ref());
+        assert_eq!(device, dst_image.device().as_ref());
+
+        let src_image_format = src_image.format();
+        let src_image_format_aspects = src_image_format.aspects();
+        let src_image_format_planes = src_image_format.planes();
+        let src_image_format_subsampled_extent = src_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(src_image.extent(), |s| {
+                s.subsampled_extent(src_image.extent())
+            });
+
+        let dst_image_format = dst_image.format();
+        let dst_image_format_aspects = dst_image_format.aspects();
+        let dst_image_format_planes = dst_image_format.planes();
+        let dst_image_format_subsampled_extent = dst_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(dst_image.extent(), |s| {
+                s.subsampled_extent(dst_image.extent())
+            });
+
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            if !src_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_SRC)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "src_image.format_features()".into(),
+                    problem: "does not contain `FormatFeatures::TRANSFER_SRC`".into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcImage-01995"],
+                    ..Default::default()
+                }));
+            }
+
+            if !dst_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_DST)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "dst_image.format_features()".into(),
+                    problem: "does not contain `FormatFeatures::TRANSFER_DST`".into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstImage-01996"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if src_image.samples() != dst_image.samples() {
+            return Err(Box::new(ValidationError {
+                problem: "`src_image.samples()` does not equal `dst_image.samples()`".into(),
+                vuids: &["VUID-VkCopyImageInfo2-srcImage-00136"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            src_image_layout,
+            ImageLayout::TransferSrcOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "src_image_layout".into(),
+                problem: "is not `ImageLayout::TransferSrcOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkCopyImageInfo2-srcImageLayout-01917"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            dst_image_layout,
+            ImageLayout::TransferDstOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "dst_image_layout".into(),
+                problem: "is not `ImageLayout::TransferDstOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkCopyImageInfo2-dstImageLayout-01395"],
+                ..Default::default()
+            }));
+        }
+
+        if src_image.image_type() != dst_image.image_type() {
+            if !(matches!(src_image.image_type(), ImageType::Dim2d | ImageType::Dim3d)
+                && matches!(dst_image.image_type(), ImageType::Dim2d | ImageType::Dim3d))
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_image.image_type()` does not equal `dst_image.image_type()`, \
+                        but they are not both `ImageType::Dim2d` or `ImageType::Dim3d`"
+                        .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcImage-07743"],
+                    ..Default::default()
+                }));
+            }
+
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_maintenance1)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_image.image_type()` does not equal `dst_image.image_type()`, \
+                        and are both `ImageType::Dim2d` or `ImageType::Dim3d`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance1")]),
+                    ]),
+                    vuids: &["VUID-VkCopyImageInfo2-apiVersion-07933"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let is_same_image = src_image == dst_image;
+        let mut overlap_subresource_indices = None;
+        let mut overlap_extent_indices = None;
+
+        for (region_index, region) in regions.iter().enumerate() {
+            region
+                .validate(device)
+                .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
+
+            let &ImageCopy {
+                ref src_subresource,
+                src_offset,
+                ref dst_subresource,
+                dst_offset,
+                extent,
+                _ne,
+            } = region;
+
+            /*
+               Check src
+            */
+
+            if src_subresource.mip_level >= src_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].src_subresource.mip_level` is not less than \
+                        `src_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcSubresource-07967"],
+                    ..Default::default()
+                }));
+            }
+
+            let mut src_subresource_format = src_image_format;
+            let mut src_subresource_extent =
+                mip_level_extent(src_image.extent(), src_subresource.mip_level).unwrap();
+
+            if src_image_format_planes.is_empty() {
+                if !src_image_format_aspects.contains(src_subresource.aspects) {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{}].src_subresource.aspects` is not a subset of \
+                            `src_image.format().aspects()`",
+                            region_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageInfo2-aspectMask-00142"],
+                        ..Default::default()
+                    }));
+                }
+            } else if src_image_format_planes.len() == 2 {
+                match src_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        src_subresource_format = src_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        src_subresource_format = src_image_format_planes[1];
+                        src_subresource_extent = src_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is a multi-planar format with two planes, \
+                                but `regions[{}].src_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0` or `ImageAspects::PLANE_1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageInfo2-srcImage-08713",
+                                "VUID-VkCopyImageInfo2-aspectMask-00142",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            } else if src_image_format_planes.len() == 3 {
+                match src_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        src_subresource_format = src_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        src_subresource_format = src_image_format_planes[1];
+                        src_subresource_extent = src_image_format_subsampled_extent;
+                    }
+                    ImageAspects::PLANE_2 => {
+                        src_subresource_format = src_image_format_planes[2];
+                        src_subresource_extent = src_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is a multi-planar format with three planes, \
+                                but `regions[{}].src_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0`, `ImageAspects::PLANE_1` or \
+                                `ImageAspects::PLANE_2`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageInfo2-srcImage-08713",
+                                "VUID-VkCopyImageInfo2-aspectMask-00142",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            match src_image.image_type() {
+                ImageType::Dim1d => {
+                    if src_offset[1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offset[1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-00146"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-00146"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-01785"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-01785"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if src_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].src_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-01787"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if src_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim3d`, but \
+                                `regions[{}].src_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageInfo2-srcImage-04443",
+                                "VUID-VkCopyImageInfo2-apiVersion-07932",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if src_subresource.array_layers.end > src_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].src_subresource.array_layers.end` is not less than \
+                        `src_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcSubresource-07968"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[0] + extent[0] > src_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[0] + regions[{0}].extent[0]` is greater \
+                        than coordinate 0 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcOffset-00144"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[1] + extent[1] > src_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[1] + regions[{0}].extent[1]` is greater \
+                        than coordinate 1 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcOffset-00145"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[2] + extent[2] > src_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[2] + regions[{0}].extent[2]` is greater \
+                        than coordinate 2 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcOffset-00147"],
+                    ..Default::default()
+                }));
+            }
+
+            let src_subresource_format_block_extent = src_subresource_format.block_extent();
+
+            if src_offset[0] % src_subresource_format_block_extent[0] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[0]` is not a multiple of coordinate 0 of the \
+                        block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-pRegions-07278"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[1] % src_subresource_format_block_extent[1] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[1]` is not a multiple of coordinate 1 of the \
+                        block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-pRegions-07279"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[2] % src_subresource_format_block_extent[2] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[2]` is not a multiple of coordinate 2 of the \
+                        block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-pRegions-07280"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[0] + extent[0] != src_subresource_extent[0]
+                && (src_offset[0] + extent[0]) % src_subresource_format_block_extent[0] != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[0] + regions[{0}].extent[0]` is not \
+                        equal to the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`, but \
+                        it is also not a multiple of coordinate 0 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcImage-01728"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[1] + extent[1] != src_subresource_extent[1]
+                && (src_offset[1] + extent[1]) % src_subresource_format_block_extent[1] != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[1] + regions[{0}].extent[1]` is not \
+                        equal to the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`, but \
+                        it is also not a multiple of coordinate 1 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcImage-01729"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[2] + extent[2] != src_subresource_extent[2]
+                && (src_offset[2] + extent[2]) % src_subresource_format_block_extent[2] != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[2] + regions[{0}].extent[2]` is not \
+                        equal to the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`, but \
+                        it is also not a multiple of coordinate 2 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-srcImage-01730"],
+                    ..Default::default()
+                }));
+            }
+
+            if !(src_subresource.aspects - ImageAspects::STENCIL).is_empty()
+                && !src_image.usage().intersects(ImageUsage::TRANSFER_SRC)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_subresource.aspects` contains aspects other than \
+                        `ImageAspects::STENCIL`, but \
+                        `src_image.usage()` does not contain `ImageUsage::TRANSFER_SRC`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-aspect-06662"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_subresource.aspects.intersects(ImageAspects::STENCIL)
+                && !src_image
+                    .stencil_usage()
+                    .intersects(ImageUsage::TRANSFER_SRC)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_subresource.aspects` contains \
+                        `ImageAspects::STENCIL`, but \
+                        `src_image.stencil_usage()` does not contain `ImageUsage::TRANSFER_SRC`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-aspect-06664"],
+                    ..Default::default()
+                }));
+            }
+
+            /*
+               Check dst
+            */
+
+            if dst_subresource.mip_level >= dst_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.mip_level` is not less than \
+                        `dst_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstSubresource-07967"],
+                    ..Default::default()
+                }));
+            }
+
+            let mut dst_subresource_format = dst_image_format;
+            let mut dst_subresource_extent =
+                mip_level_extent(dst_image.extent(), dst_subresource.mip_level).unwrap();
+
+            if dst_image_format_planes.is_empty() {
+                if !dst_image_format_aspects.contains(dst_subresource.aspects) {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{}].dst_subresource.aspects` is not a subset of \
+                            `dst_image.format().aspects()`",
+                            region_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageInfo2-aspectMask-00143"],
+                        ..Default::default()
+                    }));
+                }
+            } else if dst_image_format_planes.len() == 2 {
+                match dst_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        dst_subresource_format = dst_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        dst_subresource_format = dst_image_format_planes[1];
+                        dst_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.format()` is a multi-planar format with two planes, \
+                                but `regions[{}].dst_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0` or `ImageAspects::PLANE_1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageInfo2-dstImage-08714",
+                                "VUID-VkCopyImageInfo2-aspectMask-00143",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            } else if dst_image_format_planes.len() == 3 {
+                match dst_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        dst_subresource_format = dst_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        dst_subresource_format = dst_image_format_planes[1];
+                        dst_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+                    ImageAspects::PLANE_2 => {
+                        dst_subresource_format = dst_image_format_planes[2];
+                        dst_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.format()` is a multi-planar format with three planes, \
+                                but `regions[{}].dst_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0`, `ImageAspects::PLANE_1` or \
+                                `ImageAspects::PLANE_2`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageInfo2-dstImage-08714",
+                                "VUID-VkCopyImageInfo2-aspectMask-00143",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            match dst_image.image_type() {
+                ImageType::Dim1d => {
+                    if dst_offset[1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offset[1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-dstImage-00152"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-dstImage-00152"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-dstImage-01786"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-dstImage-01786"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if dst_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].dst_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-dstImage-01788"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if dst_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is  `ImageType::Dim3d`, but \
+                                `regions[{}].dst_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageInfo2-dstImage-04444",
+                                "VUID-VkCopyImageInfo2-apiVersion-07932",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if dst_subresource.array_layers.end > dst_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        `dst_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstSubresource-07968"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[0] + extent[0] > dst_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[0] + regions[{0}].extent[0]` is greater \
+                        than coordinate 0 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstOffset-00150"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[1] + extent[1] > dst_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[1] + regions[{0}].extent[1]` is greater \
+                        than coordinate 1 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstOffset-00151"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[2] + extent[2] > dst_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[2] + regions[{0}].extent[2]` is greater \
+                        than coordinate 2 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstOffset-00153"],
+                    ..Default::default()
+                }));
+            }
+
+            let dst_subresource_format_block_extent = dst_subresource_format.block_extent();
+
+            if dst_offset[0] % dst_subresource_format_block_extent[0] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[0]` is not a multiple of coordinate 0 of the \
+                        block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-pRegions-07281"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[1] % dst_subresource_format_block_extent[1] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[1]` is not a multiple of coordinate 1 of the \
+                        block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-pRegions-07282"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[2] % dst_subresource_format_block_extent[2] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[2]` is not a multiple of coordinate 2 of the \
+                        block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-pRegions-07283"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[0] + extent[0] != dst_subresource_extent[0]
+                && (dst_offset[0] + extent[0]) % dst_subresource_format_block_extent[0] != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[0] + regions[{0}].extent[0]` is not \
+                        equal to the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`, but \
+                        it is also not a multiple of coordinate 0 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstImage-01732"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[1] + extent[1] != dst_subresource_extent[1]
+                && (dst_offset[1] + extent[1]) % dst_subresource_format_block_extent[1] != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[1] + regions[{0}].extent[1]` is not \
+                        equal to the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`, but \
+                        it is also not a multiple of coordinate 1 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstImage-01733"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[2] + extent[2] != dst_subresource_extent[2]
+                && (dst_offset[2] + extent[2]) % dst_subresource_format_block_extent[2] != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[2] + regions[{0}].extent[2]` is not \
+                        equal to the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`, but \
+                        it is also not a multiple of coordinate 2 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-dstImage-01734"],
+                    ..Default::default()
+                }));
+            }
+
+            if !(dst_subresource.aspects - ImageAspects::STENCIL).is_empty()
+                && !dst_image.usage().intersects(ImageUsage::TRANSFER_DST)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_subresource.aspects` contains aspects other than \
+                        `ImageAspects::STENCIL`, but \
+                        `dst_image.usage()` does not contain `ImageUsage::TRANSFER_DST`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-aspect-06663"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_subresource.aspects.intersects(ImageAspects::STENCIL)
+                && !dst_image
+                    .stencil_usage()
+                    .intersects(ImageUsage::TRANSFER_DST)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_subresource.aspects` contains \
+                        `ImageAspects::STENCIL`, but \
+                        `dst_image.stencil_usage()` does not contain `ImageUsage::TRANSFER_DST`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageInfo2-aspect-06665"],
+                    ..Default::default()
+                }));
+            }
+
+            /*
+                Check src and dst together
+            */
+
+            match (
+                src_image_format_planes.is_empty(),
+                dst_image_format_planes.is_empty(),
+            ) {
+                (true, true) => {
+                    if src_subresource.aspects != dst_subresource.aspects {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` and `dst_image.format()` are both not \
+                                multi-planar formats, but \
+                                `regions[{0}].src_subresource.aspects` does not equal \
+                                `regions[{0}].dst_subresource.aspects`",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-01551"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_image_format.block_size() != dst_image_format.block_size() {
+                        return Err(Box::new(ValidationError {
+                            problem: "`src_image.format()` and `dst_image.format()` are both not \
+                                multi-planar formats, but \
+                                `src_image.format().block_size()` does not equal \
+                                `dst_image.format().block_size()`"
+                                .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-01548"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                (false, true) => {
+                    if dst_subresource.aspects != ImageAspects::COLOR {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is a multi-planar format, and \
+                                `dst_image.format()` is not a multi-planar format, but \
+                                `regions[{}].dst_subresource.aspects` is not \
+                                `ImageAspects::COLOR`",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-01556"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_subresource_format.block_size() != dst_image_format.block_size() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is a multi-planar format, and \
+                                `dst_image.format()` is not a multi-planar format, but \
+                                the block size of the plane of `src_image.format()` selected by \
+                                `regions[{}].src_subresource.aspects` does not equal \
+                                `dst_image.format().block_size()`",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-None-01549"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                (true, false) => {
+                    if src_subresource.aspects != ImageAspects::COLOR {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is not a multi-planar format, and \
+                                `dst_image.format()` is a multi-planar format, but \
+                                `regions[{}].src_subresource.aspects` is not \
+                                `ImageAspects::COLOR`",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-dstImage-01557"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_image_format.block_size() != dst_subresource_format.block_size() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is not a multi-planar format, and \
+                                `dst_image.format()` is a multi-planar format, but \
+                                `src_image.format().block_size()` does not equal \
+                                the block size of the plane of `dst_image.format()` selected by \
+                                `regions[{}].dst_subresource.aspects`",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-None-01549"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                (false, false) => {
+                    if src_subresource_format.block_size() != dst_subresource_format.block_size() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` and `dst_image.format()` are both \
+                                multi-planar formats, but \
+                                the block size of the plane of `src_image.format()` selected by \
+                                `regions[{0}].src_subresource.aspects` does not equal \
+                                the block size of the plane of `dst_image.format()` selected by \
+                                `regions[{0}].dst_subresource.aspects`",
+                                region_index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-None-01549"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if src_image.image_type() == dst_image.image_type() {
+                if src_subresource.array_layers.len() != dst_subresource.array_layers.len() {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`src_image.image_type()` equals `dst_image.image_type()`, but \
+                            the length of `regions[{0}].src_subresource.array_layers` \
+                            does not equal \
+                            the length of `regions[{0}].dst_subresource.array_layers`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageInfo2-srcImage-07744"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            match (src_image.image_type(), dst_image.image_type()) {
+                (ImageType::Dim2d, ImageType::Dim2d) => {
+                    if extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` and `dst_image.image_type()` are \
+                                both `ImageType::Dim2d`, but `regions[{}].extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageInfo2-srcImage-01790",
+                                "VUID-VkCopyImageInfo2-apiVersion-08969",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                (ImageType::Dim2d, ImageType::Dim3d) => {
+                    if extent[2] as usize != src_subresource.array_layers.len() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d` and \
+                                `dst_image.image_type()` is `ImageType::Dim3d`, but \
+                                `regions[{0}].extent[2]` does not equal the length of \
+                                `regions[{0}].src_subresource.array_layers`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-srcImage-01791"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                (ImageType::Dim3d, ImageType::Dim2d) => {
+                    if extent[2] as usize != dst_subresource.array_layers.len() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim3d` and \
+                                `dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{0}].extent[2]` does not equal the length of \
+                                `regions[{0}].dst_subresource.array_layers`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageInfo2-dstImage-01792"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                _ => (),
+            }
+
+            // VUID-VkCopyImageInfo2-pRegions-00124
+            if is_same_image {
+                let src_region_index = region_index;
+                let src_subresource_axes = [
+                    src_subresource.mip_level..src_subresource.mip_level + 1,
+                    src_subresource.array_layers.start..src_subresource.array_layers.end,
+                ];
+                let src_extent_axes = [
+                    src_offset[0]..src_offset[0] + extent[0],
+                    src_offset[1]..src_offset[1] + extent[1],
+                    src_offset[2]..src_offset[2] + extent[2],
+                ];
+
+                for (dst_region_index, dst_region) in regions.iter().enumerate() {
+                    let &ImageCopy {
+                        ref dst_subresource,
+                        dst_offset,
+                        ..
+                    } = dst_region;
+
+                    // For a single-plane image, the aspects must always be identical anyway
+                    if src_image_format_aspects.intersects(ImageAspects::PLANE_0)
+                        && src_subresource.aspects != dst_subresource.aspects
+                    {
+                        continue;
+                    }
+
+                    let dst_subresource_axes = [
+                        dst_subresource.mip_level..dst_subresource.mip_level + 1,
+                        src_subresource.array_layers.start..src_subresource.array_layers.end,
+                    ];
+
+                    if src_subresource_axes.iter().zip(dst_subresource_axes).any(
+                        |(src_range, dst_range)| {
+                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
+                        },
+                    ) {
+                        continue;
+                    }
+
+                    // If the subresource axes all overlap, then the source and destination must
+                    // have the same layout.
+                    overlap_subresource_indices = Some((src_region_index, dst_region_index));
+
+                    let dst_extent_axes = [
+                        dst_offset[0]..dst_offset[0] + extent[0],
+                        dst_offset[1]..dst_offset[1] + extent[1],
+                        dst_offset[2]..dst_offset[2] + extent[2],
+                    ];
+
+                    // There is only overlap if all of the axes overlap.
+                    if src_extent_axes
+                        .iter()
+                        .zip(dst_extent_axes)
+                        .any(|(src_range, dst_range)| {
+                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
+                        })
+                    {
+                        continue;
+                    }
+
+                    overlap_extent_indices = Some((src_region_index, dst_region_index));
+                }
+            }
+        }
+
+        if let Some((src_region_index, dst_region_index)) = overlap_extent_indices {
+            return Err(Box::new(ValidationError {
+                problem: format!(
+                    "`src_image` is equal to `dst_image`, and `regions[{0}].src_subresource` \
+                    overlaps with `regions[{1}].dst_subresource`, but \
+                    the `src_offset` and `extent` of `regions[{0}]` overlaps with \
+                    the `dst_offset` and `extent` of `regions[{1}]`",
+                    src_region_index, dst_region_index
+                )
+                .into(),
+                vuids: &["VUID-VkCopyImageInfo2-pRegions-00124"],
+                ..Default::default()
+            }));
+        }
+
+        if let Some((src_region_index, dst_region_index)) = overlap_subresource_indices {
+            if src_image_layout != dst_image_layout {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`src_image` is equal to `dst_image`, and `regions[{0}].src_subresource` \
+                        overlaps with `regions[{1}].dst_subresource`, but \
+                        `src_image_layout` does not equal `dst_image_layout`",
+                        src_region_index, dst_region_index
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkCopyImageInfo2-srcImageLayout-00128",
+                        "VUID-VkCopyImageInfo2-dstImageLayout-00133",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// A region of data to copy between images.
@@ -3867,6 +3741,81 @@ impl Default for ImageCopy {
     }
 }
 
+impl ImageCopy {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_subresource,
+            src_offset: _,
+            ref dst_subresource,
+            dst_offset: _,
+            extent,
+            _ne,
+        } = self;
+
+        src_subresource
+            .validate(device)
+            .map_err(|err| err.add_context("src_subresource"))?;
+
+        dst_subresource
+            .validate(device)
+            .map_err(|err| err.add_context("dst_subresource"))?;
+
+        if device.api_version() < Version::V1_1 {
+            if src_subresource.aspects != dst_subresource.aspects
+                && !device.enabled_extensions().khr_sampler_ycbcr_conversion
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_subresource.aspects` does not equal `dst_subresource.aspects`"
+                        .into(),
+                    vuids: &["VUID-VkImageCopy2-apiVersion-07940"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_subresource.array_layers.len() != dst_subresource.array_layers.len()
+                && !device.enabled_extensions().khr_maintenance1
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "the length of `src_subresource.array_layers` does not equal \
+                        the length of `dst_subresource.array_layers`"
+                        .into(),
+                    vuids: &["VUID-VkImageCopy2-extent-00140"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if extent[0] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "extent[0]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCopy2-extent-06668"],
+                ..Default::default()
+            }));
+        }
+
+        if extent[1] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "extent[1]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCopy2-extent-06669"],
+                ..Default::default()
+            }));
+        }
+
+        if extent[2] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "extent[2]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkImageCopy2-extent-06670"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
 /// Parameters to copy data from a buffer to an image.
 #[derive(Clone, Debug)]
 pub struct CopyBufferToImageInfo {
@@ -3916,6 +3865,566 @@ impl CopyBufferToImageInfo {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_buffer,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = self;
+
+        dst_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_image_layout".into(),
+                vuids: &["VUID-VkCopyBufferToImageInfo2-dstImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkCopyBufferToImageInfo2-commonparent
+        assert_eq!(device, src_buffer.device().as_ref());
+        assert_eq!(device, dst_image.device().as_ref());
+
+        let dst_image_format = dst_image.format();
+        let dst_image_format_aspects = dst_image_format.aspects();
+        let dst_image_format_planes = dst_image_format.planes();
+        let dst_image_format_subsampled_extent = dst_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(dst_image.extent(), |s| {
+                s.subsampled_extent(dst_image.extent())
+            });
+
+        if !src_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_SRC)
+        {
+            return Err(Box::new(ValidationError {
+                context: "src_buffer.buffer().usage()".into(),
+                problem: "does not contain `BufferUsage::TRANSFER_SRC`".into(),
+                vuids: &["VUID-VkCopyBufferToImageInfo2-srcBuffer-00174"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_image.usage().intersects(ImageUsage::TRANSFER_DST) {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.usage()".into(),
+                problem: "does not contain `ImageUsage::TRANSFER_DST`".into(),
+                vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-00177"],
+                ..Default::default()
+            }));
+        }
+
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            if !dst_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_DST)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "dst_image.format_features()".into(),
+                    problem: "does not contain `FormatFeatures::TRANSFER_DST`".into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-01997"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if dst_image.samples() != SampleCount::Sample1 {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.samples()".into(),
+                problem: "is not `SampleCount::Sample1`".into(),
+                vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07973"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            dst_image_layout,
+            ImageLayout::TransferDstOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "dst_image_layout".into(),
+                problem: "is not `ImageLayout::TransferDstOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkCopyBufferToImageInfo2-dstImageLayout-01396"],
+                ..Default::default()
+            }));
+        }
+
+        for (region_index, region) in regions.iter().enumerate() {
+            region
+                .validate(device)
+                .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
+
+            let &BufferImageCopy {
+                buffer_offset,
+                buffer_row_length,
+                buffer_image_height,
+                ref image_subresource,
+                image_offset,
+                image_extent,
+                _ne: _,
+            } = region;
+
+            /*
+               Check image
+            */
+
+            if image_subresource.mip_level >= dst_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].image_subresource.mip_level` is not less than \
+                        `dst_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-imageSubresource-01701"],
+                    ..Default::default()
+                }));
+            }
+
+            let mut image_subresource_format = dst_image_format;
+            let mut image_subresource_extent =
+                mip_level_extent(dst_image.extent(), image_subresource.mip_level).unwrap();
+
+            if dst_image_format_planes.is_empty() {
+                if !dst_image_format_aspects.contains(image_subresource.aspects) {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{}].image_subresource.aspects` is not a subset of \
+                            `dst_image.format().aspects()`",
+                            region_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyBufferToImageInfo2-aspectMask-00211"],
+                        ..Default::default()
+                    }));
+                }
+            } else if dst_image_format_planes.len() == 2 {
+                match image_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        image_subresource_format = dst_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        image_subresource_format = dst_image_format_planes[1];
+                        image_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.format()` is a multi-planar format with two planes, \
+                                but `regions[{}].image_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0` or `ImageAspects::PLANE_1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyBufferToImageInfo2-dstImage-07981",
+                                "VUID-VkCopyBufferToImageInfo2-aspectMask-00211",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            } else if dst_image_format_planes.len() == 3 {
+                match image_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        image_subresource_format = dst_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        image_subresource_format = dst_image_format_planes[1];
+                        image_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+                    ImageAspects::PLANE_2 => {
+                        image_subresource_format = dst_image_format_planes[2];
+                        image_subresource_extent = dst_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.format()` is a multi-planar format with three planes, \
+                                but `regions[{}].image_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0`, `ImageAspects::PLANE_1` or \
+                                `ImageAspects::PLANE_2`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyBufferToImageInfo2-dstImage-07982",
+                                "VUID-VkCopyBufferToImageInfo2-aspectMask-00211",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            match dst_image.image_type() {
+                ImageType::Dim1d => {
+                    if image_offset[1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_offset[1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07979"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_extent[1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_extent[1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07979"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if image_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].image_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].image_extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if image_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is  `ImageType::Dim3d`, but \
+                                `regions[{}].image_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07983"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if image_subresource.array_layers.end > dst_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        `dst_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-imageSubresource-07968"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[0] + image_extent[0] > image_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[0] + regions[{0}].image_extent[0]` is greater \
+                        than coordinate 0 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-pRegions-06223"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[1] + image_extent[1] > image_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[1] + regions[{0}].image_extent[1]` is greater \
+                        than coordinate 1 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-pRegions-06224"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[2] + image_extent[2] > image_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[2] + regions[{0}].image_extent[2]` is greater \
+                        than coordinate 2 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-imageOffset-00200"],
+                    ..Default::default()
+                }));
+            }
+
+            let image_subresource_format_block_extent = image_subresource_format.block_extent();
+
+            if image_offset[0] % image_subresource_format_block_extent[0] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[0]` is not a multiple of coordinate 0 of the \
+                        block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-pRegions-07274"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[1] % image_subresource_format_block_extent[1] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[1]` is not a multiple of coordinate 1 of the \
+                        block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-pRegions-07275"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[2] % image_subresource_format_block_extent[2] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[2]` is not a multiple of coordinate 2 of the \
+                        block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-pRegions-07276"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[0] + image_extent[0] != image_subresource_extent[0]
+                && (image_offset[0] + image_extent[0]) % image_subresource_format_block_extent[0]
+                    != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[0] + regions[{0}].image_extent[0]` is not \
+                        equal to the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`, but \
+                        it is also not a multiple of coordinate 0 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-imageExtent-00207"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[1] + image_extent[1] != image_subresource_extent[1]
+                && (image_offset[1] + image_extent[1]) % image_subresource_format_block_extent[1]
+                    != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[1] + regions[{0}].image_extent[1]` is not \
+                        equal to the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`, but \
+                        it is also not a multiple of coordinate 1 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-imageExtent-00208"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[2] + image_extent[2] != image_subresource_extent[2]
+                && (image_offset[2] + image_extent[2]) % image_subresource_format_block_extent[2]
+                    != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[2] + regions[{0}].image_extent[2]` is not \
+                        equal to the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`, but \
+                        it is also not a multiple of coordinate 2 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-imageExtent-00209"],
+                    ..Default::default()
+                }));
+            }
+
+            /*
+               Check buffer and image together
+            */
+
+            let image_subresource_format_block_size = image_subresource_format.block_size();
+
+            if dst_image_format_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
+                if (src_buffer.offset() + buffer_offset) % 4 != 0 {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`dst_image.format()` is a depth/stencil format, but \
+                            `src_buffer.offset() + regions[{0}].buffer_offset` is not a \
+                            multiple of 4",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyBufferToImageInfo2-dstImage-07978"],
+                        ..Default::default()
+                    }));
+                }
+            } else {
+                if (src_buffer.offset() + buffer_offset) % image_subresource_format_block_size != 0
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`dst_image.format()` is not a depth/stencil format, but \
+                            `src_buffer.offset() + regions[{0}].buffer_offset` is not a \
+                            multiple of the block size of the format of the subresource of \
+                            `dst_image` selected by `regions[{0}].image_subresource`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &[
+                            "VUID-VkCopyBufferToImageInfo2-dstImage-07975",
+                            "VUID-VkCopyBufferToImageInfo2-dstImage-07976",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if buffer_row_length % image_subresource_format_block_extent[0] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_row_length` is not a multiple of coordinate 0 of \
+                        the block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-bufferRowLength-00203"],
+                    ..Default::default()
+                }));
+            }
+
+            if buffer_image_height % image_subresource_format_block_extent[1] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_image_height` is not a multiple of coordinate 1 of \
+                        the block extent of the format of the subresource of `dst_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-bufferImageHeight-00204"],
+                    ..Default::default()
+                }));
+            }
+
+            if (buffer_row_length / image_subresource_format_block_extent[0]) as DeviceSize
+                * image_subresource_format_block_size
+                > 0x7FFFFFFF
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_row_length`, divided by the block size of the \
+                        format of the subresource of `dst_image` selected by \
+                        `regions[{0}].image_subresource`, and then multiplied by the block size \
+                        of that subresource, is greater than 0x7FFFFFFF",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-bufferRowLength-00203"],
+                    ..Default::default()
+                }));
+            }
+
+            if buffer_offset + region.buffer_copy_size(image_subresource_format) > src_buffer.size()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_offset` plus the number of bytes being copied \
+                        is greater than `src_buffer.size()`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyBufferToImageInfo2-pRegions-00171"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        // VUID-VkCopyBufferToImageInfo2-pRegions-00173
+        // Can't occur as long as memory aliasing isn't allowed.
+
+        // VUID-VkCopyBufferToImageInfo2-pRegions-07931
+        // Unsafe, can't validate
+
+        Ok(())
     }
 }
 
@@ -3968,6 +4477,563 @@ impl CopyImageToBufferInfo {
             regions: smallvec![region],
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_buffer,
+            ref regions,
+            _ne: _,
+        } = self;
+
+        src_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_image_layout".into(),
+                vuids: &["VUID-VkCopyImageToBufferInfo2-srcImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkCopyImageToBufferInfo2-commonparent
+        assert_eq!(device, src_image.device().as_ref());
+        assert_eq!(device, dst_buffer.device().as_ref());
+
+        let src_image_format = src_image.format();
+        let src_image_format_aspects = src_image_format.aspects();
+        let src_image_format_planes = src_image_format.planes();
+        let src_image_format_subsampled_extent = src_image_format
+            .ycbcr_chroma_sampling()
+            .map_or(src_image.extent(), |s| {
+                s.subsampled_extent(src_image.extent())
+            });
+
+        if !dst_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::TRANSFER_DST)
+        {
+            return Err(Box::new(ValidationError {
+                context: "dst_buffer.buffer().usage()".into(),
+                problem: "does not contain `BufferUsage::TRANSFER_DST`".into(),
+                vuids: &["VUID-VkCopyImageToBufferInfo2-dstBuffer-00191"],
+                ..Default::default()
+            }));
+        }
+
+        if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
+            return Err(Box::new(ValidationError {
+                context: "src_image.usage()".into(),
+                problem: "does not contain `ImageUsage::TRANSFER_SRC`".into(),
+                vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-00186"],
+                ..Default::default()
+            }));
+        }
+
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            if !src_image
+                .format_features()
+                .intersects(FormatFeatures::TRANSFER_SRC)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "src_image.format_features()".into(),
+                    problem: "does not contain `FormatFeatures::TRANSFER_SRC`".into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-01998"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if src_image.samples() != SampleCount::Sample1 {
+            return Err(Box::new(ValidationError {
+                context: "src_image.samples()".into(),
+                problem: "is not `SampleCount::Sample1`".into(),
+                vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07973"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            src_image_layout,
+            ImageLayout::TransferSrcOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "src_image_layout".into(),
+                problem: "is not `ImageLayout::TransferSrcOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkCopyImageToBufferInfo2-srcImageLayout-01397"],
+                ..Default::default()
+            }));
+        }
+
+        for (region_index, region) in regions.iter().enumerate() {
+            region
+                .validate(device)
+                .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
+
+            let &BufferImageCopy {
+                buffer_offset,
+                buffer_row_length,
+                buffer_image_height,
+                ref image_subresource,
+                image_offset,
+                image_extent,
+                _ne: _,
+            } = region;
+
+            /*
+               Check image
+            */
+
+            if image_subresource.mip_level >= src_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].image_subresource.mip_level` is not less than \
+                        `src_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageSubresource-07967"],
+                    ..Default::default()
+                }));
+            }
+
+            let mut image_subresource_format = src_image_format;
+            let mut image_subresource_extent =
+                mip_level_extent(src_image.extent(), image_subresource.mip_level).unwrap();
+
+            if src_image_format_planes.is_empty() {
+                if !src_image_format_aspects.contains(image_subresource.aspects) {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`regions[{}].image_subresource.aspects` is not a subset of \
+                            `src_image.format().aspects()`",
+                            region_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageToBufferInfo2-aspectMask-00211"],
+                        ..Default::default()
+                    }));
+                }
+            } else if src_image_format_planes.len() == 2 {
+                match image_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        image_subresource_format = src_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        image_subresource_format = src_image_format_planes[1];
+                        image_subresource_extent = src_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is a multi-planar format with two planes, \
+                                but `regions[{}].image_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0` or `ImageAspects::PLANE_1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageToBufferInfo2-srcImage-07981",
+                                "VUID-VkCopyImageToBufferInfo2-aspectMask-00211",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            } else if src_image_format_planes.len() == 3 {
+                match image_subresource.aspects {
+                    ImageAspects::PLANE_0 => {
+                        image_subresource_format = src_image_format_planes[0];
+                    }
+                    ImageAspects::PLANE_1 => {
+                        image_subresource_format = src_image_format_planes[1];
+                        image_subresource_extent = src_image_format_subsampled_extent;
+                    }
+                    ImageAspects::PLANE_2 => {
+                        image_subresource_format = src_image_format_planes[2];
+                        image_subresource_extent = src_image_format_subsampled_extent;
+                    }
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.format()` is a multi-planar format with three planes, \
+                                but `regions[{}].image_subresource.aspect` is not \
+                                `ImageAspects::PLANE_0`, `ImageAspects::PLANE_1` or \
+                                `ImageAspects::PLANE_2`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &[
+                                "VUID-VkCopyImageToBufferInfo2-srcImage-07982",
+                                "VUID-VkCopyImageToBufferInfo2-aspectMask-00211",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            match src_image.image_type() {
+                ImageType::Dim1d => {
+                    if image_offset[1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_offset[1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07979"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_extent[1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_extent[1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07979"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].image_extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if image_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].image_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image_extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].image_extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07980"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if image_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is  `ImageType::Dim3d`, but \
+                                `regions[{}].image_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07983"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if image_subresource.array_layers.end > src_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        `src_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageSubresource-07968"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[0] + image_extent[0] > image_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[0] + regions[{0}].image_extent[0]` is greater \
+                        than coordinate 0 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageOffset-00197"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[1] + image_extent[1] > image_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[1] + regions[{0}].image_extent[1]` is greater \
+                        than coordinate 1 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageOffset-00198"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[2] + image_extent[2] > image_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[2] + regions[{0}].image_extent[2]` is greater \
+                        than coordinate 2 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageOffset-00200"],
+                    ..Default::default()
+                }));
+            }
+
+            let image_subresource_format_block_extent = image_subresource_format.block_extent();
+
+            if image_offset[0] % image_subresource_format_block_extent[0] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[0]` is not a multiple of coordinate 0 of the \
+                        block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-pRegions-07274"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[1] % image_subresource_format_block_extent[1] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[1]` is not a multiple of coordinate 1 of the \
+                        block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-pRegions-07275"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[2] % image_subresource_format_block_extent[2] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[2]` is not a multiple of coordinate 2 of the \
+                        block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-pRegions-07276"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[0] + image_extent[0] != image_subresource_extent[0]
+                && (image_offset[0] + image_extent[0]) % image_subresource_format_block_extent[0]
+                    != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[0] + regions[{0}].image_extent[0]` is not \
+                        equal to the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`, but \
+                        it is also not a multiple of coordinate 0 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageExtent-00207"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[1] + image_extent[1] != image_subresource_extent[1]
+                && (image_offset[1] + image_extent[1]) % image_subresource_format_block_extent[1]
+                    != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[1] + regions[{0}].image_extent[1]` is not \
+                        equal to the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`, but \
+                        it is also not a multiple of coordinate 1 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageExtent-00208"],
+                    ..Default::default()
+                }));
+            }
+
+            if image_offset[2] + image_extent[2] != image_subresource_extent[2]
+                && (image_offset[2] + image_extent[2]) % image_subresource_format_block_extent[2]
+                    != 0
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].image_offset[2] + regions[{0}].image_extent[2]` is not \
+                        equal to the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`, but \
+                        it is also not a multiple of coordinate 2 of the block extent of the \
+                        format of that subresource",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-imageExtent-00209"],
+                    ..Default::default()
+                }));
+            }
+
+            /*
+               Check buffer and image together
+            */
+
+            let image_subresource_format_block_size = image_subresource_format.block_size();
+
+            if src_image_format_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL) {
+                if (dst_buffer.offset() + buffer_offset) % 4 != 0 {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`src_image.format()` is a depth/stencil format, but \
+                            `dst_buffer.offset() + regions[{0}].buffer_offset` is not a \
+                            multiple of 4",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkCopyImageToBufferInfo2-srcImage-07978"],
+                        ..Default::default()
+                    }));
+                }
+            } else {
+                if (dst_buffer.offset() + buffer_offset) % image_subresource_format_block_size != 0
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`src_image.format()` is not a depth/stencil format, but \
+                            `dst_buffer.offset() + regions[{0}].buffer_offset` is not a \
+                            multiple of the block size of the format of the subresource of \
+                            `src_image` selected by `regions[{0}].image_subresource`",
+                            region_index,
+                        )
+                        .into(),
+                        vuids: &[
+                            "VUID-VkCopyImageToBufferInfo2-srcImage-07975",
+                            "VUID-VkCopyImageToBufferInfo2-srcImage-07976",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if buffer_row_length % image_subresource_format_block_extent[0] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_row_length` is not a multiple of coordinate 0 of \
+                        the block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-bufferRowLength-00203"],
+                    ..Default::default()
+                }));
+            }
+
+            if buffer_image_height % image_subresource_format_block_extent[1] != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_image_height` is not a multiple of coordinate 1 of \
+                        the block extent of the format of the subresource of `src_image` \
+                        selected by `regions[{0}].image_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-bufferImageHeight-00204"],
+                    ..Default::default()
+                }));
+            }
+
+            if (buffer_row_length / image_subresource_format_block_extent[0]) as DeviceSize
+                * image_subresource_format_block_size
+                > 0x7FFFFFFF
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_row_length`, divided by the block size of the \
+                        format of the subresource of `src_image` selected by \
+                        `regions[{0}].image_subresource`, and then multiplied by the block size \
+                        of that subresource, is greater than 0x7FFFFFFF",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-pRegions-07277"],
+                    ..Default::default()
+                }));
+            }
+
+            if buffer_offset + region.buffer_copy_size(image_subresource_format) > dst_buffer.size()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].buffer_offset` plus the number of bytes being copied \
+                        is greater than `dst_buffer.size()`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkCopyImageToBufferInfo2-pRegions-00183"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        // VUID-VkCopyImageToBufferInfo2-pRegions-00184
+        // Can't occur as long as memory aliasing isn't allowed.
+
+        Ok(())
     }
 }
 
@@ -4074,23 +5140,81 @@ impl BufferImageCopy {
             (image_extent[1] as DeviceSize - 1) * buffer_row_length as DeviceSize;
         let num_blocks = blocks_to_last_slice + blocks_to_last_row + image_extent[0] as DeviceSize;
 
-        // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
-        let block_size = if image_subresource.aspects.intersects(ImageAspects::STENCIL) {
-            1
-        } else if image_subresource.aspects.intersects(ImageAspects::DEPTH) {
-            match format {
-                Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
-                Format::D32_SFLOAT
-                | Format::D32_SFLOAT_S8_UINT
-                | Format::X8_D24_UNORM_PACK32
-                | Format::D24_UNORM_S8_UINT => 4,
-                _ => unreachable!(),
-            }
-        } else {
-            format.block_size()
-        };
+        num_blocks * format.block_size()
+    }
 
-        num_blocks * block_size
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            buffer_offset: _,
+            buffer_row_length,
+            buffer_image_height,
+            ref image_subresource,
+            image_offset: _,
+            image_extent,
+            _ne: _,
+        } = self;
+
+        image_subresource
+            .validate(device)
+            .map_err(|err| err.add_context("image_subresource"))?;
+
+        if !(buffer_row_length == 0 || buffer_row_length >= image_extent[0]) {
+            return Err(Box::new(ValidationError {
+                problem: "`buffer_row_length` is not either zero, or greater than or equal to \
+                    `image_extent[0]`"
+                    .into(),
+                vuids: &["VUID-VkBufferImageCopy2-bufferRowLength-00195"],
+                ..Default::default()
+            }));
+        }
+
+        if !(buffer_image_height == 0 || buffer_image_height >= image_extent[1]) {
+            return Err(Box::new(ValidationError {
+                problem: "`buffer_image_height` is not either zero, or greater than or equal to \
+                    `image_extent[1]`"
+                    .into(),
+                vuids: &["VUID-VkBufferImageCopy2-bufferImageHeight-00196"],
+                ..Default::default()
+            }));
+        }
+
+        if image_subresource.aspects.count() != 1 {
+            return Err(Box::new(ValidationError {
+                context: "image_subresource.aspects".into(),
+                problem: "contains more than one aspect".into(),
+                vuids: &["VUID-VkBufferImageCopy2-aspectMask-00212"],
+                ..Default::default()
+            }));
+        }
+
+        if image_extent[0] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "image_extent[0]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkBufferImageCopy2-imageExtent-06659"],
+                ..Default::default()
+            }));
+        }
+
+        if image_extent[1] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "image_extent[1]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkBufferImageCopy2-imageExtent-06660"],
+                ..Default::default()
+            }));
+        }
+
+        if image_extent[2] == 0 {
+            return Err(Box::new(ValidationError {
+                context: "image_extent[2]".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkBufferImageCopy2-imageExtent-06661"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 }
 
@@ -4170,6 +5294,747 @@ impl BlitImageInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            filter,
+            _ne: _,
+        } = self;
+
+        src_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_image_layout".into(),
+                vuids: &["VUID-VkBlitImageInfo2-srcImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_image_layout".into(),
+                vuids: &["VUID-VkBlitImageInfo2-dstImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        filter
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "filter".into(),
+                vuids: &["VUID-VkBlitImageInfo2-filter-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkBlitImageInfo2-commonparent
+        assert_eq!(device, src_image.device().as_ref());
+        assert_eq!(device, dst_image.device().as_ref());
+
+        let src_image_format = src_image.format();
+        let src_image_format_aspects = src_image_format.aspects();
+
+        let dst_image_format = dst_image.format();
+        let dst_image_format_aspects = dst_image_format.aspects();
+
+        if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
+            return Err(Box::new(ValidationError {
+                context: "src_image.usage()".into(),
+                problem: "does not contain `ImageUsage::TRANSFER_SRC`".into(),
+                vuids: &["VUID-VkBlitImageInfo2-srcImage-00219"],
+                ..Default::default()
+            }));
+        }
+
+        if !src_image
+            .format_features()
+            .intersects(FormatFeatures::BLIT_SRC)
+        {
+            return Err(Box::new(ValidationError {
+                context: "src_image.format_features()".into(),
+                problem: "does not contain `FormatFeatures::BLIT_SRC`".into(),
+                vuids: &["VUID-VkBlitImageInfo2-srcImage-01999"],
+                ..Default::default()
+            }));
+        }
+
+        if src_image_format.ycbcr_chroma_sampling().is_some() {
+            return Err(Box::new(ValidationError {
+                context: "src_image.format()".into(),
+                problem: "is a YCbCr format".into(),
+                vuids: &["VUID-VkBlitImageInfo2-srcImage-06421"],
+                ..Default::default()
+            }));
+        }
+
+        if src_image.samples() != SampleCount::Sample1 {
+            return Err(Box::new(ValidationError {
+                context: "src_image.samples()".into(),
+                problem: "is not `SampleCount::Sample1`".into(),
+                vuids: &["VUID-VkBlitImageInfo2-srcImage-00233"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            src_image_layout,
+            ImageLayout::TransferSrcOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "src_image_layout".into(),
+                problem: "is not `ImageLayout::TransferSrcOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkBlitImageInfo2-srcImageLayout-01398"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_image.usage().intersects(ImageUsage::TRANSFER_DST) {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.usage()".into(),
+                problem: "does not contain `ImageUsage::TRANSFER_DST`".into(),
+                vuids: &["VUID-VkBlitImageInfo2-dstImage-00224"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_image
+            .format_features()
+            .intersects(FormatFeatures::BLIT_DST)
+        {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.format_features()".into(),
+                problem: "does not contain `FormatFeatures::BLIT_DST`".into(),
+                vuids: &["VUID-VkBlitImageInfo2-dstImage-02000"],
+                ..Default::default()
+            }));
+        }
+
+        if dst_image_format.ycbcr_chroma_sampling().is_some() {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.format()".into(),
+                problem: "is a YCbCr format".into(),
+                vuids: &["VUID-VkBlitImageInfo2-dstImage-06422"],
+                ..Default::default()
+            }));
+        }
+
+        if dst_image.samples() != SampleCount::Sample1 {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.samples()".into(),
+                problem: "is not `SampleCount::Sample1`".into(),
+                vuids: &["VUID-VkBlitImageInfo2-dstImage-00234"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            dst_image_layout,
+            ImageLayout::TransferDstOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "dst_image_layout".into(),
+                problem: "is not `ImageLayout::TransferDstOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkBlitImageInfo2-dstImageLayout-01399"],
+                ..Default::default()
+            }));
+        }
+
+        if src_image_format_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            || dst_image_format_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
+        {
+            if src_image_format != dst_image_format {
+                return Err(Box::new(ValidationError {
+                    problem: "one of `src_image.format()` or `dst_image.format()` is a \
+                        depth/stencil format, but they are not equal"
+                        .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcImage-00231"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if src_image_format
+                .numeric_format_color()
+                .unwrap()
+                .numeric_type()
+                != dst_image_format
+                    .numeric_format_color()
+                    .unwrap()
+                    .numeric_type()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "neither `src_image.format()` nor `dst_image.format()` is a \
+                        depth/stencil format, but their numeric types are not equal"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkBlitImageInfo2-srcImage-00229",
+                        "VUID-VkBlitImageInfo2-srcImage-00230",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if src_image_format_aspects.intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
+            && filter != Filter::Nearest
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`src_image.format()` is a depth/stencil format, but \
+                    `filter` is not `Filter::Nearest`"
+                    .into(),
+                vuids: &["VUID-VkBlitImageInfo2-srcImage-00232"],
+                ..Default::default()
+            }));
+        }
+
+        match filter {
+            Filter::Nearest => (),
+            Filter::Linear => {
+                if !src_image
+                    .format_features()
+                    .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR)
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`filter` is `Filter::Linear`, but \
+                            `src_image.format_features()` do not contain \
+                            `FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR`"
+                            .into(),
+                        vuids: &["VUID-VkBlitImageInfo2-filter-02001"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            Filter::Cubic => {
+                if !src_image
+                    .format_features()
+                    .intersects(FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC)
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`filter` is `Filter::Cubic`, but \
+                            `src_image.format_features()` do not contain \
+                            `FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC`"
+                            .into(),
+                        vuids: &["VUID-VkBlitImageInfo2-filter-02002"],
+                        ..Default::default()
+                    }));
+                }
+
+                if src_image.image_type() != ImageType::Dim2d {
+                    return Err(Box::new(ValidationError {
+                        problem: "`filter` is `Filter::Cubic`, but \
+                            `src_image.image_type()` is not `ImageType::Dim2d`"
+                            .into(),
+                        vuids: &["VUID-VkBlitImageInfo2-filter-00237"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        let is_same_image = src_image == dst_image;
+        let mut overlap_subresource_indices = None;
+        let mut overlap_extent_indices = None;
+
+        for (region_index, region) in regions.iter().enumerate() {
+            region
+                .validate(device)
+                .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
+
+            let &ImageBlit {
+                ref src_subresource,
+                src_offsets,
+                ref dst_subresource,
+                dst_offsets,
+                _ne: _,
+            } = region;
+
+            /*
+               Check src
+            */
+
+            if src_subresource.mip_level >= src_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].src_subresource.mip_level` is not less than \
+                        `src_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01705"],
+                    ..Default::default()
+                }));
+            }
+
+            let src_subresource_extent =
+                mip_level_extent(src_image.extent(), src_subresource.mip_level).unwrap();
+
+            if !src_image_format_aspects.contains(src_subresource.aspects) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].src_subresource.aspects` is not a subset of \
+                        `src_image.format().aspects()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-aspectMask-00241"],
+                    ..Default::default()
+                }));
+            }
+
+            match src_image.image_type() {
+                ImageType::Dim1d => {
+                    if src_offsets[0][1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offsets[0][1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00245"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_offsets[1][1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offsets[1][1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00245"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_offsets[0][2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offsets[0][2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00247"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_offsets[1][2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offsets[1][2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00247"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if src_offsets[0][2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].src_offsets[0][2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00247"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_offsets[1][2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].src_offsets[1][2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00247"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if src_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim3d`, but \
+                                `regions[{}].src_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00240"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if src_subresource.array_layers.end > src_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].src_subresource.array_layers.end` is not less than \
+                        `src_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
+                    ..Default::default()
+                }));
+            }
+
+            let src_offsets_max = [
+                max(src_offsets[0][0], src_offsets[1][0]),
+                max(src_offsets[0][1], src_offsets[1][1]),
+                max(src_offsets[0][2], src_offsets[1][2]),
+            ];
+
+            if src_offsets_max[0] > src_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`max(regions[{0}].src_offsets[0][0], regions[{0}].src_offsets[1][0])` is \
+                        greater than coordinate 0 of the extent of the subresource of \
+                        `src_image` selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcOffset-00243"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offsets_max[1] > src_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`max(regions[{0}].src_offsets[0][1], regions[{0}].src_offsets[1][1])` is \
+                        greater than coordinate 1 of the extent of the subresource of \
+                        `src_image` selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcOffset-00244"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offsets_max[2] > src_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`max(regions[{0}].src_offsets[0][2], regions[{0}].src_offsets[1][2])` is \
+                        greater than coordinate 2 of the extent of the subresource of \
+                        `src_image` selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcOffset-00246"],
+                    ..Default::default()
+                }));
+            }
+
+            /*
+               Check dst
+            */
+
+            if dst_subresource.mip_level >= dst_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.mip_level` is not less than \
+                        `dst_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01705"],
+                    ..Default::default()
+                }));
+            }
+
+            let dst_subresource_extent =
+                mip_level_extent(dst_image.extent(), dst_subresource.mip_level).unwrap();
+
+            if !dst_image_format_aspects.contains(dst_subresource.aspects) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.aspects` is not a subset of \
+                        `dst_image.format().aspects()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-aspectMask-00242"],
+                    ..Default::default()
+                }));
+            }
+
+            match dst_image.image_type() {
+                ImageType::Dim1d => {
+                    if dst_offsets[0][1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offsets[0][1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-dstImage-00250"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_offsets[1][1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offsets[1][1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-dstImage-00250"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_offsets[0][2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offsets[0][2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-dstImage-00252"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_offsets[1][2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offsets[1][2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-dstImage-00252"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if dst_offsets[0][2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].dst_offsets[0][2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-dstImage-00252"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_offsets[1][2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].dst_offsets[1][2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-dstImage-00252"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if dst_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim3d`, but \
+                                `regions[{}].dst_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkBlitImageInfo2-srcImage-00240"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if dst_subresource.array_layers.end > dst_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        `dst_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-srcSubresource-01707"],
+                    ..Default::default()
+                }));
+            }
+
+            let dst_offsets_max = [
+                max(dst_offsets[0][0], dst_offsets[1][0]),
+                max(dst_offsets[0][1], dst_offsets[1][1]),
+                max(dst_offsets[0][2], dst_offsets[1][2]),
+            ];
+
+            if dst_offsets_max[0] > dst_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`max(regions[{0}].dst_offsets[0][0], regions[{0}].dst_offsets[1][0])` is \
+                        greater than coordinate 0 of the extent of the subresource of \
+                        `dst_image` selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-dstOffset-00248"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offsets_max[1] > dst_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`max(regions[{0}].dst_offsets[0][1], regions[{0}].dst_offsets[1][1])` is \
+                        greater than coordinate 1 of the extent of the subresource of \
+                        `dst_image` selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-dstOffset-00249"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offsets_max[2] > dst_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`max(regions[{0}].dst_offsets[0][2], regions[{0}].dst_offsets[1][2])` is \
+                        greater than coordinate 2 of the extent of the subresource of \
+                        `dst_image` selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkBlitImageInfo2-dstOffset-00251"],
+                    ..Default::default()
+                }));
+            }
+
+            // VUID-VkBlitImageInfo2-pRegions-00217
+            if is_same_image {
+                let src_region_index = region_index;
+                let src_subresource_axes = [
+                    src_subresource.mip_level..src_subresource.mip_level + 1,
+                    src_subresource.array_layers.start..src_subresource.array_layers.end,
+                ];
+                let src_extent_axes = [
+                    min(src_offsets[0][0], src_offsets[1][0])
+                        ..max(src_offsets[0][0], src_offsets[1][0]),
+                    min(src_offsets[0][1], src_offsets[1][1])
+                        ..max(src_offsets[0][1], src_offsets[1][1]),
+                    min(src_offsets[0][2], src_offsets[1][2])
+                        ..max(src_offsets[0][2], src_offsets[1][2]),
+                ];
+
+                for (dst_region_index, dst_region) in regions.iter().enumerate() {
+                    let &ImageBlit {
+                        ref dst_subresource,
+                        dst_offsets,
+                        ..
+                    } = dst_region;
+
+                    let dst_subresource_axes = [
+                        dst_subresource.mip_level..dst_subresource.mip_level + 1,
+                        src_subresource.array_layers.start..src_subresource.array_layers.end,
+                    ];
+
+                    if src_subresource_axes.iter().zip(dst_subresource_axes).any(
+                        |(src_range, dst_range)| {
+                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
+                        },
+                    ) {
+                        continue;
+                    }
+
+                    // If the subresource axes all overlap, then the source and destination must
+                    // have the same layout.
+                    overlap_subresource_indices = Some((src_region_index, dst_region_index));
+
+                    let dst_extent_axes = [
+                        min(dst_offsets[0][0], dst_offsets[1][0])
+                            ..max(dst_offsets[0][0], dst_offsets[1][0]),
+                        min(dst_offsets[0][1], dst_offsets[1][1])
+                            ..max(dst_offsets[0][1], dst_offsets[1][1]),
+                        min(dst_offsets[0][2], dst_offsets[1][2])
+                            ..max(dst_offsets[0][2], dst_offsets[1][2]),
+                    ];
+
+                    if src_extent_axes
+                        .iter()
+                        .zip(dst_extent_axes)
+                        .any(|(src_range, dst_range)| {
+                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
+                        })
+                    {
+                        continue;
+                    }
+
+                    // If the extent axes *also* overlap, then that's an error.
+                    overlap_extent_indices = Some((src_region_index, dst_region_index));
+                }
+            }
+        }
+
+        if let Some((src_region_index, dst_region_index)) = overlap_extent_indices {
+            return Err(Box::new(ValidationError {
+                problem: format!(
+                    "`src_image` is equal to `dst_image`, and `regions[{0}].src_subresource` \
+                    overlaps with `regions[{1}].dst_subresource`, but \
+                    the `src_offsets` of `regions[{0}]` overlaps with \
+                    the `dst_offsets` of `regions[{1}]`",
+                    src_region_index, dst_region_index
+                )
+                .into(),
+                vuids: &["VUID-VkBlitImageInfo2-pRegions-00217"],
+                ..Default::default()
+            }));
+        }
+
+        if let Some((src_region_index, dst_region_index)) = overlap_subresource_indices {
+            if src_image_layout != dst_image_layout {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`src_image` is equal to `dst_image`, and `regions[{0}].src_subresource` \
+                        overlaps with `regions[{1}].dst_subresource`, but \
+                        `src_image_layout` does not equal `dst_image_layout`",
+                        src_region_index, dst_region_index
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkBlitImageInfo2-srcImageLayout-00221",
+                        "VUID-VkBlitImageInfo2-dstImageLayout-00226",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// A region of data to blit between images.
@@ -4222,6 +6087,47 @@ impl Default for ImageBlit {
             dst_offsets: [[0; 3]; 2],
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl ImageBlit {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_subresource,
+            src_offsets: _,
+            ref dst_subresource,
+            dst_offsets: _,
+            _ne: _,
+        } = self;
+
+        src_subresource
+            .validate(device)
+            .map_err(|err| err.add_context("src_subresource"))?;
+
+        dst_subresource
+            .validate(device)
+            .map_err(|err| err.add_context("dst_subresource"))?;
+
+        if src_subresource.aspects != dst_subresource.aspects {
+            return Err(Box::new(ValidationError {
+                problem: "`src_subresource.aspects` does not equal `dst_subresource.aspects`"
+                    .into(),
+                vuids: &["VUID-VkImageBlit2-aspectMask-00238"],
+                ..Default::default()
+            }));
+        }
+
+        if src_subresource.array_layers.len() != dst_subresource.array_layers.len() {
+            return Err(Box::new(ValidationError {
+                problem: "the length of `src_subresource.array_layers` does not equal \
+                    the length of `dst_subresource.array_layers`"
+                    .into(),
+                vuids: &["VUID-VkImageBlit2-layerCount-00239"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 }
 
@@ -4302,6 +6208,521 @@ impl ResolveImageInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = self;
+
+        src_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "src_image_layout".into(),
+                vuids: &["VUID-VkResolveImageInfo2-srcImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        dst_image_layout
+            .validate_device(device)
+            .map_err(|err| ValidationError {
+                context: "dst_image_layout".into(),
+                vuids: &["VUID-VkResolveImageInfo2-dstImageLayout-parameter"],
+                ..ValidationError::from_requirement(err)
+            })?;
+
+        // VUID-VkResolveImageInfo2-commonparent
+        assert_eq!(device, src_image.device().as_ref());
+        assert_eq!(device, dst_image.device().as_ref());
+
+        let src_image_format = src_image.format();
+        let dst_image_format = dst_image.format();
+
+        if src_image.samples() == SampleCount::Sample1 {
+            return Err(Box::new(ValidationError {
+                context: "src_image.samples()".into(),
+                problem: "is `SampleCount::Sample1`".into(),
+                vuids: &["VUID-VkResolveImageInfo2-srcImage-00257"],
+                ..Default::default()
+            }));
+        }
+
+        if !src_image.usage().intersects(ImageUsage::TRANSFER_SRC) {
+            return Err(Box::new(ValidationError {
+                context: "src_image.usage()".into(),
+                problem: "does not contain `ImageUsage::TRANSFER_SRC`".into(),
+                vuids: &["VUID-VkResolveImageInfo2-srcImage-06762"],
+                ..Default::default()
+            }));
+        }
+
+        if !src_image
+            .format_features()
+            .intersects(FormatFeatures::TRANSFER_SRC)
+        {
+            return Err(Box::new(ValidationError {
+                context: "src_image.format_features()".into(),
+                problem: "does not contain `FormatFeatures::TRANSFER_SRC`".into(),
+                vuids: &["VUID-VkResolveImageInfo2-srcImage-06763"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            src_image_layout,
+            ImageLayout::TransferSrcOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "src_image_layout".into(),
+                problem: "is not `ImageLayout::TransferSrcOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkResolveImageInfo2-srcImageLayout-01400"],
+                ..Default::default()
+            }));
+        }
+
+        if dst_image.samples() != SampleCount::Sample1 {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.samples()".into(),
+                problem: "is not `SampleCount::Sample1`".into(),
+                vuids: &["VUID-VkResolveImageInfo2-dstImage-00259"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_image.usage().intersects(ImageUsage::TRANSFER_DST) {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.usage()".into(),
+                problem: "does not contain `ImageUsage::TRANSFER_DST`".into(),
+                vuids: &["VUID-VkResolveImageInfo2-dstImage-06764"],
+                ..Default::default()
+            }));
+        }
+
+        if !dst_image
+            .format_features()
+            .contains(FormatFeatures::TRANSFER_DST | FormatFeatures::COLOR_ATTACHMENT)
+        {
+            return Err(Box::new(ValidationError {
+                context: "dst_image.format_features()".into(),
+                problem: "does not contain both `FormatFeatures::TRANSFER_DST` and \
+                    `FormatFeatures::COLOR_ATTACHMENT`"
+                    .into(),
+                vuids: &[
+                    "VUID-VkResolveImageInfo2-dstImage-06765",
+                    "VUID-VkResolveImageInfo2-dstImage-02003",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if device.enabled_features().linear_color_attachment
+            && dst_image.tiling() == ImageTiling::Linear
+            && !dst_image
+                .format_features()
+                .contains(FormatFeatures::LINEAR_COLOR_ATTACHMENT)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the `linear_color_attachment` feature is enabled on the device, and \
+                    `dst_image.tiling()` is `ImageTiling::Linear`, but \
+                    `dst_image.format_features()` does not contain \
+                    `FormatFeatures::LINEAR_COLOR_ATTACHMENT`"
+                    .into(),
+                vuids: &["VUID-VkResolveImageInfo2-linearColorAttachment-06519"],
+                ..Default::default()
+            }));
+        }
+
+        if !matches!(
+            dst_image_layout,
+            ImageLayout::TransferDstOptimal | ImageLayout::General
+        ) {
+            return Err(Box::new(ValidationError {
+                context: "dst_image_layout".into(),
+                problem: "is not `ImageLayout::TransferDstOptimal` or `ImageLayout::General`"
+                    .into(),
+                vuids: &["VUID-VkResolveImageInfo2-dstImageLayout-01401"],
+                ..Default::default()
+            }));
+        }
+
+        if src_image_format != dst_image_format {
+            return Err(Box::new(ValidationError {
+                problem: "`src_image.format()` does not equal `dst_image.format()`".into(),
+                vuids: &["VUID-VkResolveImageInfo2-srcImage-01386"],
+                ..Default::default()
+            }));
+        }
+
+        for (region_index, region) in regions.iter().enumerate() {
+            region
+                .validate(device)
+                .map_err(|err| err.add_context(format!("regions[{}]", region_index)))?;
+
+            let &ImageResolve {
+                ref src_subresource,
+                src_offset,
+                ref dst_subresource,
+                dst_offset,
+                extent,
+                _ne: _,
+            } = region;
+
+            /*
+               Check src
+            */
+
+            if src_subresource.mip_level >= src_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].src_subresource.mip_level` is not less than \
+                        `src_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-srcSubresource-01709"],
+                    ..Default::default()
+                }));
+            }
+
+            let src_subresource_extent =
+                mip_level_extent(src_image.extent(), src_subresource.mip_level).unwrap();
+
+            match src_image.image_type() {
+                ImageType::Dim1d => {
+                    if src_offset[1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offset[1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-00271"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-00271"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if src_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].src_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-00273"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-00273"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if src_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].src_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-00273"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-00273"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if src_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`src_image.image_type()` is `ImageType::Dim3d`, but \
+                                `regions[{}].src_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-04446"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if src_subresource.array_layers.end > src_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].src_subresource.array_layers.end` is not less than \
+                        `src_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-srcSubresource-01711"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[0] + extent[0] > src_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[0] + regions[{0}].extent[0]` is greater \
+                        than coordinate 0 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-srcOffset-00269"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[1] + extent[1] > src_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[1] + regions[{0}].extent[1]` is greater \
+                        than coordinate 1 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-srcOffset-00270"],
+                    ..Default::default()
+                }));
+            }
+
+            if src_offset[2] + extent[2] > src_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].src_offset[2] + regions[{0}].extent[2]` is greater \
+                        than coordinate 2 of the extent of the subresource of `src_image` \
+                        selected by `regions[{0}].src_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-srcOffset-00272"],
+                    ..Default::default()
+                }));
+            }
+
+            /*
+               Check dst
+            */
+
+            if dst_subresource.mip_level >= dst_image.mip_levels() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.mip_level` is not less than \
+                        `dst_image.mip_levels()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-dstSubresource-01710"],
+                    ..Default::default()
+                }));
+            }
+
+            let dst_subresource_extent =
+                mip_level_extent(dst_image.extent(), dst_subresource.mip_level).unwrap();
+
+            match dst_image.image_type() {
+                ImageType::Dim1d => {
+                    if dst_offset[1] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offset[1]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-dstImage-00276"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[1] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[1]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-dstImage-00276"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if dst_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].dst_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-dstImage-00278"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim1d`, but \
+                                `regions[{}].extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-dstImage-00278"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim2d => {
+                    if dst_offset[2] != 0 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].dst_offset[2]` is not 0",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-dstImage-00278"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if extent[2] != 1 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim2d`, but \
+                                `regions[{}].extent[2]` is not 1",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-dstImage-00278"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageType::Dim3d => {
+                    if dst_subresource.array_layers != (0..1) {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`dst_image.image_type()` is `ImageType::Dim3d`, but \
+                                `regions[{}].dst_subresource.array_layers` is not `0..1`",
+                                region_index,
+                            )
+                            .into(),
+                            vuids: &["VUID-VkResolveImageInfo2-srcImage-04447"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+
+            if dst_subresource.array_layers.end > dst_image.array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{}].dst_subresource.array_layers.end` is not less than \
+                        `dst_image.array_layers()`",
+                        region_index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-dstSubresource-01712"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[0] + extent[0] > dst_subresource_extent[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[0] + regions[{0}].extent[0]` is greater \
+                        than coordinate 0 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-dstOffset-00274"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[1] + extent[1] > dst_subresource_extent[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[1] + regions[{0}].extent[1]` is greater \
+                        than coordinate 1 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-dstOffset-00275"],
+                    ..Default::default()
+                }));
+            }
+
+            if dst_offset[2] + extent[2] > dst_subresource_extent[2] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`regions[{0}].dst_offset[2] + regions[{0}].extent[2]` is greater \
+                        than coordinate 2 of the extent of the subresource of `dst_image` \
+                        selected by `regions[{0}].dst_subresource`",
+                        region_index,
+                    )
+                    .into(),
+                    vuids: &["VUID-VkResolveImageInfo2-dstOffset-00277"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        // VUID-VkResolveImageInfo2-pRegions-00255
+        // Can't occur as long as memory aliasing isn't allowed, because `src_image` and
+        // `dst_image` must have different sample counts and therefore can never be the same image.
+
+        Ok(())
+    }
 }
 
 /// A region of data to resolve between images.
@@ -4357,559 +6778,52 @@ impl Default for ImageResolve {
     }
 }
 
-/// Error that can happen when recording a copy command.
-#[derive(Clone, Debug)]
-pub enum CopyError {
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
+impl ImageResolve {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref src_subresource,
+            src_offset: _,
+            ref dst_subresource,
+            dst_offset: _,
+            extent: _,
+            _ne: _,
+        } = self;
 
-    /// Operation forbidden inside of a render pass.
-    ForbiddenInsideRenderPass,
+        src_subresource
+            .validate(device)
+            .map_err(|err| err.add_context("src_subresource"))?;
 
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
+        dst_subresource
+            .validate(device)
+            .map_err(|err| err.add_context("dst_subresource"))?;
 
-    /// The array layer counts of the source and destination subresource ranges of a region do not
-    /// match.
-    ArrayLayerCountMismatch {
-        region_index: usize,
-        src_layer_count: u32,
-        dst_layer_count: u32,
-    },
-
-    /// The end of the range of accessed array layers of the subresource range of a region is
-    /// greater than the number of array layers in the image.
-    ArrayLayersOutOfRange {
-        resource: CopyErrorResource,
-        region_index: usize,
-        array_layers_range_end: u32,
-        image_array_layers: u32,
-    },
-
-    /// The aspects of the source and destination subresource ranges of a region do not match.
-    AspectsMismatch {
-        region_index: usize,
-        src_aspects: ImageAspects,
-        dst_aspects: ImageAspects,
-    },
-
-    /// The aspects of the subresource range of a region contain aspects that are not present
-    /// in the image, or that are not allowed.
-    AspectsNotAllowed {
-        resource: CopyErrorResource,
-        region_index: usize,
-        aspects: ImageAspects,
-        allowed_aspects: ImageAspects,
-    },
-
-    /// The buffer image height of a region is not a multiple of the required buffer alignment.
-    BufferImageHeightNotAligned {
-        resource: CopyErrorResource,
-        region_index: usize,
-        image_height: u32,
-        required_alignment: u32,
-    },
-
-    /// The buffer image height of a region is smaller than the image extent height.
-    BufferImageHeightTooSmall {
-        resource: CopyErrorResource,
-        region_index: usize,
-        image_height: u32,
-        min: u32,
-    },
-
-    /// The buffer row length of a region is not a multiple of the required buffer alignment.
-    BufferRowLengthNotAligned {
-        resource: CopyErrorResource,
-        region_index: usize,
-        row_length: u32,
-        required_alignment: u32,
-    },
-
-    /// The buffer row length of a region specifies a row of texels that is greater than 0x7FFFFFFF
-    /// bytes in size.
-    BufferRowLengthTooLarge {
-        resource: CopyErrorResource,
-        region_index: usize,
-        buffer_row_length: u32,
-    },
-
-    /// The buffer row length of a region is smaller than the image extent width.
-    BufferRowLengthTooSmall {
-        resource: CopyErrorResource,
-        region_index: usize,
-        row_length: u32,
-        min: u32,
-    },
-
-    /// Depth/stencil images are not supported by the queue family of this command buffer; a
-    /// graphics queue family is required.
-    DepthStencilNotSupportedByQueueFamily,
-
-    /// The image extent of a region is not a multiple of the required image alignment.
-    ExtentNotAlignedForImage {
-        resource: CopyErrorResource,
-        region_index: usize,
-        extent: [u32; 3],
-        required_alignment: [u32; 3],
-    },
-
-    /// The chosen filter type does not support the dimensionality of the source image.
-    FilterNotSupportedForImageType,
-
-    /// The chosen filter type does not support the format of the source image.
-    FilterNotSupportedByFormat,
-
-    /// The format of an image is not supported for this operation.
-    FormatNotSupported {
-        resource: CopyErrorResource,
-        format: Format,
-    },
-
-    /// The format of the source image does not match the format of the destination image.
-    FormatsMismatch {
-        src_format: Format,
-        dst_format: Format,
-    },
-
-    /// The format of the source image subresource is not compatible with the format of the
-    /// destination image subresource.
-    FormatsNotCompatible {
-        src_format: Format,
-        dst_format: Format,
-    },
-
-    /// A specified image layout is not valid for this operation.
-    ImageLayoutInvalid {
-        resource: CopyErrorResource,
-        image_layout: ImageLayout,
-    },
-
-    /// The end of the range of accessed mip levels of the subresource range of a region is greater
-    /// than the number of mip levels in the image.
-    MipLevelsOutOfRange {
-        resource: CopyErrorResource,
-        region_index: usize,
-        mip_levels_range_end: u32,
-        image_mip_levels: u32,
-    },
-
-    /// An image does not have a required format feature.
-    MissingFormatFeature {
-        resource: CopyErrorResource,
-        format_feature: &'static str,
-    },
-
-    /// A resource did not have a required usage enabled.
-    MissingUsage {
-        resource: CopyErrorResource,
-        usage: &'static str,
-    },
-
-    /// A subresource range of a region specifies multiple aspects, but only one aspect can be
-    /// selected for the image.
-    MultipleAspectsNotAllowed {
-        resource: CopyErrorResource,
-        region_index: usize,
-        aspects: ImageAspects,
-    },
-
-    /// The buffer offset of a region is not a multiple of the required buffer alignment.
-    OffsetNotAlignedForBuffer {
-        resource: CopyErrorResource,
-        region_index: usize,
-        offset: DeviceSize,
-        required_alignment: DeviceSize,
-    },
-
-    /// The image offset of a region is not a multiple of the required image alignment.
-    OffsetNotAlignedForImage {
-        resource: CopyErrorResource,
-        region_index: usize,
-        offset: [u32; 3],
-        required_alignment: [u32; 3],
-    },
-
-    /// The image offsets of a region are not the values required for that axis ([0, 1]) for the
-    /// type of the image.
-    OffsetsInvalidForImageType {
-        resource: CopyErrorResource,
-        region_index: usize,
-        offsets: [u32; 2],
-    },
-
-    /// The source bounds of a region overlap with the destination bounds of a region.
-    OverlappingRegions {
-        src_region_index: usize,
-        dst_region_index: usize,
-    },
-
-    /// The source subresources of a region overlap with the destination subresources of a region,
-    /// but the source image layout does not equal the destination image layout.
-    OverlappingSubresourcesLayoutMismatch {
-        src_region_index: usize,
-        dst_region_index: usize,
-        src_image_layout: ImageLayout,
-        dst_image_layout: ImageLayout,
-    },
-
-    /// The end of the range of accessed byte offsets of a region is greater than the size of the
-    /// buffer.
-    RegionOutOfBufferBounds {
-        resource: CopyErrorResource,
-        region_index: usize,
-        offset_range_end: DeviceSize,
-        buffer_size: DeviceSize,
-    },
-
-    /// The end of the range of accessed texel offsets of a region is greater than the extent of
-    /// the selected subresource of the image.
-    RegionOutOfImageBounds {
-        resource: CopyErrorResource,
-        region_index: usize,
-        offset_range_end: [u32; 3],
-        subresource_extent: [u32; 3],
-    },
-
-    /// An image has a sample count that is not valid for this operation.
-    SampleCountInvalid {
-        resource: CopyErrorResource,
-        sample_count: SampleCount,
-        allowed_sample_counts: SampleCounts,
-    },
-
-    /// The source image has a different sample count than the destination image.
-    SampleCountMismatch {
-        src_sample_count: SampleCount,
-        dst_sample_count: SampleCount,
-    },
-}
-
-impl Error for CopyError {}
-
-impl Display for CopyError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-            Self::ForbiddenInsideRenderPass => {
-                write!(f, "operation forbidden inside of a render pass")
-            }
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::ArrayLayerCountMismatch {
-                region_index,
-                src_layer_count,
-                dst_layer_count,
-            } => write!(
-                f,
-                "the array layer counts of the source and destination subresource ranges of region \
-                {} do not match (source: {}; destination: {})",
-                region_index, src_layer_count, dst_layer_count,
-            ),
-            Self::ArrayLayersOutOfRange {
-                resource,
-                region_index,
-                array_layers_range_end,
-                image_array_layers,
-            } => write!(
-                f,
-                "the end of the range of accessed array layers ({}) of the {} subresource range of \
-                region {} is greater than the number of array layers in the {} image ({})",
-                array_layers_range_end, resource, region_index, resource, image_array_layers,
-            ),
-            Self::AspectsMismatch {
-                region_index,
-                src_aspects,
-                dst_aspects,
-            } => write!(
-                f,
-                "the aspects of the source and destination subresource ranges of region {} do not \
-                match (source: {:?}; destination: {:?})",
-                region_index, src_aspects, dst_aspects,
-            ),
-            Self::AspectsNotAllowed {
-                resource,
-                region_index,
-                aspects,
-                allowed_aspects,
-            } => write!(
-                f,
-                "the aspects ({:?}) of the {} subresource range of region {} contain aspects that \
-                are not present in the {} image, or that are not allowed ({:?})",
-                aspects, resource, region_index, resource, allowed_aspects,
-            ),
-            Self::BufferImageHeightNotAligned {
-                resource,
-                region_index,
-                image_height,
-                required_alignment,
-            } => write!(
-                f,
-                "the {} buffer image height ({}) of region {} is not a multiple of the required {} \
-                buffer alignment ({})",
-                resource, image_height, region_index, resource, required_alignment,
-            ),
-            Self::BufferRowLengthTooLarge {
-                resource,
-                region_index,
-                buffer_row_length,
-            } => write!(
-                f,
-                "the {} buffer row length ({}) of region {} specifies a row of texels that is \
-                greater than 0x7FFFFFFF bytes in size",
-                resource, buffer_row_length, region_index,
-            ),
-            Self::BufferImageHeightTooSmall {
-                resource,
-                region_index,
-                image_height,
-                min,
-            } => write!(
-                f,
-                "the {} buffer image height ({}) of region {} is smaller than the {} image extent \
-                height ({})",
-                resource, image_height, region_index, resource, min,
-            ),
-            Self::BufferRowLengthNotAligned {
-                resource,
-                region_index,
-                row_length,
-                required_alignment,
-            } => write!(
-                f,
-                "the {} buffer row length ({}) of region {} is not a multiple of the required {} \
-                buffer alignment ({})",
-                resource, row_length, region_index, resource, required_alignment,
-            ),
-            Self::BufferRowLengthTooSmall {
-                resource,
-                region_index,
-                row_length,
-                min,
-            } => write!(
-                f,
-                "the {} buffer row length length ({}) of region {} is smaller than the {} image \
-                extent width ({})",
-                resource, row_length, region_index, resource, min,
-            ),
-            Self::DepthStencilNotSupportedByQueueFamily => write!(
-                f,
-                "depth/stencil images are not supported by the queue family of this command \
-                buffer; a graphics queue family is required",
-            ),
-            Self::ExtentNotAlignedForImage {
-                resource,
-                region_index,
-                extent,
-                required_alignment,
-            } => write!(
-                f,
-                "the {} image extent ({:?}) of region {} is not a multiple of the required {} \
-                image alignment ({:?})",
-                resource, extent, region_index, resource, required_alignment,
-            ),
-            Self::FilterNotSupportedForImageType => write!(
-                f,
-                "the chosen filter is not supported for the source image type",
-            ),
-            Self::FilterNotSupportedByFormat => write!(
-                f,
-                "the chosen filter is not supported by the format of the source image",
-            ),
-            Self::FormatNotSupported { resource, format } => write!(
-                f,
-                "the format of the {} image ({:?}) is not supported for this operation",
-                resource, format,
-            ),
-            Self::FormatsMismatch {
-                src_format,
-                dst_format,
-            } => write!(
-                f,
-                "the format of the source image ({:?}) does not match the format of the \
-                destination image ({:?})",
-                src_format, dst_format,
-            ),
-            Self::FormatsNotCompatible {
-                src_format,
-                dst_format,
-            } => write!(
-                f,
-                "the format of the source image subresource ({:?}) is not compatible with the \
-                format of the destination image subresource ({:?})",
-                src_format, dst_format,
-            ),
-            Self::ImageLayoutInvalid {
-                resource,
-                image_layout,
-            } => write!(
-                f,
-                "the specified {} image layout {:?} is not valid for this operation",
-                resource, image_layout,
-            ),
-            Self::MipLevelsOutOfRange {
-                resource,
-                region_index,
-                mip_levels_range_end,
-                image_mip_levels,
-            } => write!(
-                f,
-                "the end of the range of accessed mip levels ({}) of the {} subresource range of \
-                region {} is not less than the number of mip levels in the {} image ({})",
-                mip_levels_range_end, resource, region_index, resource, image_mip_levels,
-            ),
-            Self::MissingFormatFeature {
-                resource,
-                format_feature,
-            } => write!(
-                f,
-                "the {} image does not have the required format feature {}",
-                resource, format_feature,
-            ),
-            Self::MissingUsage { resource, usage } => write!(
-                f,
-                "the {} resource did not have the required usage {} enabled",
-                resource, usage,
-            ),
-            Self::MultipleAspectsNotAllowed {
-                resource,
-                region_index,
-                aspects,
-            } => write!(
-                f,
-                "the {} subresource range of region {} specifies multiple aspects ({:?}), but only \
-                one aspect can be selected for the {} image",
-                resource, region_index, aspects, resource,
-            ),
-            Self::OffsetNotAlignedForBuffer {
-                resource,
-                region_index,
-                offset,
-                required_alignment,
-            } => write!(
-                f,
-                "the {} buffer offset ({}) of region {} is not a multiple of the required {} \
-                buffer alignment ({})",
-                resource, offset, region_index, resource, required_alignment,
-            ),
-            Self::OffsetNotAlignedForImage {
-                resource,
-                region_index,
-                offset,
-                required_alignment,
-            } => write!(
-                f,
-                "the {} image offset ({:?}) of region {} is not a multiple of the required {} \
-                image alignment ({:?})",
-                resource, offset, region_index, resource, required_alignment,
-            ),
-            Self::OffsetsInvalidForImageType {
-                resource,
-                region_index,
-                offsets,
-            } => write!(
-                f,
-                "the {} image offsets ({:?}) of region {} are not the values required for that \
-                axis ([0, 1]) for the type of the {} image",
-                resource, offsets, region_index, resource,
-            ),
-            Self::OverlappingRegions {
-                src_region_index,
-                dst_region_index,
-            } => write!(
-                f,
-                "the source bounds of region {} overlap with the destination bounds of region {}",
-                src_region_index, dst_region_index,
-            ),
-            Self::OverlappingSubresourcesLayoutMismatch {
-                src_region_index,
-                dst_region_index,
-                src_image_layout,
-                dst_image_layout,
-            } => write!(
-                f,
-                "the source subresources of region {} overlap with the destination subresources of \
-                region {}, but the source image layout ({:?}) does not equal the destination image \
-                layout ({:?})",
-                src_region_index, dst_region_index, src_image_layout, dst_image_layout,
-            ),
-            Self::RegionOutOfBufferBounds {
-                resource,
-                region_index,
-                offset_range_end,
-                buffer_size,
-            } => write!(
-                f,
-                "the end of the range of accessed {} byte offsets ({}) of region {} is greater \
-                than the size of the {} buffer ({})",
-                resource, offset_range_end, region_index, resource, buffer_size,
-            ),
-            Self::RegionOutOfImageBounds {
-                resource,
-                region_index,
-                offset_range_end,
-                subresource_extent,
-            } => write!(
-                f,
-                "the end of the range of accessed {} texel offsets ({:?}) of region {} is greater \
-                than the extent of the selected subresource of the {} image ({:?})",
-                resource, offset_range_end, region_index, resource, subresource_extent,
-            ),
-            Self::SampleCountInvalid {
-                resource,
-                sample_count,
-                allowed_sample_counts,
-            } => write!(
-                f,
-                "the {} image has a sample count ({:?}) that is not valid for this operation \
-                ({:?})",
-                resource, sample_count, allowed_sample_counts,
-            ),
-            Self::SampleCountMismatch {
-                src_sample_count,
-                dst_sample_count,
-            } => write!(
-                f,
-                "the source image has a different sample count ({:?}) than the destination image \
-                ({:?})",
-                src_sample_count, dst_sample_count,
-            ),
+        if src_subresource.aspects != ImageAspects::COLOR {
+            return Err(Box::new(ValidationError {
+                problem: "`src_subresource.aspects` is not `ImageAspects::COLOR`".into(),
+                vuids: &["VUID-VkImageResolve2-aspectMask-00266"],
+                ..Default::default()
+            }));
         }
-    }
-}
 
-impl From<RequirementNotMet> for CopyError {
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
+        if dst_subresource.aspects != ImageAspects::COLOR {
+            return Err(Box::new(ValidationError {
+                problem: "`dst_subresource.aspects` is not `ImageAspects::COLOR`".into(),
+                vuids: &["VUID-VkImageResolve2-aspectMask-00266"],
+                ..Default::default()
+            }));
         }
-    }
-}
 
-/// Indicates which resource a `CopyError` applies to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CopyErrorResource {
-    Source,
-    Destination,
-}
-
-impl Display for CopyErrorResource {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::Source => write!(f, "source"),
-            Self::Destination => write!(f, "destination"),
+        if src_subresource.array_layers.len() != dst_subresource.array_layers.len() {
+            return Err(Box::new(ValidationError {
+                problem: "the length of `src_subresource.array_layers` does not equal \
+                    the length of `dst_subresource.array_layers`"
+                    .into(),
+                vuids: &["VUID-VkImageResolve2-layerCount-00267"],
+                ..Default::default()
+            }));
         }
+
+        Ok(())
     }
 }
 
@@ -4931,6 +6845,7 @@ mod tests {
             })
             .product::<DeviceSize>()
             * layer_count as DeviceSize;
+
         num_blocks * format.block_size()
     }
 
