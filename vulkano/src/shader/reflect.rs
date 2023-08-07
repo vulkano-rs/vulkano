@@ -313,7 +313,7 @@ fn shader_execution(
                                 } else if let Some(spec_id) = specialization_constant_ids.get(&id) {
                                     *local_size = LocalSize::SpecId(*spec_id);
                                 } else {
-                                    todo!();
+                                    panic!("LocalSizeId {id:?} not defined!");
                                 }
                             }
                             execution = ComputeShaderExecution::LocalSizeId(local_size);
@@ -343,7 +343,7 @@ fn shader_execution(
                             } => {
                                 if workgroup_size_decorations.contains(result_id) {
                                     if constituents.len() != 3 {
-                                        todo!("must be 3 component vector");
+                                        panic!("WorkgroupSize must be 3 component vector!");
                                     }
                                     for (local_size, id) in
                                         local_size.iter_mut().zip(constituents.iter())
@@ -351,7 +351,7 @@ fn shader_execution(
                                         if let Some(constant) = u32_constants.get(id) {
                                             *local_size = LocalSize::Literal(*constant);
                                         } else {
-                                            todo!()
+                                            panic!("WorkgroupSize Constant {id:?} not defined!");
                                         };
                                     }
                                 }
@@ -363,7 +363,7 @@ fn shader_execution(
                             } => {
                                 if workgroup_size_decorations.contains(result_id) {
                                     if constituents.len() != 3 {
-                                        todo!("must be 3 component vector");
+                                        panic!("WorkgroupSize must be 3 component vector!");
                                     }
                                     for (local_size, id) in
                                         local_size.iter_mut().zip(constituents.iter())
@@ -371,7 +371,7 @@ fn shader_execution(
                                         if let Some(spec_id) = specialization_constant_ids.get(id) {
                                             *local_size = LocalSize::SpecId(*spec_id);
                                         } else {
-                                            todo!()
+                                            panic!("WorkgroupSize SpecializationConstant {id:?} not defined!");
                                         };
                                     }
                                 }
