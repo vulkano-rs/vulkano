@@ -163,7 +163,7 @@ impl ComputePipeline {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_compute_pipelines)(
                 device.handle(),
-                cache.as_ref().map_or(Default::default(), |c| c.handle()),
+                cache.as_ref().map_or_else(Default::default, |c| c.handle()),
                 1,
                 &create_infos_vk,
                 ptr::null(),

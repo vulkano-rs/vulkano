@@ -130,6 +130,7 @@
 #![warn(
     rust_2018_idioms,
     rust_2021_compatibility,
+    clippy::or_fun_call,
     clippy::trivially_copy_pass_by_ref
 )]
 // These lints are a bit too pedantic, so they're disabled here.
