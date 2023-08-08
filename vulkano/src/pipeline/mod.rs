@@ -495,11 +495,41 @@ impl PipelineShaderStageCreateInfo {
             }
         }
 
-        let local_size = entry_point_info.local_size(specialization_info)?;
-        let workgroup_size = local_size.map(|[x, y, z]| x * y * z);
-        if workgroup_size == Some(0) {
-            todo!("LocalSize {:?} cannot be 0!", local_size.unwrap());
-        }
+        let workgroup_size = if let Some(local_size) =
+            entry_point_info.local_size(specialization_info)?
+        {
+            let [x, y, z] = local_size;
+            if x == 0 || y == 0 || z == 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!("`workgroup size` {local_size:?} cannot be 0").into(),
+                    ..Default::default()
+                }));
+            }
+            let properties = device.physical_device().properties();
+            if stage_enum == ShaderStage::Compute {
+                let max_compute_work_group_size = properties.max_compute_work_group_size;
+                let [max_x, max_y, max_z] = max_compute_work_group_size;
+                if x > max_x || y > max_y || z > max_z {
+                    return Err(Box::new(ValidationError {
+                        problem: format!("`workgroup size` {local_size:?} is greater than `max_work_group_size` {max_compute_work_group_size:?}").into(),
+                        ..Default::default()
+                    }));
+                }
+                let max_invocations = properties.max_compute_work_group_invocations;
+                let workgroup_size = x as u64 * y as u64 * z as u64;
+                if workgroup_size > max_invocations as u64 {
+                    return Err(Box::new(ValidationError {
+                        problem: format!("the product of `workgroup size` {local_size:?} = {workgroup_size} is greater than `max_compute_work_group_invocations` {max_invocations}").into(),
+                        ..Default::default()
+                    }));
+                }
+                Some(workgroup_size as u32)
+            } else {
+                todo!()
+            }
+        } else {
+            None
+        };
 
         if let Some(required_subgroup_size) = required_subgroup_size {
             validate_required_subgroup_size(
@@ -576,16 +606,22 @@ pub(crate) fn validate_required_subgroup_size(
         }));
     }
     if let Some(workgroup_size) = workgroup_size {
-        let max_compute_workgroup_subgroups = properties
-            .max_compute_workgroup_subgroups
-            .unwrap_or_default();
-        if max_compute_workgroup_subgroups * subgroup_size < workgroup_size {
-            return Err(Box::new(ValidationError {
-                context: "required_subgroup_size".into(),
-                problem: format!("`subgroup_size` {subgroup_size} creates more than {max_compute_workgroup_subgroups} subgroups").into(),
-                vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02756"],
-                ..Default::default()
-            }));
+        if stage == ShaderStage::Compute {
+            let max_compute_workgroup_subgroups = properties
+                .max_compute_workgroup_subgroups
+                .unwrap_or_default();
+            if max_compute_workgroup_subgroups
+                .checked_mul(subgroup_size)
+                .unwrap_or(u32::MAX)
+                < workgroup_size
+            {
+                return Err(Box::new(ValidationError {
+                    context: "required_subgroup_size".into(),
+                    problem: format!("`subgroup_size` {subgroup_size} creates more than {max_compute_workgroup_subgroups} subgroups").into(),
+                    vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02756"],
+                    ..Default::default()
+                }));
+            }
         }
     }
     Ok(())
