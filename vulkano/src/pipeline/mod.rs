@@ -21,10 +21,7 @@ pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::Pip
 use crate::{
     device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
-    shader::{
-        DescriptorBindingRequirements, EntryPoint, ShaderStage, ShaderStages,
-        SpecializationConstant,
-    },
+    shader::{DescriptorBindingRequirements, EntryPoint, ShaderStage, SpecializationConstant},
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
