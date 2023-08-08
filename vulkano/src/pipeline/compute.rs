@@ -577,7 +577,8 @@ mod tests {
                 15, 16, 17, 131320, 16, 262205, 6, 24, 23, 327745, 25, 26, 20, 22, 196670, 26, 24,
                 131321, 17, 131320, 17, 65789, 65592,
             ];
-            let module = ShaderModule::from_words(device.clone(), &MODULE).unwrap();
+            let module =
+                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
             module.entry_point("main").unwrap()
         };
 
