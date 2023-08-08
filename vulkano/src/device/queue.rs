@@ -26,6 +26,7 @@ use crate::{
         future::{AccessCheckError, GpuFuture},
         semaphore::SemaphoreState,
     },
+    video::VideoCodecOperations,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
@@ -1673,6 +1674,27 @@ pub struct QueueFamilyProperties {
 
     /// The minimum granularity supported for image transfers, in terms of `[width, height, depth]`.
     pub min_image_transfer_granularity: [u32; 3],
+
+    /// The properties of the video queue family.
+    ///
+    /// This will be empty if the [`khr_video_decode_queue`] extension is not supported
+    /// by the physical device.
+    ///
+    /// [`khr_video_decode_queue`]: crate::device::DeviceExtensions::khr_video_decode_queue
+    pub video_properties: Option<QueueFamilyVideoProperties>,
+}
+
+#[derive(Clone, Debug)]
+pub struct QueueFamilyVideoProperties {
+    pub video_codec_operations: VideoCodecOperations,
+}
+
+impl From<ash::vk::QueueFamilyVideoPropertiesKHR> for QueueFamilyVideoProperties {
+    fn from(value: ash::vk::QueueFamilyVideoPropertiesKHR) -> Self {
+        Self {
+            video_codec_operations: value.video_codec_operations.into(),
+        }
+    }
 }
 
 impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
@@ -1688,6 +1710,7 @@ impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
                 val.min_image_transfer_granularity.height,
                 val.min_image_transfer_granularity.depth,
             ],
+            video_properties: Default::default(),
         }
     }
 }

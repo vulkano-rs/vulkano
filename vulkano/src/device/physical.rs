@@ -125,7 +125,8 @@ impl PhysicalDevice {
             properties =
                 Self::get_properties2(handle, &instance, api_version, &supported_extensions);
             memory_properties = Self::get_memory_properties2(handle, &instance);
-            queue_family_properties = Self::get_queue_family_properties2(handle, &instance);
+            queue_family_properties =
+                Self::get_queue_family_properties2(handle, &instance, &supported_extensions);
         } else {
             supported_features = Self::get_features(handle, &instance);
             properties =
@@ -333,8 +334,9 @@ impl PhysicalDevice {
     unsafe fn get_queue_family_properties2(
         handle: ash::vk::PhysicalDevice,
         instance: &Instance,
+        supported_extensions: &DeviceExtensions,
     ) -> Vec<QueueFamilyProperties> {
-        let mut num = 0;
+        let mut num: u32 = 0;
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
@@ -352,7 +354,16 @@ impl PhysicalDevice {
             );
         }
 
+        let mut queue_family_video_properties_vk = vec![None; num as usize];
         let mut output = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
+
+        if supported_extensions.khr_video_decode_queue {
+            for i in 0..output.len() {
+                let next = queue_family_video_properties_vk[i]
+                    .insert(ash::vk::QueueFamilyVideoPropertiesKHR::default());
+                output[i].p_next = next as *mut _ as *mut _;
+            }
+        }
 
         if instance.api_version() >= Version::V1_1 {
             (fns.v1_1.get_physical_device_queue_family_properties2)(
@@ -371,7 +382,18 @@ impl PhysicalDevice {
 
         output
             .into_iter()
-            .map(|family| family.queue_family_properties.into())
+            .enumerate()
+            .map(|(index, family)| {
+                let mut queue_family_properties: QueueFamilyProperties =
+                    family.queue_family_properties.into();
+                if let Some(queue_family_video_properties_vk) =
+                    queue_family_video_properties_vk[index]
+                {
+                    queue_family_properties.video_properties =
+                        Some(queue_family_video_properties_vk.into());
+                }
+                queue_family_properties
+            })
             .collect()
     }
 
