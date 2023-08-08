@@ -198,6 +198,7 @@ pub mod range_set;
 pub mod shader;
 pub mod swapchain;
 pub mod sync;
+pub mod video;
 
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.
