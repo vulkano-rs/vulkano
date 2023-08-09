@@ -229,10 +229,10 @@ impl DebugUtilsMessengerCreateInfo {
 
         message_severity
             .validate_instance_raw(instance_api_version, instance_extensions)
-            .map_err(|err| ValidationError {
-                context: "message_severity".into(),
-                vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("message_severity").set_vuids(&[
+                    "VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter",
+                ])
             })?;
 
         if message_severity.is_empty() {
@@ -246,10 +246,9 @@ impl DebugUtilsMessengerCreateInfo {
 
         message_type
             .validate_instance_raw(instance_api_version, instance_extensions)
-            .map_err(|err| ValidationError {
-                context: "message_type".into(),
-                vuids: &["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("message_type")
+                    .set_vuids(&["VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter"])
             })?;
 
         if message_type.is_empty() {

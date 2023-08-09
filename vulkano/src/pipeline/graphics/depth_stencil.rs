@@ -96,13 +96,10 @@ impl DepthStencilState {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkPipelineDepthStencilStateCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkPipelineDepthStencilStateCreateInfo-flags-parameter"])
+        })?;
 
         if let Some(depth_state) = depth {
             depth_state
@@ -243,15 +240,11 @@ impl DepthState {
 
         match compare_op {
             StateMode::Fixed(compare_op) => {
-                compare_op
-                    .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: "compare_op".into(),
-                        vuids: &[
-                            "VUID-VkPipelineDepthStencilStateCreateInfo-depthCompareOp-parameter",
-                        ],
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                compare_op.validate_device(device).map_err(|err| {
+                    err.add_context("compare_op").set_vuids(&[
+                        "VUID-VkPipelineDepthStencilStateCreateInfo-depthCompareOp-parameter",
+                    ])
+                })?;
             }
             StateMode::Dynamic => {
                 if !(device.api_version() >= Version::V1_3
@@ -568,37 +561,25 @@ impl StencilOps {
             compare_op,
         } = self;
 
-        fail_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "fail_op".into(),
-                vuids: &["VUID-VkStencilOpState-failOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        fail_op.validate_device(device).map_err(|err| {
+            err.add_context("fail_op")
+                .set_vuids(&["VUID-VkStencilOpState-failOp-parameter"])
+        })?;
 
-        pass_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "pass_op".into(),
-                vuids: &["VUID-VkStencilOpState-passOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        pass_op.validate_device(device).map_err(|err| {
+            err.add_context("pass_op")
+                .set_vuids(&["VUID-VkStencilOpState-passOp-parameter"])
+        })?;
 
-        depth_fail_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "depth_fail_op".into(),
-                vuids: &["VUID-VkStencilOpState-depthFailOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        depth_fail_op.validate_device(device).map_err(|err| {
+            err.add_context("depth_fail_op")
+                .set_vuids(&["VUID-VkStencilOpState-depthFailOp-parameter"])
+        })?;
 
-        compare_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "compare_op".into(),
-                vuids: &["VUID-VkStencilOpState-compareOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        compare_op.validate_device(device).map_err(|err| {
+            err.add_context("compare_op")
+                .set_vuids(&["VUID-VkStencilOpState-compareOp-parameter"])
+        })?;
 
         Ok(())
     }

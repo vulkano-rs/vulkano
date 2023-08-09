@@ -457,13 +457,10 @@ impl PipelineLayoutCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkPipelineLayoutCreateInfo-flags-parameter"])
+        })?;
 
         if set_layouts.len() > properties.max_bound_descriptor_sets as usize {
             return Err(Box::new(ValidationError {
@@ -819,13 +816,10 @@ impl PushConstantRange {
             size,
         } = self;
 
-        stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "stages".into(),
-                vuids: &["VUID-VkPushConstantRange-stageFlags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        stages.validate_device(device).map_err(|err| {
+            err.add_context("stages")
+                .set_vuids(&["VUID-VkPushConstantRange-stageFlags-parameter"])
+        })?;
 
         if stages.is_empty() {
             return Err(Box::new(ValidationError {

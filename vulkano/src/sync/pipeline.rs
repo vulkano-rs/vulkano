@@ -1774,13 +1774,10 @@ impl DependencyInfo {
             _ne: _,
         } = self;
 
-        dependency_flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dependency_flags".into(),
-                vuids: &["VUID-VkDependencyInfo-dependencyFlags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dependency_flags.validate_device(device).map_err(|err| {
+            err.add_context("dependency_flags")
+                .set_vuids(&["VUID-VkDependencyInfo-dependencyFlags-parameter"])
+        })?;
 
         for (barrier_index, memory_barrier) in memory_barriers.iter().enumerate() {
             memory_barrier
@@ -1911,37 +1908,25 @@ impl MemoryBarrier {
             _ne: _,
         } = self;
 
-        src_stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_stages".into(),
-                vuids: &["VUID-VkMemoryBarrier2-srcStageMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_stages.validate_device(device).map_err(|err| {
+            err.add_context("src_stages")
+                .set_vuids(&["VUID-VkMemoryBarrier2-srcStageMask-parameter"])
+        })?;
 
-        dst_stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_stages".into(),
-                vuids: &["VUID-VkMemoryBarrier2-dstStageMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_stages.validate_device(device).map_err(|err| {
+            err.add_context("dst_stages")
+                .set_vuids(&["VUID-VkMemoryBarrier2-dstStageMask-parameter"])
+        })?;
 
-        src_access
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_access".into(),
-                vuids: &["VUID-VkMemoryBarrier2-srcAccessMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_access.validate_device(device).map_err(|err| {
+            err.add_context("src_access")
+                .set_vuids(&["VUID-VkMemoryBarrier2-srcAccessMask-parameter"])
+        })?;
 
-        dst_access
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_access".into(),
-                vuids: &["VUID-VkMemoryBarrier2-dstAccessMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_access.validate_device(device).map_err(|err| {
+            err.add_context("dst_access")
+                .set_vuids(&["VUID-VkMemoryBarrier2-dstAccessMask-parameter"])
+        })?;
 
         if !device.enabled_features().synchronization2 {
             if src_stages.contains_flags2() {
@@ -2439,37 +2424,25 @@ impl BufferMemoryBarrier {
             _ne,
         } = self;
 
-        src_stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_stages".into(),
-                vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_stages.validate_device(device).map_err(|err| {
+            err.add_context("src_stages")
+                .set_vuids(&["VUID-VkBufferMemoryBarrier2-srcStageMask-parameter"])
+        })?;
 
-        dst_stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_stages".into(),
-                vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_stages.validate_device(device).map_err(|err| {
+            err.add_context("dst_stages")
+                .set_vuids(&["VUID-VkBufferMemoryBarrier2-dstStageMask-parameter"])
+        })?;
 
-        src_access
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_access".into(),
-                vuids: &["VUID-VkBufferMemoryBarrier2-srcAccessMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_access.validate_device(device).map_err(|err| {
+            err.add_context("src_access")
+                .set_vuids(&["VUID-VkBufferMemoryBarrier2-srcAccessMask-parameter"])
+        })?;
 
-        dst_access
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_access".into(),
-                vuids: &["VUID-VkBufferMemoryBarrier2-dstAccessMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_access.validate_device(device).map_err(|err| {
+            err.add_context("dst_access")
+                .set_vuids(&["VUID-VkBufferMemoryBarrier2-dstAccessMask-parameter"])
+        })?;
 
         if !device.enabled_features().synchronization2 {
             if src_stages.contains_flags2() {
@@ -3124,37 +3097,25 @@ impl ImageMemoryBarrier {
             _ne,
         } = self;
 
-        src_stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_stages".into(),
-                vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_stages.validate_device(device).map_err(|err| {
+            err.add_context("src_stages")
+                .set_vuids(&["VUID-VkImageMemoryBarrier2-srcStageMask-parameter"])
+        })?;
 
-        dst_stages
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_stages".into(),
-                vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_stages.validate_device(device).map_err(|err| {
+            err.add_context("dst_stages")
+                .set_vuids(&["VUID-VkImageMemoryBarrier2-dstStageMask-parameter"])
+        })?;
 
-        src_access
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_access".into(),
-                vuids: &["VUID-VkImageMemoryBarrier2-srcAccessMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_access.validate_device(device).map_err(|err| {
+            err.add_context("src_access")
+                .set_vuids(&["VUID-VkImageMemoryBarrier2-srcAccessMask-parameter"])
+        })?;
 
-        dst_access
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_access".into(),
-                vuids: &["VUID-VkImageMemoryBarrier2-dstAccessMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_access.validate_device(device).map_err(|err| {
+            err.add_context("dst_access")
+                .set_vuids(&["VUID-VkImageMemoryBarrier2-dstAccessMask-parameter"])
+        })?;
 
         if !device.enabled_features().synchronization2 {
             if src_stages.contains_flags2() {

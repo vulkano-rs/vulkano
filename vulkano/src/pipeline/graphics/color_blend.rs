@@ -154,13 +154,10 @@ impl ColorBlendState {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkPipelineColorBlendStateCreateInfo-flags-parameter"])
+        })?;
 
         if let Some(logic_op) = logic_op {
             if !device.enabled_features().logic_op {
@@ -175,17 +172,11 @@ impl ColorBlendState {
             }
 
             match logic_op {
-                StateMode::Fixed(logic_op) => {
-                    logic_op
-                        .validate_device(device)
-                        .map_err(|err| ValidationError {
-                            context: "logic_op".into(),
-                            vuids: &[
-                                "VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00607",
-                            ],
-                            ..ValidationError::from_requirement(err)
-                        })?
-                }
+                StateMode::Fixed(logic_op) => logic_op.validate_device(device).map_err(|err| {
+                    err.add_context("logic_op").set_vuids(&[
+                        "VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00607",
+                    ])
+                })?,
                 StateMode::Dynamic => {
                     if !device.enabled_features().extended_dynamic_state2_logic_op {
                         return Err(Box::new(ValidationError {
@@ -471,51 +462,45 @@ impl AttachmentBlend {
 
         src_color_blend_factor
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_color_blend_factor".into(),
-                vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("src_color_blend_factor").set_vuids(&[
+                    "VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-parameter",
+                ])
             })?;
 
         dst_color_blend_factor
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_color_blend_factor".into(),
-                vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("dst_color_blend_factor").set_vuids(&[
+                    "VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-parameter",
+                ])
             })?;
 
-        color_blend_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "color_blend_op".into(),
-                vuids: &["VUID-VkPipelineColorBlendAttachmentState-colorBlendOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        color_blend_op.validate_device(device).map_err(|err| {
+            err.add_context("color_blend_op")
+                .set_vuids(&["VUID-VkPipelineColorBlendAttachmentState-colorBlendOp-parameter"])
+        })?;
 
         src_alpha_blend_factor
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_alpha_blend_factor".into(),
-                vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("src_alpha_blend_factor").set_vuids(&[
+                    "VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-parameter",
+                ])
             })?;
 
         dst_alpha_blend_factor
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_alpha_blend_factor".into(),
-                vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("dst_alpha_blend_factor").set_vuids(&[
+                    "VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-parameter",
+                ])
             })?;
 
-        alpha_blend_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "alpha_blend_op".into(),
-                vuids: &["VUID-VkPipelineColorBlendAttachmentState-alphaBlendOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        alpha_blend_op.validate_device(device).map_err(|err| {
+            err.add_context("alpha_blend_op")
+                .set_vuids(&["VUID-VkPipelineColorBlendAttachmentState-alphaBlendOp-parameter"])
+        })?;
 
         if !device.enabled_features().dual_src_blend {
             if matches!(

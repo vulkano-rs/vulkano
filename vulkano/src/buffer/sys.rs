@@ -674,21 +674,15 @@ impl BufferCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkBufferCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkBufferCreateInfo-flags-parameter"])
+        })?;
 
-        usage
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "usage".into(),
-                vuids: &["VUID-VkBufferCreateInfo-usage-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        usage.validate_device(device).map_err(|err| {
+            err.add_context("usage")
+                .set_vuids(&["VUID-VkBufferCreateInfo-usage-parameter"])
+        })?;
 
         if usage.is_empty() {
             return Err(Box::new(ValidationError {
@@ -819,10 +813,9 @@ impl BufferCreateInfo {
 
             external_memory_handle_types
                 .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "external_memory_handle_types".into(),
-                    vuids: &["VUID-VkExternalMemoryBufferCreateInfo-handleTypes-parameter"],
-                    ..ValidationError::from_requirement(err)
+                .map_err(|err| {
+                    err.add_context("external_memory_handle_types")
+                        .set_vuids(&["VUID-VkExternalMemoryBufferCreateInfo-handleTypes-parameter"])
                 })?;
 
             // TODO:

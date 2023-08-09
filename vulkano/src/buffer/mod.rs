@@ -912,18 +912,16 @@ impl ExternalBufferInfo {
 
         flags
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("flags")
+                    .set_vuids(&["VUID-VkPhysicalDeviceExternalBufferInfo-flags-parameter"])
             })?;
 
         usage
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "usage".into(),
-                vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-usage-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("usage")
+                    .set_vuids(&["VUID-VkPhysicalDeviceExternalBufferInfo-usage-parameter"])
             })?;
 
         if usage.is_empty() {
@@ -937,10 +935,9 @@ impl ExternalBufferInfo {
 
         handle_type
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkPhysicalDeviceExternalBufferInfo-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("handle_type")
+                    .set_vuids(&["VUID-VkPhysicalDeviceExternalBufferInfo-handleType-parameter"])
             })?;
 
         Ok(())

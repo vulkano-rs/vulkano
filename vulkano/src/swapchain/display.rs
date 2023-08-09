@@ -29,8 +29,7 @@
 #![allow(unused_variables)] // TODO: this module isn't finished
 
 use crate::{
-    device::physical::PhysicalDevice, swapchain::SurfaceTransforms, OomError, VulkanError,
-    VulkanObject,
+    device::physical::PhysicalDevice, swapchain::SurfaceTransforms, VulkanError, VulkanObject,
 };
 use std::{
     ffi::CStr,
@@ -56,7 +55,7 @@ impl DisplayPlane {
     /// See the docs of enumerate().
     pub fn enumerate_raw(
         physical_device: Arc<PhysicalDevice>,
-    ) -> Result<IntoIter<DisplayPlane>, OomError> {
+    ) -> Result<IntoIter<DisplayPlane>, VulkanError> {
         let fns = physical_device.instance().fns();
 
         assert!(physical_device.instance().enabled_extensions().khr_display); // TODO: return error instead
@@ -88,7 +87,7 @@ impl DisplayPlane {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
+                    err => return Err(VulkanError::from(err)),
                 }
             }
         };
@@ -189,7 +188,7 @@ impl Display {
     /// See the docs of enumerate().
     pub fn enumerate_raw(
         physical_device: Arc<PhysicalDevice>,
-    ) -> Result<IntoIter<Display>, OomError> {
+    ) -> Result<IntoIter<Display>, VulkanError> {
         let fns = physical_device.instance().fns();
         assert!(physical_device.instance().enabled_extensions().khr_display); // TODO: return error instead
 
@@ -217,7 +216,7 @@ impl Display {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
+                    err => return Err(VulkanError::from(err)),
                 }
             }
         };
@@ -295,7 +294,7 @@ impl Display {
     }
 
     /// See the docs of display_modes().
-    pub fn display_modes_raw(&self) -> Result<IntoIter<DisplayMode>, OomError> {
+    pub fn display_modes_raw(&self) -> Result<IntoIter<DisplayMode>, VulkanError> {
         let fns = self.physical_device.instance().fns();
 
         let mode_properties = unsafe {
@@ -324,7 +323,7 @@ impl Display {
                         break properties;
                     }
                     ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
+                    err => return Err(VulkanError::from(err)),
                 }
             }
         };
@@ -371,7 +370,7 @@ pub struct DisplayMode {
 }
 
 impl DisplayMode {
-    /*pub fn new(display: &Display) -> Result<Arc<DisplayMode>, OomError> {
+    /*pub fn new(display: &Display) -> Result<Arc<DisplayMode>, VulkanError> {
         let fns = instance.fns();
         assert!(device.instance().enabled_extensions().khr_display);     // TODO: return error instead
 

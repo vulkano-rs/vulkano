@@ -378,18 +378,14 @@ impl AccelerationStructureCreateInfo {
             _ne: _,
         } = self;
 
-        create_flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "create_flags".into(),
-                vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-createFlags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        create_flags.validate_device(device).map_err(|err| {
+            err.add_context("create_flags")
+                .set_vuids(&["VUID-VkAccelerationStructureCreateInfoKHR-createFlags-parameter"])
+        })?;
 
-        ty.validate_device(device).map_err(|err| ValidationError {
-            context: "ty".into(),
-            vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-type-parameter"],
-            ..ValidationError::from_requirement(err)
+        ty.validate_device(device).map_err(|err| {
+            err.add_context("ty")
+                .set_vuids(&["VUID-VkAccelerationStructureCreateInfoKHR-type-parameter"])
         })?;
 
         if !buffer
@@ -513,13 +509,10 @@ impl AccelerationStructureBuildGeometryInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-parameter"])
+        })?;
 
         let max_geometry_count = device
             .physical_device()
@@ -1009,23 +1002,16 @@ impl AccelerationStructureGeometryTrianglesData {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"])
+        })?;
 
-        vertex_format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "vertex_format".into(),
-                vuids: &[
-                    "VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexFormat-parameter",
-                ],
-                ..ValidationError::from_requirement(err)
-            })?;
+        vertex_format.validate_device(device).map_err(|err| {
+            err.add_context("vertex_format").set_vuids(&[
+                "VUID-VkAccelerationStructureGeometryTrianglesDataKHR-vertexFormat-parameter",
+            ])
+        })?;
 
         if unsafe {
             !device
@@ -1127,13 +1113,10 @@ impl AccelerationStructureGeometryAabbsData {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"])
+        })?;
 
         if stride % 8 != 0 {
             return Err(Box::new(ValidationError {
@@ -1199,13 +1182,10 @@ impl AccelerationStructureGeometryInstancesData {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkAccelerationStructureGeometryKHR-flags-parameter"])
+        })?;
 
         Ok(())
     }
@@ -1402,12 +1382,10 @@ impl CopyAccelerationStructureInfo {
         assert_eq!(device, src.device().as_ref());
         assert_eq!(device, dst.device().as_ref());
 
-        mode.validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "mode".into(),
-                vuids: &["VUID-VkCopyAccelerationStructureInfoKHR-mode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode")
+                .set_vuids(&["VUID-VkCopyAccelerationStructureInfoKHR-mode-parameter"])
+        })?;
 
         if !matches!(
             mode,
@@ -1485,12 +1463,10 @@ impl CopyAccelerationStructureToMemoryInfo {
         assert_eq!(device, src.device().as_ref());
         assert_eq!(device, dst.device().as_ref());
 
-        mode.validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "mode".into(),
-                vuids: &["VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode")
+                .set_vuids(&["VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-parameter"])
+        })?;
 
         if !matches!(mode, CopyAccelerationStructureMode::Serialize) {
             return Err(Box::new(ValidationError {
@@ -1555,12 +1531,10 @@ impl CopyMemoryToAccelerationStructureInfo {
         assert_eq!(device, src.device().as_ref());
         assert_eq!(device, dst.device().as_ref());
 
-        mode.validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "mode".into(),
-                vuids: &["VUID-VkCopyMemoryToAccelerationStructureInfoKHR-mode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode")
+                .set_vuids(&["VUID-VkCopyMemoryToAccelerationStructureInfoKHR-mode-parameter"])
+        })?;
 
         if !matches!(mode, CopyAccelerationStructureMode::Deserialize) {
             return Err(Box::new(ValidationError {

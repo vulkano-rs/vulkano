@@ -1900,13 +1900,10 @@ impl GraphicsPipelineCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-flags-parameter"])
+        })?;
 
         /*
             Gather shader stages
@@ -2436,10 +2433,12 @@ impl GraphicsPipelineCreateInfo {
                         .map(|(k, v)| (*k, v)),
                     entry_point_info.push_constant_requirements.as_ref(),
                 )
-                .map_err(|err| ValidationError {
-                    context: format!("stages[{}].entry_point", stage_index).into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-layout-00756"],
-                    ..ValidationError::from_error(err)
+                .map_err(|err| {
+                    Box::new(ValidationError {
+                        context: format!("stages[{}].entry_point", stage_index).into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-layout-00756"],
+                        ..ValidationError::from_error(err)
+                    })
                 })?;
         }
 

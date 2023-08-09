@@ -338,11 +338,12 @@ impl Instance {
 
         enabled_extensions
             .check_requirements(&supported_extensions, api_version)
-            .map_err(|err| ValidationError {
-                context: "create_info.enabled_extensions".into(),
-                problem: err.to_string().into(),
-                vuids: &["VUID-vkCreateInstance-ppEnabledExtensionNames-01388"],
-                ..Default::default()
+            .map_err(|err| {
+                Box::new(ValidationError {
+                    context: "create_info.enabled_extensions".into(),
+                    vuids: &["VUID-vkCreateInstance-ppEnabledExtensionNames-01388"],
+                    ..ValidationError::from_error(err)
+                })
             })?;
 
         Ok(())
@@ -1051,10 +1052,9 @@ impl InstanceCreateInfo {
 
         flags
             .validate_instance_raw(api_version, enabled_extensions)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkInstanceCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("flags")
+                    .set_vuids(&["VUID-VkInstanceCreateInfo-flags-parameter"])
             })?;
 
         if !debug_utils_messengers.is_empty() {
@@ -1091,12 +1091,11 @@ impl InstanceCreateInfo {
             for (index, enabled) in enabled_validation_features.iter().enumerate() {
                 enabled
                     .validate_instance_raw(api_version, enabled_extensions)
-                    .map_err(|err| ValidationError {
-                        context: format!("enabled_validation_features[{}]", index).into(),
-                        vuids: &[
-                            "VUID-VkValidationFeaturesEXT-pEnabledValidationFeatures-parameter",
-                        ],
-                        ..ValidationError::from_requirement(err)
+                    .map_err(|err| {
+                        err.add_context(format!("enabled_validation_features[{}]", index))
+                            .set_vuids(&[
+                                "VUID-VkValidationFeaturesEXT-pEnabledValidationFeatures-parameter",
+                            ])
                     })?;
             }
 
@@ -1144,12 +1143,12 @@ impl InstanceCreateInfo {
             for (index, disabled) in disabled_validation_features.iter().enumerate() {
                 disabled
                     .validate_instance_raw(api_version, enabled_extensions)
-                    .map_err(|err| ValidationError {
-                        context: format!("disabled_validation_features[{}]", index).into(),
-                        vuids: &[
+                    .map_err(|err| {
+                        err.add_context(format!("disabled_validation_features[{}]", index)).set_vuids(
+                        &[
                             "VUID-VkValidationFeaturesEXT-pDisabledValidationFeatures-parameter",
                         ],
-                        ..ValidationError::from_requirement(err)
+                    )
                     })?;
             }
         }

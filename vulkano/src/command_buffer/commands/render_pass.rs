@@ -176,15 +176,13 @@ where
         self.inner
             .validate_next_subpass(subpass_end_info, subpass_begin_info)?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &["VUID-vkCmdNextSubpass2-renderpass"],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdNextSubpass2-renderpass"],
+                ..Default::default()
+            })
+        })?;
 
         let begin_render_pass_state = match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(state) => state,
@@ -279,15 +277,13 @@ where
     ) -> Result<(), Box<ValidationError>> {
         self.inner.validate_end_render_pass(subpass_end_info)?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &["VUID-vkCmdEndRenderPass2-renderpass"],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdEndRenderPass2-renderpass"],
+                ..Default::default()
+            })
+        })?;
 
         let begin_render_pass_state = match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(state) => state,
@@ -595,18 +591,16 @@ where
     fn validate_end_rendering(&self) -> Result<(), Box<ValidationError>> {
         self.inner.validate_end_rendering()?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &[
-                        "VUID-vkCmdEndRendering-renderpass",
-                        "VUID-vkCmdEndRendering-commandBuffer-06162",
-                    ],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &[
+                    "VUID-vkCmdEndRendering-renderpass",
+                    "VUID-vkCmdEndRendering-commandBuffer-06162",
+                ],
+                ..Default::default()
+            })
+        })?;
 
         match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(_) => {
@@ -683,15 +677,13 @@ where
     ) -> Result<(), Box<ValidationError>> {
         self.inner.validate_clear_attachments(attachments, rects)?;
 
-        let render_pass_state =
-            self.builder_state
-                .render_pass
-                .as_ref()
-                .ok_or(Box::new(ValidationError {
-                    problem: "a render pass instance is not active".into(),
-                    vuids: &["VUID-vkCmdClearAttachments-renderpass"],
-                    ..Default::default()
-                }))?;
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdClearAttachments-renderpass"],
+                ..Default::default()
+            })
+        })?;
 
         if render_pass_state.contents != SubpassContents::Inline {
             return Err(Box::new(ValidationError {
@@ -715,15 +707,17 @@ where
                         .rendering_info
                         .color_attachment_formats
                         .get(color_attachment as usize)
-                        .ok_or(Box::new(ValidationError {
-                            context: format!("attachments[{}].color_attachment", clear_index)
-                                .into(),
-                            problem: "is not less than the number of color attachments in the \
+                        .ok_or_else(|| {
+                            Box::new(ValidationError {
+                                context: format!("attachments[{}].color_attachment", clear_index)
+                                    .into(),
+                                problem: "is not less than the number of color attachments in the \
                                 current subpass instance"
-                                .into(),
-                            vuids: &["VUID-vkCmdClearAttachments-aspectMask-07271"],
-                            ..Default::default()
-                        }))?;
+                                    .into(),
+                                vuids: &["VUID-vkCmdClearAttachments-aspectMask-07271"],
+                                ..Default::default()
+                            })
+                        })?;
 
                     if let Some(attachment_format) = attachment_format {
                         let required_numeric_type = attachment_format
@@ -2030,13 +2024,10 @@ impl SubpassBeginInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self { contents, _ne: _ } = self;
 
-        contents
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "contents".into(),
-                vuids: &["VUID-VkSubpassBeginInfo-contents-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        contents.validate_device(device).map_err(|err| {
+            err.add_context("contents")
+                .set_vuids(&["VUID-VkSubpassBeginInfo-contents-parameter"])
+        })?;
 
         Ok(())
     }
@@ -2251,13 +2242,10 @@ impl RenderingInfo {
 
         let properties = device.physical_device().properties();
 
-        contents
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "contents".into(),
-                vuids: &["VUID-VkRenderingInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        contents.validate_device(device).map_err(|err| {
+            err.add_context("contents")
+                .set_vuids(&["VUID-VkRenderingInfo-flags-parameter"])
+        })?;
 
         if render_area_extent[0] == 0 {
             return Err(Box::new(ValidationError {
@@ -2916,29 +2904,20 @@ impl RenderingAttachmentInfo {
             _ne,
         } = self;
 
-        image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "image_layout".into(),
-                vuids: &["VUID-VkRenderingAttachmentInfo-imageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        image_layout.validate_device(device).map_err(|err| {
+            err.add_context("image_layout")
+                .set_vuids(&["VUID-VkRenderingAttachmentInfo-imageLayout-parameter"])
+        })?;
 
-        load_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "load_op".into(),
-                vuids: &["VUID-VkRenderingAttachmentInfo-loadOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        load_op.validate_device(device).map_err(|err| {
+            err.add_context("load_op")
+                .set_vuids(&["VUID-VkRenderingAttachmentInfo-loadOp-parameter"])
+        })?;
 
-        store_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "store_op".into(),
-                vuids: &["VUID-VkRenderingAttachmentInfo-storeOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        store_op.validate_device(device).map_err(|err| {
+            err.add_context("store_op")
+                .set_vuids(&["VUID-VkRenderingAttachmentInfo-storeOp-parameter"])
+        })?;
 
         if matches!(
             image_layout,
@@ -3073,20 +3052,15 @@ impl RenderingAttachmentResolveInfo {
             image_layout,
         } = self;
 
-        mode.validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "mode".into(),
-                vuids: &["VUID-VkRenderingAttachmentInfo-resolveMode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode")
+                .set_vuids(&["VUID-VkRenderingAttachmentInfo-resolveMode-parameter"])
+        })?;
 
-        image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "image_layout".into(),
-                vuids: &["VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        image_layout.validate_device(device).map_err(|err| {
+            err.add_context("image_layout")
+                .set_vuids(&["VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter"])
+        })?;
 
         if let Some(numeric_format) = image_view.format().numeric_format_color() {
             match numeric_format.numeric_type() {

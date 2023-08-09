@@ -104,7 +104,7 @@ pub(crate) enum CurrentAccess {
 pub enum HostAccessError {
     AccessConflict(AccessConflict),
     Invalidate(VulkanError),
-    ValidationError(ValidationError),
+    ValidationError(Box<ValidationError>),
 }
 
 impl Error for HostAccessError {

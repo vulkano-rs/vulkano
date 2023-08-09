@@ -439,13 +439,10 @@ impl BufferViewCreateInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self { format, _ne: _ } = self;
 
-        format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkBufferViewCreateInfo-format-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        format.validate_device(device).map_err(|err| {
+            err.add_context("format")
+                .set_vuids(&["VUID-VkBufferViewCreateInfo-format-parameter"])
+        })?;
 
         Ok(())
     }

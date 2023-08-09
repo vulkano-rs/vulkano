@@ -163,7 +163,7 @@ impl ComputePipeline {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_compute_pipelines)(
                 device.handle(),
-                cache.as_ref().map_or(Default::default(), |c| c.handle()),
+                cache.as_ref().map_or_else(Default::default, |c| c.handle()),
                 1,
                 &create_infos_vk,
                 ptr::null(),
@@ -320,13 +320,10 @@ impl ComputePipelineCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkComputePipelineCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkComputePipelineCreateInfo-flags-parameter"])
+        })?;
 
         stage
             .validate(device)
@@ -359,15 +356,17 @@ impl ComputePipelineCreateInfo {
                     .map(|(k, v)| (*k, v)),
                 entry_point_info.push_constant_requirements.as_ref(),
             )
-            .map_err(|err| ValidationError {
-                context: "stage.entry_point".into(),
-                vuids: &[
-                    "VUID-VkComputePipelineCreateInfo-layout-07987",
-                    "VUID-VkComputePipelineCreateInfo-layout-07988",
-                    "VUID-VkComputePipelineCreateInfo-layout-07990",
-                    "VUID-VkComputePipelineCreateInfo-layout-07991",
-                ],
-                ..ValidationError::from_error(err)
+            .map_err(|err| {
+                Box::new(ValidationError {
+                    context: "stage.entry_point".into(),
+                    vuids: &[
+                        "VUID-VkComputePipelineCreateInfo-layout-07987",
+                        "VUID-VkComputePipelineCreateInfo-layout-07988",
+                        "VUID-VkComputePipelineCreateInfo-layout-07990",
+                        "VUID-VkComputePipelineCreateInfo-layout-07991",
+                    ],
+                    ..ValidationError::from_error(err)
+                })
             })?;
 
         // TODO:

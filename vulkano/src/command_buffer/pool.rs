@@ -157,13 +157,10 @@ impl CommandPool {
     }
 
     fn validate_reset(&self, flags: CommandPoolResetFlags) -> Result<(), Box<ValidationError>> {
-        flags
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-vkResetCommandPool-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(self.device()).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-vkResetCommandPool-flags-parameter"])
+        })?;
 
         Ok(())
     }
@@ -389,13 +386,10 @@ impl CommandPoolCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkCommandPoolCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkCommandPoolCreateInfo-flags-parameter"])
+        })?;
 
         if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
             return Err(Box::new(ValidationError {

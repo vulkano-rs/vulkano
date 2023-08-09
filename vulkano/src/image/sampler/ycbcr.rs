@@ -468,54 +468,39 @@ impl SamplerYcbcrConversionCreateInfo {
             _ne: _,
         } = self;
 
-        format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-format-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        format.validate_device(device).map_err(|err| {
+            err.add_context("format")
+                .set_vuids(&["VUID-VkSamplerYcbcrConversionCreateInfo-format-parameter"])
+        })?;
 
-        ycbcr_model
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "ycbcr_model".into(),
-                vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrModel-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        ycbcr_model.validate_device(device).map_err(|err| {
+            err.add_context("ycbcr_model")
+                .set_vuids(&["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrModel-parameter"])
+        })?;
 
-        ycbcr_range
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "ycbcr_range".into(),
-                vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        ycbcr_range.validate_device(device).map_err(|err| {
+            err.add_context("ycbcr_range")
+                .set_vuids(&["VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-parameter"])
+        })?;
 
         component_mapping
             .validate(device)
             .map_err(|err| err.add_context("component_mapping"))?;
 
         for (index, offset) in chroma_offset.into_iter().enumerate() {
-            offset
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: format!("chroma_offset[{}]", index).into(),
-                    vuids: &[
+            offset.validate_device(device).map_err(|err| {
+                err.add_context(format!("chroma_offset[{}]", index))
+                    .set_vuids(&[
                         "VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-parameter",
                         "VUID-VkSamplerYcbcrConversionCreateInfo-yChromaOffset-parameter",
-                    ],
-                    ..ValidationError::from_requirement(err)
-                })?;
+                    ])
+            })?;
         }
 
-        chroma_filter
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "chroma_filter".into(),
-                vuids: &["VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        chroma_filter.validate_device(device).map_err(|err| {
+            err.add_context("chroma_filter")
+                .set_vuids(&["VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-parameter"])
+        })?;
 
         if !format
             .numeric_format_color()

@@ -243,14 +243,16 @@ impl VertexInputState {
                 }));
             }
 
-            let binding_desc = bindings.get(&binding).ok_or(ValidationError {
-                problem: format!(
-                    "`attributes[{}].binding` is not present in `bindings`",
-                    binding
-                )
-                .into(),
-                vuids: &["VUID-VkPipelineVertexInputStateCreateInfo-binding-00615"],
-                ..Default::default()
+            let binding_desc = bindings.get(&binding).ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: format!(
+                        "`attributes[{}].binding` is not present in `bindings`",
+                        binding
+                    )
+                    .into(),
+                    vuids: &["VUID-VkPipelineVertexInputStateCreateInfo-binding-00615"],
+                    ..Default::default()
+                })
             })?;
 
             if device.enabled_extensions().khr_portability_subset
@@ -438,13 +440,10 @@ impl VertexInputAttributeDescription {
 
         let properties = device.physical_device().properties();
 
-        format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkVertexInputAttributeDescription-format-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        format.validate_device(device).map_err(|err| {
+            err.add_context("format")
+                .set_vuids(&["VUID-VkVertexInputAttributeDescription-format-parameter"])
+        })?;
 
         if binding > properties.max_vertex_input_bindings {
             return Err(Box::new(ValidationError {

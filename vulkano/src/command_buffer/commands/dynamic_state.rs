@@ -1312,13 +1312,10 @@ where
             }));
         }
 
-        cull_mode
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "cull_mode".into(),
-                vuids: &["VUID-vkCmdSetCullMode-cullMode-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        cull_mode.validate_device(self.device()).map_err(|err| {
+            err.add_context("cull_mode")
+                .set_vuids(&["VUID-vkCmdSetCullMode-cullMode-parameter"])
+        })?;
 
         Ok(())
     }
@@ -1611,13 +1608,10 @@ where
             }));
         }
 
-        compare_op
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "compare_op".into(),
-                vuids: &["VUID-vkCmdSetDepthCompareOp-depthCompareOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        compare_op.validate_device(self.device()).map_err(|err| {
+            err.add_context("compare_op")
+                .set_vuids(&["VUID-vkCmdSetDepthCompareOp-depthCompareOp-parameter"])
+        })?;
 
         Ok(())
     }
@@ -1863,12 +1857,10 @@ where
             }));
         }
 
-        face.validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "face".into(),
-                vuids: &["VUID-vkCmdSetFrontFace-frontFace-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        face.validate_device(self.device()).map_err(|err| {
+            err.add_context("face")
+                .set_vuids(&["VUID-vkCmdSetFrontFace-frontFace-parameter"])
+        })?;
 
         Ok(())
     }
@@ -2028,13 +2020,10 @@ where
             }));
         }
 
-        logic_op
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "logic_op".into(),
-                vuids: &["VUID-vkCmdSetLogicOpEXT-logicOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        logic_op.validate_device(self.device()).map_err(|err| {
+            err.add_context("logic_op")
+                .set_vuids(&["VUID-vkCmdSetLogicOpEXT-logicOp-parameter"])
+        })?;
 
         Ok(())
     }
@@ -2214,13 +2203,10 @@ where
             }));
         }
 
-        topology
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "topology".into(),
-                vuids: &["VUID-vkCmdSetPrimitiveTopology-primitiveTopology-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        topology.validate_device(self.device()).map_err(|err| {
+            err.add_context("topology")
+                .set_vuids(&["VUID-vkCmdSetPrimitiveTopology-primitiveTopology-parameter"])
+        })?;
 
         // VUID?
         // Since these requirements exist for fixed state when creating the pipeline,
@@ -2561,13 +2547,10 @@ where
             }));
         }
 
-        faces
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "faces".into(),
-                vuids: &["VUID-vkCmdSetStencilCompareMask-faceMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        faces.validate_device(self.device()).map_err(|err| {
+            err.add_context("faces")
+                .set_vuids(&["VUID-vkCmdSetStencilCompareMask-faceMask-parameter"])
+        })?;
 
         Ok(())
     }
@@ -2632,45 +2615,32 @@ where
             }));
         }
 
-        faces
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "faces".into(),
-                vuids: &["VUID-vkCmdSetStencilOp-faceMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        faces.validate_device(self.device()).map_err(|err| {
+            err.add_context("faces")
+                .set_vuids(&["VUID-vkCmdSetStencilOp-faceMask-parameter"])
+        })?;
 
-        fail_op
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "fail_op".into(),
-                vuids: &["VUID-vkCmdSetStencilOp-failOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        fail_op.validate_device(self.device()).map_err(|err| {
+            err.add_context("fail_op")
+                .set_vuids(&["VUID-vkCmdSetStencilOp-failOp-parameter"])
+        })?;
 
-        pass_op
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "pass_op".into(),
-                vuids: &["VUID-vkCmdSetStencilOp-passOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        pass_op.validate_device(self.device()).map_err(|err| {
+            err.add_context("pass_op")
+                .set_vuids(&["VUID-vkCmdSetStencilOp-passOp-parameter"])
+        })?;
 
         depth_fail_op
             .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "depth_fail_op".into(),
-                vuids: &["VUID-vkCmdSetStencilOp-depthFailOp-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("depth_fail_op")
+                    .set_vuids(&["VUID-vkCmdSetStencilOp-depthFailOp-parameter"])
             })?;
 
-        compare_op
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "compare_op".into(),
-                vuids: &["VUID-vkCmdSetStencilOp-compareOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        compare_op.validate_device(self.device()).map_err(|err| {
+            err.add_context("compare_op")
+                .set_vuids(&["VUID-vkCmdSetStencilOp-compareOp-parameter"])
+        })?;
 
         Ok(())
     }
@@ -2738,13 +2708,10 @@ where
             }));
         }
 
-        faces
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "faces".into(),
-                vuids: &["VUID-vkCmdSetStencilReference-faceMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        faces.validate_device(self.device()).map_err(|err| {
+            err.add_context("faces")
+                .set_vuids(&["VUID-vkCmdSetStencilReference-faceMask-parameter"])
+        })?;
 
         Ok(())
     }
@@ -2844,13 +2811,10 @@ where
             }));
         }
 
-        faces
-            .validate_device(self.device())
-            .map_err(|err| ValidationError {
-                context: "faces".into(),
-                vuids: &["VUID-vkCmdSetStencilWriteMask-faceMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        faces.validate_device(self.device()).map_err(|err| {
+            err.add_context("faces")
+                .set_vuids(&["VUID-vkCmdSetStencilWriteMask-faceMask-parameter"])
+        })?;
 
         Ok(())
     }

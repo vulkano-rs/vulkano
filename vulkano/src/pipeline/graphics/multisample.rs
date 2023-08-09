@@ -87,12 +87,10 @@ impl MultisampleState {
 
         rasterization_samples
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "rasterization_samples".into(),
-                vuids: &[
+            .map_err(|err| {
+                err.add_context("rasterization_samples").set_vuids(&[
                     "VUID-VkPipelineMultisampleStateCreateInfo-rasterizationSamples-parameter",
-                ],
-                ..ValidationError::from_requirement(err)
+                ])
             })?;
 
         if let Some(min_sample_shading) = sample_shading {

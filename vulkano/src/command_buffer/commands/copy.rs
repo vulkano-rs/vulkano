@@ -2514,21 +2514,15 @@ impl CopyImageInfo {
             _ne: _,
         } = self;
 
-        src_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_image_layout".into(),
-                vuids: &["VUID-VkCopyImageInfo2-srcImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("src_image_layout")
+                .set_vuids(&["VUID-VkCopyImageInfo2-srcImageLayout-parameter"])
+        })?;
 
-        dst_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_image_layout".into(),
-                vuids: &["VUID-VkCopyImageInfo2-dstImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("dst_image_layout")
+                .set_vuids(&["VUID-VkCopyImageInfo2-dstImageLayout-parameter"])
+        })?;
 
         // VUID-VkCopyImageInfo2-commonparent
         assert_eq!(device, src_image.device().as_ref());
@@ -3878,13 +3872,10 @@ impl CopyBufferToImageInfo {
             _ne: _,
         } = self;
 
-        dst_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_image_layout".into(),
-                vuids: &["VUID-VkCopyBufferToImageInfo2-dstImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("dst_image_layout")
+                .set_vuids(&["VUID-VkCopyBufferToImageInfo2-dstImageLayout-parameter"])
+        })?;
 
         // VUID-VkCopyBufferToImageInfo2-commonparent
         assert_eq!(device, src_buffer.device().as_ref());
@@ -4490,13 +4481,10 @@ impl CopyImageToBufferInfo {
             _ne: _,
         } = self;
 
-        src_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_image_layout".into(),
-                vuids: &["VUID-VkCopyImageToBufferInfo2-srcImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("src_image_layout")
+                .set_vuids(&["VUID-VkCopyImageToBufferInfo2-srcImageLayout-parameter"])
+        })?;
 
         // VUID-VkCopyImageToBufferInfo2-commonparent
         assert_eq!(device, src_image.device().as_ref());
@@ -5308,29 +5296,20 @@ impl BlitImageInfo {
             _ne: _,
         } = self;
 
-        src_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_image_layout".into(),
-                vuids: &["VUID-VkBlitImageInfo2-srcImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("src_image_layout")
+                .set_vuids(&["VUID-VkBlitImageInfo2-srcImageLayout-parameter"])
+        })?;
 
-        dst_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_image_layout".into(),
-                vuids: &["VUID-VkBlitImageInfo2-dstImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("dst_image_layout")
+                .set_vuids(&["VUID-VkBlitImageInfo2-dstImageLayout-parameter"])
+        })?;
 
-        filter
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "filter".into(),
-                vuids: &["VUID-VkBlitImageInfo2-filter-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        filter.validate_device(device).map_err(|err| {
+            err.add_context("filter")
+                .set_vuids(&["VUID-VkBlitImageInfo2-filter-parameter"])
+        })?;
 
         // VUID-VkBlitImageInfo2-commonparent
         assert_eq!(device, src_image.device().as_ref());
@@ -6221,21 +6200,15 @@ impl ResolveImageInfo {
             _ne: _,
         } = self;
 
-        src_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "src_image_layout".into(),
-                vuids: &["VUID-VkResolveImageInfo2-srcImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        src_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("src_image_layout")
+                .set_vuids(&["VUID-VkResolveImageInfo2-srcImageLayout-parameter"])
+        })?;
 
-        dst_image_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "dst_image_layout".into(),
-                vuids: &["VUID-VkResolveImageInfo2-dstImageLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        dst_image_layout.validate_device(device).map_err(|err| {
+            err.add_context("dst_image_layout")
+                .set_vuids(&["VUID-VkResolveImageInfo2-dstImageLayout-parameter"])
+        })?;
 
         // VUID-VkResolveImageInfo2-commonparent
         assert_eq!(device, src_image.device().as_ref());

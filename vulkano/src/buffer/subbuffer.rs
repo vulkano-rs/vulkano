@@ -340,12 +340,12 @@ where
             };
         }
 
-        let mapped_ptr =
-            self.mapped_ptr()
-                .ok_or(HostAccessError::ValidationError(ValidationError {
-                    problem: "the memory of this subbuffer is not host-visible".into(),
-                    ..Default::default()
-                }))?;
+        let mapped_ptr = self.mapped_ptr().ok_or_else(|| {
+            HostAccessError::ValidationError(Box::new(ValidationError {
+                problem: "the memory of this subbuffer is not host-visible".into(),
+                ..Default::default()
+            }))
+        })?;
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
         let data = unsafe { &*T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 
@@ -415,12 +415,12 @@ where
             };
         }
 
-        let mapped_ptr =
-            self.mapped_ptr()
-                .ok_or(HostAccessError::ValidationError(ValidationError {
-                    problem: "the memory of this subbuffer is not host-visible".into(),
-                    ..Default::default()
-                }))?;
+        let mapped_ptr = self.mapped_ptr().ok_or_else(|| {
+            HostAccessError::ValidationError(Box::new(ValidationError {
+                problem: "the memory of this subbuffer is not host-visible".into(),
+                ..Default::default()
+            }))
+        })?;
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
         let data = unsafe { &mut *T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
 

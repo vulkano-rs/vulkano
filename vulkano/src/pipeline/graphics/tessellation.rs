@@ -112,15 +112,11 @@ impl TessellationState {
             }
         };
 
-        domain_origin
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "domain_origin".into(),
-                vuids: &[
-                    "VUID-VkPipelineTessellationDomainOriginStateCreateInfo-domainOrigin-parameter",
-                ],
-                ..ValidationError::from_requirement(err)
-            })?;
+        domain_origin.validate_device(device).map_err(|err| {
+            err.add_context("domain_origin").set_vuids(&[
+                "VUID-VkPipelineTessellationDomainOriginStateCreateInfo-domainOrigin-parameter",
+            ])
+        })?;
 
         if domain_origin != TessellationDomainOrigin::UpperLeft
             && !(device.api_version() >= Version::V1_1

@@ -55,10 +55,10 @@ impl DiscardRectangleState {
 
         let properties = device.physical_device().properties();
 
-        mode.validate_device(device).map_err(|err| ValidationError {
-            context: "mode".into(),
-            vuids: &["VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleMode-parameter"],
-            ..ValidationError::from_requirement(err)
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode").set_vuids(&[
+                "VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleMode-parameter",
+            ])
         })?;
 
         let discard_rectangle_count = match rectangles {

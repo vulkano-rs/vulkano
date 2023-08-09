@@ -834,13 +834,10 @@ impl RenderPassCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkRenderPassCreateInfo2-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkRenderPassCreateInfo2-flags-parameter"])
+        })?;
 
         let mut attachment_potential_format_features =
             vec![FormatFeatures::empty(); attachments.len()];
@@ -934,19 +931,18 @@ impl RenderPassCreateInfo {
                     _ne: _,
                 } = color_attachment;
 
-                let attachment_desc =
-                    attachments
-                        .get(attachment as usize)
-                        .ok_or_else(|| ValidationError {
-                            problem: format!(
-                                "`subpasses[{0}].color_attachments[{1}].attachment` \
+                let attachment_desc = attachments.get(attachment as usize).ok_or_else(|| {
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "`subpasses[{0}].color_attachments[{1}].attachment` \
                                 is not less than the length of `attachments`",
-                                subpass_index, ref_index
-                            )
-                            .into(),
-                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
-                            ..Default::default()
-                        })?;
+                            subpass_index, ref_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                        ..Default::default()
+                    })
+                })?;
 
                 let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
 
@@ -1023,15 +1019,17 @@ impl RenderPassCreateInfo {
 
                     let resolve_attachment_desc = attachments
                         .get(resolve_attachment as usize)
-                        .ok_or_else(|| ValidationError {
-                            problem: format!(
+                        .ok_or_else(|| {
+                            Box::new(ValidationError {
+                                problem: format!(
                                 "`subpasses[{0}].color_resolve_attachments[{1}].attachment` is \
                                 not less than the length of `attachments`",
                                 subpass_index, ref_index
                             )
-                            .into(),
-                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
-                            ..Default::default()
+                                .into(),
+                                vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                                ..Default::default()
+                            })
                         })?;
 
                     let is_first_use =
@@ -1135,19 +1133,18 @@ impl RenderPassCreateInfo {
                     _ne: _,
                 } = depth_stencil_attachment;
 
-                let attachment_desc =
-                    attachments
-                        .get(attachment as usize)
-                        .ok_or_else(|| ValidationError {
-                            problem: format!(
-                                "`subpasses[{}].depth_stencil_attachment.attachment` \
+                let attachment_desc = attachments.get(attachment as usize).ok_or_else(|| {
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "`subpasses[{}].depth_stencil_attachment.attachment` \
                                 is not less than the length of `attachments`",
-                                subpass_index,
-                            )
-                            .into(),
-                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
-                            ..Default::default()
-                        })?;
+                            subpass_index,
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                        ..Default::default()
+                    })
+                })?;
 
                 let format = attachment_desc.format;
 
@@ -1247,15 +1244,17 @@ impl RenderPassCreateInfo {
 
                     let resolve_attachment_desc = attachments
                         .get(resolve_attachment as usize)
-                        .ok_or_else(|| ValidationError {
-                            problem: format!(
+                        .ok_or_else(|| {
+                            Box::new(ValidationError {
+                                problem: format!(
                                 "`subpasses[{}].depth_stencil_resolve_attachment.attachment` is \
                                 not less than the length of `attachments`",
                                 subpass_index,
                             )
-                            .into(),
-                            vuids: &["VUID-VkRenderPassCreateInfo2-pSubpasses-06473"],
-                            ..Default::default()
+                                .into(),
+                                vuids: &["VUID-VkRenderPassCreateInfo2-pSubpasses-06473"],
+                                ..Default::default()
+                            })
                         })?;
 
                     let resolve_format = resolve_attachment_desc.format;
@@ -1391,19 +1390,18 @@ impl RenderPassCreateInfo {
                     _ne: _,
                 } = input_attachment;
 
-                let attachment_desc =
-                    attachments
-                        .get(attachment as usize)
-                        .ok_or_else(|| ValidationError {
-                            problem: format!(
-                                "`subpasses[{}].input_attachments[{}].attachment` \
+                let attachment_desc = attachments.get(attachment as usize).ok_or_else(|| {
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "`subpasses[{}].input_attachments[{}].attachment` \
                                 is not less than the length of `attachments`",
-                                subpass_index, ref_index
-                            )
-                            .into(),
-                            vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
-                            ..Default::default()
-                        })?;
+                            subpass_index, ref_index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkRenderPassCreateInfo2-attachment-03051"],
+                        ..Default::default()
+                    })
+                })?;
 
                 let format_aspects = attachment_desc.format.aspects();
                 let is_first_use = !replace(&mut attachment_is_used[attachment as usize], true);
@@ -1614,12 +1612,12 @@ impl RenderPassCreateInfo {
 
             correlated_view_masks.iter().try_fold(0, |total, &mask| {
                 if total & mask != 0 {
-                    Err(ValidationError {
+                    Err(Box::new(ValidationError {
                         context: "correlated_view_masks".into(),
                         problem: "the bit masks overlap with each other".into(),
                         vuids: &["VUID-VkRenderPassCreateInfo2-pCorrelatedViewMasks-03056"],
                         ..Default::default()
-                    })
+                    }))
                 } else {
                     Ok(total | mask)
                 }
@@ -1757,61 +1755,40 @@ impl AttachmentDescription {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkAttachmentDescription2-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkAttachmentDescription2-flags-parameter"])
+        })?;
 
-        format
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkAttachmentDescription2-format-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        format.validate_device(device).map_err(|err| {
+            err.add_context("format")
+                .set_vuids(&["VUID-VkAttachmentDescription2-format-parameter"])
+        })?;
 
-        samples
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "samples".into(),
-                vuids: &["VUID-VkAttachmentDescription2-samples-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        samples.validate_device(device).map_err(|err| {
+            err.add_context("samples")
+                .set_vuids(&["VUID-VkAttachmentDescription2-samples-parameter"])
+        })?;
 
-        load_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "load_op".into(),
-                vuids: &["VUID-VkAttachmentDescription2-loadOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        load_op.validate_device(device).map_err(|err| {
+            err.add_context("load_op")
+                .set_vuids(&["VUID-VkAttachmentDescription2-loadOp-parameter"])
+        })?;
 
-        store_op
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "store_op".into(),
-                vuids: &["VUID-VkAttachmentDescription2-storeOp-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        store_op.validate_device(device).map_err(|err| {
+            err.add_context("store_op")
+                .set_vuids(&["VUID-VkAttachmentDescription2-storeOp-parameter"])
+        })?;
 
-        initial_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "initial_layout".into(),
-                vuids: &["VUID-VkAttachmentDescription2-initialLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        initial_layout.validate_device(device).map_err(|err| {
+            err.add_context("initial_layout")
+                .set_vuids(&["VUID-VkAttachmentDescription2-initialLayout-parameter"])
+        })?;
 
-        final_layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "final_layout".into(),
-                vuids: &["VUID-VkAttachmentDescription2-finalLayout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        final_layout.validate_device(device).map_err(|err| {
+            err.add_context("final_layout")
+                .set_vuids(&["VUID-VkAttachmentDescription2-finalLayout-parameter"])
+        })?;
 
         if matches!(
             final_layout,
@@ -1866,23 +1843,17 @@ impl AttachmentDescription {
         }
 
         if let Some(stencil_load_op) = stencil_load_op {
-            stencil_load_op
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_load_op".into(),
-                    vuids: &["VUID-VkAttachmentDescription2-stencilLoadOp-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            stencil_load_op.validate_device(device).map_err(|err| {
+                err.add_context("stencil_load_op")
+                    .set_vuids(&["VUID-VkAttachmentDescription2-stencilLoadOp-parameter"])
+            })?;
         }
 
         if let Some(stencil_store_op) = stencil_store_op {
-            stencil_store_op
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_store_op".into(),
-                    vuids: &["VUID-VkAttachmentDescription2-stencilStoreOp-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            stencil_store_op.validate_device(device).map_err(|err| {
+                err.add_context("stencil_store_op")
+                    .set_vuids(&["VUID-VkAttachmentDescription2-stencilStoreOp-parameter"])
+            })?;
         }
 
         if stencil_initial_layout.is_some() != stencil_final_layout.is_some() {
@@ -1908,12 +1879,10 @@ impl AttachmentDescription {
 
             stencil_initial_layout
                 .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_initial_layout".into(),
-                    vuids: &[
+                .map_err(|err| {
+                    err.add_context("stencil_initial_layout").set_vuids(&[
                         "VUID-VkAttachmentDescriptionStencilLayout-stencilInitialLayout-parameter",
-                    ],
-                    ..ValidationError::from_requirement(err)
+                    ])
                 })?;
 
             if matches!(
@@ -1951,12 +1920,10 @@ impl AttachmentDescription {
 
             stencil_final_layout
                 .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_final_layout".into(),
-                    vuids: &[
+                .map_err(|err| {
+                    err.add_context("stencil_final_layout").set_vuids(&[
                         "VUID-VkAttachmentDescriptionStencilLayout-stencilFinalLayout-parameter",
-                    ],
-                    ..ValidationError::from_requirement(err)
+                    ])
                 })?;
 
             if matches!(
@@ -2375,13 +2342,10 @@ impl SubpassDescription {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkSubpassDescription2-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkSubpassDescription2-flags-parameter"])
+        })?;
 
         if color_attachments.len() as u32 > properties.max_color_attachments {
             return Err(Box::new(ValidationError {
@@ -2859,11 +2823,7 @@ impl SubpassDescription {
 
             depth_resolve_mode
                 .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "depth_resolve_mode".into(),
-                    // vuids?
-                    ..ValidationError::from_requirement(err)
-                })?;
+                .map_err(|err| err.add_context("depth_resolve_mode"))?;
 
             if !properties
                 .supported_depth_resolve_modes
@@ -2892,11 +2852,7 @@ impl SubpassDescription {
 
             stencil_resolve_mode
                 .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_resolve_mode".into(),
-                    // vuids?
-                    ..ValidationError::from_requirement(err)
-                })?;
+                .map_err(|err| err.add_context("stencil_resolve_mode"))?;
 
             if !properties
                 .supported_stencil_resolve_modes
@@ -3176,13 +3132,10 @@ impl AttachmentReference {
             _ne,
         } = self;
 
-        layout
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "layout".into(),
-                vuids: &["VUID-VkAttachmentReference2-layout-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        layout.validate_device(device).map_err(|err| {
+            err.add_context("layout")
+                .set_vuids(&["VUID-VkAttachmentReference2-layout-parameter"])
+        })?;
 
         if matches!(
             layout,
@@ -3229,13 +3182,10 @@ impl AttachmentReference {
                 }));
             }
 
-            stencil_layout
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_layout".into(),
-                    vuids: &["VUID-VkAttachmentReferenceStencilLayout-stencilLayout-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            stencil_layout.validate_device(device).map_err(|err| {
+                err.add_context("stencil_layout")
+                    .set_vuids(&["VUID-VkAttachmentReferenceStencilLayout-stencilLayout-parameter"])
+            })?;
 
             if matches!(
                 stencil_layout,
@@ -3283,11 +3233,7 @@ impl AttachmentReference {
 
         aspects
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "aspects".into(),
-                // vuids?
-                ..ValidationError::from_requirement(err)
-            })?;
+            .map_err(|err| err.add_context("aspects"))?;
 
         Ok(())
     }

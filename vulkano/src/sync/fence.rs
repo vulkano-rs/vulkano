@@ -574,13 +574,10 @@ impl Fence {
             }));
         }
 
-        handle_type
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkFenceGetFdInfoKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(&self.device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkFenceGetFdInfoKHR-handleType-parameter"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -728,13 +725,10 @@ impl Fence {
             }));
         }
 
-        handle_type
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkFenceGetWin32HandleInfoKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(&self.device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkFenceGetWin32HandleInfoKHR-handleType-parameter"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -1151,13 +1145,10 @@ impl FenceCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkFenceCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkFenceCreateInfo-flags-parameter"])
+        })?;
 
         if !export_handle_types.is_empty() {
             if !(device.api_version() >= Version::V1_1
@@ -1174,13 +1165,10 @@ impl FenceCreateInfo {
                 }));
             }
 
-            export_handle_types
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "export_handle_types".into(),
-                    vuids: &["VUID-VkExportFenceCreateInfo-handleTypes-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            export_handle_types.validate_device(device).map_err(|err| {
+                err.add_context("export_handle_types")
+                    .set_vuids(&["VUID-VkExportFenceCreateInfo-handleTypes-parameter"])
+            })?;
 
             for handle_type in export_handle_types.into_iter() {
                 let external_fence_properties = unsafe {
@@ -1344,21 +1332,15 @@ impl ImportFenceFdInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkImportFenceFdInfoKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkImportFenceFdInfoKHR-flags-parameter"])
+        })?;
 
-        handle_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkImportFenceFdInfoKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkImportFenceFdInfoKHR-handleType-parameter"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -1435,21 +1417,15 @@ impl ImportFenceWin32HandleInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkImportFenceWin32HandleInfoKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkImportFenceWin32HandleInfoKHR-flags-parameter"])
+        })?;
 
-        handle_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkImportFenceWin32HandleInfoKHR-handleType-01457"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkImportFenceWin32HandleInfoKHR-handleType-01457"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -1513,10 +1489,9 @@ impl ExternalFenceInfo {
 
         handle_type
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkPhysicalDeviceExternalFenceInfo-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("handle_type")
+                    .set_vuids(&["VUID-VkPhysicalDeviceExternalFenceInfo-handleType-parameter"])
             })?;
 
         Ok(())

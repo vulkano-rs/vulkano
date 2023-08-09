@@ -283,13 +283,10 @@ impl CommandBufferInheritanceInfo {
         }
 
         if let Some(control_flags) = occlusion_query {
-            control_flags
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "occlusion_query".into(),
-                    vuids: &["VUID-VkCommandBufferInheritanceInfo-queryFlags-00057"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            control_flags.validate_device(device).map_err(|err| {
+                err.add_context("occlusion_query")
+                    .set_vuids(&["VUID-VkCommandBufferInheritanceInfo-queryFlags-00057"])
+            })?;
 
             if !device.enabled_features().inherited_queries {
                 return Err(Box::new(ValidationError {
@@ -318,10 +315,9 @@ impl CommandBufferInheritanceInfo {
 
         query_statistics_flags
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "query_statistics_flags".into(),
-                vuids: &["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("query_statistics_flags")
+                    .set_vuids(&["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789"])
             })?;
 
         if query_statistics_flags.count() > 0
@@ -534,10 +530,10 @@ impl CommandBufferInheritanceRenderingInfo {
             .enumerate()
             .flat_map(|(i, f)| f.map(|f| (i, f)))
         {
-            format.validate_device(device).map_err(|err| ValidationError {
-                context: format!("color_attachment_formats[{}]", index).into(),
-                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-parameter"],
-                ..ValidationError::from_requirement(err)
+            format.validate_device(device).map_err(|err| {
+                err.add_context(format!("color_attachment_formats[{}]", index)).set_vuids(
+                    &["VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-parameter"],
+                )
             })?;
 
             if format == Format::UNDEFINED {
@@ -567,10 +563,10 @@ impl CommandBufferInheritanceRenderingInfo {
         }
 
         if let Some(format) = depth_attachment_format {
-            format.validate_device(device).map_err(|err| ValidationError {
-                context: "depth_attachment_format".into(),
-                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-parameter"],
-                ..ValidationError::from_requirement(err)
+            format.validate_device(device).map_err(|err| {
+                err.add_context("depth_attachment_format").set_vuids(&[
+                    "VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-parameter",
+                ])
             })?;
 
             if format == Format::UNDEFINED {
@@ -614,10 +610,8 @@ impl CommandBufferInheritanceRenderingInfo {
         }
 
         if let Some(format) = stencil_attachment_format {
-            format.validate_device(device).map_err(|err| ValidationError {
-                context: "stencil_attachment_format".into(),
-                vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-parameter"],
-                ..ValidationError::from_requirement(err)
+            format.validate_device(device).map_err(|err| {
+                err.add_context("stencil_attachment_format").set_vuids(&["VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-parameter"])
             })?;
 
             if format == Format::UNDEFINED {
@@ -678,12 +672,10 @@ impl CommandBufferInheritanceRenderingInfo {
 
         rasterization_samples
             .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "rasterization_samples".into(),
-                vuids: &[
+            .map_err(|err| {
+                err.add_context("rasterization_samples").set_vuids(&[
                     "VUID-VkCommandBufferInheritanceRenderingInfo-rasterizationSamples-parameter",
-                ],
-                ..ValidationError::from_requirement(err)
+                ])
             })?;
 
         Ok(())

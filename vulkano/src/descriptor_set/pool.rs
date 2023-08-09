@@ -408,13 +408,10 @@ impl DescriptorPoolCreateInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkDescriptorPoolCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkDescriptorPoolCreateInfo-flags-parameter"])
+        })?;
 
         if max_sets == 0 {
             return Err(Box::new(ValidationError {
@@ -436,13 +433,10 @@ impl DescriptorPoolCreateInfo {
 
         // VUID-VkDescriptorPoolCreateInfo-pPoolSizes-parameter
         for (&descriptor_type, &pool_size) in pool_sizes.iter() {
-            flags
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "pool_sizes".into(),
-                    vuids: &["VUID-VkDescriptorPoolSize-type-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            flags.validate_device(device).map_err(|err| {
+                err.add_context("pool_sizes")
+                    .set_vuids(&["VUID-VkDescriptorPoolSize-type-parameter"])
+            })?;
 
             if pool_size == 0 {
                 return Err(Box::new(ValidationError {

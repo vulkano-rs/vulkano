@@ -1386,13 +1386,10 @@ impl ImageSubresourceLayers {
             ref array_layers,
         } = self;
 
-        aspects
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "aspects".into(),
-                vuids: &["VUID-VkImageSubresourceLayers-aspectMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        aspects.validate_device(device).map_err(|err| {
+            err.add_context("aspects")
+                .set_vuids(&["VUID-VkImageSubresourceLayers-aspectMask-parameter"])
+        })?;
 
         if aspects.is_empty() {
             return Err(Box::new(ValidationError {
@@ -1519,13 +1516,10 @@ impl ImageSubresourceRange {
             ref array_layers,
         } = self;
 
-        aspects
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "aspects".into(),
-                vuids: &["VUID-VkImageSubresourceRange-aspectMask-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        aspects.validate_device(device).map_err(|err| {
+            err.add_context("aspects")
+                .set_vuids(&["VUID-VkImageSubresourceRange-aspectMask-parameter"])
+        })?;
 
         if aspects.is_empty() {
             return Err(Box::new(ValidationError {
@@ -1749,42 +1743,37 @@ impl ImageFormatInfo {
 
         flags
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-flags-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("flags")
+                    .set_vuids(&["VUID-VkPhysicalDeviceImageFormatInfo2-flags-parameter"])
             })?;
 
         format
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("format")
+                    .set_vuids(&["VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter"])
             })?;
 
         image_type
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "image_type".into(),
-                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-imageType-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("image_type")
+                    .set_vuids(&["VUID-VkPhysicalDeviceImageFormatInfo2-imageType-parameter"])
             })?;
 
         tiling
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "tiling".into(),
-                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-tiling-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("tiling")
+                    .set_vuids(&["VUID-VkPhysicalDeviceImageFormatInfo2-tiling-parameter"])
             })?;
 
         usage
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "usage".into(),
-                vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-usage-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("usage")
+                    .set_vuids(&["VUID-VkPhysicalDeviceImageFormatInfo2-usage-parameter"])
             })?;
 
         if usage.is_empty() {
@@ -1815,10 +1804,9 @@ impl ImageFormatInfo {
 
             stencil_usage
                 .validate_physical_device(physical_device)
-                .map_err(|err| ValidationError {
-                    context: "stencil_usage".into(),
-                    vuids: &["VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter"],
-                    ..ValidationError::from_requirement(err)
+                .map_err(|err| {
+                    err.add_context("stencil_usage")
+                        .set_vuids(&["VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter"])
                 })?;
 
             if stencil_usage.is_empty() {
@@ -1870,10 +1858,10 @@ impl ImageFormatInfo {
 
             handle_type
                 .validate_physical_device(physical_device)
-                .map_err(|err| ValidationError {
-                    context: "handle_type".into(),
-                    vuids: &["VUID-VkPhysicalDeviceExternalImageFormatInfo-handleType-parameter"],
-                    ..ValidationError::from_requirement(err)
+                .map_err(|err| {
+                    err.add_context("handle_type").set_vuids(&[
+                        "VUID-VkPhysicalDeviceExternalImageFormatInfo-handleType-parameter",
+                    ])
                 })?;
         }
 
@@ -1890,12 +1878,10 @@ impl ImageFormatInfo {
 
             image_view_type
                 .validate_physical_device(physical_device)
-                .map_err(|err| ValidationError {
-                    context: "image_view_type".into(),
-                    vuids: &[
+                .map_err(|err| {
+                    err.add_context("image_view_type").set_vuids(&[
                         "VUID-VkPhysicalDeviceImageViewImageFormatInfoEXT-imageViewType-parameter",
-                    ],
-                    ..ValidationError::from_requirement(err)
+                    ])
                 })?;
         }
 
@@ -2156,34 +2142,30 @@ impl SparseImageFormatInfo {
 
         format
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "format".into(),
-                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-format-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("format")
+                    .set_vuids(&["VUID-VkPhysicalDeviceSparseImageFormatInfo2-format-parameter"])
             })?;
 
         image_type
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "image_type".into(),
-                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-type-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("image_type")
+                    .set_vuids(&["VUID-VkPhysicalDeviceSparseImageFormatInfo2-type-parameter"])
             })?;
 
         samples
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "samples".into(),
-                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("samples")
+                    .set_vuids(&["VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-parameter"])
             })?;
 
         usage
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "usage".into(),
-                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("usage")
+                    .set_vuids(&["VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-parameter"])
             })?;
 
         if usage.is_empty() {
@@ -2197,10 +2179,9 @@ impl SparseImageFormatInfo {
 
         tiling
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "tiling".into(),
-                vuids: &["VUID-VkPhysicalDeviceSparseImageFormatInfo2-tiling-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("tiling")
+                    .set_vuids(&["VUID-VkPhysicalDeviceSparseImageFormatInfo2-tiling-parameter"])
             })?;
 
         // VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-01095

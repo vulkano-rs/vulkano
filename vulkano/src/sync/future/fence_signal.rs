@@ -335,20 +335,13 @@ where
                             ) {
                                 Ok(_) => (),
                                 Err(AccessCheckError::Unknown) => {
-                                    return Err(Box::new(ValidationError {
-                                        problem: AccessError::SwapchainImageNotAcquired
-                                            .to_string()
-                                            .into(),
-                                        ..Default::default()
-                                    })
+                                    return Err(Box::new(ValidationError::from_error(
+                                        AccessError::SwapchainImageNotAcquired,
+                                    ))
                                     .into());
                                 }
                                 Err(AccessCheckError::Denied(err)) => {
-                                    return Err(Box::new(ValidationError {
-                                        problem: err.to_string().into(),
-                                        ..Default::default()
-                                    })
-                                    .into());
+                                    return Err(Box::new(ValidationError::from_error(err)).into());
                                 }
                             }
                         }

@@ -1882,10 +1882,9 @@ impl SurfaceInfo {
 
             present_mode
                 .validate_physical_device(physical_device)
-                .map_err(|err| ValidationError {
-                    context: "present_mode".into(),
-                    vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-parameter"],
-                    ..ValidationError::from_requirement(err)
+                .map_err(|err| {
+                    err.add_context("present_mode")
+                        .set_vuids(&["VUID-VkSurfacePresentModeEXT-presentMode-parameter"])
                 })?;
         }
 

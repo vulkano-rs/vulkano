@@ -119,8 +119,8 @@ use crate::{
     instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
     memory::ExternalMemoryHandleType,
-    OomError, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
-    VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::Mutex;
@@ -618,13 +618,10 @@ impl Device {
             }));
         }
 
-        build_type
-            .validate_device(self)
-            .map_err(|err| ValidationError {
-                context: "build_type".into(),
-                vuids: &["VUID-vkGetAccelerationStructureBuildSizesKHR-buildType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        build_type.validate_device(self).map_err(|err| {
+            err.add_context("build_type")
+                .set_vuids(&["VUID-vkGetAccelerationStructureBuildSizesKHR-buildType-parameter"])
+        })?;
 
         // VUID-vkGetAccelerationStructureBuildSizesKHR-pBuildInfo-parameter
         build_info
@@ -978,13 +975,10 @@ impl Device {
             }));
         }
 
-        handle_type
-            .validate_device(self)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-vkGetMemoryFdPropertiesKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(self).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-vkGetMemoryFdPropertiesKHR-handleType-parameter"])
+        })?;
 
         if handle_type == ExternalMemoryHandleType::OpaqueFd {
             return Err(Box::new(ValidationError {
@@ -1040,7 +1034,7 @@ impl Device {
         &self,
         object: &T,
         object_name: Option<&str>,
-    ) -> Result<(), OomError> {
+    ) -> Result<(), VulkanError> {
         assert!(object.device().handle() == self.handle());
 
         let object_name_vk = object_name.map(|object_name| CString::new(object_name).unwrap());
@@ -1074,7 +1068,7 @@ impl Device {
     /// of the device (either explicitly or implicitly, for example with a future's destructor)
     /// while this function is waiting.
     #[inline]
-    pub unsafe fn wait_idle(&self) -> Result<(), OomError> {
+    pub unsafe fn wait_idle(&self) -> Result<(), VulkanError> {
         let fns = self.fns();
         (fns.v1_0.device_wait_idle)(self.handle)
             .result()
@@ -1289,19 +1283,21 @@ impl DeviceCreateInfo {
                 physical_device.api_version(),
                 physical_device.instance().enabled_extensions(),
             )
-            .map_err(|err| ValidationError {
-                context: "enabled_extensions".into(),
-                problem: err.to_string().into(),
-                vuids: &["VUID-vkCreateDevice-ppEnabledExtensionNames-01387"],
-                ..Default::default()
+            .map_err(|err| {
+                Box::new(ValidationError {
+                    context: "enabled_extensions".into(),
+                    vuids: &["VUID-vkCreateDevice-ppEnabledExtensionNames-01387"],
+                    ..ValidationError::from_error(err)
+                })
             })?;
 
         enabled_features
             .check_requirements(physical_device.supported_features())
-            .map_err(|err| ValidationError {
-                context: "enabled_features".into(),
-                problem: err.to_string().into(),
-                ..Default::default()
+            .map_err(|err| {
+                Box::new(ValidationError {
+                    context: "enabled_features".into(),
+                    ..ValidationError::from_error(err)
+                })
             })?;
 
         let mut dependency_extensions = *enabled_extensions;
@@ -1592,21 +1588,22 @@ impl QueueCreateInfo {
                 device_extensions,
                 physical_device.instance().enabled_extensions(),
             )
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkDeviceQueueCreateInfo-flags-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("flags")
+                    .set_vuids(&["VUID-VkDeviceQueueCreateInfo-flags-parameter"])
             })?;
 
         let queue_family_properties = physical_device
             .queue_family_properties()
             .get(queue_family_index as usize)
-            .ok_or(ValidationError {
-                context: "queue_family_index".into(),
-                problem: "is not less than the number of queue families in the physical device"
-                    .into(),
-                vuids: &["VUID-VkDeviceQueueCreateInfo-queueFamilyIndex-00381"],
-                ..Default::default()
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    context: "queue_family_index".into(),
+                    problem: "is not less than the number of queue families in the physical device"
+                        .into(),
+                    vuids: &["VUID-VkDeviceQueueCreateInfo-queueFamilyIndex-00381"],
+                    ..Default::default()
+                })
             })?;
 
         if queues.is_empty() {
@@ -1680,14 +1677,14 @@ pub unsafe trait DeviceOwnedVulkanObject {
     /// Assigns a human-readable name to the object for debugging purposes.
     ///
     /// If `object_name` is `None`, a previously set object name is removed.
-    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), OomError>;
+    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), VulkanError>;
 }
 
 unsafe impl<T> DeviceOwnedVulkanObject for T
 where
     T: DeviceOwned + VulkanObject,
 {
-    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), OomError> {
+    fn set_debug_utils_object_name(&self, object_name: Option<&str>) -> Result<(), VulkanError> {
         self.device().set_debug_utils_object_name(self, object_name)
     }
 }

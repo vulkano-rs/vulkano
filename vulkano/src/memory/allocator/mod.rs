@@ -939,10 +939,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             for (index, export_handle_types) in export_handle_types.iter().enumerate() {
                 export_handle_types
                     .validate_device(device)
-                    .map_err(|err| ValidationError {
-                        context: format!("export_handle_types[{}]", index).into(),
-                        ..ValidationError::from_requirement(err)
-                    })?;
+                    .map_err(|err| err.add_context(format!("export_handle_types[{}]", index)))?;
             }
         }
 

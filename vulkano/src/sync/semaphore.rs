@@ -196,13 +196,10 @@ impl Semaphore {
             }));
         }
 
-        handle_type
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkSemaphoreGetFdInfoKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(&self.device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkSemaphoreGetFdInfoKHR-handleType-parameter"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -367,13 +364,10 @@ impl Semaphore {
             }));
         }
 
-        handle_type
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(&self.device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-parameter"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -543,13 +537,10 @@ impl Semaphore {
             }));
         }
 
-        handle_type
-            .validate_device(&self.device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(&self.device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-parameter"])
+        })?;
 
         if !matches!(handle_type, ExternalSemaphoreHandleType::ZirconEvent) {
             return Err(Box::new(ValidationError {
@@ -1183,13 +1174,10 @@ impl SemaphoreCreateInfo {
                 }));
             }
 
-            export_handle_types
-                .validate_device(device)
-                .map_err(|err| ValidationError {
-                    context: "export_handle_types".into(),
-                    vuids: &["VUID-VkExportSemaphoreCreateInfo-handleTypes-parameter"],
-                    ..ValidationError::from_requirement(err)
-                })?;
+            export_handle_types.validate_device(device).map_err(|err| {
+                err.add_context("export_handle_types")
+                    .set_vuids(&["VUID-VkExportSemaphoreCreateInfo-handleTypes-parameter"])
+            })?;
 
             for handle_type in export_handle_types.into_iter() {
                 let external_semaphore_properties = unsafe {
@@ -1363,21 +1351,15 @@ impl ImportSemaphoreFdInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkImportSemaphoreFdInfoKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkImportSemaphoreFdInfoKHR-flags-parameter"])
+        })?;
 
-        handle_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkImportSemaphoreFdInfoKHR-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkImportSemaphoreFdInfoKHR-handleType-parameter"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -1456,21 +1438,15 @@ impl ImportSemaphoreWin32HandleInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkImportSemaphoreWin32HandleInfoKHR-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkImportSemaphoreWin32HandleInfoKHR-flags-parameter"])
+        })?;
 
-        handle_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01140"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkImportSemaphoreWin32HandleInfoKHR-handleType-01140"])
+        })?;
 
         if !matches!(
             handle_type,
@@ -1551,21 +1527,15 @@ impl ImportSemaphoreZirconHandleInfo {
             _ne: _,
         } = self;
 
-        flags
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "flags".into(),
-                vuids: &["VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-flags-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-flags-parameter"])
+        })?;
 
-        handle_type
-            .validate_device(device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
-            })?;
+        handle_type.validate_device(device).map_err(|err| {
+            err.add_context("handle_type")
+                .set_vuids(&["VUID-VkImportSemaphoreZirconHandleInfoFUCHSIA-handleType-parameter"])
+        })?;
 
         if !matches!(handle_type, ExternalSemaphoreHandleType::ZirconEvent) {
             return Err(Box::new(ValidationError {
@@ -1626,10 +1596,9 @@ impl ExternalSemaphoreInfo {
 
         handle_type
             .validate_physical_device(physical_device)
-            .map_err(|err| ValidationError {
-                context: "handle_type".into(),
-                vuids: &["VUID-VkPhysicalDeviceExternalSemaphoreInfo-handleType-parameter"],
-                ..ValidationError::from_requirement(err)
+            .map_err(|err| {
+                err.add_context("handle_type")
+                    .set_vuids(&["VUID-VkPhysicalDeviceExternalSemaphoreInfo-handleType-parameter"])
             })?;
 
         Ok(())

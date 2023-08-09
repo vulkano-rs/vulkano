@@ -330,7 +330,7 @@ macro_rules! vulkan_bitflags {
             pub(crate) fn validate_device(
                 self,
                 device: &crate::device::Device,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_device_raw(
                     device.api_version(),
                     device.enabled_features(),
@@ -344,7 +344,7 @@ macro_rules! vulkan_bitflags {
             pub(crate) fn validate_physical_device(
                 self,
                 physical_device: &crate::device::physical::PhysicalDevice,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_device_raw(
                     physical_device.api_version(),
                     physical_device.supported_features(),
@@ -360,7 +360,7 @@ macro_rules! vulkan_bitflags {
                 #[allow(unused_variables)] device_features: &crate::device::Features,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 $(
                     $(
                         if self.intersects(Self::$flag_name) && ![
@@ -379,8 +379,8 @@ macro_rules! vulkan_bitflags {
                                 )+)?
                             ].into_iter().all(|x| x)),*
                         ].into_iter().any(|x| x) {
-                            return Err(crate::RequirementNotMet {
-                                required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                            return Err(Box::new(crate::ValidationError {
+                                problem: concat!("is `", stringify!($ty), "::", stringify!($flag_name), "`").into(),
                                 requires_one_of: crate::RequiresOneOf(&[
                                     $(crate::RequiresAllOf(&[
                                         $(
@@ -397,7 +397,8 @@ macro_rules! vulkan_bitflags {
                                         )+)?
                                     ])),*
                                 ]),
-                            });
+                                ..Default::default()
+                            }));
                         }
                     )?
                 )*
@@ -410,7 +411,7 @@ macro_rules! vulkan_bitflags {
             pub(crate) fn validate_instance(
                 self,
                 instance: &crate::instance::Instance,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_instance_raw(
                     instance.api_version(),
                     instance.enabled_extensions(),
@@ -422,7 +423,7 @@ macro_rules! vulkan_bitflags {
                 self,
                 #[allow(unused_variables)] instance_api_version: crate::Version,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 $(
                     $(
                         if self.intersects(Self::$flag_name) && ![
@@ -435,8 +436,8 @@ macro_rules! vulkan_bitflags {
                                 )+)?
                             ].into_iter().all(|x| x)),*
                         ].into_iter().any(|x| x) {
-                            return Err(crate::RequirementNotMet {
-                                required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                            return Err(Box::new(crate::ValidationError {
+                                problem: concat!("is `", stringify!($ty), "::", stringify!($flag_name), "`").into(),
                                 requires_one_of: crate::RequiresOneOf(&[
                                     $(crate::RequiresAllOf(&[
                                         $(
@@ -447,7 +448,8 @@ macro_rules! vulkan_bitflags {
                                         )+)?
                                     ])),*
                                 ]),
-                            });
+                                ..Default::default()
+                            }));
                         }
                     )?
                 )*
@@ -668,7 +670,7 @@ macro_rules! vulkan_enum {
             pub(crate) fn validate_device(
                 self,
                 device: &crate::device::Device,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_device_raw(
                     device.api_version(),
                     device.enabled_features(),
@@ -682,7 +684,7 @@ macro_rules! vulkan_enum {
             pub(crate) fn validate_physical_device(
                 self,
                 physical_device: &crate::device::physical::PhysicalDevice,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_device_raw(
                     physical_device.api_version(),
                     physical_device.supported_features(),
@@ -698,7 +700,7 @@ macro_rules! vulkan_enum {
                 #[allow(unused_variables)] device_features: &crate::device::Features,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 match self {
                     $(
                         $(
@@ -719,8 +721,8 @@ macro_rules! vulkan_enum {
                                         )+)?
                                     ].into_iter().all(|x| x)),*
                                  ].into_iter().any(|x| x) {
-                                    return Err(crate::RequirementNotMet {
-                                        required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                    return Err(Box::new(crate::ValidationError {
+                                        problem: concat!("is `", stringify!($ty), "::", stringify!($flag_name), "`").into(),
                                         requires_one_of: crate::RequiresOneOf(&[
                                             $(crate::RequiresAllOf(&[
                                                 $(
@@ -737,7 +739,8 @@ macro_rules! vulkan_enum {
                                                 )+)?
                                             ])),*
                                         ]),
-                                    });
+                                        ..Default::default()
+                                    }));
                                 }
                             },
                         )?
@@ -753,7 +756,7 @@ macro_rules! vulkan_enum {
             pub(crate) fn validate_instance(
                 self,
                 instance: &crate::instance::Instance,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 self.validate_instance_raw(
                     instance.api_version(),
                     instance.enabled_extensions(),
@@ -765,7 +768,7 @@ macro_rules! vulkan_enum {
                 self,
                 #[allow(unused_variables)] instance_api_version: crate::Version,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
-            ) -> Result<(), crate::RequirementNotMet> {
+            ) -> Result<(), Box<crate::ValidationError>> {
                 match self {
                     $(
                         $(
@@ -780,8 +783,8 @@ macro_rules! vulkan_enum {
                                         )+)?
                                     ].into_iter().all(|x| x)),*
                                  ].into_iter().any(|x| x) {
-                                    return Err(crate::RequirementNotMet {
-                                        required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                    return Err(Box::new(crate::ValidationError {
+                                        problem: concat!("is `", stringify!($ty), "::", stringify!($flag_name), "`").into(),
                                         requires_one_of: crate::RequiresOneOf(&[
                                             $(crate::RequiresAllOf(&[
                                                 $(
@@ -792,7 +795,8 @@ macro_rules! vulkan_enum {
                                                 )+)?
                                             ])),*
                                         ]),
-                                    });
+                                        ..Default::default()
+                                    }));
                                 }
                             },
                         )?
