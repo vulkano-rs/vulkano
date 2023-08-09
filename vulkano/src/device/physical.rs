@@ -14,8 +14,8 @@ use crate::{
     device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
     format::{DrmFormatModifierProperties, Format, FormatProperties},
     image::{
-        ImageAspects, ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties,
-        ImageUsage, SparseImageFormatInfo, SparseImageFormatProperties,
+        ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties, ImageUsage,
+        SparseImageFormatInfo, SparseImageFormatProperties,
     },
     instance::{Instance, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
@@ -1014,25 +1014,8 @@ impl PhysicalDevice {
     #[inline]
     pub unsafe fn image_format_properties_unchecked(
         &self,
-        mut image_format_info: ImageFormatInfo,
+        image_format_info: ImageFormatInfo,
     ) -> Result<Option<ImageFormatProperties>, VulkanError> {
-        {
-            let ImageFormatInfo {
-                format,
-                usage,
-                stencil_usage,
-                ..
-            } = &mut image_format_info;
-
-            let aspects = format.aspects();
-
-            if stencil_usage.is_empty()
-                || !aspects.contains(ImageAspects::DEPTH | ImageAspects::STENCIL)
-            {
-                *stencil_usage = *usage;
-            }
-        }
-
         self.image_format_properties
             .get_or_try_insert(image_format_info, |image_format_info| {
                 /* Input */
@@ -1048,8 +1031,6 @@ impl PhysicalDevice {
                     ref drm_format_modifier_info,
                     _ne: _,
                 } = image_format_info;
-
-                let has_separate_stencil_usage = stencil_usage != usage;
 
                 let mut info2_vk = ash::vk::PhysicalDeviceImageFormatInfo2 {
                     format: format.into(),
@@ -1118,7 +1099,7 @@ impl PhysicalDevice {
                     info2_vk.p_next = next as *const _ as *const _;
                 }
 
-                if has_separate_stencil_usage {
+                if let Some(stencil_usage) = stencil_usage {
                     let next = stencil_usage_info_vk.insert(ash::vk::ImageStencilUsageCreateInfo {
                         stencil_usage: stencil_usage.into(),
                         ..Default::default()

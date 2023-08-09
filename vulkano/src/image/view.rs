@@ -1132,9 +1132,9 @@ fn get_implicit_default_usage(aspects: ImageAspects, image: &Image) -> ImageUsag
     let has_non_stencil_aspect = !(aspects - ImageAspects::STENCIL).is_empty();
 
     if has_stencil_aspect && has_non_stencil_aspect {
-        image.usage() & image.stencil_usage()
+        image.usage() & image.stencil_usage().unwrap_or(image.usage())
     } else if has_stencil_aspect {
-        image.stencil_usage()
+        image.stencil_usage().unwrap_or(image.usage())
     } else if has_non_stencil_aspect {
         image.usage()
     } else {
