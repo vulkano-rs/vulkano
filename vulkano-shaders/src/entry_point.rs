@@ -299,6 +299,11 @@ fn write_interface(interface: &ShaderInterface) -> TokenStream {
              name,
          }| {
             let base_type = format_ident!("{}", format!("{:?}", base_type));
+            let name = if let Some(name) = name {
+                quote! { ::std::option::Option::Some(::std::borrow::Cow::Borrowed(#name)) }
+            } else {
+                quote! { ::std::option::Option::None }
+            };
 
             quote! {
                 ::vulkano::shader::ShaderInterfaceEntry {
@@ -310,7 +315,7 @@ fn write_interface(interface: &ShaderInterface) -> TokenStream {
                         num_elements: #num_elements,
                         is_64bit: #is_64bit,
                     },
-                    name: ::std::option::Option::Some(::std::borrow::Cow::Borrowed(#name)),
+                    name: #name,
                 }
             }
         },
