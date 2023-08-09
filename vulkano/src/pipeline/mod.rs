@@ -512,15 +512,24 @@ impl PipelineShaderStageCreateInfo {
                         ..Default::default()
                     }));
                 }
-                let max_invocations = properties.max_compute_work_group_invocations;
-                let workgroup_size = x as u64 * y as u64 * z as u64;
-                if workgroup_size > max_invocations as u64 {
+                if let Some(workgroup_size) = (|| x.checked_mul(y)?.checked_mul(z))() {
+                    let max_invocations = properties.max_compute_work_group_invocations;
+                    if workgroup_size > max_invocations {
+                        return Err(Box::new(ValidationError {
+                            problem: format!("the product of `workgroup size` {local_size:?} = {workgroup_size} is greater than `max_compute_work_group_invocations` {max_invocations}").into(),
+                            ..Default::default()
+                        }));
+                    }
+                    Some(workgroup_size)
+                } else {
                     return Err(Box::new(ValidationError {
-                        problem: format!("the product of `workgroup size` {local_size:?} = {workgroup_size} is greater than `max_compute_work_group_invocations` {max_invocations}").into(),
+                        problem: format!(
+                            "the product of `workgroup size` {local_size:?} overflowed"
+                        )
+                        .into(),
                         ..Default::default()
                     }));
                 }
-                Some(workgroup_size as u32)
             } else {
                 todo!()
             }
