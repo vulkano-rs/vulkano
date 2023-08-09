@@ -969,7 +969,10 @@ impl ClearDepthStencilImageInfo {
             }
 
             if subresource_range.aspects.intersects(ImageAspects::STENCIL)
-                && !image.stencil_usage().intersects(ImageUsage::TRANSFER_DST)
+                && !image
+                    .stencil_usage()
+                    .unwrap_or(image.usage())
+                    .intersects(ImageUsage::TRANSFER_DST)
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(

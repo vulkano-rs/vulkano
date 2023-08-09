@@ -3012,6 +3012,7 @@ impl CopyImageInfo {
             if src_subresource.aspects.intersects(ImageAspects::STENCIL)
                 && !src_image
                     .stencil_usage()
+                    .unwrap_or(src_image.usage())
                     .intersects(ImageUsage::TRANSFER_SRC)
             {
                 return Err(Box::new(ValidationError {
@@ -3379,6 +3380,7 @@ impl CopyImageInfo {
             if dst_subresource.aspects.intersects(ImageAspects::STENCIL)
                 && !dst_image
                     .stencil_usage()
+                    .unwrap_or(dst_image.usage())
                     .intersects(ImageUsage::TRANSFER_DST)
             {
                 return Err(Box::new(ValidationError {
