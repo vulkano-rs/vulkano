@@ -591,8 +591,9 @@ impl Swapchain {
                 )
                 .map_err(|_err| {
                     Box::new(ValidationError {
-                        context: "PhysicalDevice::surface_capabilities".into(),
-                        problem: "returned an error".into(),
+                        problem: "`PhysicalDevice::surface_capabilities` \
+                            returned an error"
+                            .into(),
                         ..Default::default()
                     })
                 })?
@@ -612,8 +613,9 @@ impl Swapchain {
                 )
                 .map_err(|_err| {
                     Box::new(ValidationError {
-                        context: "PhysicalDevice::surface_formats".into(),
-                        problem: "returned an error".into(),
+                        problem: "`PhysicalDevice::surface_formats` \
+                            returned an error"
+                            .into(),
                         ..Default::default()
                     })
                 })?
@@ -624,8 +626,9 @@ impl Swapchain {
                 .surface_present_modes_unchecked(surface)
                 .map_err(|_err| {
                     Box::new(ValidationError {
-                        context: "PhysicalDevice::surface_present_modes".into(),
-                        problem: "returned an error".into(),
+                        problem: "`PhysicalDevice::surface_present_modes` \
+                            returned an error"
+                            .into(),
                         ..Default::default()
                     })
                 })?
@@ -822,8 +825,9 @@ impl Swapchain {
                             )
                             .map_err(|_err| {
                                 Box::new(ValidationError {
-                                    context: "PhysicalDevice::surface_capabilities".into(),
-                                    problem: "returned an error".into(),
+                                    problem: "`PhysicalDevice::surface_capabilities` \
+                                        returned an error"
+                                        .into(),
                                     ..Default::default()
                                 })
                             })?
@@ -1857,8 +1861,9 @@ impl SwapchainCreateInfo {
                 })
                 .map_err(|_err| {
                     Box::new(ValidationError {
-                        context: "PhysicalDevice::image_format_properties".into(),
-                        problem: "returned an error".into(),
+                        problem: "`PhysicalDevice::image_format_properties` \
+                            returned an error"
+                            .into(),
                         ..Default::default()
                     })
                 })?

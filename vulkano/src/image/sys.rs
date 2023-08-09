@@ -2684,8 +2684,9 @@ impl ImageCreateInfo {
                         })
                         .map_err(|_err| {
                             Box::new(ValidationError {
-                                context: "PhysicalDevice::image_format_properties".into(),
-                                problem: "returned an error".into(),
+                                problem: "`PhysicalDevice::image_format_properties` \
+                                    returned an error"
+                                    .into(),
                                 ..Default::default()
                             })
                         })?

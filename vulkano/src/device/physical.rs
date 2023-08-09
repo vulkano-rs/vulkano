@@ -1508,8 +1508,9 @@ impl PhysicalDevice {
                 self.surface_present_modes_unchecked(surface)
                     .map_err(|_err| {
                         Box::new(ValidationError {
-                            context: "PhysicalDevice::surface_present_modes".into(),
-                            problem: "returned an error".into(),
+                            problem: "`PhysicalDevice::surface_present_modes` \
+                                returned an error"
+                                .into(),
                             ..Default::default()
                         })
                     })?
@@ -1875,8 +1876,9 @@ impl PhysicalDevice {
                 self.surface_present_modes_unchecked(surface)
                     .map_err(|_err| {
                         Box::new(ValidationError {
-                            context: "PhysicalDevice::surface_present_modes".into(),
-                            problem: "returned an error".into(),
+                            problem: "`PhysicalDevice::surface_present_modes` \
+                                returned an error"
+                                .into(),
                             ..Default::default()
                         })
                     })?
