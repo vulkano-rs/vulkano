@@ -34,6 +34,7 @@ Changes to images:
 - `Image` was moved to the `image` module.
 - `ImageDimensions` is removed. `ImageCreateInfo` now instead has `image_type`, `extent` and `array_layers` to match Vulkan. Some of the methods of `ImageDimensions` have been turned into bare functions in the `image` module.
 - `ImageCreateFlags::ARRAY_2D_COMPATIBLE` is renamed to `DIM2D_ARRAY_COMPATIBLE` to better match the Vulkan name (but within the limitation that identifiers can't start with a digit).
+- `ImageCreateInfo::stencil_usage` is now an `Option<ImageUsage>`.
 
 Changes to buffers:
 - The `Subbuffer::{try_cast, try_cast_slice, try_from_bytes}` functions were replaced by `Subbuffer::reinterpret[_ref]`.
