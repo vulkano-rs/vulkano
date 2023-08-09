@@ -531,7 +531,8 @@ impl PipelineShaderStageCreateInfo {
                     }));
                 }
             } else {
-                todo!()
+                // TODO: Additional stages when `.local_size()` supports them.
+                unreachable!()
             }
         } else {
             None
