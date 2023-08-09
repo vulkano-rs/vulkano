@@ -264,7 +264,7 @@ fn inspect_entry_point(
             chain: [fn(&Spirv, Id) -> Option<Id>; N],
             id: Id,
         ) -> Option<(&mut DescriptorBindingVariable, Option<u32>)> {
-            let id = chain
+            let mut id = chain
                 .into_iter()
                 .try_fold(id, |id, func| func(self.spirv, id))?;
 
@@ -275,24 +275,24 @@ fn inspect_entry_point(
                 return Some((variable, Some(0)));
             }
 
-            let (id, indexes) = match *self.spirv.id(id).instruction() {
-                Instruction::AccessChain {
-                    base, ref indexes, ..
-                } => (base, indexes),
-                _ => return None,
-            };
+            while let Instruction::AccessChain {
+                base, ref indexes, ..
+            } = *self.spirv.id(id).instruction()
+            {
+                id = base;
 
-            if let Some(variable) = self.global.get(&id) {
-                // Variable was accessed with an access chain.
-                // Retrieve index from instruction if it's a constant value.
-                // TODO: handle a `None` index too?
-                let index = match *self.spirv.id(*indexes.first().unwrap()).instruction() {
-                    Instruction::Constant { ref value, .. } => Some(value[0]),
-                    _ => None,
-                };
-                let variable = self.result.entry(id).or_insert_with(|| variable.clone());
-                variable.reqs.stages = self.stage.into();
-                return Some((variable, index));
+                if let Some(variable) = self.global.get(&id) {
+                    // Variable was accessed with an access chain.
+                    // Retrieve index from instruction if it's a constant value.
+                    // TODO: handle a `None` index too?
+                    let index = match *self.spirv.id(*indexes.first().unwrap()).instruction() {
+                        Instruction::Constant { ref value, .. } => Some(value[0]),
+                        _ => None,
+                    };
+                    let variable = self.result.entry(id).or_insert_with(|| variable.clone());
+                    variable.reqs.stages = self.stage.into();
+                    return Some((variable, index));
+                }
             }
 
             None
