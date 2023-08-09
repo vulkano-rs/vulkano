@@ -148,6 +148,8 @@ Changes to futures:
 - [#2248](https://github.com/vulkano-rs/vulkano/issues/2248): Meanings of | and & operators for extensions were swapped.
 - Fixed validation for the `AllocationType` of allocations in `RawImage::bind_memory`, where the image tiling wasn't taken into consideration.
 - vulkano-shaders: Use a placeholder name instead of erroring out, when the shader doesn't contain a name for a struct.
+- [#2203](https://github.com/vulkano-rs/vulkano/issues/2203): Shader reflection fails to find descriptor set variables if multiple `OpAccessChain` instructions are themselves chained.
+- vulkano-shaders: Invalid emitted code for shader input/output interfaces if the shader is missing a name decoration.
 
 # Version 0.33.0 (2023-04-01)
 
