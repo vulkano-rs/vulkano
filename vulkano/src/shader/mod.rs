@@ -550,9 +550,10 @@ pub struct EntryPointInfo {
 }
 
 impl EntryPointInfo {
-    // The local size in Compute shaders, None otherwise.
-    // `specialization_info` is used for LocalSizeId / WorkgroupSizeId, using specialization_constants if not found.
-    // Errors if specialization constants
+    /// The local size in Compute shaders, None otherwise.
+    ///
+    /// `specialization_info` is used for LocalSizeId / WorkgroupSizeId, using specialization_constants if not found.
+    /// Errors if specialization constants are not found or are not u32's.
     pub(crate) fn local_size(
         &self,
         specialization_info: &HashMap<u32, SpecializationConstant>,
