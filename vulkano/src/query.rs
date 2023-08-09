@@ -507,7 +507,7 @@ impl QueryType {
             QueryType::AccelerationStructureCompactedSize => {
                 if !device.enabled_extensions().khr_acceleration_structure {
                     return Err(Box::new(ValidationError {
-                        problem: "`is `QueryType::AccelerationStructureCompactedSize`".into(),
+                        problem: "is `QueryType::AccelerationStructureCompactedSize`".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceExtension("khr_acceleration_structure"),
                         ])]),
