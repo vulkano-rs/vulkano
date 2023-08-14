@@ -63,6 +63,7 @@ pub struct RawImage {
     image_type: ImageType,
     format: Format,
     format_features: FormatFeatures,
+    view_formats: Vec<Format>,
     extent: [u32; 3],
     array_layers: u32,
     mip_levels: u32,
@@ -113,6 +114,7 @@ impl RawImage {
             flags,
             image_type,
             format,
+            ref view_formats,
             extent,
             array_layers,
             mip_levels,
@@ -122,10 +124,10 @@ impl RawImage {
             stencil_usage,
             ref sharing,
             initial_layout,
-            external_memory_handle_types,
-            _ne: _,
             ref drm_format_modifiers,
             ref drm_format_modifier_plane_layouts,
+            external_memory_handle_types,
+            _ne: _,
         } = &create_info;
 
         let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
@@ -137,7 +139,7 @@ impl RawImage {
             ),
         };
 
-        let mut info_vk = ash::vk::ImageCreateInfo {
+        let mut create_info_vk = ash::vk::ImageCreateInfo {
             flags: flags.into(),
             image_type: image_type.into(),
             format: format.into(),
@@ -161,6 +163,8 @@ impl RawImage {
         let drm_format_modifier_plane_layouts_vk: SmallVec<[_; 4]>;
         let mut drm_format_modifier_list_info_vk = None;
         let mut external_memory_info_vk = None;
+        let mut format_list_info_vk = None;
+        let format_list_view_formats_vk: Vec<_>;
         let mut stencil_usage_info_vk = None;
 
         #[allow(clippy::comparison_chain)]
@@ -196,8 +200,8 @@ impl RawImage {
                 },
             );
 
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
         } else if drm_format_modifiers.len() > 1 {
             let next = drm_format_modifier_list_info_vk.insert(
                 ash::vk::ImageDrmFormatModifierListCreateInfoEXT {
@@ -207,8 +211,8 @@ impl RawImage {
                 },
             );
 
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
         }
 
         if !external_memory_handle_types.is_empty() {
@@ -217,8 +221,25 @@ impl RawImage {
                 ..Default::default()
             });
 
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if !view_formats.is_empty() {
+            format_list_view_formats_vk = view_formats
+                .iter()
+                .copied()
+                .map(ash::vk::Format::from)
+                .collect();
+
+            let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
+                view_format_count: format_list_view_formats_vk.len() as u32,
+                p_view_formats: format_list_view_formats_vk.as_ptr(),
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
         }
 
         if let Some(stencil_usage) = stencil_usage {
@@ -227,16 +248,21 @@ impl RawImage {
                 ..Default::default()
             });
 
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
         }
 
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_image)(device.handle(), &info_vk, ptr::null(), output.as_mut_ptr())
-                .result()
-                .map_err(VulkanError::from)?;
+            (fns.v1_0.create_image)(
+                device.handle(),
+                &create_info_vk,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -269,6 +295,7 @@ impl RawImage {
             flags,
             image_type,
             format,
+            view_formats,
             extent,
             array_layers,
             mip_levels,
@@ -278,10 +305,10 @@ impl RawImage {
             stencil_usage,
             sharing,
             initial_layout,
-            external_memory_handle_types,
-            _ne: _,
             drm_format_modifiers: _,
             drm_format_modifier_plane_layouts: _,
+            external_memory_handle_types,
+            _ne: _,
         } = create_info;
 
         let format_properties =
@@ -337,6 +364,7 @@ impl RawImage {
             image_type,
             format,
             format_features,
+            view_formats,
             extent,
             array_layers,
             mip_levels,
@@ -927,12 +955,11 @@ impl RawImage {
                         physical_device.image_format_properties_unchecked(ImageFormatInfo {
                             flags: self.flags,
                             format: self.format,
+                            view_formats: self.view_formats.clone(),
                             image_type: self.image_type,
                             tiling: self.tiling,
                             usage: self.usage,
                             stencil_usage: self.stencil_usage,
-                            external_memory_handle_type: Some(handle_type),
-                            image_view_type: None,
                             drm_format_modifier_info: self.drm_format_modifier().map(
                                 |(drm_format_modifier, _)| ImageDrmFormatModifierInfo {
                                     drm_format_modifier,
@@ -940,6 +967,8 @@ impl RawImage {
                                     _ne: crate::NonExhaustive(()),
                                 },
                             ),
+                            external_memory_handle_type: Some(handle_type),
+                            image_view_type: None,
                             _ne: crate::NonExhaustive(()),
                         })
                     }
@@ -1196,6 +1225,12 @@ impl RawImage {
     #[inline]
     pub fn format_features(&self) -> FormatFeatures {
         self.format_features
+    }
+
+    /// Returns the formats that an image view created from this image can have.
+    #[inline]
+    pub fn view_formats(&self) -> &[Format] {
+        &self.view_formats
     }
 
     /// Returns the extent of the image.
@@ -1602,9 +1637,9 @@ impl_id_counter!(RawImage);
 /// Parameters to create a new `Image`.
 #[derive(Clone, Debug)]
 pub struct ImageCreateInfo {
-    /// Flags to enable.
+    /// Additional properties of the image.
     ///
-    /// The default value is [`ImageCreateFlags::empty()`].
+    /// The default value is empty.
     pub flags: ImageCreateFlags,
 
     /// The basic image dimensionality to create the image with.
@@ -1616,6 +1651,27 @@ pub struct ImageCreateInfo {
     ///
     /// The default value is `Format::UNDEFINED`.
     pub format: Format,
+
+    /// The additional formats that an image view can have when it is created from this image.
+    ///
+    /// If the list is not empty, and `flags` does not contain [`ImageCreateFlags::MUTABLE_FORMAT`],
+    /// then the list must contain at most one element, otherwise any number of elements are
+    /// allowed. The view formats must be compatible with `format`. If `flags` also contains
+    /// [`ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`], then the view formats can also be
+    /// uncompressed formats that are merely size-compatible with `format`.
+    ///
+    /// If the list is empty, then depending on `flags`, a view must have the same format as
+    /// `format`, can have any compatible format, or additionally any uncompressed size-compatible
+    /// format. However, this is less efficient than specifying the possible view formats
+    /// in advance.
+    ///
+    /// If this is not empty, then the device API version must be at least 1.2, or the
+    /// [`khr_image_format_list`] extension must be enabled on the device.
+    ///
+    /// The default value is empty.
+    ///
+    /// [`khr_image_format_list`]: crate::device::DeviceExtensions::khr_image_format_list
+    pub view_formats: Vec<Format>,
 
     /// The width, height and depth of the image.
     ///
@@ -1657,7 +1713,7 @@ pub struct ImageCreateInfo {
 
     /// How the image is going to be used.
     ///
-    /// The default value is [`ImageUsage::empty()`], which must be overridden.
+    /// The default value is empty, which must be overridden.
     pub usage: ImageUsage,
 
     /// How the stencil aspect of the image is going to be used, if different from the regular
@@ -1680,16 +1736,6 @@ pub struct ImageCreateInfo {
     /// The default value is [`ImageLayout::Undefined`].
     pub initial_layout: ImageLayout,
 
-    /// The external memory handle types that are going to be used with the image.
-    ///
-    /// If any of the fields in this value are set, the device must either support API version 1.1
-    /// or the [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
-    /// extension must be enabled, and `initial_layout` must be set to
-    /// [`ImageLayout::Undefined`].
-    ///
-    /// The default value is [`ExternalMemoryHandleTypes::empty()`].
-    pub external_memory_handle_types: ExternalMemoryHandleTypes,
-
     /// The Linux DRM format modifiers that the image should be created with.
     ///
     /// If this is not empty, then the
@@ -1697,7 +1743,7 @@ pub struct ImageCreateInfo {
     /// extension must be enabled on the device.
     ///
     /// The default value is empty.
-    pub drm_format_modifiers: SmallVec<[u64; 1]>,
+    pub drm_format_modifiers: Vec<u64>,
 
     /// If `drm_format_modifiers` contains one element, provides the subresource layouts of each
     /// memory plane of the image. The number of elements must equal
@@ -1708,11 +1754,22 @@ pub struct ImageCreateInfo {
     /// - If `image_type` is not [`ImageType::Dim3d`] or `extent[2]` is 1, then
     ///   [`SubresourceLayout::depth_pitch`] must be `None`.
     ///
-    /// If `drm_format_modifiers` does not contain one element, then
-    /// this must be empty.
+    /// If `drm_format_modifiers` does not contain one element, then this must be empty.
+    ///
+    /// The default value is empty.
     ///
     /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`]: crate::format::DrmFormatModifierProperties::drm_format_modifier_plane_count
-    pub drm_format_modifier_plane_layouts: SmallVec<[SubresourceLayout; 4]>,
+    pub drm_format_modifier_plane_layouts: Vec<SubresourceLayout>,
+
+    /// The external memory handle types that are going to be used with the image.
+    ///
+    /// If this is not empty, then the device API version must be at least 1.1, or the
+    /// [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
+    /// extension must be enabled on the device. `initial_layout` must be set to
+    /// [`ImageLayout::Undefined`].
+    ///
+    /// The default value is empty.
+    pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1724,6 +1781,7 @@ impl Default for ImageCreateInfo {
             flags: ImageCreateFlags::empty(),
             image_type: ImageType::Dim2d,
             format: Format::UNDEFINED,
+            view_formats: Vec::new(),
             extent: [0; 3],
             array_layers: 1,
             mip_levels: 1,
@@ -1734,8 +1792,8 @@ impl Default for ImageCreateInfo {
             sharing: Sharing::Exclusive,
             initial_layout: ImageLayout::Undefined,
             external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
-            drm_format_modifiers: SmallVec::new(),
-            drm_format_modifier_plane_layouts: SmallVec::new(),
+            drm_format_modifiers: Vec::new(),
+            drm_format_modifier_plane_layouts: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1747,6 +1805,7 @@ impl ImageCreateInfo {
             flags,
             image_type,
             format,
+            ref view_formats,
             extent,
             array_layers,
             mip_levels,
@@ -1756,10 +1815,10 @@ impl ImageCreateInfo {
             stencil_usage,
             ref sharing,
             initial_layout,
-            external_memory_handle_types,
-            _ne: _,
             ref drm_format_modifiers,
             ref drm_format_modifier_plane_layouts,
+            external_memory_handle_types,
+            _ne: _,
         } = self;
 
         let physical_device = device.physical_device();
@@ -1849,6 +1908,76 @@ impl ImageCreateInfo {
                 vuids: &["VUID-VkImageCreateInfo-flags-01573"],
                 ..Default::default()
             }));
+        }
+
+        if !view_formats.is_empty() {
+            if !(device.api_version() >= Version::V1_2
+                || device.enabled_extensions().khr_image_format_list)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "view_formats".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_image_format_list")]),
+                    ]),
+                    ..Default::default()
+                }));
+            }
+
+            if !flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) && view_formats.len() != 1 {
+                return Err(Box::new(ValidationError {
+                    problem: "`flags` does not contain `ImageCreateFlags::MUTABLE_FORMAT`, but \
+                        `view_formats` contains more than one element"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-04738"],
+                    ..Default::default()
+                }));
+            }
+
+            for (index, &view_format) in view_formats.iter().enumerate() {
+                view_format.validate_device(device).map_err(|err| {
+                    err.add_context(format!("view_formats[{}]", index))
+                        .set_vuids(&["VUID-VkImageFormatListCreateInfo-pViewFormats-parameter"])
+                })?;
+
+                if flags.intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
+                    && view_format.compression().is_none()
+                {
+                    if !(view_format.compatibility() == format.compatibility()
+                        || view_format.block_size() == format.block_size())
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`flags` contains \
+                                `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
+                                `view_formats[{}]` is an uncompressed format, but \
+                                it is not compatible with `format`, and \
+                                does not have an equal block size",
+                                index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkImageCreateInfo-pNext-06722"],
+                            ..Default::default()
+                        }));
+                    }
+                } else {
+                    if view_format.compatibility() != format.compatibility() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "`flags` does not contain \
+                                `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, or \
+                                `view_format[{}]` is a compressed format, but \
+                                it is not compatible with `create_info.format`",
+                                index
+                            )
+                            .into(),
+                            vuids: &["VUID-VkImageCreateInfo-pNext-06722"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
         }
 
         match image_type {
@@ -2407,7 +2536,7 @@ impl ImageCreateInfo {
         {
             return Err(Box::new(ValidationError {
                 problem: "`flags` contains `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, \
-                        but `format` is not a compressed format"
+                    but `format` is not a compressed format"
                     .into(),
                 vuids: &["VUID-VkImageCreateInfo-flags-01572"],
                 ..Default::default()
@@ -2418,7 +2547,7 @@ impl ImageCreateInfo {
             if format.planes().len() < 2 {
                 return Err(Box::new(ValidationError {
                     problem: "`flags` contains `ImageCreateFlags::DISJOINT`, but `format` \
-                            is not a multi-planat format"
+                        is not a multi-planat format"
                         .into(),
                     vuids: &["VUID-VkImageCreateInfo-format-01577"],
                     ..Default::default()
@@ -2482,41 +2611,6 @@ impl ImageCreateInfo {
             }
         }
 
-        /* External memory handles */
-
-        if !external_memory_handle_types.is_empty() {
-            if !(device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_external_memory)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "external_memory_handle_types".into(),
-                    problem: "is not empty".into(),
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
-                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
-                    ]),
-                    ..Default::default()
-                }));
-            }
-
-            external_memory_handle_types
-                .validate_device(device)
-                .map_err(|err| {
-                    err.add_context("external_memory_handle_types")
-                        .set_vuids(&["VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter"])
-                })?;
-
-            if initial_layout != ImageLayout::Undefined {
-                return Err(Box::new(ValidationError {
-                    problem: "`external_memory_handle_types` is not empty, but \
-                        `initial_layout` is not `ImageLayout::Undefined`"
-                        .into(),
-                    vuids: &["VUID-VkImageCreateInfo-pNext-01443"],
-                    ..Default::default()
-                }));
-            }
-        }
-
         if !drm_format_modifiers.is_empty() {
             // This implicitly checks for the enabled extension too,
             // so no need to check that separately.
@@ -2530,10 +2624,11 @@ impl ImageCreateInfo {
                 }));
             }
 
-            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) {
+            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) && view_formats.is_empty() {
                 return Err(Box::new(ValidationError {
-                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
-                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`"
+                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, and \
+                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`, but \
+                        `view_formats` is empty"
                         .into(),
                     vuids: &["VUID-VkImageCreateInfo-tiling-02353"],
                     ..Default::default()
@@ -2644,6 +2739,39 @@ impl ImageCreateInfo {
                     problem: "`drm_format_modifiers` does not contain one element, but \
                         `drm_format_modifier_plane_layouts` is not empty"
                         .into(),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !external_memory_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_memory)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "external_memory_handle_types".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
+                    ]),
+                    ..Default::default()
+                }));
+            }
+
+            external_memory_handle_types
+                .validate_device(device)
+                .map_err(|err| {
+                    err.add_context("external_memory_handle_types")
+                        .set_vuids(&["VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter"])
+                })?;
+
+            if initial_layout != ImageLayout::Undefined {
+                return Err(Box::new(ValidationError {
+                    problem: "`external_memory_handle_types` is not empty, but \
+                        `initial_layout` is not `ImageLayout::Undefined`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-pNext-01443"],
                     ..Default::default()
                 }));
             }

@@ -381,6 +381,16 @@ impl ImageView {
         /* Check flags requirements */
 
         if format != image.format() {
+            if !image.flags().intersects(ImageCreateFlags::MUTABLE_FORMAT) {
+                return Err(Box::new(ValidationError {
+                    problem: "`create_info.format` does not equal `image.format()`, but \
+                        `image.flags()` does not contain `ImageCreateFlags::MUTABLE_FORMAT`"
+                        .into(),
+                    vuids: &["VUID-VkImageViewCreateInfo-image-01762"],
+                    ..Default::default()
+                }));
+            }
+
             if !image.format().planes().is_empty()
                 && subresource_range.aspects.intersects(ImageAspects::COLOR)
             {
@@ -394,46 +404,29 @@ impl ImageView {
                 }));
             }
 
-            if !image.flags().intersects(ImageCreateFlags::MUTABLE_FORMAT) {
-                return Err(Box::new(ValidationError {
-                    problem: "`create_info.format` does not equal `image.format()`, but \
-                        `image.flags()` does not contain `ImageCreateFlags::MUTABLE_FORMAT`"
-                        .into(),
-                    vuids: &["VUID-VkImageViewCreateInfo-image-01762"],
-                    ..Default::default()
-                }));
-            }
-
-            // TODO: it is unclear what the number of bits is for compressed formats.
-            // See https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2361
-            if device.enabled_extensions().khr_portability_subset
-                && !device.enabled_features().image_view_format_reinterpretation
-                && format.components() != image.format().components()
-            {
-                return Err(Box::new(ValidationError {
-                    problem: "this device is a portability subset device, and \
-                        `create_info.format` does not have the same components and \
-                        number of bits per component as `image.format()`"
-                        .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "image_view_format_reinterpretation",
-                    )])]),
-                    vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatReinterpretation-04466"],
-                    ..Default::default()
-                }));
-            }
-
-            if image
+            if !image.view_formats().is_empty() {
+                if !image.view_formats().contains(&format) {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image.view_formats()` is not empty, but it does not contain \
+                            `create_info.format`"
+                            .into(),
+                        vuids: &["VUID-VkImageViewCreateInfo-pNext-01585"],
+                        ..Default::default()
+                    }));
+                }
+            } else if image
                 .flags()
                 .intersects(ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE)
+                && format.compression().is_none()
             {
                 if !(format.compatibility() == image.format().compatibility()
                     || format.block_size() == image.format().block_size())
                 {
                     return Err(Box::new(ValidationError {
                         problem: "`image.flags()` contains \
-                            `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, but \
-                            `create_info.format` is not compatible with `image.format()`, or \
+                            `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
+                            `create_info.format` is an uncompressed format, but \
+                            it is not compatible with `image.format()`, and \
                             does not have an equal block size"
                             .into(),
                         vuids: &["VUID-VkImageViewCreateInfo-image-01583"],
@@ -441,41 +434,40 @@ impl ImageView {
                     }));
                 }
 
-                if format.compression().is_none() {
-                    if subresource_range.array_layers.len() != 1 {
-                        return Err(Box::new(ValidationError {
-                            problem: "`image.flags()` contains \
-                                `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
-                                `create_info.format` is not a compressed format, but \
-                                the length of `create_info.subresource_range.array_layers` \
-                                is not 1"
-                                .into(),
-                            vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
-                            ..Default::default()
-                        }));
-                    }
+                if subresource_range.array_layers.len() != 1 {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image.flags()` contains \
+                            `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
+                            `create_info.format` is an uncompressed format, but \
+                            the length of `create_info.subresource_range.array_layers` \
+                            is not 1"
+                            .into(),
+                        vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
+                        ..Default::default()
+                    }));
+                }
 
-                    if subresource_range.mip_levels.len() != 1 {
-                        return Err(Box::new(ValidationError {
-                            problem: "`image.flags()` contains \
-                                `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
-                                `create_info.format` is not a compressed format, but \
-                                the length of `create_info.subresource_range.mip_levels` \
-                                is not 1"
-                                .into(),
-                            vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
-                            ..Default::default()
-                        }));
-                    }
+                if subresource_range.mip_levels.len() != 1 {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image.flags()` contains \
+                            `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
+                            `create_info.format` is an uncompressed format, but \
+                            the length of `create_info.subresource_range.mip_levels` \
+                            is not 1"
+                            .into(),
+                        vuids: &["VUID-VkImageViewCreateInfo-image-07072"],
+                        ..Default::default()
+                    }));
                 }
             } else {
                 if image.format().planes().is_empty() {
                     if format.compatibility() != image.format().compatibility() {
                         return Err(Box::new(ValidationError {
                             problem: "`image.flags()` does not contain \
-                                `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, and \
+                                `ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`, or \
+                                `create_info.format` is a compressed format, and \
                                 `image.format()` is not a multi-planar format, but \
-                                is not compatible with `create_info.format`"
+                                it is not compatible with `create_info.format`"
                                 .into(),
                             vuids: &["VUID-VkImageViewCreateInfo-image-01761"],
                             ..Default::default()
@@ -508,6 +500,25 @@ impl ImageView {
                         }));
                     }
                 }
+            }
+
+            // TODO: it is unclear what the number of bits is for compressed formats.
+            // See https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2361
+            if device.enabled_extensions().khr_portability_subset
+                && !device.enabled_features().image_view_format_reinterpretation
+                && format.components() != image.format().components()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "this device is a portability subset device, and \
+                        `create_info.format` does not have the same components and \
+                        number of bits per component as `image.format()`"
+                        .into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "image_view_format_reinterpretation",
+                    )])]),
+                    vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatReinterpretation-04466"],
+                    ..Default::default()
+                }));
             }
         }
 

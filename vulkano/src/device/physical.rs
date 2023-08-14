@@ -1029,6 +1029,7 @@ impl PhysicalDevice {
                     external_memory_handle_type,
                     image_view_type,
                     ref drm_format_modifier_info,
+                    ref view_formats,
                     _ne: _,
                 } = image_format_info;
 
@@ -1042,6 +1043,8 @@ impl PhysicalDevice {
                 };
                 let mut drm_format_modifier_info_vk = None;
                 let mut external_info_vk = None;
+                let mut format_list_info_vk = None;
+                let format_list_view_formats_vk: Vec<_>;
                 let mut image_view_info_vk = None;
                 let mut stencil_usage_info_vk = None;
 
@@ -1082,6 +1085,23 @@ impl PhysicalDevice {
                             handle_type: handle_type.into(),
                             ..Default::default()
                         });
+
+                    next.p_next = info2_vk.p_next;
+                    info2_vk.p_next = next as *const _ as *const _;
+                }
+
+                if !view_formats.is_empty() {
+                    format_list_view_formats_vk = view_formats
+                        .iter()
+                        .copied()
+                        .map(ash::vk::Format::from)
+                        .collect();
+
+                    let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
+                        view_format_count: format_list_view_formats_vk.len() as u32,
+                        p_view_formats: format_list_view_formats_vk.as_ptr(),
+                        ..Default::default()
+                    });
 
                     next.p_next = info2_vk.p_next;
                     info2_vk.p_next = next as *const _ as *const _;
