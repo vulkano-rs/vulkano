@@ -1652,7 +1652,7 @@ pub struct ImageCreateInfo {
     /// The default value is `Format::UNDEFINED`.
     pub format: Format,
 
-    /// The additional formats that an image view can have when it is created from this image.
+    /// The formats that an image view can have when it is created from this image.
     ///
     /// If the list is not empty, and `flags` does not contain [`ImageCreateFlags::MUTABLE_FORMAT`],
     /// then the list must contain at most one element, otherwise any number of elements are

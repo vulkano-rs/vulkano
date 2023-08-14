@@ -1615,8 +1615,7 @@ pub struct SwapchainCreateInfo {
     /// The default value is `Format::UNDEFINED`.
     pub image_format: Format,
 
-    /// The additional formats that an image view can have when it is created from one of the
-    /// swapchain images.
+    /// The formats that an image view can have when it is created from one of the swapchain images.
     ///
     /// If the list is not empty, and `flags` does not contain
     /// [`SwapchainCreateFlags::MUTABLE_FORMAT`], then the list must contain at most one element,
