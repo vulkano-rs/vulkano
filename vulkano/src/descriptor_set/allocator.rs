@@ -189,8 +189,8 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
     }
 }
 
-unsafe impl DescriptorSetAllocator for Arc<StandardDescriptorSetAllocator> {
-    type Alloc = StandardDescriptorSetAlloc;
+unsafe impl<T: DescriptorSetAllocator> DescriptorSetAllocator for Arc<T> {
+    type Alloc = T::Alloc;
 
     #[inline]
     fn allocate(

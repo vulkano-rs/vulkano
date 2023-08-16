@@ -1566,7 +1566,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     }
 }
 
-unsafe impl<S: Suballocator> MemoryAllocator for Arc<GenericMemoryAllocator<S>> {
+unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
     fn find_memory_type_index(
         &self,
         memory_type_bits: u32,
