@@ -1156,10 +1156,34 @@ impl RawImage {
             return Err((VulkanError::from(err), self, allocations.into_iter()));
         }
 
+        let usage = self
+            .usage
+            .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
+
+        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::ShaderReadOnlyOptimal
+        } else if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
+            && usage.difference(ImageUsage::COLOR_ATTACHMENT).is_empty()
+        {
+            ImageLayout::ColorAttachmentOptimal
+        } else if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::DepthStencilAttachmentOptimal
+        } else {
+            ImageLayout::General
+        };
+
         Ok(Image::from_raw(
             self,
             ImageMemory::Normal(allocations),
-            ImageLayout::General,
+            layout,
         ))
     }
 
