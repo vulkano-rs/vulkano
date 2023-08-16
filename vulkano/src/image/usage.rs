@@ -49,26 +49,23 @@ vulkan_bitflags! {
     /// The image can be used as an input attachment in a render pass/framebuffer.
     INPUT_ATTACHMENT = INPUT_ATTACHMENT,
 
-    /* TODO: enable
     // TODO: document
     VIDEO_DECODE_DST = VIDEO_DECODE_DST_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
-    ]),*/
+    ]),
 
-    /* TODO: enable
     // TODO: document
     VIDEO_DECODE_SRC = VIDEO_DECODE_SRC_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
-    ]),*/
+    ]),
 
-    /* TODO: enable
     // TODO: document
     VIDEO_DECODE_DPB = VIDEO_DECODE_DPB_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_video_decode_queue)]),
-    ]),*/
+    ]),
 
     /* TODO: enable
     // TODO: document

@@ -15,8 +15,8 @@ use crate::{
     display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
     format::{DrmFormatModifierProperties, Format, FormatProperties},
     image::{
-        ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties, ImageUsage,
-        SparseImageFormatInfo, SparseImageFormatProperties,
+        sampler::ComponentMapping, ImageDrmFormatModifierInfo, ImageFormatInfo,
+        ImageFormatProperties, ImageUsage, SparseImageFormatInfo, SparseImageFormatProperties,
     },
     instance::{Instance, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
@@ -30,9 +30,15 @@ use crate::{
         semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
         Sharing,
     },
+    video::{
+        CodecCapabilities, VideoCapabilities, VideoCodecOperation, VideoDecodeCapabilities,
+        VideoDecodeCodecCapabilities, VideoDecodeH264Capabilities, VideoDecodeH264ProfileInfo,
+        VideoFormatInfo, VideoFormatProperties, VideoProfileInfo,
+    },
     DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
 };
+use ash::vk::VideoFormatPropertiesKHR;
 use bytemuck::cast_slice;
 use parking_lot::RwLock;
 use std::{
@@ -3105,6 +3111,219 @@ impl PhysicalDevice {
             display as *mut _,
             visual_id,
         ) != 0
+    }
+
+    pub fn video_format_properties(
+        &self,
+        video_format_info: VideoFormatInfo,
+    ) -> Result<Vec<VideoFormatProperties>, Validated<VulkanError>> {
+        self.validate_video_format_info(&video_format_info)?;
+
+        unsafe { Ok(self.video_format_properties_unchecked(video_format_info)?) }
+    }
+
+    fn validate_video_format_info(
+        &self,
+        _video_format_info: &VideoFormatInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.supported_extensions.khr_video_queue || self.api_version() < Version::V1_3 {
+            Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                    Requires::DeviceExtension("khr_video_queue"),
+                    // Requires::APIVersion(Version::V1_3), // ?
+                ])]),
+                ..Default::default()
+            }))
+        } else {
+            Ok(())
+        }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn video_format_properties_unchecked(
+        &self,
+        video_format_info: VideoFormatInfo,
+    ) -> Result<Vec<VideoFormatProperties>, VulkanError> {
+        loop {
+            let mut num_formats = 0;
+            let mut video_profile_list_info_vk = None;
+            let mut video_profile_info_vk = vec![];
+            let mut video_decode_profile_info_vk = None;
+
+            let video_format_info_vk = video_format_info.to_vulkan(
+                &mut video_profile_list_info_vk,
+                &mut video_profile_info_vk,
+                &mut video_decode_profile_info_vk,
+            );
+
+            let fns = self.instance().fns();
+
+            (fns.khr_video_queue
+                .get_physical_device_video_format_properties_khr)(
+                self.handle(),
+                &video_format_info_vk,
+                &mut num_formats,
+                std::ptr::null_mut(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+
+            let mut video_format_properties_vk =
+                vec![VideoFormatPropertiesKHR::default(); num_formats as usize];
+
+            let result = (fns
+                .khr_video_queue
+                .get_physical_device_video_format_properties_khr)(
+                self.handle(),
+                &video_format_info_vk,
+                &mut num_formats,
+                video_format_properties_vk.as_mut_ptr(),
+            );
+
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    video_format_properties_vk.set_len(num_formats as usize);
+                    return Ok(video_format_properties_vk
+                        .into_iter()
+                        .filter_map(|vk| {
+                            Some(VideoFormatProperties {
+                                format: vk.format.try_into().ok()?,
+                                component_mapping: ComponentMapping {
+                                    r: vk.component_mapping.r.try_into().ok()?,
+                                    g: vk.component_mapping.g.try_into().ok()?,
+                                    b: vk.component_mapping.b.try_into().ok()?,
+                                    a: vk.component_mapping.a.try_into().ok()?,
+                                },
+                                image_create_flags: vk.image_create_flags.try_into().ok()?,
+                                image_type: vk.image_type.try_into().ok()?,
+                                image_tiling: vk.image_tiling.try_into().ok()?,
+                                image_usage_flags: vk.image_usage_flags.try_into().ok()?,
+                            })
+                        })
+                        .collect());
+                }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
+            }
+        }
+    }
+
+    pub fn video_capabilities(
+        &self,
+        video_profile: VideoProfileInfo,
+    ) -> Result<VideoCapabilities, Validated<VulkanError>> {
+        self.validate_video_capabilities(&video_profile)?;
+
+        unsafe { Ok(self.video_capabilities_unchecked(video_profile)?) }
+    }
+
+    fn validate_video_capabilities(
+        &self,
+        video_profile: &VideoProfileInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.supported_extensions.khr_video_queue || self.api_version() < Version::V1_3 {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                    Requires::DeviceExtension("khr_video_queue"),
+                    // Requires::APIVersion(Version::V1_3), // ?
+                ])]),
+                ..Default::default()
+            }));
+        }
+
+        video_profile
+            .validate()
+            .map_err(|err| err.add_context("profile_info"))
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn video_capabilities_unchecked(
+        &self,
+        video_profile: VideoProfileInfo,
+    ) -> Result<VideoCapabilities, VulkanError> {
+        let mut video_decode_capabilities_vk = None;
+        let mut video_decode_capabilities_next_vk = None;
+        let mut video_decode_profile_info_next_vk = None;
+
+        let VideoProfileInfo {
+            video_codec_operation,
+            ..
+        } = video_profile;
+
+        let mut video_capabilities_vk = video_profile.to_vulkan_video_capabilities(
+            &mut video_decode_capabilities_vk,
+            &mut video_decode_capabilities_next_vk,
+        );
+
+        let mut video_profile_info_vk =
+            video_profile.to_vulkan(&mut video_decode_profile_info_next_vk);
+
+        let fns = self.instance().fns();
+        (fns.khr_video_queue
+            .get_physical_device_video_capabilities_khr)(
+            self.handle(),
+            &mut video_profile_info_vk,
+            &mut video_capabilities_vk,
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        Ok(VideoCapabilities {
+            flags: video_capabilities_vk.flags.into(),
+            min_bitstream_buffer_offset_alignment: video_capabilities_vk
+                .min_bitstream_buffer_offset_alignment,
+            min_bitstream_buffer_size_alignment: video_capabilities_vk
+                .min_bitstream_buffer_size_alignment,
+            picture_access_granularity: [
+                video_capabilities_vk.picture_access_granularity.width,
+                video_capabilities_vk.picture_access_granularity.height,
+            ],
+            min_coded_extent: [
+                video_capabilities_vk.min_coded_extent.width,
+                video_capabilities_vk.min_coded_extent.height,
+            ],
+            max_coded_extent: [
+                video_capabilities_vk.max_coded_extent.width,
+                video_capabilities_vk.max_coded_extent.height,
+            ],
+            max_dpb_slots: video_capabilities_vk.max_dpb_slots,
+            max_active_reference_pictures: video_capabilities_vk.max_active_reference_pictures,
+            std_header_version: video_capabilities_vk.std_header_version.into(),
+            codec_capabilities: match video_codec_operation {
+                VideoCodecOperation::DecodeH264 | VideoCodecOperation::DecodeH265 => {
+                    let video_decode_capabilities_vk = video_decode_capabilities_vk.unwrap();
+
+                    CodecCapabilities::VideoDecode(VideoDecodeCapabilities {
+                        flags: video_decode_capabilities_vk.flags.into(),
+                        codec_capabilities: match video_codec_operation {
+                            VideoCodecOperation::DecodeH264 => {
+                                let video_decode_h264_capabilities_vk =
+                                    match video_decode_capabilities_next_vk.unwrap() {
+                                        crate::video::VideoDecodeCapabilitiesNextVk::H264(v) => v,
+                                        _ => panic!("Unexpected video decode capabilities"),
+                                    };
+
+                                VideoDecodeCodecCapabilities::H264(VideoDecodeH264Capabilities {
+                                    max_level_idc: video_decode_h264_capabilities_vk.max_level_idc,
+                                    field_offset_granularity: [
+                                        video_decode_h264_capabilities_vk
+                                            .field_offset_granularity
+                                            .x,
+                                        video_decode_h264_capabilities_vk
+                                            .field_offset_granularity
+                                            .y,
+                                    ],
+                                    _ne: crate::NonExhaustive(()),
+                                })
+                            }
+                            VideoCodecOperation::DecodeH265 => unimplemented!(),
+                        },
+                        _ne: crate::NonExhaustive(()),
+                    })
+                }
+            },
+            _ne: crate::NonExhaustive(()),
+        })
     }
 }
 
