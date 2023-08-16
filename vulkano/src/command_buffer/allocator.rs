@@ -276,12 +276,12 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
     }
 }
 
-unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
-    type Iter = IntoIter<[StandardCommandBufferBuilderAlloc; 1]>;
+unsafe impl<T: CommandBufferAllocator> CommandBufferAllocator for Arc<T> {
+    type Iter = T::Iter;
 
-    type Builder = StandardCommandBufferBuilderAlloc;
+    type Builder = T::Builder;
 
-    type Alloc = StandardCommandBufferAlloc;
+    type Alloc = T::Alloc;
 
     #[inline]
     fn allocate(
