@@ -252,9 +252,7 @@ impl Buffer {
         let buffer = Buffer::new_sized(allocator, create_info, allocation_info)?;
 
         {
-            let mut write_guard = buffer
-                .write()
-                .expect("the buffer is somehow in use before we returned it to the user");
+            let mut write_guard = buffer.write().unwrap();
             *write_guard = data;
         }
 
@@ -293,9 +291,7 @@ impl Buffer {
         )?;
 
         {
-            let mut write_guard = buffer
-                .write()
-                .expect("the buffer is somehow in use before we returned it to the user");
+            let mut write_guard = buffer.write().unwrap();
 
             for (o, i) in write_guard.iter_mut().zip(iter) {
                 *o = i;
