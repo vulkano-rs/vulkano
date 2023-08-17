@@ -508,12 +508,12 @@ impl PipelineShaderStageCreateInfo {
                 let [max_x, max_y, max_z] = max_compute_work_group_size;
                 if x > max_x || y > max_y || z > max_z {
                     return Err(Box::new(ValidationError {
-                        problem: format!("`workgroup size` {local_size:?} is greater than `max_work_group_size` {max_compute_work_group_size:?}").into(),
+                        problem: format!("`workgroup size` {local_size:?} is greater than `max_compute_work_group_size` {max_compute_work_group_size:?}").into(),
                         ..Default::default()
                     }));
                 }
+                let max_invocations = properties.max_compute_work_group_invocations;
                 if let Some(workgroup_size) = (|| x.checked_mul(y)?.checked_mul(z))() {
-                    let max_invocations = properties.max_compute_work_group_invocations;
                     if workgroup_size > max_invocations {
                         return Err(Box::new(ValidationError {
                             problem: format!("the product of `workgroup size` {local_size:?} = {workgroup_size} is greater than `max_compute_work_group_invocations` {max_invocations}").into(),
@@ -523,12 +523,9 @@ impl PipelineShaderStageCreateInfo {
                     Some(workgroup_size)
                 } else {
                     return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "the product of `workgroup size` {local_size:?} overflowed"
-                        )
-                        .into(),
-                        ..Default::default()
-                    }));
+                            problem: format!("the product of `workgroup size` {local_size:?} = (overflow) is greater than `max_compute_work_group_invocations` {max_invocations}").into(),
+                            ..Default::default()
+                        }));
                 }
             } else {
                 // TODO: Additional stages when `.local_size()` supports them.
