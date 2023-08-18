@@ -321,6 +321,21 @@ pub struct PipelineShaderStageCreateInfo {
     /// The default value is empty.
     pub specialization_info: HashMap<u32, SpecializationConstant>,
 
+    /// The required subgroup size.
+    ///
+    /// Requires [`subgroup_size_control`](crate::device::Features::subgroup_size_control). The
+    /// shader stage must be included in
+    /// [`required_subgroup_size_stages`](crate::device::Properties::required_subgroup_size_stages).
+    /// Subgroup size must be power of 2 and within
+    /// [`min_subgroup_size`](crate::device::Properties::min_subgroup_size)
+    /// and [`max_subgroup_size`](crate::device::Properties::max_subgroup_size).
+    ///
+    /// For compute shaders, `max_compute_workgroup_subgroups * required_subgroup_size` must be
+    /// greater than or equal to `workgroup_size.x * workgroup_size.y * workgroup_size.z`.
+    ///
+    /// The default value is None.
+    pub required_subgroup_size: Option<u32>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -332,6 +347,7 @@ impl PipelineShaderStageCreateInfo {
             flags: PipelineShaderStageCreateFlags::empty(),
             entry_point,
             specialization_info: HashMap::default(),
+            required_subgroup_size: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -341,6 +357,7 @@ impl PipelineShaderStageCreateInfo {
             flags,
             ref entry_point,
             ref specialization_info,
+            ref required_subgroup_size,
             _ne: _,
         } = self;
 
@@ -469,8 +486,143 @@ impl PipelineShaderStageCreateInfo {
             }
         }
 
+        let workgroup_size = if let Some(local_size) =
+            entry_point_info.local_size(specialization_info)?
+        {
+            let [x, y, z] = local_size;
+            if x == 0 || y == 0 || z == 0 {
+                return Err(Box::new(ValidationError {
+                    problem: format!("`workgroup size` {local_size:?} cannot be 0").into(),
+                    ..Default::default()
+                }));
+            }
+            let properties = device.physical_device().properties();
+            if stage_enum == ShaderStage::Compute {
+                let max_compute_work_group_size = properties.max_compute_work_group_size;
+                let [max_x, max_y, max_z] = max_compute_work_group_size;
+                if x > max_x || y > max_y || z > max_z {
+                    return Err(Box::new(ValidationError {
+                        problem: format!("`workgroup size` {local_size:?} is greater than `max_compute_work_group_size` {max_compute_work_group_size:?}").into(),
+                        ..Default::default()
+                    }));
+                }
+                let max_invocations = properties.max_compute_work_group_invocations;
+                if let Some(workgroup_size) = (|| x.checked_mul(y)?.checked_mul(z))() {
+                    if workgroup_size > max_invocations {
+                        return Err(Box::new(ValidationError {
+                            problem: format!("the product of `workgroup size` {local_size:?} = {workgroup_size} is greater than `max_compute_work_group_invocations` {max_invocations}").into(),
+                            ..Default::default()
+                        }));
+                    }
+                    Some(workgroup_size)
+                } else {
+                    return Err(Box::new(ValidationError {
+                            problem: format!("the product of `workgroup size` {local_size:?} = (overflow) is greater than `max_compute_work_group_invocations` {max_invocations}").into(),
+                            ..Default::default()
+                        }));
+                }
+            } else {
+                // TODO: Additional stages when `.local_size()` supports them.
+                unreachable!()
+            }
+        } else {
+            None
+        };
+
+        if let Some(required_subgroup_size) = required_subgroup_size {
+            validate_required_subgroup_size(
+                device,
+                stage_enum,
+                workgroup_size,
+                *required_subgroup_size,
+            )?;
+        }
+
         Ok(())
     }
+}
+
+pub(crate) fn validate_required_subgroup_size(
+    device: &Device,
+    stage: ShaderStage,
+    workgroup_size: Option<u32>,
+    subgroup_size: u32,
+) -> Result<(), Box<ValidationError>> {
+    if !device.enabled_features().subgroup_size_control {
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                "subgroup_size_control",
+            )])]),
+            vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02755"],
+            ..Default::default()
+        }));
+    }
+    let properties = device.physical_device().properties();
+    if !properties
+        .required_subgroup_size_stages
+        .unwrap_or_default()
+        .contains_enum(stage)
+    {
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem: format!("`shader stage` {stage:?} is not in `required_subgroup_size_stages`")
+                .into(),
+            vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02755"],
+            ..Default::default()
+        }));
+    }
+    if !subgroup_size.is_power_of_two() {
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem: format!("`subgroup_size` {subgroup_size} is not a power of 2").into(),
+            vuids: &["VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02760"],
+            ..Default::default()
+        }));
+    }
+    let min_subgroup_size = properties.min_subgroup_size.unwrap_or(1);
+    if subgroup_size < min_subgroup_size {
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem: format!(
+                "`subgroup_size` {subgroup_size} is less than `min_subgroup_size` {min_subgroup_size}"
+            )
+            .into(),
+            vuids: &["VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02761"],
+            ..Default::default()
+        }));
+    }
+    let max_subgroup_size = properties.max_subgroup_size.unwrap_or(128);
+    if subgroup_size > max_subgroup_size {
+        return Err(Box::new(ValidationError {
+            context: "required_subgroup_size".into(),
+            problem:
+                format!("`subgroup_size` {subgroup_size} is greater than `max_subgroup_size` {max_subgroup_size}")
+                    .into(),
+            vuids: &["VUID-VkPipelineShaderStageRequiredSubgroupSizeCreateInfo-requiredSubgroupSize-02762"],
+            ..Default::default()
+        }));
+    }
+    if let Some(workgroup_size) = workgroup_size {
+        if stage == ShaderStage::Compute {
+            let max_compute_workgroup_subgroups = properties
+                .max_compute_workgroup_subgroups
+                .unwrap_or_default();
+            if max_compute_workgroup_subgroups
+                .checked_mul(subgroup_size)
+                .unwrap_or(u32::MAX)
+                < workgroup_size
+            {
+                return Err(Box::new(ValidationError {
+                    context: "required_subgroup_size".into(),
+                    problem: format!("`subgroup_size` {subgroup_size} creates more than {max_compute_workgroup_subgroups} subgroups").into(),
+                    vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02756"],
+                    ..Default::default()
+                }));
+            }
+        }
+    }
+    Ok(())
 }
 
 vulkan_bitflags! {

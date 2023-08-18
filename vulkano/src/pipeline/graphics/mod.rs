@@ -167,7 +167,6 @@ impl GraphicsPipeline {
         create_info
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
-
         Ok(())
     }
 
@@ -204,6 +203,8 @@ impl GraphicsPipeline {
             specialization_info_vk: ash::vk::SpecializationInfo,
             specialization_map_entries_vk: Vec<ash::vk::SpecializationMapEntry>,
             specialization_data_vk: Vec<u8>,
+            required_subgroup_size_create_info:
+                Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo>,
         }
 
         let (mut stages_vk, mut per_stage_vk): (SmallVec<[_; 5]>, SmallVec<[_; 5]>) = stages
@@ -213,6 +214,7 @@ impl GraphicsPipeline {
                     flags,
                     ref entry_point,
                     ref specialization_info,
+                    ref required_subgroup_size,
                     _ne: _,
                 } = stage;
 
@@ -235,7 +237,13 @@ impl GraphicsPipeline {
                         }
                     })
                     .collect();
-
+                let required_subgroup_size_create_info =
+                    required_subgroup_size.map(|required_subgroup_size| {
+                        ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo {
+                            required_subgroup_size,
+                            ..Default::default()
+                        }
+                    });
                 (
                     ash::vk::PipelineShaderStageCreateInfo {
                         flags: flags.into(),
@@ -255,6 +263,7 @@ impl GraphicsPipeline {
                         },
                         specialization_map_entries_vk,
                         specialization_data_vk,
+                        required_subgroup_size_create_info,
                     },
                 )
             })
@@ -267,10 +276,17 @@ impl GraphicsPipeline {
                 specialization_info_vk,
                 specialization_map_entries_vk,
                 specialization_data_vk,
+                required_subgroup_size_create_info,
             },
         ) in (stages_vk.iter_mut()).zip(per_stage_vk.iter_mut())
         {
             *stage_vk = ash::vk::PipelineShaderStageCreateInfo {
+                p_next: required_subgroup_size_create_info.as_ref().map_or(
+                    ptr::null(),
+                    |required_subgroup_size_create_info| {
+                        required_subgroup_size_create_info as *const _ as _
+                    },
+                ),
                 p_name: name_vk.as_ptr(),
                 p_specialization_info: specialization_info_vk,
                 ..*stage_vk
@@ -2420,6 +2436,7 @@ impl GraphicsPipelineCreateInfo {
                 flags: _,
                 ref entry_point,
                 specialization_info: _,
+                required_subgroup_size: _vk,
                 _ne: _,
             } = stage;
 

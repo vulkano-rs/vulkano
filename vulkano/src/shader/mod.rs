@@ -549,6 +549,78 @@ pub struct EntryPointInfo {
     pub output_interface: ShaderInterface,
 }
 
+impl EntryPointInfo {
+    /// The local size in Compute shaders, None otherwise.
+    ///
+    /// `specialization_info` is used for LocalSizeId / WorkgroupSizeId, using specialization_constants if not found.
+    /// Errors if specialization constants are not found or are not u32's.
+    pub(crate) fn local_size(
+        &self,
+        specialization_info: &HashMap<u32, SpecializationConstant>,
+    ) -> Result<Option<[u32; 3]>, Box<ValidationError>> {
+        if let ShaderExecution::Compute(execution) = self.execution {
+            match execution {
+                ComputeShaderExecution::LocalSize(local_size)
+                | ComputeShaderExecution::LocalSizeId(local_size) => {
+                    let mut output = [0; 3];
+                    for (output, local_size) in output.iter_mut().zip(local_size) {
+                        let id = match local_size {
+                            LocalSize::Literal(literal) => {
+                                *output = literal;
+                                continue;
+                            }
+                            LocalSize::SpecId(id) => id,
+                        };
+                        if let Some(default) = self.specialization_constants.get(&id) {
+                            let default_value = if let SpecializationConstant::U32(default_value) =
+                                default
+                            {
+                                default_value
+                            } else {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "`entry_point.info().specialization_constants[{id}]` is not a 32 bit integer"
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                }));
+                            };
+                            if let Some(provided) = specialization_info.get(&id) {
+                                if let SpecializationConstant::U32(provided_value) = provided {
+                                    *output = *provided_value;
+                                } else {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "`specialization_info[{0}]` does not have the same type as \
+                                            `entry_point.info().specialization_constants[{0}]`",
+                                            id,
+                                        )
+                                        .into(),
+                                        vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
+                                        ..Default::default()
+                                    }));
+                                }
+                            }
+                            *output = *default_value;
+                        } else {
+                            return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "specialization constant {id} not found in `entry_point.info().specialization_constants`"
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                }));
+                        }
+                    }
+                    Ok(Some(output))
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 /// Represents a shader entry point in a shader module.
 ///
 /// Can be obtained by calling [`entry_point`](ShaderModule::entry_point) on the shader module.
@@ -581,15 +653,15 @@ pub enum ShaderExecution {
     TessellationEvaluation,
     Geometry(GeometryShaderExecution),
     Fragment(FragmentShaderExecution),
-    Compute,
+    Compute(ComputeShaderExecution),
     RayGeneration,
     AnyHit,
     ClosestHit,
     Miss,
     Intersection,
     Callable,
-    Task,
-    Mesh,
+    Task, // TODO: like compute?
+    Mesh, // TODO: like compute?
     SubpassShading,
 }
 
@@ -601,7 +673,7 @@ impl From<&ShaderExecution> for ExecutionModel {
             ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
             ShaderExecution::Geometry(_) => Self::Geometry,
             ShaderExecution::Fragment(_) => Self::Fragment,
-            ShaderExecution::Compute => Self::GLCompute,
+            ShaderExecution::Compute(_) => Self::GLCompute,
             ShaderExecution::RayGeneration => Self::RayGenerationKHR,
             ShaderExecution::AnyHit => Self::AnyHitKHR,
             ShaderExecution::ClosestHit => Self::ClosestHitKHR,
@@ -697,6 +769,32 @@ pub enum FragmentTestsStages {
     Early,
     Late,
     EarlyAndLate,
+}
+
+/// LocalSize.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalSize {
+    Literal(u32),
+    SpecId(u32),
+}
+
+/// The mode in which the compute shader executes.
+///
+/// The workgroup size is specified for x, y, and z dimensions.
+///
+/// Constants are resolved to literals, while specialization constants
+/// map to spec ids.
+///
+/// The `WorkgroupSize` builtin overrides the values specified in the
+/// execution mode. It can decorate a 3 component ConstantComposite or
+/// SpecConstantComposite vector.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComputeShaderExecution {
+    /// Workgroup size in x, y, and z.
+    LocalSize([LocalSize; 3]),
+    /// Requires spirv 1.2.
+    /// Like `LocalSize`, but uses ids instead of literals.
+    LocalSizeId([LocalSize; 3]),
 }
 
 /// The requirements imposed by a shader on a binding within a descriptor set layout, and on any
@@ -1263,7 +1361,7 @@ impl From<&ShaderExecution> for ShaderStage {
             ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
             ShaderExecution::Geometry(_) => Self::Geometry,
             ShaderExecution::Fragment(_) => Self::Fragment,
-            ShaderExecution::Compute => Self::Compute,
+            ShaderExecution::Compute(_) => Self::Compute,
             ShaderExecution::RayGeneration => Self::Raygen,
             ShaderExecution::AnyHit => Self::AnyHit,
             ShaderExecution::ClosestHit => Self::ClosestHit,
