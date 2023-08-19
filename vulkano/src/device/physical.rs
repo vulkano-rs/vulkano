@@ -12,6 +12,7 @@ use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     cache::{OnceCache, WeakArcOnceCache},
     device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
+    display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
     format::{DrmFormatModifierProperties, Format, FormatProperties},
     image::{
         ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties, ImageUsage,
@@ -21,7 +22,6 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     memory::{ExternalMemoryHandleType, MemoryProperties},
     swapchain::{
-        display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
         SurfaceInfo, SurfaceTransforms,
     },

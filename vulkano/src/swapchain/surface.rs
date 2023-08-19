@@ -7,13 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{
-    display::{DisplayMode, DisplayPlaneAlpha},
-    FullScreenExclusive, PresentGravityFlags, PresentScalingFlags, Win32Monitor,
-};
+use super::{FullScreenExclusive, PresentGravityFlags, PresentScalingFlags, Win32Monitor};
 use crate::{
     cache::OnceCache,
     device::physical::PhysicalDevice,
+    display::{DisplayMode, DisplayPlaneAlpha},
     format::Format,
     image::ImageUsage,
     instance::{Instance, InstanceExtensions, InstanceOwned},
@@ -222,7 +220,7 @@ impl Surface {
         )))
     }
 
-    /// Creates a `Surface` from a `DisplayPlane`.
+    /// Creates a `Surface` from a `DisplayMode` and display plane.
     #[inline]
     pub fn from_display_plane(
         display_mode: Arc<DisplayMode>,

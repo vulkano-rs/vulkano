@@ -323,7 +323,6 @@ pub use self::{acquire_present::*, surface::*};
 pub use surface::IOSMetalLayer;
 
 mod acquire_present;
-pub mod display;
 mod surface;
 
 use crate::{

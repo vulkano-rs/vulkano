@@ -7,20 +7,29 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Allows you to create surfaces that fill a whole display, outside of the windowing system.
+//! Control and use of display devices (e.g. monitors).
 //!
-//! The purpose of the objects in this module is to let you create a `Surface` object that
-//! represents a location on the screen. This is done in four steps:
+//! A `Display` represents a display device, which is usually a monitor but can also be something
+//! else that can display graphical content. You do not create `Display` objects yourself, but
+//! you get them from the physical device instead. To get a list of all available displays on the
+//! system, you can call [`PhysicalDevice::display_properties`].
 //!
-//! - Choose a `Display` where the surface will be located. A `Display` represents a display
-//!   display, usually a monitor. The available displays can be enumerated with
-//!   [`PhysicalDevice::display_properties`].
+//! A *display plane* is a single layer within a display device or graphics stack that a surface
+//! can be created from. Depending on the setup used by the system, there may be one fixed
+//! display plane for each display, multiple display planes for each display, or even
+//! a pool of display planes that multiple displays can make use of.
+//!
+//! # Creating surfaces that render directly to a display
+//!
+//! - Choose the `Display` that you want to render to.
+//! - Get display plane properties with [`PhysicalDevice::display_plane_properties`],
+//!   and choose a display plane index that is supported with the chosen display.
 //! - Choose a `DisplayMode`, which is the combination of a display, a resolution and a refresh
 //!   rate. You can enumerate the modes available on a display with
 //!   [`Display::display_mode_properties`], or create your own mode.
-//! - Choose a display plane index. A display can show multiple planes in a stacking fashion.
-//! - Create a `Surface` object with `Surface::from_display_plane` and pass the chosen `DisplayMode`
-//!   and `DisplayPlane`.
+//!   A display can show multiple planes in a stacking fashion.
+//! - Create a `Surface` object with `Surface::from_display_plane`,
+//!   and pass the chosen `DisplayMode` and display plane index.
 
 use crate::{
     cache::{OnceCache, WeakArcOnceCache},
