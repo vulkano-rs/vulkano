@@ -44,11 +44,16 @@ where
     K: Eq + Hash,
     V: Clone,
 {
+    /// Returns the value for the specified `key`, if it exists.
+    pub(crate) fn get(&self, key: &K) -> Option<V> {
+        self.inner.read().get(key).cloned()
+    }
+
     /// Returns the value for the specified `key`. The entry gets written to with the value
     /// returned by `f` if it doesn't exist.
-    pub fn get_or_insert(&self, key: K, f: impl FnOnce(&K) -> V) -> V {
-        if let Some(value) = self.inner.read().get(&key) {
-            return value.clone();
+    pub(crate) fn get_or_insert(&self, key: K, f: impl FnOnce(&K) -> V) -> V {
+        if let Some(value) = self.get(&key) {
+            return value;
         }
 
         match self.inner.write().entry(key) {
@@ -68,8 +73,12 @@ where
     /// Returns the value for the specified `key`. The entry gets written to with the value
     /// returned by `f` if it doesn't exist. If `f` returns [`Err`], the error is propagated and
     /// the entry isn't written to.
-    pub fn get_or_try_insert<E>(&self, key: K, f: impl FnOnce(&K) -> Result<V, E>) -> Result<V, E> {
-        if let Some(value) = self.inner.read().get(&key) {
+    pub(crate) fn get_or_try_insert<E>(
+        &self,
+        key: K,
+        f: impl FnOnce(&K) -> Result<V, E>,
+    ) -> Result<V, E> {
+        if let Some(value) = self.get(&key) {
             return Ok(value.clone());
         }
 
@@ -115,16 +124,19 @@ impl<K, V> WeakArcOnceCache<K, V>
 where
     K: Eq + Hash,
 {
+    /// Returns the value for the specified `key`, if it exists.
+    pub(crate) fn get(&self, key: &K) -> Option<Arc<V>> {
+        self.inner
+            .read()
+            .get(key)
+            .and_then(|weak| Weak::upgrade(weak))
+    }
+
     /// Returns the value for the specified `key`. The entry gets written to with the value
     /// returned by `f` if it doesn't exist.
     #[allow(dead_code)]
-    pub fn get_or_insert(&self, key: K, f: impl FnOnce(&K) -> Arc<V>) -> Arc<V> {
-        if let Some(arc) = self
-            .inner
-            .read()
-            .get(&key)
-            .and_then(|weak| Weak::upgrade(weak))
-        {
+    pub(crate) fn get_or_insert(&self, key: K, f: impl FnOnce(&K) -> Arc<V>) -> Arc<V> {
+        if let Some(arc) = self.get(&key) {
             return arc;
         }
 
@@ -152,17 +164,12 @@ where
     /// Returns the value for the specified `key`. The entry gets written to with the value
     /// returned by `f` if it doesn't exist. If `f` returns [`Err`], the error is propagated and
     /// the entry isn't written to.
-    pub fn get_or_try_insert<E>(
+    pub(crate) fn get_or_try_insert<E>(
         &self,
         key: K,
         f: impl FnOnce(&K) -> Result<Arc<V>, E>,
     ) -> Result<Arc<V>, E> {
-        if let Some(arc) = self
-            .inner
-            .read()
-            .get(&key)
-            .and_then(|weak| Weak::upgrade(weak))
-        {
+        if let Some(arc) = self.get(&key) {
             return Ok(arc);
         }
 

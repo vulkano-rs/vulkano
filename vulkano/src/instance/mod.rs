@@ -1207,7 +1207,7 @@ where
 /// Same as [`DebugWrapper`], but also prints the instance handle for disambiguation.
 ///
 /// [`DebugWrapper`]: crate:: DebugWrapper
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub(crate) struct InstanceOwnedDebugWrapper<T>(pub(crate) T);
 

@@ -10,7 +10,7 @@
 use super::QueueFamilyProperties;
 use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
-    cache::OnceCache,
+    cache::{OnceCache, WeakArcOnceCache},
     device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
     format::{DrmFormatModifierProperties, Format, FormatProperties},
     image::{
@@ -21,6 +21,7 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     memory::{ExternalMemoryHandleType, MemoryProperties},
     swapchain::{
+        display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
         SurfaceInfo, SurfaceTransforms,
     },
@@ -33,8 +34,10 @@ use crate::{
     ValidationError, Version, VulkanError, VulkanObject,
 };
 use bytemuck::cast_slice;
+use parking_lot::RwLock;
 use std::{
-    fmt::{Debug, Display, Error as FmtError, Formatter},
+    ffi::CStr,
+    fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -77,6 +80,8 @@ pub struct PhysicalDevice {
     queue_family_properties: Vec<QueueFamilyProperties>,
 
     // Data queried by the user at runtime, cached for faster lookups.
+    display_properties: WeakArcOnceCache<ash::vk::DisplayKHR, Display>,
+    display_plane_properties: RwLock<Vec<DisplayPlanePropertiesRaw>>,
     external_buffer_properties: OnceCache<ExternalBufferInfo, ExternalBufferProperties>,
     external_fence_properties: OnceCache<ExternalFenceInfo, ExternalFenceProperties>,
     external_semaphore_properties: OnceCache<ExternalSemaphoreInfo, ExternalSemaphoreProperties>,
@@ -133,6 +138,7 @@ impl PhysicalDevice {
             handle,
             instance: DebugWrapper(instance),
             id: Self::next_id(),
+
             api_version,
             supported_extensions,
             supported_features,
@@ -140,6 +146,9 @@ impl PhysicalDevice {
             extension_properties,
             memory_properties,
             queue_family_properties,
+
+            display_properties: WeakArcOnceCache::new(),
+            display_plane_properties: RwLock::new(Vec::new()),
             external_buffer_properties: OnceCache::new(),
             external_fence_properties: OnceCache::new(),
             external_semaphore_properties: OnceCache::new(),
@@ -481,6 +490,445 @@ impl PhysicalDevice {
             queue_family_index,
             dfb as *mut _,
         ) != 0
+    }
+
+    /// Returns the properties of displays attached to the physical device.
+    #[inline]
+    pub fn display_properties<'a>(
+        self: &'a Arc<Self>,
+    ) -> Result<Vec<Arc<Display>>, Validated<VulkanError>> {
+        self.validate_display_properties()?;
+
+        unsafe { Ok(self.display_properties_unchecked()?) }
+    }
+
+    fn validate_display_properties(&self) -> Result<(), Box<ValidationError>> {
+        if !self.instance.enabled_extensions().khr_display {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_display",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn display_properties_unchecked<'a>(
+        self: &'a Arc<Self>,
+    ) -> Result<Vec<Arc<Display>>, VulkanError> {
+        let fns = self.instance.fns();
+
+        if self
+            .instance
+            .enabled_extensions()
+            .khr_get_display_properties2
+        {
+            let properties_vk = unsafe {
+                loop {
+                    let mut count = 0;
+                    (fns.khr_get_display_properties2
+                        .get_physical_device_display_properties2_khr)(
+                        self.handle,
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
+
+                    let mut properties =
+                        vec![ash::vk::DisplayProperties2KHR::default(); count as usize];
+                    let result = (fns
+                        .khr_get_display_properties2
+                        .get_physical_device_display_properties2_khr)(
+                        self.handle,
+                        &mut count,
+                        properties.as_mut_ptr(),
+                    );
+
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            properties.set_len(count as usize);
+                            break properties;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err)),
+                    }
+                }
+            };
+
+            Ok(properties_vk
+                .into_iter()
+                .map(|properties_vk| {
+                    let properties_vk = &properties_vk.display_properties;
+                    self.display_properties
+                        .get_or_insert(properties_vk.display, |&handle| {
+                            let properties = DisplayProperties {
+                                name: properties_vk.display_name.as_ref().map(|name| {
+                                    CStr::from_ptr(name)
+                                        .to_str()
+                                        .expect("non UTF-8 characters in display name")
+                                        .to_owned()
+                                }),
+                                physical_dimensions: [
+                                    properties_vk.physical_dimensions.width,
+                                    properties_vk.physical_dimensions.height,
+                                ],
+                                physical_resolution: [
+                                    properties_vk.physical_resolution.width,
+                                    properties_vk.physical_resolution.height,
+                                ],
+                                supported_transforms: properties_vk.supported_transforms.into(),
+                                plane_reorder_possible: properties_vk.plane_reorder_possible
+                                    != ash::vk::FALSE,
+                                persistent_content: properties_vk.persistent_content
+                                    != ash::vk::FALSE,
+                            };
+
+                            Display::from_handle(self.clone(), handle, properties)
+                        })
+                })
+                .collect())
+        } else {
+            let properties_vk = unsafe {
+                loop {
+                    let mut count = 0;
+                    (fns.khr_display.get_physical_device_display_properties_khr)(
+                        self.handle,
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
+
+                    let mut properties = Vec::with_capacity(count as usize);
+                    let result = (fns.khr_display.get_physical_device_display_properties_khr)(
+                        self.handle,
+                        &mut count,
+                        properties.as_mut_ptr(),
+                    );
+
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            properties.set_len(count as usize);
+                            break properties;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err)),
+                    }
+                }
+            };
+
+            Ok(properties_vk
+                .into_iter()
+                .map(|properties_vk| {
+                    self.display_properties
+                        .get_or_insert(properties_vk.display, |&handle| {
+                            let properties = DisplayProperties {
+                                name: properties_vk.display_name.as_ref().map(|name| {
+                                    CStr::from_ptr(name)
+                                        .to_str()
+                                        .expect("non UTF-8 characters in display name")
+                                        .to_owned()
+                                }),
+                                physical_dimensions: [
+                                    properties_vk.physical_dimensions.width,
+                                    properties_vk.physical_dimensions.height,
+                                ],
+                                physical_resolution: [
+                                    properties_vk.physical_resolution.width,
+                                    properties_vk.physical_resolution.height,
+                                ],
+                                supported_transforms: properties_vk.supported_transforms.into(),
+                                plane_reorder_possible: properties_vk.plane_reorder_possible
+                                    != ash::vk::FALSE,
+                                persistent_content: properties_vk.persistent_content
+                                    != ash::vk::FALSE,
+                            };
+
+                            Display::from_handle(self.clone(), handle, properties)
+                        })
+                })
+                .collect())
+        }
+    }
+
+    /// Returns the properties of the display planes of the physical device.
+    #[inline]
+    pub fn display_plane_properties(
+        self: &Arc<Self>,
+    ) -> Result<Vec<DisplayPlaneProperties>, Validated<VulkanError>> {
+        self.validate_display_plane_properties()?;
+
+        unsafe { Ok(self.display_plane_properties_unchecked()?) }
+    }
+
+    fn validate_display_plane_properties(&self) -> Result<(), Box<ValidationError>> {
+        if !self.instance.enabled_extensions().khr_display {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_display",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn display_plane_properties_unchecked(
+        self: &Arc<Self>,
+    ) -> Result<Vec<DisplayPlaneProperties>, VulkanError> {
+        self.get_display_plane_properties_raw()?
+            .iter()
+            .map(|properties_raw| -> Result<_, VulkanError> {
+                let &DisplayPlanePropertiesRaw {
+                    current_display,
+                    current_stack_index,
+                } = properties_raw;
+
+                let current_display = current_display
+                    .map(|display_handle| {
+                        self.display_properties
+                            .get(&display_handle)
+                            .map(Ok)
+                            .unwrap_or_else(|| -> Result<_, VulkanError> {
+                                self.display_properties_unchecked()?;
+                                Ok(self.display_properties.get(&display_handle).unwrap())
+                            })
+                    })
+                    .transpose()?;
+
+                Ok(DisplayPlaneProperties {
+                    current_display,
+                    current_stack_index,
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) unsafe fn display_plane_properties_raw(
+        &self,
+    ) -> Result<Vec<DisplayPlanePropertiesRaw>, VulkanError> {
+        {
+            let read = self.display_plane_properties.read();
+
+            if !read.is_empty() {
+                return Ok(read.clone());
+            }
+        }
+
+        self.get_display_plane_properties_raw()
+    }
+
+    unsafe fn get_display_plane_properties_raw(
+        &self,
+    ) -> Result<Vec<DisplayPlanePropertiesRaw>, VulkanError> {
+        let fns = self.instance.fns();
+
+        let properties_raw: Vec<_> = if self
+            .instance
+            .enabled_extensions()
+            .khr_get_display_properties2
+        {
+            let properties_vk = unsafe {
+                loop {
+                    let mut count = 0;
+                    (fns.khr_get_display_properties2
+                        .get_physical_device_display_plane_properties2_khr)(
+                        self.handle,
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
+
+                    let mut properties =
+                        vec![ash::vk::DisplayPlaneProperties2KHR::default(); count as usize];
+                    let result = (fns
+                        .khr_get_display_properties2
+                        .get_physical_device_display_plane_properties2_khr)(
+                        self.handle,
+                        &mut count,
+                        properties.as_mut_ptr(),
+                    );
+
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            properties.set_len(count as usize);
+                            break properties;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err)),
+                    }
+                }
+            };
+
+            properties_vk
+                .into_iter()
+                .map(|properties_vk| {
+                    let properties_vk = &properties_vk.display_plane_properties;
+                    DisplayPlanePropertiesRaw {
+                        current_display: Some(properties_vk.current_display)
+                            .filter(|&x| x != ash::vk::DisplayKHR::null()),
+                        current_stack_index: properties_vk.current_stack_index,
+                    }
+                })
+                .collect()
+        } else {
+            let properties_vk = unsafe {
+                loop {
+                    let mut count = 0;
+                    (fns.khr_display
+                        .get_physical_device_display_plane_properties_khr)(
+                        self.handle,
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
+
+                    let mut properties = Vec::with_capacity(count as usize);
+                    let result = (fns
+                        .khr_display
+                        .get_physical_device_display_plane_properties_khr)(
+                        self.handle,
+                        &mut count,
+                        properties.as_mut_ptr(),
+                    );
+
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            properties.set_len(count as usize);
+                            break properties;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err)),
+                    }
+                }
+            };
+
+            properties_vk
+                .into_iter()
+                .map(|properties_vk| DisplayPlanePropertiesRaw {
+                    current_display: Some(properties_vk.current_display)
+                        .filter(|&x| x != ash::vk::DisplayKHR::null()),
+                    current_stack_index: properties_vk.current_stack_index,
+                })
+                .collect()
+        };
+
+        *self.display_plane_properties.write() = properties_raw.clone();
+        Ok(properties_raw)
+    }
+
+    /// Returns the displays that are supported for the given plane index.
+    ///
+    /// The index must be less than the number of elements returned by
+    /// [`display_plane_properties`](Self::display_plane_properties).
+    #[inline]
+    pub fn display_plane_supported_displays(
+        self: &Arc<Self>,
+        plane_index: u32,
+    ) -> Result<Vec<Arc<Display>>, Validated<VulkanError>> {
+        self.validate_display_plane_supported_displays(plane_index)?;
+
+        unsafe { Ok(self.display_plane_supported_displays_unchecked(plane_index)?) }
+    }
+
+    fn validate_display_plane_supported_displays(
+        &self,
+        plane_index: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.instance.enabled_extensions().khr_display {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "khr_display",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        let display_plane_properties_raw = unsafe {
+            self.display_plane_properties_raw().map_err(|_err| {
+                Box::new(ValidationError {
+                    problem: "`PhysicalDevice::display_plane_properties` \
+                        returned an error"
+                        .into(),
+                    ..Default::default()
+                })
+            })?
+        };
+
+        if plane_index as usize >= display_plane_properties_raw.len() {
+            return Err(Box::new(ValidationError {
+                problem: "`plane_index` is not less than the number of display planes on the \
+                    physical device"
+                    .into(),
+                vuids: &["VUID-vkGetDisplayPlaneSupportedDisplaysKHR-planeIndex-01249"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn display_plane_supported_displays_unchecked(
+        self: &Arc<Self>,
+        plane_index: u32,
+    ) -> Result<Vec<Arc<Display>>, VulkanError> {
+        let fns = self.instance.fns();
+
+        let displays_vk = unsafe {
+            loop {
+                let mut count = 0;
+                (fns.khr_display.get_display_plane_supported_displays_khr)(
+                    self.handle,
+                    plane_index,
+                    &mut count,
+                    ptr::null_mut(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+
+                let mut displays = Vec::with_capacity(count as usize);
+                let result = (fns.khr_display.get_display_plane_supported_displays_khr)(
+                    self.handle,
+                    plane_index,
+                    &mut count,
+                    displays.as_mut_ptr(),
+                );
+
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        displays.set_len(count as usize);
+                        break displays;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
+                }
+            }
+        };
+
+        let displays: Vec<_> = displays_vk
+            .into_iter()
+            .map(|display_vk| -> Result<_, VulkanError> {
+                Ok(
+                    if let Some(display) = self.display_properties.get(&display_vk) {
+                        display
+                    } else {
+                        self.display_properties_unchecked()?;
+                        self.display_properties.get(&display_vk).unwrap()
+                    },
+                )
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(displays)
     }
 
     /// Retrieves the external memory properties supported for buffers with a given configuration.
@@ -2633,6 +3081,8 @@ impl Debug for PhysicalDevice {
             memory_properties,
             queue_family_properties,
 
+            display_properties: _,
+            display_plane_properties: _,
             external_buffer_properties: _,
             external_fence_properties: _,
             external_semaphore_properties: _,
@@ -2754,7 +3204,7 @@ impl Debug for ConformanceVersion {
     }
 }
 
-impl Display for ConformanceVersion {
+impl std::fmt::Display for ConformanceVersion {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(self, f)
