@@ -98,11 +98,6 @@
 //! };
 //! ```
 //!
-//! ## Creating a surface from a monitor
-//!
-//! Currently no system provides the `VK_KHR_display` extension that contains this feature.
-//! This feature is still a work-in-progress in vulkano and will reside in the `display` module.
-//!
 //! # Swapchains
 //!
 //! A surface represents a location on the screen and can be created from an instance. Once you
@@ -2084,8 +2079,8 @@ vulkan_enum! {
     Disallowed = DISALLOWED,
 
     /// Indicates the application will manage full-screen exclusive mode by using the
-    /// [`Swapchain::acquire_full_screen_exclusive()`] and
-    /// [`Swapchain::release_full_screen_exclusive()`] functions.
+    /// [`Swapchain::acquire_full_screen_exclusive_mode`] and
+    /// [`Swapchain::release_full_screen_exclusive_mode`] functions.
     ApplicationControlled = APPLICATION_CONTROLLED,
 }
 

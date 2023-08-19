@@ -9,19 +9,16 @@
 
 //! Allows you to create surfaces that fill a whole display, outside of the windowing system.
 //!
-//! **As far as the author knows, no existing device supports these features. Therefore the code
-//! here is mostly a draft and needs rework in both the API and the implementation.**
-//!
 //! The purpose of the objects in this module is to let you create a `Surface` object that
 //! represents a location on the screen. This is done in four steps:
 //!
 //! - Choose a `Display` where the surface will be located. A `Display` represents a display
 //!   display, usually a monitor. The available displays can be enumerated with
-//!   `Display::enumerate`.
+//!   [`PhysicalDevice::display_properties`].
 //! - Choose a `DisplayMode`, which is the combination of a display, a resolution and a refresh
-//!   rate. You can enumerate the modes available on a display with `Display::display_modes`, or
-//!   attempt to create your own mode with `TODO`.
-//! - Choose a `DisplayPlane`. A display can show multiple planes in a stacking fashion.
+//!   rate. You can enumerate the modes available on a display with
+//!   [`Display::display_mode_properties`], or create your own mode.
+//! - Choose a display plane index. A display can show multiple planes in a stacking fashion.
 //! - Create a `Surface` object with `Surface::from_display_plane` and pass the chosen `DisplayMode`
 //!   and `DisplayPlane`.
 
