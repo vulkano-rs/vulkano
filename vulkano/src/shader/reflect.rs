@@ -163,15 +163,18 @@ fn specialization_constant_ids(spirv: &Spirv) -> HashMap<Id, u32> {
     spirv
         .iter_decoration()
         .filter_map(|inst| {
-            if let Instruction::Decorate { target, decoration } = inst {
-                if let Decoration::SpecId {
-                    specialization_constant_id,
-                } = decoration
-                {
-                    return Some((*target, *specialization_constant_id));
-                }
+            if let Instruction::Decorate {
+                target,
+                decoration:
+                    Decoration::SpecId {
+                        specialization_constant_id,
+                    },
+            } = inst
+            {
+                Some((*target, *specialization_constant_id))
+            } else {
+                None
             }
-            None
         })
         .collect()
 }
@@ -181,14 +184,18 @@ fn workgroup_size_decorations(spirv: &Spirv) -> HashSet<Id> {
     spirv
         .iter_decoration()
         .filter_map(|inst| {
-            if let Instruction::Decorate { target, decoration } = inst {
-                if let Decoration::BuiltIn { built_in } = decoration {
-                    if *built_in == BuiltIn::WorkgroupSize {
-                        return Some(*target);
-                    }
-                }
+            if let Instruction::Decorate {
+                target,
+                decoration:
+                    Decoration::BuiltIn {
+                        built_in: BuiltIn::WorkgroupSize,
+                    },
+            } = inst
+            {
+                Some(*target)
+            } else {
+                None
             }
-            None
         })
         .collect()
 }
