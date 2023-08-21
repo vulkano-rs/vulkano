@@ -1630,7 +1630,7 @@ impl GraphicsPipeline {
         &self.device
     }
 
-    /// Returns the flags that the compute pipeline was created with.
+    /// Returns the flags that the pipeline was created with.
     #[inline]
     pub fn flags(&self) -> PipelineCreateFlags {
         self.flags

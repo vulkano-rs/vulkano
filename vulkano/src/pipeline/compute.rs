@@ -243,13 +243,13 @@ impl ComputePipeline {
         })
     }
 
-    /// Returns the `Device` this compute pipeline was created with.
+    /// Returns the `Device` that the pipeline was created with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 
-    /// Returns the flags that the compute pipeline was created with.
+    /// Returns the flags that the pipeline was created with.
     #[inline]
     pub fn flags(&self) -> PipelineCreateFlags {
         self.flags
