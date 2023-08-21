@@ -92,13 +92,11 @@ vulkan_bitflags! {
     /// The pipeline will not be optimized.
     DISABLE_OPTIMIZATION = DISABLE_OPTIMIZATION,
 
-    /* TODO: enable
-    // TODO: document
-    ALLOW_DERIVATIVES = ALLOW_DERIVATIVES,*/
+    /// Derivative pipelines can be created using this pipeline as a base.
+    ALLOW_DERIVATIVES = ALLOW_DERIVATIVES,
 
-    /* TODO: enable
-    // TODO: document
-    DERIVATIVE = DERIVATIVE,*/
+    /// Create the pipeline by deriving from a base pipeline.
+    DERIVATIVE = DERIVATIVE,
 
     /* TODO: enable
     // TODO: document

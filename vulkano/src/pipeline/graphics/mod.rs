@@ -125,6 +125,7 @@ pub struct GraphicsPipeline {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
+    flags: PipelineCreateFlags,
     // TODO: replace () with an object that describes the shaders in some way.
     shaders: HashMap<ShaderStage, ()>,
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
@@ -190,7 +191,8 @@ impl GraphicsPipeline {
             ref color_blend_state,
 
             ref layout,
-            subpass: ref render_pass,
+            ref subpass,
+            ref base_pipeline,
 
             ref discard_rectangle_state,
             _ne: _,
@@ -1003,7 +1005,7 @@ impl GraphicsPipeline {
             }
         }
 
-        let render_pass = render_pass.as_ref().unwrap();
+        let render_pass = subpass.as_ref().unwrap();
         let mut render_pass_vk = ash::vk::RenderPass::null();
         let mut subpass_vk = 0;
         let mut color_attachment_formats_vk: SmallVec<[_; 4]> = SmallVec::new();
@@ -1124,8 +1126,10 @@ impl GraphicsPipeline {
             layout: layout.handle(),
             render_pass: render_pass_vk,
             subpass: subpass_vk,
-            base_pipeline_handle: ash::vk::Pipeline::null(), // TODO:
-            base_pipeline_index: -1,                         // TODO:
+            base_pipeline_handle: base_pipeline
+                .as_ref()
+                .map_or(ash::vk::Pipeline::null(), VulkanObject::handle),
+            base_pipeline_index: -1,
             ..Default::default()
         };
 
@@ -1184,7 +1188,7 @@ impl GraphicsPipeline {
         create_info: GraphicsPipelineCreateInfo,
     ) -> Arc<Self> {
         let GraphicsPipelineCreateInfo {
-            flags: _,
+            flags,
             stages,
 
             vertex_input_state,
@@ -1197,7 +1201,8 @@ impl GraphicsPipeline {
             color_blend_state,
 
             layout,
-            subpass: render_pass,
+            subpass,
+            base_pipeline: _,
 
             discard_rectangle_state,
 
@@ -1597,6 +1602,7 @@ impl GraphicsPipeline {
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
 
+            flags,
             shaders,
             descriptor_binding_requirements,
             num_used_descriptor_sets,
@@ -1611,7 +1617,7 @@ impl GraphicsPipeline {
             depth_stencil_state,
             color_blend_state,
             layout: DeviceOwnedDebugWrapper(layout),
-            subpass: render_pass.unwrap(),
+            subpass: subpass.unwrap(),
             dynamic_state,
 
             discard_rectangle_state,
@@ -1622,6 +1628,12 @@ impl GraphicsPipeline {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+
+    /// Returns the flags that the compute pipeline was created with.
+    #[inline]
+    pub fn flags(&self) -> PipelineCreateFlags {
+        self.flags
     }
 
     /// Returns information about a particular shader.
@@ -1863,6 +1875,15 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     pub subpass: Option<PipelineSubpassType>,
 
+    /// The pipeline to use as a base when creating this pipeline.
+    ///
+    /// If this is `Some`, then `flags` must contain [`PipelineCreateFlags::DERIVATIVE`],
+    /// and the `flags` of the provided pipeline must contain
+    /// [`PipelineCreateFlags::ALLOW_DERIVATIVES`].
+    ///
+    /// The default value is `None`.
+    pub base_pipeline: Option<Arc<GraphicsPipeline>>,
+
     /// The discard rectangle state.
     ///
     /// This state is always used if it is provided.
@@ -1890,6 +1911,7 @@ impl GraphicsPipelineCreateInfo {
             color_blend_state: None,
             layout,
             subpass: None,
+            base_pipeline: None,
             discard_rectangle_state: None,
             _ne: crate::NonExhaustive(()),
         }
@@ -1911,6 +1933,7 @@ impl GraphicsPipelineCreateInfo {
 
             ref layout,
             ref subpass,
+            ref base_pipeline,
 
             ref discard_rectangle_state,
             _ne: _,
@@ -1920,6 +1943,37 @@ impl GraphicsPipelineCreateInfo {
             err.add_context("flags")
                 .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-flags-parameter"])
         })?;
+
+        if flags.intersects(PipelineCreateFlags::DERIVATIVE) {
+            let base_pipeline = base_pipeline.as_ref().ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "`flags` contains `PipelineCreateFlags::DERIVATIVE`, but \
+                        `base_pipeline` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-flags-07984"],
+                    ..Default::default()
+                })
+            })?;
+
+            if !base_pipeline
+                .flags()
+                .intersects(PipelineCreateFlags::ALLOW_DERIVATIVES)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "base_pipeline.flags()".into(),
+                    problem: "does not contain `PipelineCreateFlags::ALLOW_DERIVATIVES`".into(),
+                    vuids: &["VUID-vkCreateGraphicsPipelines-flags-00721"],
+                    ..Default::default()
+                }));
+            }
+        } else if base_pipeline.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`flags` does not contain `PipelineCreateFlags::DERIVATIVE`, but \
+                    `base_pipeline` is `Some`"
+                    .into(),
+                ..Default::default()
+            }));
+        }
 
         /*
             Gather shader stages
