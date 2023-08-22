@@ -73,7 +73,7 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
             const LAYOUT: ::#crate_ident::buffer::BufferContentsLayout = #layout;
 
             #[inline(always)]
-            unsafe fn from_ffi(data: *mut ::std::ffi::c_void, range: usize) -> *mut Self {
+            unsafe fn ptr_from_slice(slice: ::std::ptr::NonNull<[u8]>) -> *mut Self {
                 #[repr(C)]
                 union PtrRepr<T: ?Sized> {
                     components: PtrComponents,
@@ -83,14 +83,11 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
                 #[derive(Clone, Copy)]
                 #[repr(C)]
                 struct PtrComponents {
-                    data: *mut ::std::ffi::c_void,
+                    data: *mut u8,
                     len: usize,
                 }
 
-                let alignment = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                    .alignment()
-                    .as_devicesize() as usize;
-                ::std::debug_assert!(data as usize % alignment == 0);
+                let data = <*mut [u8]>::cast::<u8>(slice.as_ptr());
 
                 let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
                     .head_size() as usize;
@@ -98,8 +95,8 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
                     .element_size()
                     .unwrap_or(1) as usize;
 
-                ::std::debug_assert!(range >= head_size);
-                let tail_size = range - head_size;
+                ::std::debug_assert!(slice.len() >= head_size);
+                let tail_size = slice.len() - head_size;
                 ::std::debug_assert!(tail_size % element_size == 0);
                 let len = tail_size / element_size;
 

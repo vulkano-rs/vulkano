@@ -408,6 +408,10 @@ impl DeviceMemory {
         self.mapping_state.as_ref()
     }
 
+    pub(crate) fn atom_size(&self) -> DeviceAlignment {
+        self.atom_size
+    }
+
     /// Maps a range of memory to be accessed by the host.
     ///
     /// `self` must not be host-mapped already and must be allocated from host-visible memory.
@@ -479,6 +483,9 @@ impl DeviceMemory {
 
             output.assume_init()
         };
+
+        // Sanity check: this would lead to UB when calculating pointer offsets.
+        assert!(size <= isize::MAX.try_into().unwrap());
 
         let ptr = NonNull::new(ptr).unwrap();
         let range = offset..offset + size;
@@ -1338,18 +1345,27 @@ pub struct MemoryMapInfo {
 
     /// The offset (in bytes) from the beginning of the `DeviceMemory`, where the mapping starts.
     ///
-    /// Must be less than the size of the `DeviceMemory`.
+    /// Must be less than the [`allocation_size`] of the device memory. If the the memory was not
+    /// allocated from [host-coherent] memory, then this must be a multiple of the
+    /// [`non_coherent_atom_size`] device property.
     ///
     /// The default value is `0`.
+    ///
+    /// [`allocation_size`]: DeviceMemory::allocation_size
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     pub offset: DeviceSize,
 
     /// The size (in bytes) of the mapping.
     ///
     /// Must be less than or equal to the [`allocation_size`] of the device memory minus `offset`.
+    /// If the the memory was not allocated from [host-coherent] memory, then this must be a
+    /// multiple of the [`non_coherent_atom_size`] device property, or be equal to the allocation
+    /// size minus `offset`.
     ///
     /// The default value is `0`, which must be overridden.
     ///
     /// [`allocation_size`]: DeviceMemory::allocation_size
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     pub size: DeviceSize,
 
     pub _ne: crate::NonExhaustive,
@@ -1363,6 +1379,8 @@ impl MemoryMapInfo {
             size,
             _ne: _,
         } = self;
+
+        let end = offset + size;
 
         if !(offset < memory.allocation_size()) {
             return Err(Box::new(ValidationError {
@@ -1382,13 +1400,35 @@ impl MemoryMapInfo {
             }));
         }
 
-        if !(size <= memory.allocation_size() - offset) {
+        if !(end <= memory.allocation_size()) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
-                problem: "is not less than or equal to `self.allocation_size()` minus \
-                    `map_info.offset`"
+                problem: "is not less than or equal to `self.allocation_size()` minus `offset`"
                     .into(),
                 vuids: &["VUID-vkMapMemory-size-00681"],
+                ..Default::default()
+            }));
+        }
+
+        let atom_size = memory.atom_size();
+
+        // Not required for merely mapping, but without this check the user can end up with
+        // parts of the mapped memory at the start and end that they're not able to
+        // invalidate/flush, which is probably unintended.
+        //
+        // NOTE(Marc): We also rely on this for soundness, because it is easier and more optimal to
+        // not have to worry about whether a range of mapped memory is still in bounds of the
+        // mapped memory after being aligned to the non-coherent atom size.
+        if !memory.is_coherent
+            && (!is_aligned(offset, atom_size)
+                || (!is_aligned(size, atom_size) && end != memory.allocation_size()))
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`self.memory_type_index()` refers to a memory type whose \
+                    `property_flags` does not contain `MemoryPropertyFlags::HOST_COHERENT`, and \
+                    `offset` and/or `size` are not aligned to the `non_coherent_atom_size` device \
+                    property"
+                    .into(),
                 ..Default::default()
             }));
         }
@@ -1481,15 +1521,17 @@ impl MappingState {
     pub unsafe fn slice_unchecked(&self, range: Range<DeviceSize>) -> NonNull<[u8]> {
         let ptr = self.ptr.as_ptr();
 
-        // SAFETY: TODO
+        // SAFETY: The caller must guarantee that `range` is within the currently mapped range,
+        // which means that the offset pointer and length must denote a slice that's contained
+        // within the allocated (mapped) object.
         let ptr = ptr.add((range.start - self.range.start) as usize);
-
         let len = (range.end - range.start) as usize;
 
-        // SAFETY: TODO
         let ptr = ptr::slice_from_raw_parts_mut(<*mut c_void>::cast::<u8>(ptr), len);
 
-        // SAFETY: TODO
+        // SAFETY: The original pointer was non-null, and the caller must guarantee that `range`
+        // is within the currently mapped range, which means that the offset couldn't have wrapped
+        // around the address space.
         NonNull::new_unchecked(ptr)
     }
 }
@@ -1499,7 +1541,7 @@ impl MappingState {
 /// Must be contained within the currently mapped range of the device memory.
 #[derive(Debug)]
 pub struct MappedMemoryRange {
-    /// The offset (in bytes) from the beginning of the device memory, where the range starts.
+    /// The offset (in bytes) from the beginning of the allocation, where the range starts.
     ///
     /// Must be a multiple of the [`non_coherent_atom_size`] device property.
     ///
@@ -1511,12 +1553,11 @@ pub struct MappedMemoryRange {
     /// The size (in bytes) of the range.
     ///
     /// Must be a multiple of the [`non_coherent_atom_size`] device property, or be equal to the
-    /// [`allocation_size`] of the device memory minus `offset`.
+    /// allocation size minus `offset`.
     ///
     /// The default value is `0`.
     ///
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
-    /// [`allocation_size`]: DeviceMemory::allocation_size
     pub size: DeviceSize,
 
     pub _ne: crate::NonExhaustive,

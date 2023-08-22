@@ -15,11 +15,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     alloc::Layout,
     cmp::Ordering,
-    ffi::c_void,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
-    mem::{align_of, size_of, MaybeUninit},
+    mem::{size_of, MaybeUninit},
     ops::{Deref, DerefMut},
+    ptr::NonNull,
 };
 
 /// A newtype wrapper around `T`, with `N` bytes of trailing padding.
@@ -303,11 +303,10 @@ where
             panic!("zero-sized types are not valid buffer contents");
         };
 
-    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self {
-        debug_assert!(range == size_of::<Self>());
-        debug_assert!(data as usize % align_of::<Self>() == 0);
+    unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
+        debug_assert!(slice.len() == size_of::<Padded<T, N>>());
 
-        data.cast()
+        <*mut [u8]>::cast::<Padded<T, N>>(slice.as_ptr())
     }
 }
 
