@@ -1571,10 +1571,8 @@ impl MappedMemoryRange {
             _ne: _,
         } = self;
 
-        let end = offset + size;
-
         if let Some(state) = &memory.mapping_state {
-            if !(state.range.start <= offset && end <= state.range.end) {
+            if !(state.range.start <= offset && size <= state.range.end - offset) {
                 return Err(Box::new(ValidationError {
                     problem: "is not contained within the mapped range of this device memory"
                         .into(),
@@ -1590,7 +1588,7 @@ impl MappedMemoryRange {
             }));
         }
 
-        if !is_aligned(offset, memory.atom_size) {
+        if !is_aligned(offset, memory.atom_size()) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "is not aligned to the `non_coherent_atom_size` device property".into(),
@@ -1599,11 +1597,11 @@ impl MappedMemoryRange {
             }));
         }
 
-        if !(is_aligned(size, memory.atom_size) || end == memory.allocation_size()) {
+        if !(is_aligned(size, memory.atom_size()) || size == memory.allocation_size() - offset) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is not aligned to the `non_coherent_atom_size` device property nor \
-                    equal to `self.allocation_size()` minus `memory_range.offset`"
+                    equal to `self.allocation_size()` minus `offset`"
                     .into(),
                 vuids: &["VUID-VkMappedMemoryRange-size-01390"],
                 ..Default::default()

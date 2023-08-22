@@ -20,7 +20,7 @@ use crate::{
     image::ImageTiling,
     memory::{self, is_aligned, DeviceMemory, MappedMemoryRange, MemoryPropertyFlags},
     sync::HostAccessError,
-    DeviceSize, NonZeroDeviceSize, Validated, VulkanError,
+    DeviceSize, NonZeroDeviceSize, Validated, ValidationError, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
 use parking_lot::Mutex;
@@ -143,7 +143,7 @@ impl MemoryAlloc {
     ///
     /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
     ///
-    /// [`MappingState::slice`]: crate::memory::device_memory::MappingState::slice
+    /// [`MappingState::slice`]: crate::memory::MappingState::slice
     #[inline]
     pub fn mapped_slice(
         &self,
@@ -185,6 +185,8 @@ impl MemoryAlloc {
         &self,
         memory_range: MappedMemoryRange,
     ) -> Result<(), Validated<VulkanError>> {
+        self.validate_memory_range(&memory_range)?;
+
         self.device_memory()
             .invalidate_range(self.create_memory_range(memory_range))
     }
@@ -196,7 +198,7 @@ impl MemoryAlloc {
         memory_range: MappedMemoryRange,
     ) -> Result<(), VulkanError> {
         self.device_memory()
-            .invalidate_range_unchecked(memory_range)
+            .invalidate_range_unchecked(self.create_memory_range(memory_range))
     }
 
     /// Flushes the host cache for a range of the allocation.
@@ -217,6 +219,8 @@ impl MemoryAlloc {
         &self,
         memory_range: MappedMemoryRange,
     ) -> Result<(), Validated<VulkanError>> {
+        self.validate_memory_range(&memory_range)?;
+
         self.device_memory()
             .flush_range(self.create_memory_range(memory_range))
     }
@@ -227,26 +231,52 @@ impl MemoryAlloc {
         &self,
         memory_range: MappedMemoryRange,
     ) -> Result<(), VulkanError> {
-        self.device_memory().flush_range_unchecked(memory_range)
+        self.device_memory()
+            .flush_range_unchecked(self.create_memory_range(memory_range))
     }
 
-    fn create_memory_range(&self, mapped_range: MappedMemoryRange) -> MappedMemoryRange {
+    fn validate_memory_range(
+        &self,
+        memory_range: &MappedMemoryRange,
+    ) -> Result<(), Box<ValidationError>> {
+        let &MappedMemoryRange {
+            offset,
+            size,
+            _ne: _,
+        } = memory_range;
+
+        if !(offset <= self.size() && size <= self.size() - offset) {
+            return Err(Box::new(ValidationError {
+                context: "memory_range".into(),
+                problem: "is not contained within the allocation".into(),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    fn create_memory_range(&self, memory_range: MappedMemoryRange) -> MappedMemoryRange {
         let MappedMemoryRange {
             mut offset,
             mut size,
             _ne: _,
-        } = mapped_range;
+        } = memory_range;
+
+        let memory = self.device_memory();
 
         offset += self.offset();
 
-        let device_memory = self.device_memory();
-
         // VUID-VkMappedMemoryRange-size-01390
-        if offset + size < device_memory.allocation_size() {
-            // We align the size in case `range.end == self.size`. We can do this without aliasing
-            // other allocations because the suballocators ensure that all allocations are aligned
-            // to the atom size for non-host-coherent host-visible memory.
-            size = align_up(size, device_memory.atom_size());
+        if memory_range.offset + size == self.size() {
+            // We can align the end of the range like this without aliasing other allocations,
+            // because the suballocators ensure that all allocations are aligned to the atom size
+            // for non-host-coherent host-visible memory.
+            let end = cmp::min(
+                align_up(offset + size, memory.atom_size()),
+                memory.allocation_size(),
+            );
+            size = end - offset;
         }
 
         MappedMemoryRange {

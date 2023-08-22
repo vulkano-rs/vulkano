@@ -125,8 +125,8 @@ impl<T: ?Sized> Subbuffer<T> {
     ///
     /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
     ///
-    /// [`DeviceMemory::map`]: crate::memory::device_memory::DeviceMemory::map
-    /// [`MappingState::slice`]: crate::memory::device_memory::MappingState::slice
+    /// [`DeviceMemory::map`]: crate::memory::DeviceMemory::map
+    /// [`MappingState::slice`]: crate::memory::MappingState::slice
     pub fn mapped_slice(&self) -> Result<NonNull<[u8]>, HostAccessError> {
         match self.buffer().memory() {
             BufferMemory::Normal(a) => {
