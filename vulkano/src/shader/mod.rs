@@ -400,6 +400,39 @@ impl ShaderModule {
             })
         })
     }
+
+    /// Returns information about the entry point if self only contains a single entry point,
+    /// `None` otherwise.
+    #[inline]
+    pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
+        self.entry_point_map.iter().next().and_then(|(_, infos)| {
+            infos.iter().next().map(|(_, &info_index)| EntryPoint {
+                module: self.clone(),
+                info_index,
+            })
+        })
+    }
+
+    /// Returns information about the entry point if self only contains a single entry point
+    /// with the provided ExecutionModel. Returns `None` if no entry point was found or multiple
+    /// entry points have been found matching the provided ExecutionModel.
+    #[inline]
+    pub fn single_entry_point_of_execution(
+        self: &Arc<Self>,
+        execution: ExecutionModel,
+    ) -> Option<EntryPoint> {
+        let mut iter = self
+            .entry_point_map
+            .iter()
+            .filter_map(|(_, infos)| infos.get(&execution));
+
+        // check for *exactly* one entry point being present
+        let info_index = *iter.next()?;
+        iter.next().is_none().then(|| EntryPoint {
+            module: self.clone(),
+            info_index,
+        })
+    }
 }
 
 impl Drop for ShaderModule {
