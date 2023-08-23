@@ -528,8 +528,6 @@ impl DeviceMemory {
     }
 
     fn validate_unmap(&self, unmap_info: &MemoryUnmapInfo) -> Result<(), Box<ValidationError>> {
-        let &MemoryUnmapInfo { flags: _, _ne: _ } = unmap_info;
-
         if self.mapping_state.is_none() {
             return Err(Box::new(ValidationError {
                 problem: "this device memory is not currently host-mapped".into(),
@@ -537,6 +535,10 @@ impl DeviceMemory {
                 ..Default::default()
             }));
         }
+
+        unmap_info
+            .validate(self)
+            .map_err(|err| err.add_context("unmap_info"))?;
 
         Ok(())
     }
@@ -1505,6 +1507,14 @@ pub struct MemoryUnmapInfo {
     pub flags: MemoryUnmapFlags,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl MemoryUnmapInfo {
+    pub(crate) fn validate(&self, _memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
+        let &Self { flags: _, _ne: _ } = self;
+
+        Ok(())
+    }
 }
 
 impl Default for MemoryUnmapInfo {
