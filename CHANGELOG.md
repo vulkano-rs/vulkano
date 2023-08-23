@@ -138,6 +138,8 @@ Changes to futures:
 - `ShaderModule` is now constructed with a `new` method, which takes a `ShaderModuleCreateInfo` struct. The old constructors `from_words` and `from_bytes` are deprecated.
 - Added a `set_debug_utils_object_name` method to the `DeviceOwned` trait.
 - Support for the `ext_subgroup_size_control` extension.
+- Support for the `khr_image_format_list` extension.
+- Support for the `khr_swapchain_mutable_format` extension.
 
 ### Bugs fixed
 
