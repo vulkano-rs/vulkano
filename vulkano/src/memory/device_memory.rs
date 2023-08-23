@@ -1318,7 +1318,7 @@ vulkan_bitflags_enum! {
 vulkan_bitflags! {
     #[non_exhaustive]
 
-    /// Flags specifying additional properties for device memory allocation.
+    /// Flags specifying additional properties of a device memory allocation.
     MemoryAllocateFlags = MemoryAllocateFlags(u32);
 
     /* TODO: enable
