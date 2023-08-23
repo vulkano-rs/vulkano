@@ -59,6 +59,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_8bit_storage`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_8bit_storage.html)
 - [`VK_KHR_depth_stencil_resolve`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_depth_stencil_resolve.html)
 - [`VK_KHR_driver_properties`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_driver_properties.html)
+- [`VK_KHR_image_format_list`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_image_format_list.html)
 - [`VK_KHR_sampler_mirror_clamp_to_edge`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_sampler_mirror_clamp_to_edge.html)
 - [`VK_KHR_spirv_1_4`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_spirv_1_4.html)
 - [`VK_KHR_shader_atomic_int64`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_atomic_int64.html)
@@ -87,7 +88,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 ### Unsupported
 
 - [`VK_KHR_draw_indirect_count`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_draw_indirect_count.html)
-- [`VK_KHR_image_format_list`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_image_format_list.html)
 - [`VK_KHR_imageless_framebuffer`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_imageless_framebuffer.html)
 - [`VK_KHR_timeline_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_timeline_semaphore.html)
 - [`VK_EXT_host_query_reset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_host_query_reset.html)
@@ -151,6 +151,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_surface.html)
 - [`VK_KHR_surface_protected_capabilities`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_surface_protected_capabilities.html)
 - [`VK_KHR_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_swapchain.html)
+- [`VK_KHR_swapchain_mutable_format`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_swapchain_mutable_format.html)
 - [`VK_KHR_wayland_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_wayland_surface.html)
 - [`VK_KHR_win32_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_win32_surface.html)
 - [`VK_KHR_xcb_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_xcb_surface.html)
@@ -231,7 +232,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_shader_clock`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_clock.html)
 - [`VK_KHR_shader_subgroup_uniform_control_flow`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_subgroup_uniform_control_flow.html)
 - [`VK_KHR_shared_presentable_image`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shared_presentable_image.html)
-- [`VK_KHR_swapchain_mutable_format`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_swapchain_mutable_format.html)
 - [`VK_KHR_video_decode_h264`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_video_decode_h264.html)
 - [`VK_KHR_video_decode_h265`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_video_decode_h265.html)
 - [`VK_KHR_video_decode_queue`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_video_decode_queue.html)
