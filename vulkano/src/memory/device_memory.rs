@@ -469,16 +469,35 @@ impl DeviceMemory {
         let ptr = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.map_memory)(
-                device.handle(),
-                self.handle,
-                offset,
-                size,
-                flags.into(),
-                output.as_mut_ptr(),
-            )
-            .result()
-            .map_err(VulkanError::from)?;
+
+            if device.enabled_extensions().khr_map_memory2 {
+                let map_info_vk = ash::vk::MemoryMapInfoKHR {
+                    flags: flags.into(),
+                    memory: self.handle(),
+                    offset,
+                    size,
+                    ..Default::default()
+                };
+
+                (fns.khr_map_memory2.map_memory2_khr)(
+                    device.handle(),
+                    &map_info_vk,
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+            } else {
+                (fns.v1_0.map_memory)(
+                    device.handle(),
+                    self.handle,
+                    offset,
+                    size,
+                    flags.into(),
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+            }
 
             output.assume_init()
         };
@@ -500,15 +519,17 @@ impl DeviceMemory {
     // that's currently being read or written by the host elsewhere, requiring even more locking on
     // each host access.
     #[inline]
-    pub fn unmap(&mut self) -> Result<(), Box<ValidationError>> {
-        self.validate_unmap()?;
+    pub fn unmap(&mut self, unmap_info: MemoryUnmapInfo) -> Result<(), Validated<VulkanError>> {
+        self.validate_unmap(&unmap_info)?;
 
-        unsafe { self.unmap_unchecked() };
+        unsafe { self.unmap_unchecked(unmap_info) }?;
 
         Ok(())
     }
 
-    fn validate_unmap(&self) -> Result<(), Box<ValidationError>> {
+    fn validate_unmap(&self, unmap_info: &MemoryUnmapInfo) -> Result<(), Box<ValidationError>> {
+        let &MemoryUnmapInfo { flags: _, _ne: _ } = unmap_info;
+
         if self.mapping_state.is_none() {
             return Err(Box::new(ValidationError {
                 problem: "this device memory is not currently host-mapped".into(),
@@ -521,12 +542,32 @@ impl DeviceMemory {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn unmap_unchecked(&mut self) {
+    pub unsafe fn unmap_unchecked(
+        &mut self,
+        unmap_info: MemoryUnmapInfo,
+    ) -> Result<(), VulkanError> {
+        let MemoryUnmapInfo { flags, _ne: _ } = unmap_info;
+
         let device = self.device();
         let fns = device.fns();
-        (fns.v1_0.unmap_memory)(device.handle(), self.handle);
+
+        if device.enabled_extensions().khr_map_memory2 {
+            let unmap_info_vk = ash::vk::MemoryUnmapInfoKHR {
+                flags: flags.into(),
+                memory: self.handle(),
+                ..Default::default()
+            };
+
+            (fns.khr_map_memory2.unmap_memory2_khr)(device.handle(), &unmap_info_vk)
+                .result()
+                .map_err(VulkanError::from)?;
+        } else {
+            (fns.v1_0.unmap_memory)(device.handle(), self.handle);
+        }
 
         self.mapping_state = None;
+
+        Ok(())
     }
 
     /// Invalidates the host cache for a range of mapped memory.
@@ -1455,6 +1496,21 @@ vulkan_bitflags! {
 
     /// Flags specifying additional properties of a memory mapping.
     MemoryMapFlags = MemoryMapFlags(u32);
+}
+
+/// Parameters of a memory unmap operation.
+pub struct MemoryUnmapInfo {
+    /// Additional properties of the unmapping.
+    pub flags: MemoryUnmapFlags,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    /// Flags specifying additional properties of a memory unmapping.
+    MemoryUnmapFlags = MemoryUnmapFlagsKHR(u32);
 }
 
 /// Represents the currently host-mapped region of a [`DeviceMemory`] block.
