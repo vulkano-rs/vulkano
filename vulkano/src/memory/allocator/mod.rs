@@ -816,7 +816,7 @@ impl StandardMemoryAllocator {
 ///
 /// Every time a new `DeviceMemory` block is allocated, it is mapped in full automatically as long
 /// as it resides in host-visible memory. It remains mapped until it is dropped, which only happens
-/// if the allocator is dropped. In other words, all eligeble blocks are persistently mapped, so
+/// if the allocator is dropped. In other words, all eligible blocks are persistently mapped, so
 /// you don't need to worry about whether or not your host-visible allocations are host-accessible.
 ///
 /// # `DeviceMemory` allocation
