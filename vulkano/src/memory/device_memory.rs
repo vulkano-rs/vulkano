@@ -410,6 +410,7 @@ impl DeviceMemory {
     /// Maps a range of memory to be accessed by the host.
     ///
     /// `self` must not be host-mapped already and must be allocated from host-visible memory.
+    #[inline]
     pub fn map(&mut self, map_info: MemoryMapInfo) -> Result<(), Validated<VulkanError>> {
         self.validate_map(&map_info)?;
 
@@ -498,7 +499,16 @@ impl DeviceMemory {
     // we allowed unmapping through a shared reference, it would be possible to unmap a resource
     // that's currently being read or written by the host elsewhere, requiring even more locking on
     // each host access.
+    #[inline]
     pub fn unmap(&mut self) -> Result<(), Box<ValidationError>> {
+        self.validate_unmap()?;
+
+        unsafe { self.unmap_unchecked() };
+
+        Ok(())
+    }
+
+    fn validate_unmap(&self) -> Result<(), Box<ValidationError>> {
         if self.mapping_state.is_none() {
             return Err(Box::new(ValidationError {
                 problem: "this device memory is not currently host-mapped".into(),
@@ -506,8 +516,6 @@ impl DeviceMemory {
                 ..Default::default()
             }));
         }
-
-        unsafe { self.unmap_unchecked() };
 
         Ok(())
     }
