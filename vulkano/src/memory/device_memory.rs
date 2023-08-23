@@ -454,14 +454,17 @@ impl DeviceMemory {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn map_unchecked(&mut self, map_info: MemoryMapInfo) -> Result<(), VulkanError> {
-        let device = self.device();
-
         let MemoryMapInfo {
             flags,
             offset,
             size,
             _ne: _,
         } = map_info;
+
+        // Sanity check: this would lead to UB when calculating pointer offsets.
+        assert!(size <= isize::MAX.try_into().unwrap());
+
+        let device = self.device();
 
         let ptr = {
             let fns = device.fns();
@@ -479,9 +482,6 @@ impl DeviceMemory {
 
             output.assume_init()
         };
-
-        // Sanity check: this would lead to UB when calculating pointer offsets.
-        assert!(size <= isize::MAX.try_into().unwrap());
 
         let ptr = NonNull::new(ptr).unwrap();
         let range = offset..offset + size;
@@ -1794,6 +1794,9 @@ impl MappedDeviceMemory {
         memory: DeviceMemory,
         range: Range<DeviceSize>,
     ) -> Result<Self, VulkanError> {
+        // Sanity check: this would lead to UB when calculating pointer offsets.
+        assert!(range.end - range.start <= isize::MAX.try_into().unwrap());
+
         let device = memory.device();
 
         let pointer = unsafe {
