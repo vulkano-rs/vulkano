@@ -68,11 +68,6 @@ pub struct DeviceMemory {
     is_coherent: bool,
 }
 
-// It is safe to share `MappingState::ptr` between threads because the user would have to use
-// unsafe code themself to get UB in the first place.
-unsafe impl Send for DeviceMemory {}
-unsafe impl Sync for DeviceMemory {}
-
 impl DeviceMemory {
     /// Allocates a block of memory from the device.
     ///
@@ -1462,6 +1457,11 @@ pub struct MappingState {
     ptr: NonNull<c_void>,
     range: Range<DeviceSize>,
 }
+
+// It is safe to share `ptr` between threads because the user would have to use unsafe code
+// themself to get UB in the first place.
+unsafe impl Send for MappingState {}
+unsafe impl Sync for MappingState {}
 
 impl MappingState {
     /// Returns the pointer to the start of the mapped memory. Meaning that the pointer is already

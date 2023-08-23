@@ -81,11 +81,6 @@ enum AllocParent {
     Dedicated(DeviceMemory),
 }
 
-// It is safe to share `mapped_ptr` between threads because the user would have to use unsafe code
-// themself to get UB in the first place.
-unsafe impl Send for MemoryAlloc {}
-unsafe impl Sync for MemoryAlloc {}
-
 impl MemoryAlloc {
     /// Creates a new `MemoryAlloc`.
     #[inline]
