@@ -401,16 +401,30 @@ impl ShaderModule {
         })
     }
 
+    /// check for *exactly* one item in the Iterator
+    #[inline]
+    fn single_entry_point_filter<P>(self: &Arc<Self>, mut filter: P) -> Option<EntryPoint>
+    where
+        P: FnMut(&EntryPointInfo) -> bool,
+    {
+        let mut iter = self
+            .entry_point_infos
+            .iter()
+            .enumerate()
+            .filter(|(_, infos)| filter(infos))
+            .map(|(x, _)| x);
+        let info_index = iter.next()?;
+        iter.next().is_none().then(|| EntryPoint {
+            module: self.clone(),
+            info_index,
+        })
+    }
+
     /// Returns information about the entry point if self only contains a single entry point,
     /// `None` otherwise.
     #[inline]
     pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
-        self.entry_point_map.iter().next().and_then(|(_, infos)| {
-            infos.iter().next().map(|(_, &info_index)| EntryPoint {
-                module: self.clone(),
-                info_index,
-            })
-        })
+        self.single_entry_point_filter(|_| true)
     }
 
     /// Returns information about the entry point if self only contains a single entry point
@@ -421,17 +435,7 @@ impl ShaderModule {
         self: &Arc<Self>,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        let mut iter = self
-            .entry_point_map
-            .iter()
-            .filter_map(|(_, infos)| infos.get(&execution));
-
-        // check for *exactly* one entry point being present
-        let info_index = *iter.next()?;
-        iter.next().is_none().then(|| EntryPoint {
-            module: self.clone(),
-            info_index,
-        })
+        self.single_entry_point_filter(|info| ExecutionModel::from(&info.execution) == execution)
     }
 }
 
