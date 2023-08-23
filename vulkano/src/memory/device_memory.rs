@@ -455,7 +455,6 @@ impl DeviceMemory {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn map_unchecked(&mut self, map_info: MemoryMapInfo) -> Result<(), VulkanError> {
         let MemoryMapInfo {
-            flags,
             offset,
             size,
             _ne: _,
@@ -472,7 +471,7 @@ impl DeviceMemory {
 
             if device.enabled_extensions().khr_map_memory2 {
                 let map_info_vk = ash::vk::MemoryMapInfoKHR {
-                    flags: flags.into(),
+                    flags: ash::vk::MemoryMapFlags::empty(),
                     memory: self.handle(),
                     offset,
                     size,
@@ -492,7 +491,7 @@ impl DeviceMemory {
                     self.handle,
                     offset,
                     size,
-                    flags.into(),
+                    ash::vk::MemoryMapFlags::empty(),
                     output.as_mut_ptr(),
                 )
                 .result()
@@ -548,14 +547,14 @@ impl DeviceMemory {
         &mut self,
         unmap_info: MemoryUnmapInfo,
     ) -> Result<(), VulkanError> {
-        let MemoryUnmapInfo { flags, _ne: _ } = unmap_info;
+        let MemoryUnmapInfo { _ne: _ } = unmap_info;
 
         let device = self.device();
         let fns = device.fns();
 
         if device.enabled_extensions().khr_map_memory2 {
             let unmap_info_vk = ash::vk::MemoryUnmapInfoKHR {
-                flags: flags.into(),
+                flags: ash::vk::MemoryUnmapFlagsKHR::empty(),
                 memory: self.handle(),
                 ..Default::default()
             };
@@ -1384,11 +1383,6 @@ vulkan_bitflags! {
 /// Parameters of a memory map operation.
 #[derive(Debug)]
 pub struct MemoryMapInfo {
-    /// Additional properties of the mapping.
-    ///
-    /// The default value is empty.
-    pub flags: MemoryMapFlags,
-
     /// The offset (in bytes) from the beginning of the `DeviceMemory`, where the mapping starts.
     ///
     /// Must be less than the [`allocation_size`] of the device memory. If the the memory was not
@@ -1420,7 +1414,6 @@ pub struct MemoryMapInfo {
 impl MemoryMapInfo {
     pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
         let &Self {
-            flags: _,
             offset,
             size,
             _ne: _,
@@ -1485,7 +1478,6 @@ impl Default for MemoryMapInfo {
     #[inline]
     fn default() -> Self {
         MemoryMapInfo {
-            flags: MemoryMapFlags::empty(),
             offset: 0,
             size: 0,
             _ne: crate::NonExhaustive(()),
@@ -1493,27 +1485,15 @@ impl Default for MemoryMapInfo {
     }
 }
 
-vulkan_bitflags! {
-    #[non_exhaustive]
-
-    /// Flags specifying additional properties of a memory mapping.
-    MemoryMapFlags = MemoryMapFlags(u32);
-}
-
 /// Parameters of a memory unmap operation.
 #[derive(Debug)]
 pub struct MemoryUnmapInfo {
-    /// Additional properties of the unmapping.
-    pub flags: MemoryUnmapFlags,
-
     pub _ne: crate::NonExhaustive,
 }
 
 impl MemoryUnmapInfo {
     pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
-        let &Self { flags, _ne: _ } = self;
-
-        flags.validate_device(memory.device())?;
+        let &Self { _ne: _ } = self;
 
         Ok(())
     }
@@ -1523,17 +1503,9 @@ impl Default for MemoryUnmapInfo {
     #[inline]
     fn default() -> Self {
         MemoryUnmapInfo {
-            flags: MemoryUnmapFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
-}
-
-vulkan_bitflags! {
-    #[non_exhaustive]
-
-    /// Flags specifying additional properties of a memory unmapping.
-    MemoryUnmapFlags = MemoryUnmapFlagsKHR(u32);
 }
 
 /// Represents the currently host-mapped region of a [`DeviceMemory`] block.
