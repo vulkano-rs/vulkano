@@ -1492,7 +1492,7 @@ pub struct MemoryUnmapInfo {
 }
 
 impl MemoryUnmapInfo {
-    pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(&self, _memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
         let &Self { _ne: _ } = self;
 
         Ok(())

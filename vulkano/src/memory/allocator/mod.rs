@@ -1584,7 +1584,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             // - The memory can't be mapped already, because we just allocated it.
             // - Mapping the whole range is always valid.
             memory.map_unchecked(MemoryMapInfo {
-                flags: Default::default(),
                 offset: 0,
                 size: memory.allocation_size(),
                 _ne: crate::NonExhaustive(()),
