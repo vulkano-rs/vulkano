@@ -1499,11 +1499,22 @@ vulkan_bitflags! {
 }
 
 /// Parameters of a memory unmap operation.
+#[derive(Debug)]
 pub struct MemoryUnmapInfo {
     /// Additional properties of the unmapping.
     pub flags: MemoryUnmapFlags,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for MemoryUnmapInfo {
+    #[inline]
+    fn default() -> Self {
+        MemoryUnmapInfo {
+            flags: MemoryUnmapFlags::empty(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 vulkan_bitflags! {
