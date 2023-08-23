@@ -1383,8 +1383,6 @@ impl MemoryMapInfo {
             _ne: _,
         } = self;
 
-        let end = offset + size;
-
         if !(offset < memory.allocation_size()) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
@@ -1403,7 +1401,7 @@ impl MemoryMapInfo {
             }));
         }
 
-        if !(end <= memory.allocation_size()) {
+        if !(size <= memory.allocation_size() - offset) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
                 problem: "is not less than or equal to `self.allocation_size()` minus `offset`"
@@ -1424,7 +1422,7 @@ impl MemoryMapInfo {
         // mapped memory after being aligned to the non-coherent atom size.
         if !memory.is_coherent
             && (!is_aligned(offset, atom_size)
-                || (!is_aligned(size, atom_size) && end != memory.allocation_size()))
+                || (!is_aligned(size, atom_size) && offset + size != memory.allocation_size()))
         {
             return Err(Box::new(ValidationError {
                 problem: "`self.memory_type_index()` refers to a memory type whose \
