@@ -334,11 +334,12 @@ mod surface;
 use crate::{
     device::{Device, DeviceOwned},
     format::Format,
-    image::{Image, ImageFormatInfo, ImageTiling, ImageType, ImageUsage},
+    image::{Image, ImageCreateFlags, ImageFormatInfo, ImageTiling, ImageType, ImageUsage},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     sync::Sharing,
-    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
@@ -364,6 +365,7 @@ pub struct Swapchain {
     flags: SwapchainCreateFlags,
     min_image_count: u32,
     image_format: Format,
+    image_view_formats: Vec<Format>,
     image_color_space: ColorSpace,
     image_extent: [u32; 2],
     image_array_layers: u32,
@@ -538,6 +540,7 @@ impl Swapchain {
             flags: _,
             min_image_count,
             image_format,
+            image_view_formats: _,
             image_color_space,
             image_extent,
             image_array_layers,
@@ -996,6 +999,7 @@ impl Swapchain {
             flags,
             min_image_count,
             image_format,
+            ref image_view_formats,
             image_color_space,
             image_extent,
             image_array_layers,
@@ -1045,11 +1049,53 @@ impl Swapchain {
             old_swapchain: old_swapchain.map_or(ash::vk::SwapchainKHR::null(), |os| os.handle),
             ..Default::default()
         };
+        let mut format_list_info_vk = None;
+        let format_list_view_formats_vk: Vec<_>;
+        let mut full_screen_exclusive_info_vk = None;
+        let mut full_screen_exclusive_win32_info_vk = None;
         let mut present_modes_info_vk = None;
         let present_modes_vk: SmallVec<[ash::vk::PresentModeKHR; PresentMode::COUNT]>;
         let mut present_scaling_info_vk = None;
-        let mut full_screen_exclusive_info_vk = None;
-        let mut full_screen_exclusive_win32_info_vk = None;
+
+        if !image_view_formats.is_empty() {
+            format_list_view_formats_vk = image_view_formats
+                .iter()
+                .copied()
+                .map(ash::vk::Format::from)
+                .collect();
+
+            let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
+                view_format_count: format_list_view_formats_vk.len() as u32,
+                p_view_formats: format_list_view_formats_vk.as_ptr(),
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if full_screen_exclusive != FullScreenExclusive::Default {
+            let next =
+                full_screen_exclusive_info_vk.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                    full_screen_exclusive: full_screen_exclusive.into(),
+                    ..Default::default()
+                });
+
+            next.p_next = create_info_vk.p_next as *mut _;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if let Some(Win32Monitor(hmonitor)) = win32_monitor {
+            let next = full_screen_exclusive_win32_info_vk.insert(
+                ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                    hmonitor,
+                    ..Default::default()
+                },
+            );
+
+            next.p_next = create_info_vk.p_next as *mut _;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
 
         if !present_modes.is_empty() {
             present_modes_vk = present_modes.iter().copied().map(Into::into).collect();
@@ -1074,29 +1120,6 @@ impl Swapchain {
                     present_gravity_y,
                     ..Default::default()
                 });
-
-            next.p_next = create_info_vk.p_next as *mut _;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if full_screen_exclusive != FullScreenExclusive::Default {
-            let next =
-                full_screen_exclusive_info_vk.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                    full_screen_exclusive: full_screen_exclusive.into(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next as *mut _;
-            create_info_vk.p_next = next as *const _ as *const _;
-        }
-
-        if let Some(Win32Monitor(hmonitor)) = win32_monitor {
-            let next = full_screen_exclusive_win32_info_vk.insert(
-                ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                    hmonitor,
-                    ..Default::default()
-                },
-            );
 
             next.p_next = create_info_vk.p_next as *mut _;
             create_info_vk.p_next = next as *const _ as *const _;
@@ -1169,6 +1192,7 @@ impl Swapchain {
             flags,
             min_image_count,
             image_format,
+            image_view_formats,
             image_color_space,
             image_extent,
             image_array_layers,
@@ -1195,6 +1219,7 @@ impl Swapchain {
             flags,
             min_image_count,
             image_format,
+            image_view_formats,
             image_color_space,
             image_extent,
             image_array_layers,
@@ -1245,6 +1270,7 @@ impl Swapchain {
             flags: self.flags,
             min_image_count: self.min_image_count,
             image_format: self.image_format,
+            image_view_formats: self.image_view_formats.clone(),
             image_color_space: self.image_color_space,
             image_extent: self.image_extent,
             image_array_layers: self.image_array_layers,
@@ -1294,6 +1320,12 @@ impl Swapchain {
     #[inline]
     pub fn image_format(&self) -> Format {
         self.image_format
+    }
+
+    /// Returns the formats that an image view created from a swapchain image can have.
+    #[inline]
+    pub fn image_view_formats(&self) -> &[Format] {
+        &self.image_view_formats
     }
 
     /// Returns the color space of the images of the swapchain.
@@ -1583,6 +1615,24 @@ pub struct SwapchainCreateInfo {
     /// The default value is `Format::UNDEFINED`.
     pub image_format: Format,
 
+    /// The formats that an image view can have when it is created from one of the swapchain images.
+    ///
+    /// If the list is not empty, and `flags` does not contain
+    /// [`SwapchainCreateFlags::MUTABLE_FORMAT`], then the list must contain at most one element,
+    /// otherwise any number of elements are allowed.
+    /// The view formats must be compatible with `format`.
+    ///
+    /// If `flags` contains [`SwapchainCreateFlags::MUTABLE_FORMAT`], then the list must contain
+    /// `image_format.
+    ///
+    /// If this is not empty, then the device API version must be at least 1.2, or the
+    /// [`khr_image_format_list`] extension must be enabled on the device.
+    ///
+    /// The default value is empty.
+    ///
+    /// [`khr_image_format_list`]: crate::device::DeviceExtensions::khr_image_format_list
+    pub image_view_formats: Vec<Format>,
+
     /// The color space of the created images.
     ///
     /// The default value is [`ColorSpace::SrgbNonLinear`].
@@ -1699,6 +1749,7 @@ impl Default for SwapchainCreateInfo {
             flags: SwapchainCreateFlags::empty(),
             min_image_count: 2,
             image_format: Format::UNDEFINED,
+            image_view_formats: Vec::new(),
             image_color_space: ColorSpace::SrgbNonLinear,
             image_extent: [0, 0],
             image_array_layers: 1,
@@ -1724,6 +1775,7 @@ impl SwapchainCreateInfo {
             flags,
             min_image_count: _,
             image_format,
+            ref image_view_formats,
             image_color_space,
             image_extent,
             image_array_layers,
@@ -1879,6 +1931,65 @@ impl SwapchainCreateInfo {
             }));
         }
 
+        if flags.intersects(SwapchainCreateFlags::MUTABLE_FORMAT)
+            && !image_view_formats.contains(&image_format)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`flags` contains `SwapchainCreateFlags::MUTABLE_FORMAT`, but \
+                    `image_view_formats` does not contain `image_format`"
+                    .into(),
+                vuids: &["VUID-VkSwapchainCreateInfoKHR-flags-03168"],
+                ..Default::default()
+            }));
+        }
+
+        if !image_view_formats.is_empty() {
+            if !(device.api_version() >= Version::V1_2
+                || device.enabled_extensions().khr_image_format_list)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "image_view_formats".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_image_format_list")]),
+                    ]),
+                    ..Default::default()
+                }));
+            }
+
+            if !flags.intersects(SwapchainCreateFlags::MUTABLE_FORMAT)
+                && image_view_formats.len() != 1
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`flags` does not contain `SwapchainCreateFlags::MUTABLE_FORMAT`, \
+                        but `image_view_formats` contains more than one element"
+                        .into(),
+                    vuids: &["VUID-VkSwapchainCreateInfoKHR-flags-04100"],
+                    ..Default::default()
+                }));
+            }
+
+            for (index, &image_view_format) in image_view_formats.iter().enumerate() {
+                image_view_format.validate_device(device).map_err(|err| {
+                    err.add_context(format!("image_view_formats[{}]", index))
+                        .set_vuids(&["VUID-VkImageFormatListCreateInfo-pViewFormats-parameter"])
+                })?;
+
+                if image_view_format.compatibility() != image_format.compatibility() {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`image_view_formats[{}]` is not compatible with `image_format`",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-04099"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
         if !present_modes.is_empty() {
             if !device.enabled_extensions().ext_swapchain_maintenance1 {
                 return Err(Box::new(ValidationError {
@@ -1995,28 +2106,56 @@ vulkan_bitflags! {
     SwapchainCreateFlags = SwapchainCreateFlagsKHR(u32);
 
     /* TODO: enable
-    // TODO: document
-    SPLIT_INSTANCE_BIND_REGIONS = SPLIT_INSTANCE_BIND_REGIONS {
-        // Provided by VK_VERSION_1_1 with VK_KHR_swapchain, VK_KHR_device_group with VK_KHR_swapchain
-    },*/
+    /// Creates swapchain images with the [`ImageCreateFlags::SPLIT_INSTANCE_BIND_REGIONS`] flag.
+    SPLIT_INSTANCE_BIND_REGIONS = SPLIT_INSTANCE_BIND_REGIONS
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+        RequiresAllOf([DeviceExtension(khr_device_group)]),
+    ]),*/
 
     /* TODO: enable
-    // TODO: document
-    PROTECTED = PROTECTED {
-        // Provided by VK_VERSION_1_1 with VK_KHR_swapchain
-    },*/
+    /// Creates swapchain images with the [`ImageCreateFlags::PROTECTED`] flag.
+    PROTECTED = PROTECTED
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_1)]),
+    ]),*/
 
-    /* TODO: enable
-    // TODO: document
-    MUTABLE_FORMAT = MUTABLE_FORMAT {
-        device_extensions: [khr_swapchain_mutable_format],
-    },*/
+    /// Creates swapchain images with both the [`ImageCreateFlags::MUTABLE_FORMAT`] and
+    /// [`ImageCreateFlags::EXTENDED_USAGE`] flags.
+    MUTABLE_FORMAT = MUTABLE_FORMAT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(khr_swapchain_mutable_format)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
     DEFERRED_MEMORY_ALLOCATION = DEFERRED_MEMORY_ALLOCATION_EXT {
         device_extensions: [ext_swapchain_maintenance1],
     },*/
+}
+
+impl From<SwapchainCreateFlags> for ImageCreateFlags {
+    #[inline]
+    fn from(flags: SwapchainCreateFlags) -> Self {
+        // Per https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCreateSwapchainKHR.html#_description
+        let mut result = ImageCreateFlags::empty();
+
+        /* TODO: enable
+        if flags.intersects(SwapchainCreateFlags::SPLIT_INSTANCE_BIND_REGIONS) {
+            result |= ImageCreateFlags::SPLIT_INSTANCE_BIND_REGIONS;
+        } */
+
+        /* TODO: enable
+        if flags.intersects(SwapchainCreateFlags::PROTECTED) {
+            result |= ImageCreateFlags::PROTECTED;
+        } */
+
+        if flags.intersects(SwapchainCreateFlags::MUTABLE_FORMAT) {
+            result |= ImageCreateFlags::MUTABLE_FORMAT | ImageCreateFlags::EXTENDED_USAGE;
+        }
+
+        result
+    }
 }
 
 vulkan_bitflags_enum! {

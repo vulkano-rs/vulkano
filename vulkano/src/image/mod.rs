@@ -207,10 +207,12 @@ impl Image {
         swapchain: Arc<Swapchain>,
         image_index: u32,
     ) -> Result<Self, VulkanError> {
+        // Per https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkCreateSwapchainKHR.html#_description
         let create_info = ImageCreateInfo {
-            flags: ImageCreateFlags::empty(),
+            flags: swapchain.flags().into(),
             image_type: ImageType::Dim2d,
             format: swapchain.image_format(),
+            view_formats: swapchain.image_view_formats().to_vec(),
             extent: [swapchain.image_extent()[0], swapchain.image_extent()[1], 1],
             array_layers: swapchain.image_array_layers(),
             mip_levels: 1,
@@ -220,7 +222,10 @@ impl Image {
             stencil_usage: None,
             sharing: swapchain.image_sharing().clone(),
             initial_layout: ImageLayout::Undefined,
-            ..Default::default()
+            drm_format_modifiers: Vec::new(),
+            drm_format_modifier_plane_layouts: Vec::new(),
+            external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
+            _ne: crate::NonExhaustive(()),
         };
 
         Ok(Self::from_raw(
@@ -277,6 +282,12 @@ impl Image {
     #[inline]
     pub fn format_features(&self) -> FormatFeatures {
         self.inner.format_features()
+    }
+
+    /// Returns the formats that an image view created from this image can have.
+    #[inline]
+    pub fn view_formats(&self) -> &[Format] {
+        self.inner.view_formats()
     }
 
     /// Returns the extent of the image.
@@ -971,7 +982,7 @@ impl FusedIterator for SubresourceRangeIterator {}
 vulkan_bitflags! {
     #[non_exhaustive]
 
-    /// Flags that can be set when creating a new image.
+    /// Flags specifying additional properties of an image.
     ImageCreateFlags = ImageCreateFlags(u32);
 
     /* TODO: enable
@@ -1647,6 +1658,16 @@ pub struct ImageFormatInfo {
     /// The default value is `Format::UNDEFINED`.
     pub format: Format,
 
+    /// The image view formats that will be allowed for the image.
+    ///
+    /// If this is not empty, then the physical device API version must be at least 1.2, or the
+    /// [`khr_image_format_list`] extension must be supported by the physical device.
+    ///
+    /// The default value is empty.
+    ///
+    /// [`khr_image_format_list`]: crate::device::DeviceExtensions::khr_image_format_list
+    pub view_formats: Vec<Format>,
+
     /// The dimension type that the image will have.
     ///
     /// The default value is [`ImageType::Dim2d`].
@@ -1671,6 +1692,15 @@ pub struct ImageFormatInfo {
     /// The default value is `None`.
     pub stencil_usage: Option<ImageUsage>,
 
+    /// The Linux DRM format modifier information to query.
+    ///
+    /// If this is `Some`, then the
+    /// [`ext_image_drm_format_modifier`](crate::device::DeviceExtensions::ext_image_drm_format_modifier)
+    /// extension must be supported by the physical device.
+    ///
+    /// The default value is `None`.
+    pub drm_format_modifier_info: Option<ImageDrmFormatModifierInfo>,
+
     /// An external memory handle type that will be imported to or exported from the image.
     ///
     /// This is needed to retrieve the
@@ -1693,15 +1723,6 @@ pub struct ImageFormatInfo {
     /// The default value is `None`.
     pub image_view_type: Option<ImageViewType>,
 
-    /// The Linux DRM format modifier information to query.
-    ///
-    /// If this is `Some`, then the
-    /// [`ext_image_drm_format_modifier`](crate::device::DeviceExtensions::ext_image_drm_format_modifier)
-    /// extension must be supported by the physical device.
-    ///
-    /// The default value is `None`.
-    pub drm_format_modifier_info: Option<ImageDrmFormatModifierInfo>,
-
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1711,13 +1732,14 @@ impl Default for ImageFormatInfo {
         Self {
             flags: ImageCreateFlags::empty(),
             format: Format::UNDEFINED,
+            view_formats: Vec::new(),
             image_type: ImageType::Dim2d,
             tiling: ImageTiling::Optimal,
             usage: ImageUsage::empty(),
             stencil_usage: None,
+            drm_format_modifier_info: None,
             external_memory_handle_type: None,
             image_view_type: None,
-            drm_format_modifier_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1731,13 +1753,14 @@ impl ImageFormatInfo {
         let &Self {
             flags,
             format,
+            ref view_formats,
             image_type,
             tiling,
             usage,
             stencil_usage,
+            ref drm_format_modifier_info,
             external_memory_handle_type,
             image_view_type,
-            ref drm_format_modifier_info,
             _ne: _,
         } = self;
 
@@ -1837,6 +1860,80 @@ impl ImageFormatInfo {
             }
         }
 
+        if !view_formats.is_empty() {
+            if !(physical_device.api_version() >= Version::V1_2
+                || physical_device.supported_extensions().khr_image_format_list)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "view_formats".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_image_format_list")]),
+                    ]),
+                    ..Default::default()
+                }));
+            }
+
+            for (index, view_format) in view_formats.iter().enumerate() {
+                view_format
+                    .validate_physical_device(physical_device)
+                    .map_err(|err| {
+                        err.add_context(format!("view_formats[{}]", index))
+                            .set_vuids(&["VUID-VkImageFormatListCreateInfo-pViewFormats-parameter"])
+                    })?;
+            }
+        }
+
+        if let Some(drm_format_modifier_info) = drm_format_modifier_info {
+            if !physical_device
+                .supported_extensions()
+                .ext_image_drm_format_modifier
+            {
+                return Err(Box::new(ValidationError {
+                    context: "drm_format_modifier_info".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_image_drm_format_modifier",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            drm_format_modifier_info
+                .validate(physical_device)
+                .map_err(|err| err.add_context("drm_format_modifier_info"))?;
+
+            if tiling != ImageTiling::DrmFormatModifier {
+                return Err(Box::new(ValidationError {
+                    problem: "`drm_format_modifier_info` is `Some` but \
+                        `tiling` is not `ImageTiling::DrmFormatModifier`"
+                        .into(),
+                    vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
+                    ..Default::default()
+                }));
+            }
+
+            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) && view_formats.is_empty() {
+                return Err(Box::new(ValidationError {
+                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, and \
+                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`, but \
+                        `view_formats` is empty"
+                        .into(),
+                    vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313"],
+                    ..Default::default()
+                }));
+            }
+        } else if tiling == ImageTiling::DrmFormatModifier {
+            return Err(Box::new(ValidationError {
+                problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
+                    `drm_format_modifier_info` is `None`"
+                    .into(),
+                vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
+                ..Default::default()
+            }));
+        }
+
         if let Some(handle_type) = external_memory_handle_type {
             if !(physical_device.api_version() >= Version::V1_1
                 || physical_device
@@ -1883,54 +1980,6 @@ impl ImageFormatInfo {
                         "VUID-VkPhysicalDeviceImageViewImageFormatInfoEXT-imageViewType-parameter",
                     ])
                 })?;
-        }
-
-        if let Some(drm_format_modifier_info) = drm_format_modifier_info {
-            if !physical_device
-                .supported_extensions()
-                .ext_image_drm_format_modifier
-            {
-                return Err(Box::new(ValidationError {
-                    context: "drm_format_modifier_info".into(),
-                    problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                        "ext_image_drm_format_modifier",
-                    )])]),
-                    ..Default::default()
-                }));
-            }
-
-            drm_format_modifier_info
-                .validate(physical_device)
-                .map_err(|err| err.add_context("drm_format_modifier_info"))?;
-
-            if tiling != ImageTiling::DrmFormatModifier {
-                return Err(Box::new(ValidationError {
-                    problem: "`drm_format_modifier_info` is `Some` but \
-                        `tiling` is not `ImageTiling::DrmFormatModifier`"
-                        .into(),
-                    vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
-                    ..Default::default()
-                }));
-            }
-
-            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) {
-                return Err(Box::new(ValidationError {
-                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
-                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`"
-                        .into(),
-                    vuids: &["VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02313"],
-                    ..Default::default()
-                }));
-            }
-        } else if tiling == ImageTiling::DrmFormatModifier {
-            return Err(Box::new(ValidationError {
-                problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
-                    `drm_format_modifier_info` is `None`"
-                    .into(),
-                vuids: &[" VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249"],
-                ..Default::default()
-            }));
         }
 
         Ok(())
