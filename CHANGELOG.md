@@ -41,6 +41,7 @@ Changes to buffers:
 - The `buffer_with_range(_array)` constructor of `WriteDescriptorSet` now takes `DescriptorBufferInfo` structs.
 - Index buffers are now specified using the `IndexBuffer` enum instead of the `Index` trait.
 - `ExternalBufferInfo::sparse` was replaced by a `flags` field.
+- `Subbuffer::mapped_ptr` was replaced by `Subbuffer::mapped_slice`.
 
 Changes to errors:
 - Added new types `ValidationError` and `Validated` (enum of `ValidationError` + something else) to return errors from any function. Some existing functions have been converted to use these types, others will follow later.
@@ -99,6 +100,9 @@ Changes to `Format`:
 Changes to memory allocation:
 - `AllocationCreateInfo::usage` and `SubbufferAllocatorCreateInfo::memory_usage` were replaced by a `memory_type_filter` field, to allow for a more flexible selection of the memory type. Additionally, `SubbufferAllocatorCreateInfo::memory_type_filter` defaults to `MemoryTypeFilter::PREFER_DEVICE` for consistency with `AllocationCreateInfo`, unlike the previous default of `MemoryUsage::Upload`.
 - `SubbufferAllocatorCreateInfo::buffer_usage` is now empty by default for consistency with `BufferCreateInfo`.
+- `MemoryAlloc::new` no longer returns a `Result`, and doesn't map the `DeviceMemory` automatically anymore.
+- `MemoryAlloc::mapped_ptr` and `MemoryAlloc::mapped_slice[_mut]` were replaced by `MemoryAlloc::mapped_slice`, which returns a pointer.
+- `MemoryAlloc::{invalidate, flush}_range` now take a `MappedMemoryRange` as argument.
 
 Changes to synchronization primitives:
 - `Event::signaled` is renamed to `is_signaled`, to match the method on `Fence`.
@@ -147,6 +151,8 @@ Changes to the `khr_display` extension:
 - Support for the `khr_swapchain_mutable_format` extension.
 - Support for pipeline derivatives.
 - Support for the `khr_get_display_properties2` extension.
+- Added `DeviceMemory::{map, unmap, mapping_state, invalidate_range, flush_range}`, `MappedDeviceMemory` has been deprecated.
+- Added `MemoryMapInfo`, `MemoryUnmapInfo`, `MappingState` and `MappedMemoryRange`.
 
 ### Bugs fixed
 
@@ -160,6 +166,8 @@ Changes to the `khr_display` extension:
 - vulkano-shaders: Use a placeholder name instead of erroring out, when the shader doesn't contain a name for a struct.
 - [#2203](https://github.com/vulkano-rs/vulkano/issues/2203): Shader reflection fails to find descriptor set variables if multiple `OpAccessChain` instructions are themselves chained.
 - vulkano-shaders: Invalid emitted code for shader input/output interfaces if the shader is missing a name decoration.
+- Fixed potential UB when using `MemoryAlloc::try_unwrap`, where the allocation was mapped on contruction of the `MemoryAlloc` but not unmapped on unwrapping, allowing double-mapping.
+- Fixed a bug in `GenericMemoryAllocator::allocate`, where the root allocations weren't created with the configured `AllocationType`.
 
 # Version 0.33.0 (2023-04-01)
 
