@@ -150,7 +150,7 @@ impl VulkanoWindows {
             match winit_window.set_cursor_grab(CursorGrabMode::Confined) {
                 Ok(_) => {}
                 Err(winit::error::ExternalError::NotSupported(_)) => {}
-                Err(err) => Err(err).unwrap(),
+                Err(err) => panic!("{:?}", err),
             }
         }
 
