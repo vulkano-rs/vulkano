@@ -11,11 +11,11 @@ use super::{FullScreenExclusive, PresentGravityFlags, PresentScalingFlags, Win32
 use crate::{
     cache::OnceCache,
     device::physical::PhysicalDevice,
+    display::{DisplayMode, DisplayPlaneAlpha},
     format::Format,
     image::ImageUsage,
     instance::{Instance, InstanceExtensions, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags_enum, vulkan_enum},
-    swapchain::display::{DisplayMode, DisplayPlane},
     DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
@@ -220,32 +220,27 @@ impl Surface {
         )))
     }
 
-    /// Creates a `Surface` from a `DisplayPlane`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `display_mode` and `plane` don't belong to the same physical device.
-    /// - Panics if `plane` doesn't support the display of `display_mode`.
+    /// Creates a `Surface` from a `DisplayMode` and display plane.
+    #[inline]
     pub fn from_display_plane(
-        display_mode: &DisplayMode,
-        plane: &DisplayPlane,
+        display_mode: Arc<DisplayMode>,
+        create_info: DisplaySurfaceCreateInfo,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_display_plane(display_mode, plane)?;
+        Self::validate_from_display_plane(&display_mode, &create_info)?;
 
-        unsafe { Ok(Self::from_display_plane_unchecked(display_mode, plane)?) }
+        unsafe {
+            Ok(Self::from_display_plane_unchecked(
+                display_mode,
+                create_info,
+            )?)
+        }
     }
 
     fn validate_from_display_plane(
         display_mode: &DisplayMode,
-        plane: &DisplayPlane,
+        create_info: &DisplaySurfaceCreateInfo,
     ) -> Result<(), Box<ValidationError>> {
-        if !display_mode
-            .display()
-            .physical_device()
-            .instance()
-            .enabled_extensions()
-            .khr_display
-        {
+        if !display_mode.instance().enabled_extensions().khr_display {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
                     "khr_display",
@@ -254,44 +249,143 @@ impl Surface {
             }));
         }
 
-        assert_eq!(
-            display_mode.display().physical_device(),
-            plane.physical_device()
-        );
-        assert!(plane.supports(display_mode.display()));
+        // VUID-vkCreateDisplayPlaneSurfaceKHR-pCreateInfo-parameter
+        create_info
+            .validate(display_mode.display().physical_device())
+            .map_err(|err| err.add_context("create_info"))?;
+
+        let &DisplaySurfaceCreateInfo {
+            plane_index,
+            plane_stack_index,
+            transform,
+            alpha_mode,
+            global_alpha: _,
+            image_extent: _,
+            _ne: _,
+        } = create_info;
+
+        let display_plane_properties_raw = unsafe {
+            display_mode
+                .display()
+                .physical_device()
+                .display_plane_properties_raw()
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        problem: "`PhysicalDevice::display_plane_properties` \
+                            returned an error"
+                            .into(),
+                        ..Default::default()
+                    })
+                })?
+        };
+
+        if display_mode.display().plane_reorder_possible() {
+            if plane_stack_index as usize >= display_plane_properties_raw.len() {
+                return Err(Box::new(ValidationError {
+                    problem: "`plane_stack_index` is not less than the number of display planes \
+                        on the physical device"
+                        .into(),
+                    vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-planeReorderPossible-01253"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if plane_stack_index
+                != display_plane_properties_raw[plane_index as usize].current_stack_index
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`display_mode.display().plane_reorder_possible()` is `false`, and \
+                        `plane_stack_index` does not equal the `current_stack_index` value of the \
+                        display plane properties"
+                        .into(),
+                    vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-planeReorderPossible-01253"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let display_plane_capabilities = unsafe {
+            display_mode
+                .display_plane_capabilities_unchecked(plane_index)
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        problem: "`DisplayMode::display_plane_capabilities` \
+                            returned an error"
+                            .into(),
+                        ..Default::default()
+                    })
+                })?
+        };
+
+        if !display_plane_capabilities
+            .supported_alpha
+            .contains_enum(alpha_mode)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the `supported_alpha` value of the display plane capabilities of \
+                    `display_mode` for the provided plane index does not contain \
+                    `create_info.alpha_mode`"
+                    .into(),
+                vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-alphaMode-01255"],
+                ..Default::default()
+            }));
+        }
+
+        if !display_mode
+            .display()
+            .supported_transforms()
+            .contains_enum(transform)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`display_mode.display().supported_transforms()` does not contain \
+                    `create_info.transform`"
+                    .into(),
+                vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-transform-06740"],
+                ..Default::default()
+            }));
+        }
 
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_display_plane_unchecked(
-        display_mode: &DisplayMode,
-        plane: &DisplayPlane,
+        display_mode: Arc<DisplayMode>,
+        create_info: DisplaySurfaceCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
-        let instance = display_mode.display().physical_device().instance();
+        let &DisplaySurfaceCreateInfo {
+            plane_index,
+            plane_stack_index,
+            transform,
+            alpha_mode,
+            global_alpha,
+            image_extent,
+            _ne: _,
+        } = &create_info;
 
-        let create_info = ash::vk::DisplaySurfaceCreateInfoKHR {
+        let create_info_vk = ash::vk::DisplaySurfaceCreateInfoKHR {
             flags: ash::vk::DisplaySurfaceCreateFlagsKHR::empty(),
             display_mode: display_mode.handle(),
-            plane_index: plane.index(),
-            plane_stack_index: 0, // FIXME: plane.properties.currentStackIndex,
-            transform: ash::vk::SurfaceTransformFlagsKHR::IDENTITY, // TODO: let user choose
-            global_alpha: 0.0,    // TODO: let user choose
-            alpha_mode: ash::vk::DisplayPlaneAlphaFlagsKHR::OPAQUE, // TODO: let user choose
+            plane_index,
+            plane_stack_index,
+            transform: transform.into(),
+            alpha_mode: alpha_mode.into(),
+            global_alpha,
             image_extent: ash::vk::Extent2D {
-                // TODO: let user choose
-                width: display_mode.visible_region()[0],
-                height: display_mode.visible_region()[1],
+                width: image_extent[0],
+                height: image_extent[1],
             },
             ..Default::default()
         };
+
+        let instance = display_mode.instance();
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_display.create_display_plane_surface_khr)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1345,30 +1439,6 @@ impl Surface {
     }
 }
 
-impl Debug for Surface {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let Self {
-            handle,
-            instance,
-            id,
-            api,
-            object,
-
-            surface_formats: _,
-            surface_present_modes: _,
-            surface_support: _,
-        } = self;
-
-        f.debug_struct("Surface")
-            .field("handle", handle)
-            .field("instance", instance)
-            .field("id", id)
-            .field("api", api)
-            .field("object", object)
-            .finish_non_exhaustive()
-    }
-}
-
 impl Drop for Surface {
     #[inline]
     fn drop(&mut self) {
@@ -1392,6 +1462,30 @@ unsafe impl InstanceOwned for Surface {
     #[inline]
     fn instance(&self) -> &Arc<Instance> {
         &self.instance
+    }
+}
+
+impl Debug for Surface {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        let Self {
+            handle,
+            instance,
+            id,
+            api,
+            object,
+
+            surface_formats: _,
+            surface_present_modes: _,
+            surface_support: _,
+        } = self;
+
+        f.debug_struct("Surface")
+            .field("handle", handle)
+            .field("instance", instance)
+            .field("id", id)
+            .field("api", api)
+            .field("object", object)
+            .finish_non_exhaustive()
     }
 }
 
@@ -1441,6 +1535,144 @@ unsafe fn get_metal_layer_macos(ns_view: *mut std::ffi::c_void) -> *mut Object {
         new_layer
     } else {
         main_layer
+    }
+}
+
+/// Parameters to create a surface from a display mode and plane.
+#[derive(Clone, Debug)]
+pub struct DisplaySurfaceCreateInfo {
+    /// The index of the display plane in which the surface will appear.
+    ///
+    /// The default value is 0.
+    pub plane_index: u32,
+
+    /// The z-order of the plane.
+    ///
+    /// The default value is 0.
+    pub plane_stack_index: u32,
+
+    /// The transformation to apply to images when presented.
+    ///
+    /// The default value is [`SurfaceTransform::Identity`].
+    pub transform: SurfaceTransform,
+
+    /// How to do alpha blending on the surface when presenting new content.
+    ///
+    /// The default value is [`DisplayPlaneAlpha::Opaque`].
+    pub alpha_mode: DisplayPlaneAlpha,
+
+    /// If `alpha_mode` is `DisplayPlaneAlpha::Global`, specifies the global alpha value to use for
+    /// all blending.
+    ///
+    /// The default value is 1.0.
+    pub global_alpha: f32,
+
+    /// The size of the presentable images that will be used.
+    ///
+    /// The default value is `[0; 2]`, which must be overridden.
+    pub image_extent: [u32; 2],
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for DisplaySurfaceCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            plane_index: 0,
+            plane_stack_index: 0,
+            transform: SurfaceTransform::Identity,
+            alpha_mode: DisplayPlaneAlpha::Opaque,
+            global_alpha: 1.0,
+            image_extent: [0; 2],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl DisplaySurfaceCreateInfo {
+    pub(crate) fn validate(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            plane_index,
+            plane_stack_index: _,
+            transform,
+            alpha_mode,
+            global_alpha,
+            image_extent,
+            _ne: _,
+        } = self;
+
+        let properties = physical_device.properties();
+
+        transform
+            .validate_physical_device(physical_device)
+            .map_err(|err| {
+                err.add_context("transform")
+                    .set_vuids(&["VUID-VkDisplaySurfaceCreateInfoKHR-transform-parameter"])
+            })?;
+
+        alpha_mode
+            .validate_physical_device(physical_device)
+            .map_err(|err| {
+                err.add_context("alpha_mode")
+                    .set_vuids(&["VUID-VkDisplaySurfaceCreateInfoKHR-alphaMode-parameter"])
+            })?;
+
+        let display_plane_properties_raw = unsafe {
+            physical_device
+                .display_plane_properties_raw()
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        problem: "`PhysicalDevice::display_plane_properties` \
+                            returned an error"
+                            .into(),
+                        ..Default::default()
+                    })
+                })?
+        };
+
+        if plane_index as usize >= display_plane_properties_raw.len() {
+            return Err(Box::new(ValidationError {
+                problem: "`plane_index` is not less than the number of display planes on the \
+                    physical device"
+                    .into(),
+                vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-planeIndex-01252"],
+                ..Default::default()
+            }));
+        }
+
+        if alpha_mode == DisplayPlaneAlpha::Global && !(0.0..=1.0).contains(&global_alpha) {
+            return Err(Box::new(ValidationError {
+                problem: "`alpha_mode` is `DisplayPlaneAlpha::Global`, but \
+                    `global_alpha` is not between 0 and 1 inclusive"
+                    .into(),
+                vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-alphaMode-01254"],
+                ..Default::default()
+            }));
+        }
+
+        if image_extent[0] > properties.max_image_dimension2_d {
+            return Err(Box::new(ValidationError {
+                context: "image_extent[0]".into(),
+                problem: "is greater than the `max_image_dimension2_d` device limit".into(),
+                vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-width-01256"],
+                ..Default::default()
+            }));
+        }
+
+        if image_extent[1] > properties.max_image_dimension2_d {
+            return Err(Box::new(ValidationError {
+                context: "image_extent[1]".into(),
+                problem: "is greater than the `max_image_dimension2_d` device limit".into(),
+                vuids: &["VUID-VkDisplaySurfaceCreateInfoKHR-width-01256"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 }
 
