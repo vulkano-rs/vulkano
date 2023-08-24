@@ -373,7 +373,7 @@ impl ComputePipelineCreateInfo {
             let base_pipeline = base_pipeline.as_ref().ok_or_else(|| {
                 Box::new(ValidationError {
                     problem: "`flags` contains `PipelineCreateFlags::DERIVATIVE`, but \
-                            `base_pipeline` is `None`"
+                        `base_pipeline` is `None`"
                         .into(),
                     vuids: &["VUID-VkComputePipelineCreateInfo-flags-07984"],
                     ..Default::default()
@@ -394,7 +394,7 @@ impl ComputePipelineCreateInfo {
         } else if base_pipeline.is_some() {
             return Err(Box::new(ValidationError {
                 problem: "`flags` does not contain `PipelineCreateFlags::DERIVATIVE`, but \
-                        `base_pipeline` is `Some`"
+                    `base_pipeline` is `Some`"
                     .into(),
                 ..Default::default()
             }));
