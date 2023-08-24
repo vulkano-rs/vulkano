@@ -47,7 +47,10 @@ pub struct ComputePipeline {
     handle: ash::vk::Pipeline,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
+
+    flags: PipelineCreateFlags,
     layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
+
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
 }
@@ -90,6 +93,7 @@ impl ComputePipeline {
             flags,
             ref stage,
             ref layout,
+            ref base_pipeline,
             _ne: _,
         } = &create_info;
 
@@ -166,8 +170,10 @@ impl ComputePipeline {
             flags: flags.into(),
             stage: stage_vk,
             layout: layout.handle(),
-            base_pipeline_handle: ash::vk::Pipeline::null(),
-            base_pipeline_index: 0,
+            base_pipeline_handle: base_pipeline
+                .as_ref()
+                .map_or(ash::vk::Pipeline::null(), VulkanObject::handle),
+            base_pipeline_index: -1,
             ..Default::default()
         };
 
@@ -203,9 +209,10 @@ impl ComputePipeline {
         create_info: ComputePipelineCreateInfo,
     ) -> Arc<ComputePipeline> {
         let ComputePipelineCreateInfo {
-            flags: _,
+            flags,
             stage,
             layout,
+            base_pipeline: _,
             _ne: _,
         } = create_info;
 
@@ -227,16 +234,25 @@ impl ComputePipeline {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
+
+            flags,
             layout: DeviceOwnedDebugWrapper(layout),
+
             descriptor_binding_requirements,
             num_used_descriptor_sets,
         })
     }
 
-    /// Returns the `Device` this compute pipeline was created with.
+    /// Returns the `Device` that the pipeline was created with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+
+    /// Returns the flags that the pipeline was created with.
+    #[inline]
+    pub fn flags(&self) -> PipelineCreateFlags {
+        self.flags
     }
 }
 
@@ -310,6 +326,15 @@ pub struct ComputePipelineCreateInfo {
     /// There is no default value.
     pub layout: Arc<PipelineLayout>,
 
+    /// The pipeline to use as a base when creating this pipeline.
+    ///
+    /// If this is `Some`, then `flags` must contain [`PipelineCreateFlags::DERIVATIVE`],
+    /// and the `flags` of the provided pipeline must contain
+    /// [`PipelineCreateFlags::ALLOW_DERIVATIVES`].
+    ///
+    /// The default value is `None`.
+    pub base_pipeline: Option<Arc<ComputePipeline>>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -321,6 +346,7 @@ impl ComputePipelineCreateInfo {
             flags: PipelineCreateFlags::empty(),
             stage,
             layout,
+            base_pipeline: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -330,6 +356,7 @@ impl ComputePipelineCreateInfo {
             flags,
             ref stage,
             ref layout,
+            ref base_pipeline,
             _ne: _,
         } = self;
 
@@ -341,6 +368,37 @@ impl ComputePipelineCreateInfo {
         stage
             .validate(device)
             .map_err(|err| err.add_context("stage"))?;
+
+        if flags.intersects(PipelineCreateFlags::DERIVATIVE) {
+            let base_pipeline = base_pipeline.as_ref().ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "`flags` contains `PipelineCreateFlags::DERIVATIVE`, but \
+                        `base_pipeline` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkComputePipelineCreateInfo-flags-07984"],
+                    ..Default::default()
+                })
+            })?;
+
+            if !base_pipeline
+                .flags()
+                .intersects(PipelineCreateFlags::ALLOW_DERIVATIVES)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "base_pipeline.flags()".into(),
+                    problem: "does not contain `PipelineCreateFlags::ALLOW_DERIVATIVES`".into(),
+                    vuids: &["VUID-vkCreateComputePipelines-flags-00696"],
+                    ..Default::default()
+                }));
+            }
+        } else if base_pipeline.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`flags` does not contain `PipelineCreateFlags::DERIVATIVE`, but \
+                    `base_pipeline` is `Some`"
+                    .into(),
+                ..Default::default()
+            }));
+        }
 
         let &PipelineShaderStageCreateInfo {
             flags: _,
