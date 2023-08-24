@@ -159,7 +159,7 @@ mod linux {
 
         let image = Arc::new(
             raw_image
-                .bind_memory([MemoryAlloc::new(image_memory).unwrap()])
+                .bind_memory([MemoryAlloc::new(image_memory)])
                 .map_err(|(err, _, _)| err)
                 .unwrap(),
         );

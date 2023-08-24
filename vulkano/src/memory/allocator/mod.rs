@@ -229,7 +229,7 @@ pub use self::{
 };
 use super::{
     DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
-    MemoryAllocateFlags, MemoryAllocateInfo, MemoryProperties, MemoryPropertyFlags,
+    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapInfo, MemoryProperties, MemoryPropertyFlags,
     MemoryRequirements, MemoryType,
 };
 use crate::{
@@ -381,7 +381,7 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
+    ) -> Result<MemoryAlloc, VulkanError>;
 }
 
 /// Describes what memory property flags are required, preferred and not preferred when picking a
@@ -812,6 +812,13 @@ impl StandardMemoryAllocator {
 ///
 /// See also [the `MemoryAllocator` implementation].
 ///
+/// # Mapping behavior
+///
+/// Every time a new `DeviceMemory` block is allocated, it is mapped in full automatically as long
+/// as it resides in host-visible memory. It remains mapped until it is dropped, which only happens
+/// if the allocator is dropped. In other words, all eligible blocks are persistently mapped, so
+/// you don't need to worry about whether or not your host-visible allocations are host-accessible.
+///
 /// # `DeviceMemory` allocation
 ///
 /// If an allocation is created with the [`MemoryAllocatePreference::Unknown`] option, and the
@@ -1176,7 +1183,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             .property_flags
             .contains(ash::vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
         {
-            return unsafe {
+            let allocation = unsafe {
                 self.allocate_dedicated_unchecked(
                     memory_type_index,
                     create_info.layout.size(),
@@ -1187,7 +1194,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                         ExternalMemoryHandleTypes::empty()
                     },
                 )
-            };
+            }?;
+
+            return Ok(allocation);
         }
 
         unsafe { self.allocate_from_type_unchecked(memory_type_index, create_info, false) }
@@ -1305,17 +1314,16 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             let mut i = 0;
 
             loop {
-                let allocate_info = MemoryAllocateInfo {
-                    allocation_size: block_size >> i,
+                let allocation_size = block_size >> i;
+
+                match self.allocate_dedicated_unchecked(
                     memory_type_index,
+                    allocation_size,
+                    None,
                     export_handle_types,
-                    dedicated_allocation: None,
-                    flags: self.flags,
-                    ..Default::default()
-                };
-                match DeviceMemory::allocate_unchecked(self.device.clone(), allocate_info, None) {
-                    Ok(device_memory) => {
-                        break S::new(MemoryAlloc::new(device_memory)?);
+                ) {
+                    Ok(allocation) => {
+                        break S::new(allocation);
                     }
                     // Retry up to 3 times, halving the allocation size each time.
                     Err(VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory) if i < 3 => {
@@ -1459,6 +1467,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                             dedicated_allocation,
                             export_handle_types,
                         )
+                        .map_err(MemoryAllocatorError::VulkanError)
                     } else {
                         if size > block_size / 2 {
                             prefers_dedicated_allocation = true;
@@ -1476,6 +1485,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                                 dedicated_allocation,
                                 export_handle_types,
                             )
+                            .map_err(MemoryAllocatorError::VulkanError)
                             // Fall back to suballocation.
                             .or_else(|err| {
                                 if size <= block_size {
@@ -1504,6 +1514,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                                     dedicated_allocation,
                                     export_handle_types,
                                 )
+                                .map_err(MemoryAllocatorError::VulkanError)
                             })
                         }
                     }
@@ -1515,12 +1526,14 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
                     self.allocate_from_type_unchecked(memory_type_index, create_info.clone(), true)
                 }
-                MemoryAllocatePreference::AlwaysAllocate => self.allocate_dedicated_unchecked(
-                    memory_type_index,
-                    size,
-                    dedicated_allocation,
-                    export_handle_types,
-                ),
+                MemoryAllocatePreference::AlwaysAllocate => self
+                    .allocate_dedicated_unchecked(
+                        memory_type_index,
+                        size,
+                        dedicated_allocation,
+                        export_handle_types,
+                    )
+                    .map_err(MemoryAllocatorError::VulkanError),
             };
 
             match res {
@@ -1546,20 +1559,40 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        let allocate_info = MemoryAllocateInfo {
-            allocation_size,
-            memory_type_index,
-            dedicated_allocation,
-            export_handle_types,
-            flags: self.flags,
-            ..Default::default()
-        };
-        let mut allocation = MemoryAlloc::new(DeviceMemory::allocate_unchecked(
+    ) -> Result<MemoryAlloc, VulkanError> {
+        // SAFETY: The caller must uphold the safety contract.
+        let mut memory = DeviceMemory::allocate_unchecked(
             self.device.clone(),
-            allocate_info,
+            MemoryAllocateInfo {
+                allocation_size,
+                memory_type_index,
+                dedicated_allocation,
+                export_handle_types,
+                flags: self.flags,
+                ..Default::default()
+            },
             None,
-        )?)?;
+        )?;
+
+        if self.pools[memory_type_index as usize]
+            .memory_type
+            .property_flags
+            .intersects(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+        {
+            // SAFETY:
+            // - We checked that the memory is host-visible.
+            // - The memory can't be mapped already, because we just allocated it.
+            // - Mapping the whole range is always valid.
+            memory.map_unchecked(MemoryMapInfo {
+                offset: 0,
+                size: memory.allocation_size(),
+                _ne: crate::NonExhaustive(()),
+            })?;
+        }
+
+        let mut allocation = MemoryAlloc::new(memory);
+
+        // SAFETY: The memory is freshly allocated.
         allocation.set_allocation_type(self.allocation_type);
 
         Ok(allocation)
@@ -1628,7 +1661,7 @@ unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
+    ) -> Result<MemoryAlloc, VulkanError> {
         (**self).allocate_dedicated_unchecked(
             memory_type_index,
             allocation_size,

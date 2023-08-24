@@ -22,7 +22,8 @@ use std::{
     mem::MaybeUninit,
     num::NonZeroU64,
     ops::Range,
-    ptr, slice,
+    ptr::{self, NonNull},
+    slice,
     sync::{atomic::Ordering, Arc},
 };
 
@@ -61,6 +62,10 @@ pub struct DeviceMemory {
     export_handle_types: ExternalMemoryHandleTypes,
     imported_handle_type: Option<ExternalMemoryHandleType>,
     flags: MemoryAllocateFlags,
+
+    mapping_state: Option<MappingState>,
+    atom_size: DeviceAlignment,
+    is_coherent: bool,
 }
 
 impl DeviceMemory {
@@ -71,7 +76,6 @@ impl DeviceMemory {
     ///
     /// # Panics
     ///
-    /// - Panics if `allocate_info.allocation_size` is 0.
     /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
     ///   image does not belong to `device`.
     #[inline]
@@ -82,7 +86,7 @@ impl DeviceMemory {
         if !(device.api_version() >= Version::V1_1
             || device.enabled_extensions().khr_dedicated_allocation)
         {
-            // Fall back instead of erroring out
+            // Fall back instead of erroring out.
             allocate_info.dedicated_allocation = None;
         }
 
@@ -99,7 +103,6 @@ impl DeviceMemory {
     ///
     /// # Panics
     ///
-    /// - Panics if `allocate_info.allocation_size` is 0.
     /// - Panics if `allocate_info.dedicated_allocation` is `Some` and the contained buffer or
     ///   image does not belong to `device`.
     #[inline]
@@ -111,7 +114,7 @@ impl DeviceMemory {
         if !(device.api_version() >= Version::V1_1
             || device.enabled_extensions().khr_dedicated_allocation)
         {
-            // Fall back instead of erroring out
+            // Fall back instead of erroring out.
             allocate_info.dedicated_allocation = None;
         }
 
@@ -281,16 +284,28 @@ impl DeviceMemory {
             output.assume_init()
         };
 
+        let atom_size = device.physical_device().properties().non_coherent_atom_size;
+
+        let is_coherent = device.physical_device().memory_properties().memory_types
+            [memory_type_index as usize]
+            .property_flags
+            .intersects(MemoryPropertyFlags::HOST_COHERENT);
+
         Ok(DeviceMemory {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
+
             allocation_size,
             memory_type_index,
             dedicated_to: dedicated_allocation.map(Into::into),
             export_handle_types,
             imported_handle_type,
             flags,
+
+            mapping_state: None,
+            atom_size,
+            is_coherent,
         })
     }
 
@@ -315,16 +330,28 @@ impl DeviceMemory {
             _ne: _,
         } = allocate_info;
 
+        let atom_size = device.physical_device().properties().non_coherent_atom_size;
+
+        let is_coherent = device.physical_device().memory_properties().memory_types
+            [memory_type_index as usize]
+            .property_flags
+            .intersects(MemoryPropertyFlags::HOST_COHERENT);
+
         DeviceMemory {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
+
             allocation_size,
             memory_type_index,
             dedicated_to: dedicated_allocation.map(Into::into),
             export_handle_types,
             imported_handle_type: None,
             flags,
+
+            mapping_state: None,
+            atom_size,
+            is_coherent,
         }
     }
 
@@ -368,6 +395,305 @@ impl DeviceMemory {
     #[inline]
     pub fn flags(&self) -> MemoryAllocateFlags {
         self.flags
+    }
+
+    /// Returns the current mapping state, or [`None`] if the memory is not currently host-mapped.
+    #[inline]
+    pub fn mapping_state(&self) -> Option<&MappingState> {
+        self.mapping_state.as_ref()
+    }
+
+    pub(crate) fn atom_size(&self) -> DeviceAlignment {
+        self.atom_size
+    }
+
+    /// Maps a range of memory to be accessed by the host.
+    ///
+    /// `self` must not be host-mapped already and must be allocated from host-visible memory.
+    #[inline]
+    pub fn map(&mut self, map_info: MemoryMapInfo) -> Result<(), Validated<VulkanError>> {
+        self.validate_map(&map_info)?;
+
+        unsafe { Ok(self.map_unchecked(map_info)?) }
+    }
+
+    fn validate_map(&self, map_info: &MemoryMapInfo) -> Result<(), Box<ValidationError>> {
+        if self.mapping_state.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "this device memory is already host-mapped".into(),
+                vuids: &["VUID-vkMapMemory-memory-00678"],
+                ..Default::default()
+            }));
+        }
+
+        map_info
+            .validate(self)
+            .map_err(|err| err.add_context("map_info"))?;
+
+        let memory_type = &self
+            .device()
+            .physical_device()
+            .memory_properties()
+            .memory_types[self.memory_type_index() as usize];
+
+        if !memory_type
+            .property_flags
+            .intersects(MemoryPropertyFlags::HOST_VISIBLE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`self.memory_type_index()` refers to a memory type whose \
+                    `property_flags` does not contain `MemoryPropertyFlags::HOST_VISIBLE`"
+                    .into(),
+                vuids: &["VUID-vkMapMemory-memory-00682"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn map_unchecked(&mut self, map_info: MemoryMapInfo) -> Result<(), VulkanError> {
+        let MemoryMapInfo {
+            offset,
+            size,
+            _ne: _,
+        } = map_info;
+
+        // Sanity check: this would lead to UB when calculating pointer offsets.
+        assert!(size <= isize::MAX.try_into().unwrap());
+
+        let device = self.device();
+
+        let ptr = {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+
+            if device.enabled_extensions().khr_map_memory2 {
+                let map_info_vk = ash::vk::MemoryMapInfoKHR {
+                    flags: ash::vk::MemoryMapFlags::empty(),
+                    memory: self.handle(),
+                    offset,
+                    size,
+                    ..Default::default()
+                };
+
+                (fns.khr_map_memory2.map_memory2_khr)(
+                    device.handle(),
+                    &map_info_vk,
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+            } else {
+                (fns.v1_0.map_memory)(
+                    device.handle(),
+                    self.handle,
+                    offset,
+                    size,
+                    ash::vk::MemoryMapFlags::empty(),
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+            }
+
+            output.assume_init()
+        };
+
+        let ptr = NonNull::new(ptr).unwrap();
+        let range = offset..offset + size;
+        self.mapping_state = Some(MappingState { ptr, range });
+
+        Ok(())
+    }
+
+    /// Unmaps the memory. It will no longer be accessible from the host.
+    ///
+    /// `self` must be currently host-mapped.
+    //
+    // NOTE(Marc): The `&mut` here is more than just because we need to mutate the struct.
+    // `vkMapMemory` and `vkUnmapMemory` must be externally synchronized, but more importantly, if
+    // we allowed unmapping through a shared reference, it would be possible to unmap a resource
+    // that's currently being read or written by the host elsewhere, requiring even more locking on
+    // each host access.
+    #[inline]
+    pub fn unmap(&mut self, unmap_info: MemoryUnmapInfo) -> Result<(), Validated<VulkanError>> {
+        self.validate_unmap(&unmap_info)?;
+
+        unsafe { self.unmap_unchecked(unmap_info) }?;
+
+        Ok(())
+    }
+
+    fn validate_unmap(&self, unmap_info: &MemoryUnmapInfo) -> Result<(), Box<ValidationError>> {
+        if self.mapping_state.is_none() {
+            return Err(Box::new(ValidationError {
+                problem: "this device memory is not currently host-mapped".into(),
+                vuids: &["VUID-vkUnmapMemory-memory-00689"],
+                ..Default::default()
+            }));
+        }
+
+        unmap_info
+            .validate(self)
+            .map_err(|err| err.add_context("unmap_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn unmap_unchecked(
+        &mut self,
+        unmap_info: MemoryUnmapInfo,
+    ) -> Result<(), VulkanError> {
+        let MemoryUnmapInfo { _ne: _ } = unmap_info;
+
+        let device = self.device();
+        let fns = device.fns();
+
+        if device.enabled_extensions().khr_map_memory2 {
+            let unmap_info_vk = ash::vk::MemoryUnmapInfoKHR {
+                flags: ash::vk::MemoryUnmapFlagsKHR::empty(),
+                memory: self.handle(),
+                ..Default::default()
+            };
+
+            (fns.khr_map_memory2.unmap_memory2_khr)(device.handle(), &unmap_info_vk)
+                .result()
+                .map_err(VulkanError::from)?;
+        } else {
+            (fns.v1_0.unmap_memory)(device.handle(), self.handle);
+        }
+
+        self.mapping_state = None;
+
+        Ok(())
+    }
+
+    /// Invalidates the host cache for a range of mapped memory.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function before the memory
+    /// is read by the host, if the device previously wrote to the memory. It has no effect if the
+    /// memory is host-coherent.
+    ///
+    /// # Safety
+    ///
+    /// - If there are memory writes by the device that have not been propagated into the host
+    ///   cache, then there must not be any references in Rust code to any portion of the specified
+    ///   `memory_range`.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`map`]: Self::map
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    #[inline]
+    pub unsafe fn invalidate_range(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_memory_range(&memory_range)?;
+
+        Ok(self.invalidate_range_unchecked(memory_range)?)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn invalidate_range_unchecked(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), VulkanError> {
+        if self.is_coherent {
+            return Ok(());
+        }
+
+        let MappedMemoryRange {
+            offset,
+            size,
+            _ne: _,
+        } = memory_range;
+
+        let memory_range_vk = ash::vk::MappedMemoryRange {
+            memory: self.handle(),
+            offset,
+            size,
+            ..Default::default()
+        };
+
+        let fns = self.device().fns();
+        (fns.v1_0.invalidate_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
+            .result()
+            .map_err(VulkanError::from)?;
+
+        Ok(())
+    }
+
+    /// Flushes the host cache for a range of mapped memory.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function after writing to
+    /// the memory, if the device is going to read the memory. It has no effect if the memory is
+    /// host-coherent.
+    ///
+    /// # Safety
+    ///
+    /// - There must be no operations pending or executing in a device queue, that access the
+    ///   specified `memory_range`.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`map`]: Self::map
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    #[inline]
+    pub unsafe fn flush_range(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_memory_range(&memory_range)?;
+
+        Ok(self.flush_range_unchecked(memory_range)?)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn flush_range_unchecked(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), VulkanError> {
+        if self.is_coherent {
+            return Ok(());
+        }
+
+        let MappedMemoryRange {
+            offset,
+            size,
+            _ne: _,
+        } = memory_range;
+
+        let memory_range_vk = ash::vk::MappedMemoryRange {
+            memory: self.handle(),
+            offset,
+            size,
+            ..Default::default()
+        };
+
+        let fns = self.device().fns();
+        (fns.v1_0.flush_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
+            .result()
+            .map_err(VulkanError::from)?;
+
+        Ok(())
+    }
+
+    // NOTE(Marc): We are validating the parameters regardless of whether the memory is
+    // non-coherent on purpose, to catch potential bugs arising because the code isn't tested on
+    // such hardware.
+    fn validate_memory_range(
+        &self,
+        memory_range: &MappedMemoryRange,
+    ) -> Result<(), Box<ValidationError>> {
+        memory_range
+            .validate(self)
+            .map_err(|err| err.add_context("memory_range"))?;
+
+        Ok(())
     }
 
     /// Retrieves the amount of lazily-allocated memory that is currently commited to this
@@ -1034,7 +1360,7 @@ vulkan_bitflags_enum! {
 vulkan_bitflags! {
     #[non_exhaustive]
 
-    /// A mask specifying flags for device memory allocation.
+    /// Flags specifying additional properties of a device memory allocation.
     MemoryAllocateFlags = MemoryAllocateFlags(u32);
 
     /* TODO: enable
@@ -1052,6 +1378,306 @@ vulkan_bitflags! {
 
     /* TODO: enable
     DEVICE_ADDRESS_CAPTURE_REPLAY = DEVICE_ADDRESS_CAPTURE_REPLAY,*/
+}
+
+/// Parameters of a memory map operation.
+#[derive(Debug)]
+pub struct MemoryMapInfo {
+    /// The offset (in bytes) from the beginning of the `DeviceMemory`, where the mapping starts.
+    ///
+    /// Must be less than the [`allocation_size`] of the device memory. If the the memory was not
+    /// allocated from [host-coherent] memory, then this must be a multiple of the
+    /// [`non_coherent_atom_size`] device property.
+    ///
+    /// The default value is `0`.
+    ///
+    /// [`allocation_size`]: DeviceMemory::allocation_size
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    pub offset: DeviceSize,
+
+    /// The size (in bytes) of the mapping.
+    ///
+    /// Must be less than or equal to the [`allocation_size`] of the device memory minus `offset`.
+    /// If the the memory was not allocated from [host-coherent] memory, then this must be a
+    /// multiple of the [`non_coherent_atom_size`] device property, or be equal to the allocation
+    /// size minus `offset`.
+    ///
+    /// The default value is `0`, which must be overridden.
+    ///
+    /// [`allocation_size`]: DeviceMemory::allocation_size
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    pub size: DeviceSize,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl MemoryMapInfo {
+    pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            offset,
+            size,
+            _ne: _,
+        } = self;
+
+        if !(offset < memory.allocation_size()) {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not less than `self.allocation_size()`".into(),
+                vuids: &["VUID-vkMapMemory-offset-00679"],
+                ..Default::default()
+            }));
+        }
+
+        if size == 0 {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-vkMapMemory-size-00680"],
+                ..Default::default()
+            }));
+        }
+
+        if !(size <= memory.allocation_size() - offset) {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is not less than or equal to `self.allocation_size()` minus `offset`"
+                    .into(),
+                vuids: &["VUID-vkMapMemory-size-00681"],
+                ..Default::default()
+            }));
+        }
+
+        let atom_size = memory.atom_size();
+
+        // Not required for merely mapping, but without this check the user can end up with
+        // parts of the mapped memory at the start and end that they're not able to
+        // invalidate/flush, which is probably unintended.
+        //
+        // NOTE(Marc): We also rely on this for soundness, because it is easier and more optimal to
+        // not have to worry about whether a range of mapped memory is still in bounds of the
+        // mapped memory after being aligned to the non-coherent atom size.
+        if !memory.is_coherent
+            && (!is_aligned(offset, atom_size)
+                || (!is_aligned(size, atom_size) && offset + size != memory.allocation_size()))
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`self.memory_type_index()` refers to a memory type whose \
+                    `property_flags` does not contain `MemoryPropertyFlags::HOST_COHERENT`, and \
+                    `offset` and/or `size` are not aligned to the `non_coherent_atom_size` device \
+                    property"
+                    .into(),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for MemoryMapInfo {
+    #[inline]
+    fn default() -> Self {
+        MemoryMapInfo {
+            offset: 0,
+            size: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters of a memory unmap operation.
+#[derive(Debug)]
+pub struct MemoryUnmapInfo {
+    pub _ne: crate::NonExhaustive,
+}
+
+impl MemoryUnmapInfo {
+    pub(crate) fn validate(&self, _memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
+        let &Self { _ne: _ } = self;
+
+        Ok(())
+    }
+}
+
+impl Default for MemoryUnmapInfo {
+    #[inline]
+    fn default() -> Self {
+        MemoryUnmapInfo {
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Represents the currently host-mapped region of a [`DeviceMemory`] block.
+#[derive(Debug)]
+pub struct MappingState {
+    ptr: NonNull<c_void>,
+    range: Range<DeviceSize>,
+}
+
+// It is safe to share `ptr` between threads because the user would have to use unsafe code
+// themself to get UB in the first place.
+unsafe impl Send for MappingState {}
+unsafe impl Sync for MappingState {}
+
+impl MappingState {
+    /// Returns the pointer to the start of the mapped memory. Meaning that the pointer is already
+    /// offset by the [`offset`].
+    ///
+    /// [`offset`]: Self::offset
+    #[inline]
+    pub fn ptr(&self) -> NonNull<c_void> {
+        self.ptr
+    }
+
+    /// Returns the offset given to [`DeviceMemory::map`].
+    #[inline]
+    pub fn offset(&self) -> DeviceSize {
+        self.range.start
+    }
+
+    /// Returns the size given to [`DeviceMemory::map`].
+    #[inline]
+    pub fn size(&self) -> DeviceSize {
+        self.range.end - self.range.start
+    }
+
+    /// Returns a pointer to a slice of the mapped memory. Returns `None` if out of bounds.
+    ///
+    /// `range` is specified in bytes relative to the start of the memory allocation, and must fall
+    /// within the range of the memory mapping given to [`DeviceMemory::map`].
+    ///
+    /// This function is safe in the sense that the returned pointer is guaranteed to be within
+    /// bounds of the mapped memory, however dereferencing the pointer isn't:
+    ///
+    /// - Normal Rust aliasing rules apply: if you create a mutable reference out of the pointer,
+    ///   you must ensure that no other references exist in Rust to any portion of the same memory.
+    /// - While a reference created from the pointer exists, there must be no operations pending or
+    ///   executing in any queue on the device, that write to any portion of the same memory.
+    /// - While a mutable reference created from the pointer exists, there must be no operations
+    ///   pending or executing in any queue on the device, that read from any portion of the same
+    ///   memory.
+    #[inline]
+    pub fn slice(&self, range: Range<DeviceSize>) -> Option<NonNull<[u8]>> {
+        if self.range.start <= range.start
+            && range.start <= range.end
+            && range.end <= self.range.end
+        {
+            // SAFETY: We checked that the range is within the currently mapped range.
+            Some(unsafe { self.slice_unchecked(range) })
+        } else {
+            None
+        }
+    }
+
+    /// # Safety
+    ///
+    /// - `range` must be within the currently mapped range.
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn slice_unchecked(&self, range: Range<DeviceSize>) -> NonNull<[u8]> {
+        let ptr = self.ptr.as_ptr();
+
+        // SAFETY: The caller must guarantee that `range` is within the currently mapped range,
+        // which means that the offset pointer and length must denote a slice that's contained
+        // within the allocated (mapped) object.
+        let ptr = ptr.add((range.start - self.range.start) as usize);
+        let len = (range.end - range.start) as usize;
+
+        let ptr = ptr::slice_from_raw_parts_mut(<*mut c_void>::cast::<u8>(ptr), len);
+
+        // SAFETY: The original pointer was non-null, and the caller must guarantee that `range`
+        // is within the currently mapped range, which means that the offset couldn't have wrapped
+        // around the address space.
+        NonNull::new_unchecked(ptr)
+    }
+}
+
+/// Represents a range of host-mapped [`DeviceMemory`] to be invalidated or flushed.
+///
+/// Must be contained within the currently mapped range of the device memory.
+#[derive(Debug)]
+pub struct MappedMemoryRange {
+    /// The offset (in bytes) from the beginning of the allocation, where the range starts.
+    ///
+    /// Must be a multiple of the [`non_coherent_atom_size`] device property.
+    ///
+    /// The default value is `0`.
+    ///
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    pub offset: DeviceSize,
+
+    /// The size (in bytes) of the range.
+    ///
+    /// Must be a multiple of the [`non_coherent_atom_size`] device property, or be equal to the
+    /// allocation size minus `offset`.
+    ///
+    /// The default value is `0`.
+    ///
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    pub size: DeviceSize,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl MappedMemoryRange {
+    pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            offset,
+            size,
+            _ne: _,
+        } = self;
+
+        if let Some(state) = &memory.mapping_state {
+            if !(state.range.start <= offset && size <= state.range.end - offset) {
+                return Err(Box::new(ValidationError {
+                    problem: "is not contained within the mapped range of this device memory"
+                        .into(),
+                    vuids: &["VUID-VkMappedMemoryRange-size-00685"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            return Err(Box::new(ValidationError {
+                problem: "this device memory is not currently host-mapped".into(),
+                vuids: &["VUID-VkMappedMemoryRange-memory-00684"],
+                ..Default::default()
+            }));
+        }
+
+        if !is_aligned(offset, memory.atom_size()) {
+            return Err(Box::new(ValidationError {
+                context: "offset".into(),
+                problem: "is not aligned to the `non_coherent_atom_size` device property".into(),
+                vuids: &["VUID-VkMappedMemoryRange-offset-00687"],
+                ..Default::default()
+            }));
+        }
+
+        if !(is_aligned(size, memory.atom_size()) || size == memory.allocation_size() - offset) {
+            return Err(Box::new(ValidationError {
+                context: "size".into(),
+                problem: "is not aligned to the `non_coherent_atom_size` device property nor \
+                    equal to `self.allocation_size()` minus `offset`"
+                    .into(),
+                vuids: &["VUID-VkMappedMemoryRange-size-01390"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for MappedMemoryRange {
+    #[inline]
+    fn default() -> Self {
+        MappedMemoryRange {
+            offset: 0,
+            size: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 /// Represents device memory that has been mapped in a CPU-accessible space.
@@ -1095,6 +1721,10 @@ vulkan_bitflags! {
 /// }
 /// ```
 #[derive(Debug)]
+#[deprecated(
+    since = "0.34.0",
+    note = "use the methods provided directly on `DeviceMemory` instead"
+)]
 pub struct MappedDeviceMemory {
     memory: DeviceMemory,
     pointer: *mut c_void, // points to `range.start`
@@ -1110,6 +1740,7 @@ pub struct MappedDeviceMemory {
 // Vulkan specs, documentation of `vkFreeMemory`:
 // > If a memory object is mapped at the time it is freed, it is implicitly unmapped.
 
+#[allow(deprecated)]
 impl MappedDeviceMemory {
     /// Maps a range of memory to be accessed by the CPU.
     ///
@@ -1165,8 +1796,14 @@ impl MappedDeviceMemory {
             }));
         }
 
-        // VUID-vkMapMemory-memory-00678
-        // Guaranteed because we take ownership of `memory`, no other mapping can exist.
+        if memory.mapping_state().is_some() {
+            return Err(Box::new(ValidationError {
+                context: "memory".into(),
+                problem: "is already host-mapped".into(),
+                vuids: &["VUID-vkMapMemory-memory-00678"],
+                ..Default::default()
+            }));
+        }
 
         if range.end > memory.allocation_size {
             return Err(Box::new(ValidationError {
@@ -1208,6 +1845,9 @@ impl MappedDeviceMemory {
         memory: DeviceMemory,
         range: Range<DeviceSize>,
     ) -> Result<Self, VulkanError> {
+        // Sanity check: this would lead to UB when calculating pointer offsets.
+        assert!(range.end - range.start <= isize::MAX.try_into().unwrap());
+
         let device = memory.device();
 
         let pointer = unsafe {
@@ -1480,6 +2120,7 @@ impl MappedDeviceMemory {
     }
 }
 
+#[allow(deprecated)]
 impl AsRef<DeviceMemory> for MappedDeviceMemory {
     #[inline]
     fn as_ref(&self) -> &DeviceMemory {
@@ -1487,6 +2128,7 @@ impl AsRef<DeviceMemory> for MappedDeviceMemory {
     }
 }
 
+#[allow(deprecated)]
 impl AsMut<DeviceMemory> for MappedDeviceMemory {
     #[inline]
     fn as_mut(&mut self) -> &mut DeviceMemory {
@@ -1494,6 +2136,7 @@ impl AsMut<DeviceMemory> for MappedDeviceMemory {
     }
 }
 
+#[allow(deprecated)]
 unsafe impl DeviceOwned for MappedDeviceMemory {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -1501,7 +2144,9 @@ unsafe impl DeviceOwned for MappedDeviceMemory {
     }
 }
 
+#[allow(deprecated)]
 unsafe impl Send for MappedDeviceMemory {}
+#[allow(deprecated)]
 unsafe impl Sync for MappedDeviceMemory {}
 
 #[cfg(test)]

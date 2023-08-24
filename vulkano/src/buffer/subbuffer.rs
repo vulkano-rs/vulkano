@@ -16,7 +16,7 @@ use crate::{
     memory::{
         self,
         allocator::{align_down, align_up, DeviceLayout},
-        is_aligned, DeviceAlignment,
+        is_aligned, DeviceAlignment, MappedMemoryRange,
     },
     sync::HostAccessError,
     DeviceSize, NonZeroDeviceSize, ValidationError,
@@ -25,7 +25,6 @@ use bytemuck::AnyBitPattern;
 use std::{
     alloc::Layout,
     cmp,
-    ffi::c_void,
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::{self, align_of, size_of},
@@ -119,16 +118,23 @@ impl<T: ?Sized> Subbuffer<T> {
         }
     }
 
-    /// Returns the mapped pointer to the start of the subbuffer if the memory is host-visible,
-    /// otherwise returns [`None`].
-    pub fn mapped_ptr(&self) -> Option<NonNull<c_void>> {
+    /// Returns the mapped pointer to the range of memory of `self`.
+    ///
+    /// The subbuffer must fall within the range of the memory mapping given to
+    /// [`DeviceMemory::map`].
+    ///
+    /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
+    ///
+    /// [`DeviceMemory::map`]: crate::memory::DeviceMemory::map
+    /// [`MappingState::slice`]: crate::memory::MappingState::slice
+    pub fn mapped_slice(&self) -> Result<NonNull<[u8]>, HostAccessError> {
         match self.buffer().memory() {
-            BufferMemory::Normal(a) => a.mapped_ptr().map(|ptr| {
-                // SAFETY: The original address came from the Vulkan implementation, and allocation
-                // sizes are guaranteed to not exceed `isize::MAX` when there's a mapped pointer,
-                // so the offset better be in range.
-                unsafe { NonNull::new_unchecked(ptr.as_ptr().add(self.offset as usize)) }
-            }),
+            BufferMemory::Normal(a) => {
+                let opt = a.mapped_slice(self.range());
+
+                // SAFETY: `self.range()` is in bounds of the allocation.
+                unsafe { opt.unwrap_unchecked() }
+            }
             BufferMemory::Sparse => unreachable!(),
         }
     }
@@ -327,27 +333,33 @@ where
             .map_err(HostAccessError::AccessConflict)?;
         unsafe { state.cpu_read_lock(range.clone()) };
 
+        let mapped_slice = self.mapped_slice()?;
+
         if allocation.atom_size().is_some() {
-            // If there are other read locks being held at this point, they also called
-            // `invalidate_range` when locking. The GPU can't write data while the CPU holds a read
-            // lock, so there will be no new data and this call will do nothing.
-            // TODO: probably still more efficient to call it only if we're the first to acquire a
-            // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            unsafe {
-                allocation
-                    .invalidate_range(range.clone())
-                    .map_err(HostAccessError::Invalidate)?
+            let memory_range = MappedMemoryRange {
+                offset: range.start,
+                size: range.end - range.start,
+                _ne: crate::NonExhaustive(()),
             };
+
+            // If there are other read locks being held at this point, they also called
+            // `invalidate_range_unchecked` when locking. The device can't write data while the
+            // host holds a read lock, so there will be no new data and this call will do nothing.
+            // TODO: probably still more efficient to call it only if we're the first to acquire a
+            // read lock, but the number of host locks isn't currently tracked anywhere.
+            //
+            // SAFETY:
+            // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
+            //   within the mapped range of the memory.
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size
+            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
+            //   non-coherent atom size must fall within the mapped range of the memory.
+            unsafe { allocation.invalidate_range_unchecked(memory_range) }
+                .map_err(HostAccessError::Invalidate)?;
         }
 
-        let mapped_ptr = self.mapped_ptr().ok_or_else(|| {
-            HostAccessError::ValidationError(Box::new(ValidationError {
-                problem: "the memory of this subbuffer is not host-visible".into(),
-                ..Default::default()
-            }))
-        })?;
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
-        let data = unsafe { &*T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
+        let data = unsafe { &*T::ptr_from_slice(mapped_slice) };
 
         Ok(BufferReadGuard {
             subbuffer: self,
@@ -407,22 +419,27 @@ where
             .map_err(HostAccessError::AccessConflict)?;
         unsafe { state.cpu_write_lock(range.clone()) };
 
+        let mapped_slice = self.mapped_slice()?;
+
         if allocation.atom_size().is_some() {
-            unsafe {
-                allocation
-                    .invalidate_range(range.clone())
-                    .map_err(HostAccessError::Invalidate)?
+            let memory_range = MappedMemoryRange {
+                offset: range.start,
+                size: range.end - range.start,
+                _ne: crate::NonExhaustive(()),
             };
+
+            // SAFETY:
+            // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
+            //   within the mapped range of the memory.
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size
+            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
+            //   non-coherent atom size must fall within the mapped range of the memory.
+            unsafe { allocation.invalidate_range_unchecked(memory_range) }
+                .map_err(HostAccessError::Invalidate)?;
         }
 
-        let mapped_ptr = self.mapped_ptr().ok_or_else(|| {
-            HostAccessError::ValidationError(Box::new(ValidationError {
-                problem: "the memory of this subbuffer is not host-visible".into(),
-                ..Default::default()
-            }))
-        })?;
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
-        let data = unsafe { &mut *T::from_ffi(mapped_ptr.as_ptr(), self.size as usize) };
+        let data = unsafe { &mut *T::ptr_from_slice(mapped_slice) };
 
         Ok(BufferWriteGuard {
             subbuffer: self,
@@ -661,7 +678,13 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
         };
 
         if allocation.atom_size().is_some() && !thread::panicking() {
-            unsafe { allocation.flush_range(self.range.clone()).unwrap() };
+            let memory_range = MappedMemoryRange {
+                offset: self.range.start,
+                size: self.range.end - self.range.start,
+                _ne: crate::NonExhaustive(()),
+            };
+
+            unsafe { allocation.flush_range_unchecked(memory_range).unwrap() };
         }
 
         let mut state = self.subbuffer.buffer().state();
@@ -777,24 +800,24 @@ impl<T: ?Sized> DerefMut for BufferWriteGuard<'_, T> {
 // - `LAYOUT` must be the correct layout for the type, which also means the type must either be
 //   sized or if it's unsized then its metadata must be the same as that of a slice. Implementing
 //   `BufferContents` for any other kind of DST is instantaneous horrifically undefined behavior.
-// - `from_ffi` must create a pointer with the same address as the `data` parameter that is passed
-//   in. The pointer is expected to be aligned properly already.
-// - `from_ffi` must create a pointer that is expected to be valid for reads (and potentially
-//   writes) for exactly `range` bytes. The `data` and `range` are expected to be valid for the
+// - `ptr_from_slice` must create a pointer with the same address as the `slice` parameter that is
+//   passed in. The pointer is expected to be aligned properly already.
+// - `ptr_from_slice` must create a pointer that is expected to be valid for reads (and potentially
+//   writes) for exactly `slice.len()` bytes. The `slice.len()` is expected to be valid for the
 //   `LAYOUT`.
 pub unsafe trait BufferContents: Send + Sync + 'static {
     /// The layout of the contents.
     const LAYOUT: BufferContentsLayout;
 
-    /// Creates a pointer to `Self` from a pointer to the start of the data and a range in bytes.
+    /// Creates a pointer to `Self` from a pointer to a range of mapped memory.
     ///
     /// # Safety
     ///
-    /// - If `Self` is sized, then `range` must match the size exactly.
-    /// - If `Self` is unsized, then the `range` minus the size of the head (sized part) of the DST
-    ///   must be evenly divisible by the size of the element type.
+    /// - If `Self` is sized, then `slice.len()` must match the size exactly.
+    /// - If `Self` is unsized, then `slice.len()` minus the size of the head (sized part) of the
+    ///   DST must be evenly divisible by the size of the element type.
     #[doc(hidden)]
-    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self;
+    unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self;
 }
 
 unsafe impl<T> BufferContents for T
@@ -809,11 +832,10 @@ where
         };
 
     #[inline(always)]
-    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self {
-        debug_assert!(range == size_of::<T>());
-        debug_assert!(data as usize % align_of::<T>() == 0);
+    unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
+        debug_assert!(slice.len() == size_of::<T>());
 
-        data.cast()
+        <*mut [u8]>::cast::<T>(slice.as_ptr())
     }
 }
 
@@ -827,12 +849,12 @@ where
     });
 
     #[inline(always)]
-    unsafe fn from_ffi(data: *mut c_void, range: usize) -> *mut Self {
-        debug_assert!(range % size_of::<T>() == 0);
-        debug_assert!(data as usize % align_of::<T>() == 0);
-        let len = range / size_of::<T>();
+    unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
+        let data = <*mut [u8]>::cast::<T>(slice.as_ptr());
+        let len = slice.len() / size_of::<T>();
+        debug_assert!(slice.len() % size_of::<T>() == 0);
 
-        ptr::slice_from_raw_parts_mut(data.cast(), len)
+        ptr::slice_from_raw_parts_mut(data, len)
     }
 }
 

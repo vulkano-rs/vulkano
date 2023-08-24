@@ -25,7 +25,7 @@ pub use self::{
         MemoryBarrier, PipelineStage, PipelineStages, QueueFamilyOwnershipTransfer,
     },
 };
-use crate::{device::Queue, ValidationError, VulkanError};
+use crate::{device::Queue, VulkanError};
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -104,7 +104,8 @@ pub(crate) enum CurrentAccess {
 pub enum HostAccessError {
     AccessConflict(AccessConflict),
     Invalidate(VulkanError),
-    ValidationError(Box<ValidationError>),
+    NotHostMapped,
+    OutOfMappedRange,
 }
 
 impl Error for HostAccessError {
@@ -112,7 +113,7 @@ impl Error for HostAccessError {
         match self {
             Self::AccessConflict(err) => Some(err),
             Self::Invalidate(err) => Some(err),
-            Self::ValidationError(err) => Some(err),
+            _ => None,
         }
     }
 }
@@ -124,7 +125,13 @@ impl Display for HostAccessError {
                 write!(f, "the resource is already in use in a conflicting way")
             }
             HostAccessError::Invalidate(_) => write!(f, "invalidating the device memory failed"),
-            HostAccessError::ValidationError(_) => write!(f, "validation error"),
+            HostAccessError::NotHostMapped => {
+                write!(f, "the device memory is not current host-mapped")
+            }
+            HostAccessError::OutOfMappedRange => write!(
+                f,
+                "the requested range is not within the currently mapped range of device memory",
+            ),
         }
     }
 }
