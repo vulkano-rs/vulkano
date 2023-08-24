@@ -11,7 +11,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - Updating existing descriptor sets
 - Sparse binding
 - `VkAllocationCallbacks`
-- Pipeline derivatives
 - Possibly more?
 
 ## Vulkan 1.1

@@ -140,6 +140,7 @@ Changes to futures:
 - Support for the `ext_subgroup_size_control` extension.
 - Support for the `khr_image_format_list` extension.
 - Support for the `khr_swapchain_mutable_format` extension.
+- Support for pipeline derivatives.
 
 ### Bugs fixed
 
