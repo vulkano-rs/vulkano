@@ -2503,14 +2503,14 @@ where
                                 let (use_ref, memory_access) = use_iter(index as u32);
 
                                 let mut range = range.clone();
-                                range.start += buffer.offset() + dynamic_offset;
-                                range.end += buffer.offset() + dynamic_offset;
+                                range.start += dynamic_offset;
+                                range.end += dynamic_offset;
 
                                 used_resources.push((
                                     use_ref,
                                     Resource::Buffer {
                                         buffer: buffer.clone(),
-                                        range: range.clone(),
+                                        range,
                                         memory_access,
                                     },
                                 ));
@@ -2522,10 +2522,6 @@ where
                                 let DescriptorBufferInfo { buffer, range } = buffer_info;
 
                                 let (use_ref, memory_access) = use_iter(index as u32);
-
-                                let mut range = range.clone();
-                                range.start += buffer.offset();
-                                range.end += buffer.offset();
 
                                 used_resources.push((
                                     use_ref,
@@ -2545,15 +2541,11 @@ where
                             let buffer = buffer_view.buffer();
                             let (use_ref, memory_access) = use_iter(index as u32);
 
-                            let mut range = buffer_view.range();
-                            range.start += buffer.offset();
-                            range.end += buffer.offset();
-
                             used_resources.push((
                                 use_ref,
                                 Resource::Buffer {
                                     buffer: buffer.clone(),
-                                    range: range.clone(),
+                                    range: buffer_view.range().clone(),
                                     memory_access,
                                 },
                             ));

@@ -281,7 +281,7 @@ impl From<ResourceInCommand> for ResourceUseRef2 {
 }
 
 /// Type of resource whose state is to be tracked.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) enum Resource {
     Buffer {
         buffer: Subbuffer<[u8]>,
