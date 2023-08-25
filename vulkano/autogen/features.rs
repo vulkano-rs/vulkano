@@ -483,7 +483,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
 fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMember> {
     let mut features = HashMap::default();
     std::iter::once(&types["VkPhysicalDeviceFeatures"])
-        .chain(sorted_structs(types).into_iter())
+        .chain(sorted_structs(types))
         .filter(|(ty, _)| {
             ty.name.as_deref() == Some("VkPhysicalDeviceFeatures")
                 || ty.structextends.as_deref()

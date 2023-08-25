@@ -134,6 +134,7 @@
 )]
 // These lints are a bit too pedantic, so they're disabled here.
 #![allow(
+    clippy::arc_with_non_send_sync,
     clippy::collapsible_else_if,
     clippy::collapsible_if,
     clippy::derivable_impls, // TODO: remove

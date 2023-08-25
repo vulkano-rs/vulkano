@@ -2993,5 +2993,5 @@ mod tests {
         };
     }
 
-    pub(self) use {dummy_allocator, dummy_info, dummy_info_linear, dummy_info_nonlinear};
+    use {dummy_allocator, dummy_info, dummy_info_linear, dummy_info_nonlinear};
 }

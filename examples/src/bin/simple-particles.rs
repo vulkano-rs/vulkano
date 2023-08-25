@@ -508,7 +508,8 @@ fn main() {
         .unwrap()
     };
 
-    let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; framebuffers.len()];
+    let mut fences: Vec<Option<FenceSignalFuture<_>>> =
+        (0..framebuffers.len()).map(|_| None).collect();
     let mut previous_fence_index = 0u32;
 
     let start_time = SystemTime::now();
@@ -566,7 +567,7 @@ fn main() {
 
                 // If the previous image has a fence then use it for synchronization, else create
                 // a new one.
-                let previous_future = match fences[previous_fence_index as usize].clone() {
+                let previous_future = match fences[previous_fence_index as usize].take() {
                     // Ensure current frame is synchronized with previous.
                     Some(fence) => fence.boxed(),
                     // Create new future to guarentee synchronization with (fake) previous frame.
@@ -629,7 +630,7 @@ fn main() {
                 // Update this frame's future with current fence.
                 fences[image_index as usize] = match future.map_err(Validated::unwrap) {
                     // Success, store result into vector.
-                    Ok(future) => Some(Arc::new(future)),
+                    Ok(future) => Some(future),
 
                     // Unknown failure.
                     Err(e) => panic!("failed to flush future: {e}"),

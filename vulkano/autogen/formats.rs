@@ -810,7 +810,7 @@ fn formats_members(
 
                         // cgmath only has 1, 2, 3 and 4-component vector types.
                         // Fall back to arrays for anything else.
-                        if matches!(component_count, 1 | 2 | 3 | 4) {
+                        if matches!(component_count, 1..=4) {
                             let ty = format_ident!("{}", format!("Vector{}", component_count));
                             member.type_cgmath = Some(quote! { cgmath::#ty<#component_type> });
                         }

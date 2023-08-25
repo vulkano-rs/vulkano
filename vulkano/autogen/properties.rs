@@ -147,7 +147,7 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
         &types["VkPhysicalDeviceSparseProperties"],
     ]
     .into_iter()
-    .chain(sorted_structs(types).into_iter())
+    .chain(sorted_structs(types))
     .filter(|(ty, _)| {
         let name = ty.name.as_deref();
         name == Some("VkPhysicalDeviceProperties")

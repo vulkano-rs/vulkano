@@ -79,7 +79,6 @@
 //! [the `view` module]: self::view
 //! [the `shader` module documentation]: crate::shader
 
-use self::sys::RawBuffer;
 pub use self::{subbuffer::*, sys::*, usage::*};
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
