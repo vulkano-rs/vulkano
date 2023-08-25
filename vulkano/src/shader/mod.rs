@@ -401,7 +401,7 @@ impl ShaderModule {
         })
     }
 
-    /// check for *exactly* one item in the Iterator
+    /// checks for *exactly* one entry point matching the `filter`, otherwise returns `None`
     #[inline]
     fn single_entry_point_filter<P>(self: &Arc<Self>, mut filter: P) -> Option<EntryPoint>
     where
@@ -420,16 +420,16 @@ impl ShaderModule {
         })
     }
 
-    /// Returns information about the entry point if self only contains a single entry point,
+    /// Returns information about the entry point if `self` only contains a single entry point,
     /// `None` otherwise.
     #[inline]
     pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
         self.single_entry_point_filter(|_| true)
     }
 
-    /// Returns information about the entry point if self only contains a single entry point
-    /// with the provided ExecutionModel. Returns `None` if no entry point was found or multiple
-    /// entry points have been found matching the provided ExecutionModel.
+    /// Returns information about the entry point if `self` only contains a single entry point
+    /// with the provided `ExecutionModel`. Returns `None` if no entry point was found or multiple
+    /// entry points have been found matching the provided `ExecutionModel`.
     #[inline]
     pub fn single_entry_point_of_execution(
         self: &Arc<Self>,
