@@ -147,6 +147,7 @@ use crate::{
 use ahash::{HashMap, HashSet};
 use bytemuck::bytes_of;
 use half::f16;
+use smallvec::SmallVec;
 use spirv::ExecutionModel;
 use std::{
     borrow::Cow,
@@ -169,8 +170,7 @@ pub struct ShaderModule {
     handle: ash::vk::ShaderModule,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
-    entry_point_map: HashMap<String, HashMap<ExecutionModel, usize>>,
-    entry_point_infos: Vec<EntryPointInfo>,
+    entry_point_infos: SmallVec<[EntryPointInfo; 1]>,
 }
 
 impl ShaderModule {
@@ -310,27 +310,11 @@ impl ShaderModule {
         entry_points: impl IntoIterator<Item = EntryPointInfo>,
     ) -> Arc<ShaderModule> {
         let ShaderModuleCreateInfo { code: _, _ne: _ } = create_info;
-
-        let mut entry_point_map: HashMap<String, HashMap<ExecutionModel, usize>> =
-            HashMap::default();
-        let entry_point_infos: Vec<_> = entry_points
-            .into_iter()
-            .enumerate()
-            .map(|(index, info)| {
-                entry_point_map
-                    .entry(info.name.clone())
-                    .or_default()
-                    .insert(ExecutionModel::from(&info.execution), index);
-                info
-            })
-            .collect();
-
         Arc::new(ShaderModule {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
-            entry_point_map,
-            entry_point_infos,
+            entry_point_infos: entry_points.into_iter().collect(),
         })
     }
 
@@ -373,16 +357,7 @@ impl ShaderModule {
     /// name exist.
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
-        self.entry_point_map.get(name).and_then(|infos| {
-            if infos.len() == 1 {
-                infos.iter().next().map(|(_, &info_index)| EntryPoint {
-                    module: self.clone(),
-                    info_index,
-                })
-            } else {
-                None
-            }
-        })
+        self.single_entry_point_filter(|info| info.name == name)
     }
 
     /// Returns information about the entry point with the provided name and execution model.
@@ -393,11 +368,8 @@ impl ShaderModule {
         name: &str,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        self.entry_point_map.get(name).and_then(|infos| {
-            infos.get(&execution).map(|&info_index| EntryPoint {
-                module: self.clone(),
-                info_index,
-            })
+        self.single_entry_point_filter(|info| {
+            info.name == name && ExecutionModel::from(&info.execution) == execution
         })
     }
 
