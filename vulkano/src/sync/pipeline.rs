@@ -601,8 +601,7 @@ vulkan_bitflags! {
         pub(crate) fn expand(mut self) -> Self {
             if self.intersects(AccessFlags::SHADER_READ) {
                 self -= AccessFlags::SHADER_READ;
-                self |= AccessFlags::UNIFORM_READ
-                    | AccessFlags::SHADER_SAMPLED_READ
+                self |= AccessFlags::SHADER_SAMPLED_READ
                     | AccessFlags::SHADER_STORAGE_READ
                     | AccessFlags::SHADER_BINDING_TABLE_READ;
             }
