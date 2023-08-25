@@ -680,6 +680,9 @@ impl AutoSyncState {
                     ref range,
                     memory_access,
                 } => {
+                    debug_assert!(range.start <= range.end);
+                    debug_assert!(range.end <= buffer.size());
+
                     if let Some(previous_use_ref) = self.find_buffer_conflict(
                         self.command_index,
                         buffer,
@@ -704,6 +707,16 @@ impl AutoSyncState {
                     start_layout,
                     end_layout,
                 } => {
+                    debug_assert!(image.format().aspects().contains(subresource_range.aspects));
+                    debug_assert!(
+                        subresource_range.mip_levels.start <= subresource_range.mip_levels.end
+                    );
+                    debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
+                    debug_assert!(
+                        subresource_range.array_layers.start <= subresource_range.array_layers.end
+                    );
+                    debug_assert!(subresource_range.array_layers.end <= image.array_layers());
+
                     debug_assert!(memory_access.contains_write() || start_layout == end_layout);
                     debug_assert!(end_layout != ImageLayout::Undefined);
                     debug_assert!(end_layout != ImageLayout::Preinitialized);
@@ -1267,7 +1280,7 @@ struct UnsolvableResourceConflict {
 }
 
 // State of a resource during the building of the command buffer.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct BufferState {
     // Lists every use of the resource.
     resource_uses: Vec<ResourceUseRef>,
@@ -1281,7 +1294,7 @@ struct BufferState {
 }
 
 // State of a resource during the building of the command buffer.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct ImageState {
     // Lists every use of the resource.
     resource_uses: Vec<ResourceUseRef>,
