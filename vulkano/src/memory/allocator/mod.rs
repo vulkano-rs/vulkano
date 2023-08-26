@@ -235,7 +235,8 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanError,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    VulkanError,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
 use parking_lot::RwLock;
@@ -253,8 +254,9 @@ const G: DeviceSize = 1024 * M;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 pub unsafe trait MemoryAllocator: DeviceOwned {
-    /// Finds the most suitable memory type index in `memory_type_bits` using a filter. Returns
-    /// [`None`] if the requirements are too strict and no memory type is able to satisfy them.
+    /// Finds the most suitable memory type index in `memory_type_bits` using the given `filter`.
+    /// Returns [`None`] if the requirements are too strict and no memory type is able to satisfy
+    /// them.
     fn find_memory_type_index(
         &self,
         memory_type_bits: u32,
@@ -262,29 +264,14 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ) -> Option<u32>;
 
     /// Allocates memory from a specific memory type.
+    ///
+    /// # Arguments
+    ///
+    /// - `memory_type_index` - The index of the memory type to allocate from.
+    ///
+    /// - `never_allocate` - If `true` then the allocator should never allocate `DeviceMemory`,
+    ///   instead only suballocate from existing blocks.
     fn allocate_from_type(
-        &self,
-        memory_type_index: u32,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
-
-    /// Allocates memory from a specific memory type without checking the parameters.
-    ///
-    /// # Safety
-    ///
-    /// - If `memory_type_index` refers to a memory type with the [`protected`] flag set, then the
-    ///   [`protected_memory`] feature must be enabled on the device.
-    /// - If `memory_type_index` refers to a memory type with the [`device_coherent`] flag set,
-    ///   then the [`device_coherent_memory`] feature must be enabled on the device.
-    /// - `create_info.layout.size()` must not exceed the size of the heap that the memory type
-    ///   corresponding to `memory_type_index` resides in.
-    ///
-    /// [`protected`]: MemoryPropertyFlags::protected
-    /// [`protected_memory`]: crate::device::Features::protected_memory
-    /// [`device_coherent`]: MemoryPropertyFlags::device_coherent
-    /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    unsafe fn allocate_from_type_unchecked(
         &self,
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
@@ -301,12 +288,6 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ///   correspond to the value returned by either [`RawBuffer::memory_requirements`] or
     ///   [`RawImage::memory_requirements`] for the respective buffer or image.
     ///
-    ///   [`memory_type_bits`] must be below 2<sup>*n*</sup> where *n* is the number of available
-    ///   memory types.
-    ///
-    ///   The default is a layout with size [`DeviceLayout::MAX_SIZE`] and alignment
-    ///   [`DeviceAlignment::MIN`] and the rest all zeroes, which must be overridden.
-    ///
     /// - `allocation_type` - What type of resource this allocation will be used for.
     ///
     ///   This should be [`Linear`] for buffers and linear images, and [`NonLinear`] for optimal
@@ -319,13 +300,11 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
     ///
     ///   You should always fill this field in if you are allocating memory for a non-sparse
     ///   resource, otherwise the allocator won't be able to create a dedicated allocation if one
-    ///   is recommended.
+    ///   is required or recommended.
     ///
-    ///   This option is silently ignored (treated as `None`) if the device API version is below
+    ///   This argument is silently ignored (treated as `None`) if the device API version is below
     ///   1.1 and the [`khr_dedicated_allocation`] extension is not enabled on the device.
     ///
-    /// [`alignment`]: MemoryRequirements::alignment
-    /// [`memory_type_bits`]: MemoryRequirements::memory_type_bits
     /// [`RawBuffer::memory_requirements`]: crate::buffer::sys::RawBuffer::memory_requirements
     /// [`RawImage::memory_requirements`]: crate::image::sys::RawImage::memory_requirements
     /// [`Linear`]: AllocationType::Linear
@@ -340,48 +319,14 @@ pub unsafe trait MemoryAllocator: DeviceOwned {
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
     ) -> Result<MemoryAlloc, MemoryAllocatorError>;
 
-    /// Allocates memory according to requirements without checking the parameters.
-    ///
-    /// # Safety
-    ///
-    /// - If `create_info.dedicated_allocation` is `Some` then `create_info.requirements.size` must
-    ///   match the memory requirements of the resource.
-    /// - If `create_info.dedicated_allocation` is `Some` then the device the resource was created
-    ///   with must match the device the allocator was created with.
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    unsafe fn allocate_unchecked(
-        &self,
-        requirements: MemoryRequirements,
-        allocation_type: AllocationType,
-        create_info: AllocationCreateInfo,
-        dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError>;
-
-    /// Creates a root allocation/dedicated allocation without checking the parameters.
-    ///
-    /// # Safety
-    ///
-    /// - `allocation_size` must not exceed the size of the heap that the memory type corresponding
-    ///   to `memory_type_index` resides in.
-    /// - The handle types in `export_handle_types` must be supported and compatible, as reported by
-    ///   [`ExternalBufferProperties`] or [`ImageFormatProperties`].
-    /// - If any of the handle types in `export_handle_types` require a dedicated allocation, as
-    ///   reported by [`ExternalBufferProperties::external_memory_properties`] or
-    ///   [`ImageFormatProperties::external_memory_properties`], then `dedicated_allocation` must
-    ///   not be `None`.
-    ///
-    /// [`ExternalBufferProperties`]: crate::buffer::ExternalBufferProperties
-    /// [`ImageFormatProperties`]: crate::image::ImageFormatProperties
-    /// [`ExternalBufferProperties::external_memory_properties`]: crate::buffer::ExternalBufferProperties
-    /// [`ImageFormatProperties::external_memory_properties`]: crate::image::ImageFormatProperties::external_memory_properties
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    unsafe fn allocate_dedicated_unchecked(
+    /// Creates a root allocation/dedicated allocation.
+    fn allocate_dedicated(
         &self,
         memory_type_index: u32,
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, VulkanError>;
+    ) -> Result<MemoryAlloc, Validated<VulkanError>>;
 }
 
 /// Describes what memory property flags are required, preferred and not preferred when picking a
@@ -710,9 +655,16 @@ pub enum MemoryAllocatePreference {
 ///
 /// [allocation]: MemoryAlloc
 /// [memory allocator]: MemoryAllocator
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum MemoryAllocatorError {
-    VulkanError(VulkanError),
+    /// Allocating [`DeviceMemory`] failed.
+    AllocateDeviceMemory(Validated<VulkanError>),
+
+    /// Finding a suitable memory type failed.
+    ///
+    /// This is returned from [`MemoryAllocator::allocate`] when
+    /// [`MemoryAllocator::find_memory_type_index`] returns [`None`].
+    FindMemoryType,
 
     /// There is not enough memory in the pool.
     ///
@@ -742,7 +694,7 @@ pub enum MemoryAllocatorError {
 impl Error for MemoryAllocatorError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::VulkanError(err) => Some(err),
+            Self::AllocateDeviceMemory(err) => Some(err),
             _ => None,
         }
     }
@@ -750,29 +702,23 @@ impl Error for MemoryAllocatorError {
 
 impl Display for MemoryAllocatorError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match self {
-            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
-            Self::OutOfPoolMemory => write!(f, "the pool doesn't have enough free space"),
-            Self::DedicatedAllocationRequired => write!(
-                f,
-                "a dedicated allocation is required but was explicitly forbidden",
-            ),
-            Self::BlockSizeExceeded => write!(
-                f,
+        let msg = match self {
+            Self::AllocateDeviceMemory(_) => "allocating device memory failed",
+            Self::FindMemoryType => "finding a suitable memory type failed",
+            Self::OutOfPoolMemory => "the pool doesn't have enough free space",
+            Self::DedicatedAllocationRequired => {
+                "a dedicated allocation is required but was explicitly forbidden"
+            }
+            Self::BlockSizeExceeded => {
                 "the allocation size was greater than the block size for all heaps of suitable \
-                memory types and dedicated allocations were explicitly forbidden",
-            ),
-            Self::SuballocatorBlockSizeExceeded => write!(
-                f,
-                "the allocation size was greater than the suballocator's block size",
-            ),
-        }
-    }
-}
+                memory types and dedicated allocations were explicitly forbidden"
+            }
+            Self::SuballocatorBlockSizeExceeded => {
+                "the allocation size was greater than the suballocator's block size"
+            }
+        };
 
-impl From<VulkanError> for MemoryAllocatorError {
-    fn from(err: VulkanError) -> Self {
-        MemoryAllocatorError::VulkanError(err)
+        f.write_str(msg)
     }
 }
 
@@ -899,56 +845,9 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         device: &Device,
         create_info: &GenericMemoryAllocatorCreateInfo<'_, '_>,
     ) -> Result<(), Box<ValidationError>> {
-        let &GenericMemoryAllocatorCreateInfo {
-            block_sizes,
-            allocation_type: _,
-            dedicated_allocation: _,
-            export_handle_types,
-            device_address: _,
-            _ne: _,
-        } = create_info;
-
-        assert!(
-            block_sizes.windows(2).all(|win| win[0].0 < win[1].0),
-            "`create_info.block_sizes` must be sorted by threshold without duplicates",
-        );
-        assert!(
-            matches!(block_sizes.first(), Some((0, _))),
-            "`create_info.block_sizes` must contain a baseline threshold `0`",
-        );
-
-        if !export_handle_types.is_empty() {
-            if !(device.api_version() >= Version::V1_1
-                && device.enabled_extensions().khr_external_memory)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "create_info.export_handle_types".into(),
-                    problem: "is not empty".into(),
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
-                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
-                    ]),
-                    ..Default::default()
-                }));
-            }
-
-            assert!(
-                export_handle_types.len()
-                    == device
-                        .physical_device()
-                        .memory_properties()
-                        .memory_types
-                        .len(),
-                "`create_info.export_handle_types` must contain as many elements as the number of \
-                memory types if not empty",
-            );
-
-            for (index, export_handle_types) in export_handle_types.iter().enumerate() {
-                export_handle_types
-                    .validate_device(device)
-                    .map_err(|err| err.add_context(format!("export_handle_types[{}]", index)))?;
-            }
-        }
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
 
         Ok(())
     }
@@ -1054,66 +953,6 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
             max_allocations,
         }
     }
-
-    fn validate_allocate_from_type(&self, memory_type_index: u32) {
-        let memory_type = &self.pools[usize::try_from(memory_type_index).unwrap()].memory_type;
-
-        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
-        assert!(
-            memory_type
-                .property_flags
-                .contains(ash::vk::MemoryPropertyFlags::PROTECTED)
-                && !self.device.enabled_features().protected_memory,
-            "attempted to allocate from a protected memory type without the `protected_memory` \
-            feature being enabled on the device",
-        );
-
-        // VUID-vkAllocateMemory-deviceCoherentMemory-02790
-        assert!(
-            memory_type
-                .property_flags
-                .contains(ash::vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD)
-                && !self.device.enabled_features().device_coherent_memory,
-            "attempted to allocate memory from a device-coherent memory type without the \
-            `device_coherent_memory` feature being enabled on the device",
-        );
-    }
-
-    fn validate_allocate(
-        &self,
-        requirements: MemoryRequirements,
-        dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) {
-        assert!(requirements.memory_type_bits != 0);
-        assert!(requirements.memory_type_bits < 1 << self.pools.len());
-
-        if let Some(dedicated_allocation) = dedicated_allocation {
-            match dedicated_allocation {
-                DedicatedAllocation::Buffer(buffer) => {
-                    // VUID-VkMemoryDedicatedAllocateInfo-commonparent
-                    assert_eq!(&*self.device, buffer.device());
-
-                    let required_size = buffer.memory_requirements().layout.size();
-
-                    // VUID-VkMemoryDedicatedAllocateInfo-buffer-02965
-                    assert!(requirements.layout.size() != required_size);
-                }
-                DedicatedAllocation::Image(image) => {
-                    // VUID-VkMemoryDedicatedAllocateInfo-commonparent
-                    assert_eq!(&*self.device, image.device());
-
-                    let required_size = image.memory_requirements()[0].layout.size();
-
-                    // VUID-VkMemoryDedicatedAllocateInfo-image-02964
-                    assert!(requirements.layout.size() != required_size);
-                }
-            }
-        }
-
-        // VUID-VkMemoryAllocateInfo-pNext-00639
-        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
-        // Can't validate, must be ensured by user
-    }
 }
 
 unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
@@ -1146,63 +985,33 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
     /// Allocates memory from a specific memory type.
     ///
+    /// # Arguments
+    ///
+    /// - `memory_type_index` - The index of the memory type to allocate from.
+    ///
+    /// - `never_allocate` - If `true` then the allocator should never allocate `DeviceMemory`,
+    ///   instead only suballocate from existing blocks.
+    ///
     /// # Panics
     ///
     /// - Panics if `memory_type_index` is not less than the number of available memory types.
-    /// - Panics if `memory_type_index` refers to a memory type which has the [`PROTECTED`] flag
-    ///   set and the [`protected_memory`] feature is not enabled on the device.
-    /// - Panics if `memory_type_index` refers to a memory type which has the [`DEVICE_COHERENT`]
-    ///   flag set and the [`device_coherent_memory`] feature is not enabled on the device.
     ///
     /// # Errors
     ///
-    /// - Returns an error if allocating a new block is required and failed. This can be one of the
-    ///   OOM errors or [`TooManyObjects`].
+    /// - Returns [`AllocateDeviceMemory`] if allocating a new block failed.
+    /// - Returns [`OutOfPoolMemory`] if `never_allocate` is `true` and the pool doesn't have
+    ///   enough free space.
     /// - Returns [`BlockSizeExceeded`] if `create_info.layout.size()` is greater than the block
     ///   size corresponding to the heap that the memory type corresponding to `memory_type_index`
     ///   resides in.
     /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
     ///   `create_info.layout.size()` is greater than `BLOCK_SIZE`.
     ///
-    /// [`PROTECTED`]: MemoryPropertyFlags::PROTECTED
-    /// [`protected_memory`]: crate::device::Features::protected_memory
-    /// [`DEVICE_COHERENT`]: MemoryPropertyFlags::DEVICE_COHERENT
-    /// [`device_coherent_memory`]: crate::device::Features::device_coherent_memory
-    /// [`TooManyObjects`]: VulkanError::TooManyObjects
+    /// [`AllocateDeviceMemory`]: MemoryAllocatorError::AllocateDeviceMemory
+    /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
     /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
-        &self,
-        memory_type_index: u32,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        self.validate_allocate_from_type(memory_type_index);
-
-        if self.pools[memory_type_index as usize]
-            .memory_type
-            .property_flags
-            .contains(ash::vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
-        {
-            let allocation = unsafe {
-                self.allocate_dedicated_unchecked(
-                    memory_type_index,
-                    create_info.layout.size(),
-                    None,
-                    if !self.export_handle_types.is_empty() {
-                        self.export_handle_types[memory_type_index as usize]
-                    } else {
-                        ExternalMemoryHandleTypes::empty()
-                    },
-                )
-            }?;
-
-            return Ok(allocation);
-        }
-
-        unsafe { self.allocate_from_type_unchecked(memory_type_index, create_info, false) }
-    }
-
-    unsafe fn allocate_from_type_unchecked(
         &self,
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
@@ -1272,7 +1081,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             drop(blocks);
             let blocks = pool.blocks.write();
             if blocks.len() > len {
-                // Another thread beat us to it and inserted a fresh block, try to allocate from it.
+                // Another thread beat us to it and inserted a fresh block, try to suballocate it.
                 match blocks[len].allocate(create_info.clone()) {
                     Ok(allocation) => return Ok(allocation),
                     // This can happen if this is the first block that was inserted and when using
@@ -1316,7 +1125,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             loop {
                 let allocation_size = block_size >> i;
 
-                match self.allocate_dedicated_unchecked(
+                match self.allocate_dedicated(
                     memory_type_index,
                     allocation_size,
                     None,
@@ -1325,11 +1134,14 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     Ok(allocation) => {
                         break S::new(allocation);
                     }
-                    // Retry up to 3 times, halving the allocation size each time.
-                    Err(VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory) if i < 3 => {
+                    // Retry up to 3 times, halving the allocation size each time so long as the
+                    // resulting size is still large enough.
+                    Err(Validated::Error(
+                        VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory,
+                    )) if i < 3 && block_size >> (i + 1) >= size => {
                         i += 1;
                     }
-                    Err(err) => return Err(err.into()),
+                    Err(err) => return Err(MemoryAllocatorError::AllocateDeviceMemory(err)),
                 }
             }
         };
@@ -1339,12 +1151,9 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
         match block.allocate(create_info) {
             Ok(allocation) => Ok(allocation),
-            // This can happen if the block ended up smaller than advertised because there wasn't
-            // enough memory.
-            Err(SuballocatorError::OutOfRegionMemory) => Err(MemoryAllocatorError::VulkanError(
-                VulkanError::OutOfDeviceMemory,
-            )),
-            // This can not happen as the block is fresher than Febreze and we're still holding an
+            // This can't happen as we always allocate a block of sufficient size.
+            Err(SuballocatorError::OutOfRegionMemory) => unreachable!(),
+            // This can't happen as the block is fresher than Febreze and we're still holding an
             // exclusive lock.
             Err(SuballocatorError::FragmentedRegion) => unreachable!(),
             // This can happen if this is the first block that was inserted and when using the
@@ -1357,21 +1166,37 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
     /// Allocates memory according to requirements.
     ///
-    /// # Panics
+    /// # Arguments
     ///
-    /// - Panics if `create_info.requirements.memory_type_bits` is zero.
-    /// - Panics if `create_info.requirements.memory_type_bits` is not less than 2<sup>*n*</sup>
-    ///   where *n* is the number of available memory types.
-    /// - Panics if `create_info.dedicated_allocation` is `Some` and
-    ///   `create_info.requirements.size` doesn't match the memory requirements of the resource.
-    /// - Panics if finding a suitable memory type failed. This only happens if the
-    ///   `create_info.requirements` correspond to those of an optimal image but
-    ///   `create_info.memory_type_filter` requires host access.
+    /// - `requirements` - Requirements of the resource you want to allocate memory for.
+    ///
+    ///   If you plan to bind this memory directly to a non-sparse resource, then this must
+    ///   correspond to the value returned by either [`RawBuffer::memory_requirements`] or
+    ///   [`RawImage::memory_requirements`] for the respective buffer or image.
+    ///
+    /// - `allocation_type` - What type of resource this allocation will be used for.
+    ///
+    ///   This should be [`Linear`] for buffers and linear images, and [`NonLinear`] for optimal
+    ///   images. You can not bind memory allocated with the [`Linear`] type to optimal images or
+    ///   bind memory allocated with the [`NonLinear`] type to buffers and linear images. You
+    ///   should never use the [`Unknown`] type unless you have to, as that can be less memory
+    ///   efficient.
+    ///
+    /// - `dedicated_allocation` - Allows a dedicated allocation to be created.
+    ///
+    ///   You should always fill this field in if you are allocating memory for a non-sparse
+    ///   resource, otherwise the allocator won't be able to create a dedicated allocation if one
+    ///   is required or recommended.
+    ///
+    ///   This argument is silently ignored (treated as `None`) if the device API version is below
+    ///   1.1 and the [`khr_dedicated_allocation`] extension is not enabled on the device.
     ///
     /// # Errors
     ///
-    /// - Returns an error if allocating a new block is required and failed. This can be one of the
-    ///   OOM errors or [`TooManyObjects`].
+    /// - Returns [`AllocateDeviceMemory`] if allocating a new block failed.
+    /// - Returns [`FindMemoryType`] if finding a suitable memory type failed. This can happen if
+    ///   the `create_info.requirements` correspond to those of an optimal image but
+    ///   `create_info.memory_type_filter` requires host access.
     /// - Returns [`OutOfPoolMemory`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and none of the pools of suitable memory
     ///   types have enough free space.
@@ -1379,37 +1204,25 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
     ///   [`MemoryAllocatePreference::NeverAllocate`] and
     ///   `create_info.requirements.requires_dedicated_allocation` is `true`.
     /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
-    ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is greater
-    ///   than the block size for all heaps of suitable memory types.
+    ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is
+    ///   greater than the block size for all heaps of suitable memory types.
     /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
     ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
     ///   created.
     ///
-    /// [`TooManyObjects`]: VulkanError::TooManyObjects
+    /// [`RawBuffer::memory_requirements`]: crate::buffer::sys::RawBuffer::memory_requirements
+    /// [`RawImage::memory_requirements`]: crate::image::sys::RawImage::memory_requirements
+    /// [`Linear`]: AllocationType::Linear
+    /// [`NonLinear`]: AllocationType::NonLinear
+    /// [`Unknown`]: AllocationType::Unknown
+    /// [`khr_dedicated_allocation`]: crate::device::DeviceExtensions::khr_dedicated_allocation
+    /// [`AllocateDeviceMemory`]: MemoryAllocatorError::AllocateDeviceMemory
+    /// [`FindMemoryType`]: MemoryAllocatorError::FindMemoryType
     /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
     /// [`DedicatedAllocationRequired`]: MemoryAllocatorError::DedicatedAllocationRequired
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
     /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate(
-        &self,
-        requirements: MemoryRequirements,
-        allocation_type: AllocationType,
-        create_info: AllocationCreateInfo,
-        dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        self.validate_allocate(requirements, dedicated_allocation);
-
-        unsafe {
-            self.allocate_unchecked(
-                requirements,
-                allocation_type,
-                create_info,
-                dedicated_allocation,
-            )
-        }
-    }
-
-    unsafe fn allocate_unchecked(
         &self,
         requirements: MemoryRequirements,
         allocation_type: AllocationType,
@@ -1440,7 +1253,7 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
 
         let mut memory_type_index = self
             .find_memory_type_index(memory_type_bits, memory_type_filter)
-            .expect("couldn't find a suitable memory type");
+            .ok_or(MemoryAllocatorError::FindMemoryType)?;
 
         if !self.dedicated_allocation && !requires_dedicated_allocation {
             dedicated_allocation = None;
@@ -1461,13 +1274,13 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                     // VUID-vkBindBufferMemory-buffer-01444
                     // VUID-vkBindImageMemory-image-01445
                     if requires_dedicated_allocation {
-                        self.allocate_dedicated_unchecked(
+                        self.allocate_dedicated(
                             memory_type_index,
                             size,
                             dedicated_allocation,
                             export_handle_types,
                         )
-                        .map_err(MemoryAllocatorError::VulkanError)
+                        .map_err(MemoryAllocatorError::AllocateDeviceMemory)
                     } else {
                         if size > block_size / 2 {
                             prefers_dedicated_allocation = true;
@@ -1479,43 +1292,36 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                         }
 
                         if prefers_dedicated_allocation {
-                            self.allocate_dedicated_unchecked(
+                            self.allocate_dedicated(
                                 memory_type_index,
                                 size,
                                 dedicated_allocation,
                                 export_handle_types,
                             )
-                            .map_err(MemoryAllocatorError::VulkanError)
+                            .map_err(MemoryAllocatorError::AllocateDeviceMemory)
                             // Fall back to suballocation.
                             .or_else(|err| {
-                                if size <= block_size {
-                                    self.allocate_from_type_unchecked(
-                                        memory_type_index,
-                                        create_info.clone(),
-                                        true, // A dedicated allocation already failed.
-                                    )
-                                    .map_err(|_| err)
-                                } else {
-                                    Err(err)
-                                }
+                                self.allocate_from_type(
+                                    memory_type_index,
+                                    create_info.clone(),
+                                    true, // A dedicated allocation already failed.
+                                )
+                                .map_err(|_| err)
                             })
                         } else {
-                            self.allocate_from_type_unchecked(
-                                memory_type_index,
-                                create_info.clone(),
-                                false,
-                            )
-                            // Fall back to dedicated allocation. It is possible that the 1/8 block
-                            // size tried was greater than the allocation size, so there's hope.
-                            .or_else(|_| {
-                                self.allocate_dedicated_unchecked(
-                                    memory_type_index,
-                                    size,
-                                    dedicated_allocation,
-                                    export_handle_types,
-                                )
-                                .map_err(MemoryAllocatorError::VulkanError)
-                            })
+                            self.allocate_from_type(memory_type_index, create_info.clone(), false)
+                                // Fall back to dedicated allocation. It is possible that the 1/8
+                                // block size tried was greater than the allocation size, so
+                                // there's hope.
+                                .or_else(|_| {
+                                    self.allocate_dedicated(
+                                        memory_type_index,
+                                        size,
+                                        dedicated_allocation,
+                                        export_handle_types,
+                                    )
+                                    .map_err(MemoryAllocatorError::AllocateDeviceMemory)
+                                })
                         }
                     }
                 }
@@ -1524,16 +1330,16 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                         return Err(MemoryAllocatorError::DedicatedAllocationRequired);
                     }
 
-                    self.allocate_from_type_unchecked(memory_type_index, create_info.clone(), true)
+                    self.allocate_from_type(memory_type_index, create_info.clone(), true)
                 }
                 MemoryAllocatePreference::AlwaysAllocate => self
-                    .allocate_dedicated_unchecked(
+                    .allocate_dedicated(
                         memory_type_index,
                         size,
                         dedicated_allocation,
                         export_handle_types,
                     )
-                    .map_err(MemoryAllocatorError::VulkanError),
+                    .map_err(MemoryAllocatorError::AllocateDeviceMemory),
             };
 
             match res {
@@ -1553,15 +1359,15 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         }
     }
 
-    unsafe fn allocate_dedicated_unchecked(
+    #[cold]
+    fn allocate_dedicated(
         &self,
         memory_type_index: u32,
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, VulkanError> {
-        // SAFETY: The caller must uphold the safety contract.
-        let mut memory = DeviceMemory::allocate_unchecked(
+    ) -> Result<MemoryAlloc, Validated<VulkanError>> {
+        let mut memory = DeviceMemory::allocate(
             self.device.clone(),
             MemoryAllocateInfo {
                 allocation_size,
@@ -1571,7 +1377,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
                 flags: self.flags,
                 ..Default::default()
             },
-            None,
         )?;
 
         if self.pools[memory_type_index as usize]
@@ -1583,17 +1388,19 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             // - We checked that the memory is host-visible.
             // - The memory can't be mapped already, because we just allocated it.
             // - Mapping the whole range is always valid.
-            memory.map_unchecked(MemoryMapInfo {
-                offset: 0,
-                size: memory.allocation_size(),
-                _ne: crate::NonExhaustive(()),
-            })?;
+            unsafe {
+                memory.map_unchecked(MemoryMapInfo {
+                    offset: 0,
+                    size: memory.allocation_size(),
+                    _ne: crate::NonExhaustive(()),
+                })?;
+            }
         }
 
         let mut allocation = MemoryAlloc::new(memory);
 
         // SAFETY: The memory is freshly allocated.
-        allocation.set_allocation_type(self.allocation_type);
+        unsafe { allocation.set_allocation_type(self.allocation_type) };
 
         Ok(allocation)
     }
@@ -1612,17 +1419,9 @@ unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
         &self,
         memory_type_index: u32,
         create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        (**self).allocate_from_type(memory_type_index, create_info)
-    }
-
-    unsafe fn allocate_from_type_unchecked(
-        &self,
-        memory_type_index: u32,
-        create_info: SuballocationCreateInfo,
         never_allocate: bool,
     ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        (**self).allocate_from_type_unchecked(memory_type_index, create_info, never_allocate)
+        (**self).allocate_from_type(memory_type_index, create_info, never_allocate)
     }
 
     fn allocate(
@@ -1640,29 +1439,14 @@ unsafe impl<T: MemoryAllocator> MemoryAllocator for Arc<T> {
         )
     }
 
-    unsafe fn allocate_unchecked(
-        &self,
-        requirements: MemoryRequirements,
-        allocation_type: AllocationType,
-        create_info: AllocationCreateInfo,
-        dedicated_allocation: Option<DedicatedAllocation<'_>>,
-    ) -> Result<MemoryAlloc, MemoryAllocatorError> {
-        (**self).allocate_unchecked(
-            requirements,
-            allocation_type,
-            create_info,
-            dedicated_allocation,
-        )
-    }
-
-    unsafe fn allocate_dedicated_unchecked(
+    fn allocate_dedicated(
         &self,
         memory_type_index: u32,
         allocation_size: DeviceSize,
         dedicated_allocation: Option<DedicatedAllocation<'_>>,
         export_handle_types: ExternalMemoryHandleTypes,
-    ) -> Result<MemoryAlloc, VulkanError> {
-        (**self).allocate_dedicated_unchecked(
+    ) -> Result<MemoryAlloc, Validated<VulkanError>> {
+        (**self).allocate_dedicated(
             memory_type_index,
             allocation_size,
             dedicated_allocation,
@@ -1774,6 +1558,63 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
 pub type Threshold = DeviceSize;
 
 pub type BlockSize = DeviceSize;
+
+impl GenericMemoryAllocatorCreateInfo<'_, '_> {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            block_sizes,
+            allocation_type: _,
+            dedicated_allocation: _,
+            export_handle_types,
+            device_address: _,
+            _ne: _,
+        } = self;
+
+        assert!(
+            block_sizes.windows(2).all(|win| win[0].0 < win[1].0),
+            "`create_info.block_sizes` must be sorted by threshold without duplicates",
+        );
+        assert!(
+            matches!(block_sizes.first(), Some((0, _))),
+            "`create_info.block_sizes` must contain a baseline threshold `0`",
+        );
+
+        if !export_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                && device.enabled_extensions().khr_external_memory)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "export_handle_types".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
+                    ]),
+                    ..Default::default()
+                }));
+            }
+
+            assert!(
+                export_handle_types.len()
+                    == device
+                        .physical_device()
+                        .memory_properties()
+                        .memory_types
+                        .len(),
+                "`create_info.export_handle_types` must contain as many elements as the number of \
+                memory types if not empty",
+            );
+
+            for (index, export_handle_types) in export_handle_types.iter().enumerate() {
+                export_handle_types
+                    .validate_device(device)
+                    .map_err(|err| err.add_context(format!("export_handle_types[{}]", index)))?;
+            }
+        }
+
+        Ok(())
+    }
+}
 
 impl Default for GenericMemoryAllocatorCreateInfo<'_, '_> {
     #[inline]
