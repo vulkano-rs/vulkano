@@ -482,22 +482,28 @@ impl Error for CommandBufferExecError {
 
 impl Display for CommandBufferExecError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                CommandBufferExecError::AccessError { .. } =>
-                    "access to a resource has been denied",
-                CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
-                    "the command buffer or one of the secondary command buffers it executes was \
-                    created with the \"one time submit\" flag, but has already been submitted in \
-                    the past"
-                }
-                CommandBufferExecError::ExclusiveAlreadyInUse => {
-                    "the command buffer or one of the secondary command buffers it executes is \
-                    already in use was not created with the \"concurrent\" flag"
-                }
+        let value = match self {
+            CommandBufferExecError::AccessError {
+                error,
+                command_name,
+                command_offset,
+                command_param,
+            } => return write!(
+                f,
+                "access to a resource has been denied on command {} (offset: {}, param: {}): {}",
+                command_name, command_offset, command_param, error
+            ),
+            CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
+                "the command buffer or one of the secondary command buffers it executes was \
+                created with the \"one time submit\" flag, but has already been submitted in \
+                the past"
             }
-        )
+            CommandBufferExecError::ExclusiveAlreadyInUse => {
+                "the command buffer or one of the secondary command buffers it executes is \
+                already in use was not created with the \"concurrent\" flag"
+            }
+        };
+
+        write!(f, "{}", value)
     }
 }

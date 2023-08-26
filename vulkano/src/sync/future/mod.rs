@@ -502,26 +502,28 @@ impl Error for AccessError {}
 
 impl Display for AccessError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                AccessError::AlreadyInUse => {
-                    "the resource is already in use, and there is no tracking of concurrent usages"
-                }
-                AccessError::UnexpectedImageLayout { .. } => {
-                    unimplemented!() // TODO: find a description
-                }
-                AccessError::ImageNotInitialized { .. } => {
-                    "trying to use an image without transitioning it from the undefined or \
-                    preinitialized layouts first"
-                }
-                AccessError::SwapchainImageNotAcquired => {
-                    "trying to use a swapchain image without depending on a corresponding acquire \
-                    image future"
-                }
+        let value = match self {
+            AccessError::AlreadyInUse => {
+                "the resource is already in use, and there is no tracking of concurrent usages"
             }
-        )
+            AccessError::UnexpectedImageLayout { allowed, requested } => {
+                return write!(
+                    f,
+                    "unexpected image layout: requested {:?}, allowed {:?}",
+                    allowed, requested
+                )
+            }
+            AccessError::ImageNotInitialized { .. } => {
+                "trying to use an image without transitioning it from the undefined or \
+                preinitialized layouts first"
+            }
+            AccessError::SwapchainImageNotAcquired => {
+                "trying to use a swapchain image without depending on a corresponding acquire \
+                image future"
+            }
+        };
+
+        write!(f, "{}", value,)
     }
 }
 
@@ -538,14 +540,12 @@ impl Error for AccessCheckError {}
 
 impl Display for AccessCheckError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match self {
-                AccessCheckError::Denied(_) => "access to the resource has been denied",
-                AccessCheckError::Unknown => "the resource is unknown",
+        match self {
+            AccessCheckError::Denied(err) => {
+                write!(f, "access to the resource has been denied: {}", err)
             }
-        )
+            AccessCheckError::Unknown => write!(f, "the resource is unknown"),
+        }
     }
 }
 
