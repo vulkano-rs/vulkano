@@ -1050,7 +1050,7 @@ where
                         .filter(|&c| c != 0)
                         .min()
                         .unwrap() as u32;
-                    let smallest_component_bytes = (smallest_component_bits + 7) & !7;
+                    let smallest_component_bytes = ((smallest_component_bits + 7) & !7) / 8;
 
                     if vertex_data.device_address().unwrap().get() % smallest_component_bytes as u64
                         != 0
@@ -1837,7 +1837,7 @@ where
                         .filter(|&c| c != 0)
                         .min()
                         .unwrap() as u32;
-                    let smallest_component_bytes = (smallest_component_bits + 7) & !7;
+                    let smallest_component_bytes = ((smallest_component_bits + 7) & !7) / 8;
 
                     if vertex_data.device_address().unwrap().get() % smallest_component_bytes as u64
                         != 0
