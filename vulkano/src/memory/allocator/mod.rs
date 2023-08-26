@@ -612,6 +612,12 @@ pub struct AllocationCreateInfo {
     /// The default value is [`MemoryTypeFilter::PREFER_DEVICE`].
     pub memory_type_filter: MemoryTypeFilter,
 
+    /// Allows you to further constrain the possible choices of memory types, by only allowing the
+    /// memory type indices that have a corresponding bit at the same index set to 1.
+    ///
+    /// The default value is [`u32::MAX`].
+    pub memory_type_bits: u32,
+
     /// How eager the allocator should be to allocate [`DeviceMemory`].
     ///
     /// The default value is [`MemoryAllocatePreference::Unknown`].
@@ -625,6 +631,7 @@ impl Default for AllocationCreateInfo {
     fn default() -> Self {
         AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+            memory_type_bits: u32::MAX,
             allocate_preference: MemoryAllocatePreference::Unknown,
             _ne: crate::NonExhaustive(()),
         }
@@ -734,6 +741,24 @@ pub type StandardMemoryAllocator = GenericMemoryAllocator<Arc<FreeListAllocator>
 impl StandardMemoryAllocator {
     /// Creates a new `StandardMemoryAllocator` with default configuration.
     pub fn new_default(device: Arc<Device>) -> Self {
+        let memory_types = &device.physical_device().memory_properties().memory_types;
+
+        let mut memory_type_bits = u32::MAX;
+
+        for (index, MemoryType { property_flags, .. }) in memory_types.iter().enumerate() {
+            if property_flags.intersects(
+                MemoryPropertyFlags::LAZILY_ALLOCATED
+                    | MemoryPropertyFlags::PROTECTED
+                    | MemoryPropertyFlags::DEVICE_COHERENT
+                    | MemoryPropertyFlags::RDMA_CAPABLE,
+            ) {
+                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
+                // VUID-vkAllocateMemory-deviceCoherentMemory-02790
+                // Lazily allocated memory would just cause problems for suballocation in general.
+                memory_type_bits &= !(1 << index);
+            }
+        }
+
         #[allow(clippy::erasing_op, clippy::identity_op)]
         let create_info = GenericMemoryAllocatorCreateInfo {
             #[rustfmt::skip]
@@ -741,6 +766,7 @@ impl StandardMemoryAllocator {
                 (0 * B,  64 * M),
                 (1 * G, 256 * M),
             ],
+            memory_type_bits,
             ..Default::default()
         };
 
@@ -859,6 +885,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
     ) -> Self {
         let GenericMemoryAllocatorCreateInfo {
             block_sizes,
+            memory_type_bits,
             allocation_type,
             dedicated_allocation,
             export_handle_types,
@@ -872,6 +899,7 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         } = device.physical_device().memory_properties();
 
         let mut pools = ArrayVec::new(memory_types.len(), [Self::EMPTY_POOL; MAX_MEMORY_TYPES]);
+
         for (i, memory_type) in memory_types.iter().enumerate() {
             pools[i].memory_type = ash::vk::MemoryType {
                 property_flags: memory_type.property_flags.into(),
@@ -912,22 +940,6 @@ impl<S: Suballocator> GenericMemoryAllocator<S> {
         // Providers of `VkMemoryAllocateFlags`
         device_address &=
             device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_device_group;
-
-        let mut memory_type_bits = u32::MAX;
-        for (index, MemoryType { property_flags, .. }) in memory_types.iter().enumerate() {
-            if property_flags.intersects(
-                MemoryPropertyFlags::LAZILY_ALLOCATED
-                    | MemoryPropertyFlags::PROTECTED
-                    | MemoryPropertyFlags::DEVICE_COHERENT
-                    | MemoryPropertyFlags::DEVICE_UNCACHED
-                    | MemoryPropertyFlags::RDMA_CAPABLE,
-            ) {
-                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
-                // VUID-vkAllocateMemory-deviceCoherentMemory-02790
-                // Lazily allocated memory would just cause problems for suballocation in general.
-                memory_type_bits &= !(1 << index);
-            }
-        }
 
         let flags = if device_address {
             MemoryAllocateFlags::DEVICE_ADDRESS
@@ -1236,8 +1248,12 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
             requires_dedicated_allocation,
         } = requirements;
 
+        memory_type_bits &= self.memory_type_bits;
+        memory_type_bits &= create_info.memory_type_bits;
+
         let AllocationCreateInfo {
             memory_type_filter,
+            memory_type_bits: _,
             allocate_preference,
             _ne: _,
         } = create_info;
@@ -1249,7 +1265,6 @@ unsafe impl<S: Suballocator> MemoryAllocator for GenericMemoryAllocator<S> {
         };
 
         let size = layout.size();
-        memory_type_bits &= self.memory_type_bits;
 
         let mut memory_type_index = self
             .find_memory_type_index(memory_type_bits, memory_type_filter)
@@ -1485,6 +1500,19 @@ pub struct GenericMemoryAllocatorCreateInfo<'b, 'e> {
     /// The default value is `&[]`, which must be overridden.
     pub block_sizes: &'b [(Threshold, BlockSize)],
 
+    /// Lets you configure the allocator's global mask of memory type indices. Only the memory type
+    /// indices that have a corresponding bit at the same index set will be allocated from when
+    /// calling [`allocate`], otherwise [`MemoryAllocatorError::FindMemoryType`] is returned.
+    ///
+    /// You may use this to disallow problematic memory types, for instance ones with the
+    /// [`PROTECTED`] flag, or any other flags you don't want.
+    ///
+    /// The default value is [`u32::MAX`].
+    ///
+    /// [`allocate`]: struct.GenericMemoryAllocator.html#method.allocate
+    /// [`PROTECTED`]: MemoryPropertyFlags::DEVICE_COHERENT
+    pub memory_type_bits: u32,
+
     /// The allocation type that should be used for root allocations.
     ///
     /// You only need to worry about this if you're using [`PoolAllocator`] as the suballocator, as
@@ -1563,6 +1591,7 @@ impl GenericMemoryAllocatorCreateInfo<'_, '_> {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             block_sizes,
+            memory_type_bits: _,
             allocation_type: _,
             dedicated_allocation: _,
             export_handle_types,
@@ -1621,6 +1650,7 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_, '_> {
     fn default() -> Self {
         GenericMemoryAllocatorCreateInfo {
             block_sizes: &[],
+            memory_type_bits: u32::MAX,
             allocation_type: AllocationType::Unknown,
             dedicated_allocation: true,
             export_handle_types: &[],
