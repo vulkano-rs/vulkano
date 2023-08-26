@@ -662,6 +662,8 @@ fn add_build_geometry_resources(
                         _ne,
                     } = triangles_data;
 
+                    let vertex_data = vertex_data.as_ref().unwrap();
+
                     [
                         (
                             ResourceInCommand::GeometryTrianglesVertexData { index }.into(),
@@ -710,6 +712,8 @@ fn add_build_geometry_resources(
                     _ne: _,
                 } = aabbs_data;
 
+                let data = data.as_ref().unwrap();
+
                 (
                     ResourceInCommand::GeometryAabbsData { index }.into(),
                     Resource::Buffer {
@@ -729,8 +733,14 @@ fn add_build_geometry_resources(
             } = instances_data;
 
             let data = match data {
-                AccelerationStructureGeometryInstancesDataType::Values(data) => data.as_bytes(),
-                AccelerationStructureGeometryInstancesDataType::Pointers(data) => data.as_bytes(),
+                AccelerationStructureGeometryInstancesDataType::Values(data) => {
+                    let data = data.as_ref().unwrap();
+                    data.as_bytes()
+                }
+                AccelerationStructureGeometryInstancesDataType::Pointers(data) => {
+                    let data = data.as_ref().unwrap();
+                    data.as_bytes()
+                }
             };
             let size = data.size();
 
@@ -769,6 +779,8 @@ fn add_build_geometry_resources(
                 PipelineStageAccessFlags::AccelerationStructureBuild_AccelerationStructureWrite,
         },
     ));
+
+    let scratch_data = scratch_data.as_ref().unwrap();
     used_resources.push((
         ResourceInCommand::ScratchData.into(),
         Resource::Buffer {
@@ -838,6 +850,13 @@ where
             ref scratch_data,
             _ne,
         } = info;
+
+        let scratch_data = scratch_data.as_ref().ok_or(Box::new(ValidationError {
+            context: "info.scratch_data".into(),
+            problem: "is `None`".into(),
+            // vuids?
+            ..Default::default()
+        }))?;
 
         // VUID-vkCmdBuildAccelerationStructuresKHR-mode-04628
         // Ensured as long as `BuildAccelerationStructureMode` is exhaustive.
@@ -967,6 +986,13 @@ where
                         ref transform_data,
                         _ne,
                     } = triangles_data;
+
+                    let vertex_data = vertex_data.as_ref().ok_or(Box::new(ValidationError {
+                        context: format!("info.geometries[{}].vertex_data", geometry_index).into(),
+                        problem: "is `None`".into(),
+                        // vuids?
+                        ..Default::default()
+                    }))?;
 
                     let &AccelerationStructureBuildRangeInfo {
                         primitive_count,
@@ -1217,6 +1243,13 @@ where
                         _ne,
                     } = aabbs_data;
 
+                    let data = data.as_ref().ok_or(Box::new(ValidationError {
+                        context: format!("info.geometries[{}].data", geometry_index).into(),
+                        problem: "is `None`".into(),
+                        // vuids?
+                        ..Default::default()
+                    }))?;
+
                     let &AccelerationStructureBuildRangeInfo {
                         primitive_count,
                         primitive_offset,
@@ -1329,6 +1362,13 @@ where
 
                 let data_buffer = match data {
                     AccelerationStructureGeometryInstancesDataType::Values(data) => {
+                        let data = data.as_ref().ok_or(Box::new(ValidationError {
+                            context: "info.geometries.data".into(),
+                            problem: "is `None`".into(),
+                            // vuids?
+                            ..Default::default()
+                        }))?;
+
                         if data.device_address().unwrap().get() % 16 != 0 {
                             return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
@@ -1363,6 +1403,13 @@ where
                         data.buffer()
                     }
                     AccelerationStructureGeometryInstancesDataType::Pointers(data) => {
+                        let data = data.as_ref().ok_or(Box::new(ValidationError {
+                            context: "info.geometries.data".into(),
+                            problem: "is `None`".into(),
+                            // vuids?
+                            ..Default::default()
+                        }))?;
+
                         if !data
                             .buffer()
                             .usage()
@@ -1620,6 +1667,13 @@ where
         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-scratchData-03705
         // Ensured by unsafe on `AccelerationStructure::new`.
 
+        let scratch_data = scratch_data.as_ref().ok_or(Box::new(ValidationError {
+            context: "info.scratch_data".into(),
+            problem: "is `None`".into(),
+            // vuids?
+            ..Default::default()
+        }))?;
+
         if !scratch_data
             .buffer()
             .usage()
@@ -1715,6 +1769,13 @@ where
                         ref transform_data,
                         _ne,
                     } = triangles_data;
+
+                    let vertex_data = vertex_data.as_ref().ok_or(Box::new(ValidationError {
+                        context: format!("info.geometries[{}].vertex_data", geometry_index).into(),
+                        problem: "is `None`".into(),
+                        // vuids?
+                        ..Default::default()
+                    }))?;
 
                     // VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03795
                     // unsafe
@@ -1855,6 +1916,13 @@ where
                         _ne,
                     } = aabbs_data;
 
+                    let data = data.as_ref().ok_or(Box::new(ValidationError {
+                        context: format!("info.geometries[{}].data", geometry_index).into(),
+                        problem: "is `None`".into(),
+                        // vuids?
+                        ..Default::default()
+                    }))?;
+
                     // VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03794
                     // unsafe
 
@@ -1902,6 +1970,13 @@ where
 
                 let data_buffer = match data {
                     AccelerationStructureGeometryInstancesDataType::Values(data) => {
+                        let data = data.as_ref().ok_or(Box::new(ValidationError {
+                            context: "info.geometries.data".into(),
+                            problem: "is `None`".into(),
+                            // vuids?
+                            ..Default::default()
+                        }))?;
+
                         if data.device_address().unwrap().get() % 16 != 0 {
                             return Err(Box::new(ValidationError {
                                 context: "info.geometries.data".into(),
@@ -1919,6 +1994,13 @@ where
                         data.buffer()
                     }
                     AccelerationStructureGeometryInstancesDataType::Pointers(data) => {
+                        let data = data.as_ref().ok_or(Box::new(ValidationError {
+                            context: "info.geometries.data".into(),
+                            problem: "is `None`".into(),
+                            // vuids?
+                            ..Default::default()
+                        }))?;
+
                         if !data
                             .buffer()
                             .usage()
