@@ -704,7 +704,7 @@ impl Display for MemoryAllocatorError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let msg = match self {
             Self::AllocateDeviceMemory(_) => "allocating device memory failed",
-            Self::FindMemoryType => "finding a suitable memory type filed",
+            Self::FindMemoryType => "finding a suitable memory type failed",
             Self::OutOfPoolMemory => "the pool doesn't have enough free space",
             Self::DedicatedAllocationRequired => {
                 "a dedicated allocation is required but was explicitly forbidden"
