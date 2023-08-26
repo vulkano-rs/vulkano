@@ -103,6 +103,8 @@ Changes to memory allocation:
 - `MemoryAlloc::new` no longer returns a `Result`, and doesn't map the `DeviceMemory` automatically anymore.
 - `MemoryAlloc::mapped_ptr` and `MemoryAlloc::mapped_slice[_mut]` were replaced by `MemoryAlloc::mapped_slice`, which returns a pointer.
 - `MemoryAlloc::{invalidate, flush}_range` now take a `MappedMemoryRange` as argument.
+- Merged `MemoryAllocator::allocate_from_type_unchecked` into `MemoryAllocator::allocate_from_type` and `MemoryAllocator::allocate_unchecked` into `MemoryAllocator::allocate`.
+- Replaced `MemoryAllocator::allocate_dedicated_unchecked` with `MemoryAllocator::allocate_dedicated`.
 
 Changes to synchronization primitives:
 - `Event::signaled` is renamed to `is_signaled`, to match the method on `Fence`.
