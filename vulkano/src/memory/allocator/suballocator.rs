@@ -157,6 +157,23 @@ impl MemoryAlloc {
         Some(res)
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn mapped_slice_unchecked(
+        &self,
+        range: impl RangeBounds<DeviceSize>,
+    ) -> Result<NonNull<[u8]>, HostAccessError> {
+        let mut range = memory::range_unchecked(range, ..self.size());
+        range.start += self.offset();
+        range.end += self.offset();
+
+        if let Some(state) = self.device_memory().mapping_state() {
+            state.slice(range).ok_or(HostAccessError::OutOfMappedRange)
+        } else {
+            Err(HostAccessError::NotHostMapped)
+        }
+    }
+
     pub(crate) fn atom_size(&self) -> Option<DeviceAlignment> {
         self.atom_size
     }

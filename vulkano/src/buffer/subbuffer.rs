@@ -129,11 +129,9 @@ impl<T: ?Sized> Subbuffer<T> {
     /// [`MappingState::slice`]: crate::memory::MappingState::slice
     pub fn mapped_slice(&self) -> Result<NonNull<[u8]>, HostAccessError> {
         match self.buffer().memory() {
-            BufferMemory::Normal(a) => {
-                let opt = a.mapped_slice(self.range());
-
+            BufferMemory::Normal(allocation) => {
                 // SAFETY: `self.range()` is in bounds of the allocation.
-                unsafe { opt.unwrap_unchecked() }
+                unsafe { allocation.mapped_slice_unchecked(self.range()) }
             }
             BufferMemory::Sparse => unreachable!(),
         }
@@ -510,7 +508,7 @@ impl<T> Subbuffer<[T]> {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn slice_unchecked(mut self, range: impl RangeBounds<DeviceSize>) -> Subbuffer<[T]> {
-        let Range { start, end } = memory::range(range, ..self.len()).unwrap_unchecked();
+        let Range { start, end } = memory::range_unchecked(range, ..self.len());
 
         self.offset += start * size_of::<T>() as DeviceSize;
         self.size = (end - start) * size_of::<T>() as DeviceSize;
