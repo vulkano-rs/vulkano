@@ -770,12 +770,9 @@ impl AccelerationStructureBuildGeometryInfo {
                 p_geometries: ptr::null(),
                 pp_geometries: ptr::null(),
                 scratch_data: ash::vk::DeviceOrHostAddressKHR {
-                    device_address: scratch_data
-                        .as_ref()
-                        .unwrap()
-                        .device_address()
-                        .unwrap()
-                        .get(),
+                    device_address: scratch_data.as_ref().map_or(0, |scratch_data| {
+                        scratch_data.device_address().unwrap().into()
+                    }),
                 },
                 ..Default::default()
             },
