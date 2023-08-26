@@ -454,13 +454,18 @@ pub struct AccelerationStructureBuildGeometryInfo {
 
     /// The mode that the build command should operate in.
     ///
+    /// This is ignored when calling [`Device::acceleration_structure_build_sizes`].
+    ///
     /// The default value is [`BuildAccelerationStructureMode::Build`].
     pub mode: BuildAccelerationStructureMode,
 
     /// The acceleration structure to build or update.
     ///
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    ///
     /// There is no default value.
-    pub dst_acceleration_structure: Arc<AccelerationStructure>,
+    pub dst_acceleration_structure: Option<Arc<AccelerationStructure>>,
 
     /// The geometries that will be built into `dst_acceleration_structure`.
     ///
@@ -474,27 +479,25 @@ pub struct AccelerationStructureBuildGeometryInfo {
 
     /// Scratch memory to be used for the build.
     ///
-    /// There is no default value.
-    pub scratch_data: Subbuffer<[u8]>,
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    ///
+    /// The default value is `None`.
+    pub scratch_data: Option<Subbuffer<[u8]>>,
 
     pub _ne: crate::NonExhaustive,
 }
 
 impl AccelerationStructureBuildGeometryInfo {
-    /// Returns a `AccelerationStructureBuildGeometryInfo` with the specified
-    /// `dst_acceleration_structure`, `geometries` and `scratch_data`.
+    /// Returns a `AccelerationStructureBuildGeometryInfo` with the specified `geometries`.
     #[inline]
-    pub fn new(
-        dst_acceleration_structure: Arc<AccelerationStructure>,
-        geometries: AccelerationStructureGeometries,
-        scratch_data: Subbuffer<[u8]>,
-    ) -> Self {
+    pub fn new(geometries: AccelerationStructureGeometries) -> Self {
         Self {
             flags: BuildAccelerationStructureFlags::empty(),
             mode: BuildAccelerationStructureMode::Build,
-            dst_acceleration_structure,
+            dst_acceleration_structure: None,
             geometries,
-            scratch_data,
+            scratch_data: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -571,8 +574,10 @@ impl AccelerationStructureBuildGeometryInfo {
             }
         }
 
-        // VUID-VkAccelerationStructureBuildGeometryInfoKHR-commonparent
-        assert_eq!(device, dst_acceleration_structure.device().as_ref());
+        if let Some(dst_acceleration_structure) = dst_acceleration_structure {
+            // VUID-VkAccelerationStructureBuildGeometryInfoKHR-commonparent
+            assert_eq!(device, dst_acceleration_structure.device().as_ref());
+        }
 
         if let BuildAccelerationStructureMode::Update(src_acceleration_structure) = mode {
             assert_eq!(device, src_acceleration_structure.device().as_ref());
@@ -633,10 +638,12 @@ impl AccelerationStructureBuildGeometryInfo {
                                 triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR {
                                     vertex_format: vertex_format.into(),
                                     vertex_data: ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: vertex_data
-                                            .device_address()
-                                            .unwrap()
-                                            .into(),
+                                        device_address: vertex_data.as_ref().map_or(
+                                            0,
+                                            |vertex_data| {
+                                                vertex_data.device_address().unwrap().into()
+                                            },
+                                        ),
                                     },
                                     vertex_stride: vertex_stride as DeviceSize,
                                     max_vertex,
@@ -691,7 +698,9 @@ impl AccelerationStructureBuildGeometryInfo {
                             geometry: ash::vk::AccelerationStructureGeometryDataKHR {
                                 aabbs: ash::vk::AccelerationStructureGeometryAabbsDataKHR {
                                     data: ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: data.device_address().unwrap().get(),
+                                        device_address: data.as_ref().map_or(0, |data| {
+                                            data.device_address().unwrap().into()
+                                        }),
                                     },
                                     stride: stride as DeviceSize,
                                     ..Default::default()
@@ -715,13 +724,17 @@ impl AccelerationStructureBuildGeometryInfo {
                         AccelerationStructureGeometryInstancesDataType::Values(data) => (
                             ash::vk::FALSE,
                             ash::vk::DeviceOrHostAddressConstKHR {
-                                device_address: data.device_address().unwrap().get(),
+                                device_address: data
+                                    .as_ref()
+                                    .map_or(0, |data| data.device_address().unwrap().into()),
                             },
                         ),
                         AccelerationStructureGeometryInstancesDataType::Pointers(data) => (
                             ash::vk::TRUE,
                             ash::vk::DeviceOrHostAddressConstKHR {
-                                device_address: data.device_address().unwrap().get(),
+                                device_address: data
+                                    .as_ref()
+                                    .map_or(0, |data| data.device_address().unwrap().into()),
                             },
                         ),
                     };
@@ -755,12 +768,16 @@ impl AccelerationStructureBuildGeometryInfo {
                         src_acceleration_structure.handle()
                     }
                 },
-                dst_acceleration_structure: dst_acceleration_structure.handle(),
+                dst_acceleration_structure: dst_acceleration_structure
+                    .as_ref()
+                    .map_or_else(Default::default, VulkanObject::handle),
                 geometry_count: 0,
                 p_geometries: ptr::null(),
                 pp_geometries: ptr::null(),
                 scratch_data: ash::vk::DeviceOrHostAddressKHR {
-                    device_address: scratch_data.device_address().unwrap().get(),
+                    device_address: scratch_data.as_ref().map_or(0, |scratch_data| {
+                        scratch_data.device_address().unwrap().into()
+                    }),
                 },
                 ..Default::default()
             },
@@ -940,8 +957,11 @@ pub struct AccelerationStructureGeometryTrianglesData {
 
     /// The vertex data itself, consisting of an array of `vertex_format` values.
     ///
-    /// There is no default value.
-    pub vertex_data: Subbuffer<[u8]>,
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    ///
+    /// The default value is `None`.
+    pub vertex_data: Option<Subbuffer<[u8]>>,
 
     /// The number of bytes between the start of successive elements in `vertex_data`.
     ///
@@ -975,13 +995,13 @@ pub struct AccelerationStructureGeometryTrianglesData {
 
 impl AccelerationStructureGeometryTrianglesData {
     /// Returns a `AccelerationStructureGeometryTrianglesData` with the specified
-    /// `vertex_format` and `vertex_data`.
+    /// `vertex_format`.
     #[inline]
-    pub fn new(vertex_format: Format, vertex_data: Subbuffer<[u8]>) -> Self {
+    pub fn new(vertex_format: Format) -> Self {
         Self {
             flags: GeometryFlags::empty(),
             vertex_format,
-            vertex_data,
+            vertex_data: None,
             vertex_stride: 0,
             max_vertex: 0,
             index_data: None,
@@ -1080,8 +1100,11 @@ pub struct AccelerationStructureGeometryAabbsData {
 
     /// The AABB data itself, consisting of an array of [`AabbPositions`] structs.
     ///
-    /// There is no default value.
-    pub data: Subbuffer<[u8]>,
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    ///
+    /// The default value is `None`.
+    pub data: Option<Subbuffer<[u8]>>,
 
     /// The number of bytes between the start of successive elements in `data`.
     ///
@@ -1093,18 +1116,19 @@ pub struct AccelerationStructureGeometryAabbsData {
     pub _ne: crate::NonExhaustive,
 }
 
-impl AccelerationStructureGeometryAabbsData {
-    /// Returns a `AccelerationStructureGeometryAabbsData` with the specified `data`.
+impl Default for AccelerationStructureGeometryAabbsData {
     #[inline]
-    pub fn new(data: Subbuffer<[u8]>) -> Self {
+    fn default() -> Self {
         Self {
             flags: GeometryFlags::empty(),
-            data,
+            data: None,
             stride: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
+}
 
+impl AccelerationStructureGeometryAabbsData {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -1195,11 +1219,17 @@ impl AccelerationStructureGeometryInstancesData {
 #[derive(Clone, Debug)]
 pub enum AccelerationStructureGeometryInstancesDataType {
     /// The data buffer contains an array of [`AccelerationStructureInstance`] structures directly.
-    Values(Subbuffer<[AccelerationStructureInstance]>),
+    ///
+    /// The inner value can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    Values(Option<Subbuffer<[AccelerationStructureInstance]>>),
 
     /// The data buffer contains an array of pointers to [`AccelerationStructureInstance`]
     /// structures.
-    Pointers(Subbuffer<[DeviceSize]>),
+    ///
+    /// The inner value can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    Pointers(Option<Subbuffer<[DeviceSize]>>),
 }
 
 impl From<Subbuffer<[AccelerationStructureInstance]>>
@@ -1207,14 +1237,14 @@ impl From<Subbuffer<[AccelerationStructureInstance]>>
 {
     #[inline]
     fn from(value: Subbuffer<[AccelerationStructureInstance]>) -> Self {
-        Self::Values(value)
+        Self::Values(Some(value))
     }
 }
 
 impl From<Subbuffer<[DeviceSize]>> for AccelerationStructureGeometryInstancesDataType {
     #[inline]
     fn from(value: Subbuffer<[DeviceSize]>) -> Self {
-        Self::Pointers(value)
+        Self::Pointers(Some(value))
     }
 }
 
