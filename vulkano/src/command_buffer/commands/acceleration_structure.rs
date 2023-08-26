@@ -756,7 +756,6 @@ fn add_build_geometry_resources(
         }
     };
 
-    let mode = mode.as_ref().unwrap();
     if let BuildAccelerationStructureMode::Update(src_acceleration_structure) = mode {
         let src_buffer = src_acceleration_structure.buffer();
         used_resources.push((
@@ -853,12 +852,6 @@ where
             _ne,
         } = info;
 
-        let mode = mode.as_ref().ok_or(Box::new(ValidationError {
-            context: "info.mode".into(),
-            problem: "is `None`".into(),
-            // vuids?
-            ..Default::default()
-        }))?;
         let dst_acceleration_structure =
             dst_acceleration_structure
                 .as_ref()
@@ -1664,12 +1657,6 @@ where
             _ne,
         } = info;
 
-        let mode = mode.as_ref().ok_or(Box::new(ValidationError {
-            context: "info.mode".into(),
-            problem: "is `None`".into(),
-            // vuids?
-            ..Default::default()
-        }))?;
         let dst_acceleration_structure =
             dst_acceleration_structure
                 .as_ref()

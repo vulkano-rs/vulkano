@@ -454,11 +454,10 @@ pub struct AccelerationStructureBuildGeometryInfo {
 
     /// The mode that the build command should operate in.
     ///
-    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
-    /// but must be `Some` otherwise.
+    /// This is ignored when calling [`Device::acceleration_structure_build_sizes`].
     ///
-    /// The default value is `None`.
-    pub mode: Option<BuildAccelerationStructureMode>,
+    /// The default value is [`BuildAccelerationStructureMode::Build`].
+    pub mode: BuildAccelerationStructureMode,
 
     /// The acceleration structure to build or update.
     ///
@@ -495,7 +494,7 @@ impl AccelerationStructureBuildGeometryInfo {
     pub fn new(geometries: AccelerationStructureGeometries) -> Self {
         Self {
             flags: BuildAccelerationStructureFlags::empty(),
-            mode: None,
+            mode: BuildAccelerationStructureMode::Build,
             dst_acceleration_structure: None,
             geometries,
             scratch_data: None,
@@ -580,7 +579,7 @@ impl AccelerationStructureBuildGeometryInfo {
             assert_eq!(device, dst_acceleration_structure.device().as_ref());
         }
 
-        if let Some(BuildAccelerationStructureMode::Update(src_acceleration_structure)) = mode {
+        if let BuildAccelerationStructureMode::Update(src_acceleration_structure) = mode {
             assert_eq!(device, src_acceleration_structure.device().as_ref());
         }
 
@@ -762,10 +761,10 @@ impl AccelerationStructureBuildGeometryInfo {
             ash::vk::AccelerationStructureBuildGeometryInfoKHR {
                 ty,
                 flags: flags.into(),
-                mode: mode.as_ref().map_or_else(Default::default, Into::into),
+                mode: mode.into(),
                 src_acceleration_structure: match mode {
-                    None | Some(BuildAccelerationStructureMode::Build) => Default::default(),
-                    Some(BuildAccelerationStructureMode::Update(src_acceleration_structure)) => {
+                    BuildAccelerationStructureMode::Build => Default::default(),
+                    BuildAccelerationStructureMode::Update(src_acceleration_structure) => {
                         src_acceleration_structure.handle()
                     }
                 },
