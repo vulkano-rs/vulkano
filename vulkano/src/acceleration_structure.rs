@@ -454,13 +454,19 @@ pub struct AccelerationStructureBuildGeometryInfo {
 
     /// The mode that the build command should operate in.
     ///
-    /// The default value is [`BuildAccelerationStructureMode::Build`].
-    pub mode: BuildAccelerationStructureMode,
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    ///
+    /// The default value is `None`.
+    pub mode: Option<BuildAccelerationStructureMode>,
 
     /// The acceleration structure to build or update.
     ///
+    /// This can be `None` when calling [`Device::acceleration_structure_build_sizes`],
+    /// but must be `Some` otherwise.
+    ///
     /// There is no default value.
-    pub dst_acceleration_structure: Arc<AccelerationStructure>,
+    pub dst_acceleration_structure: Option<Arc<AccelerationStructure>>,
 
     /// The geometries that will be built into `dst_acceleration_structure`.
     ///
@@ -484,17 +490,13 @@ pub struct AccelerationStructureBuildGeometryInfo {
 }
 
 impl AccelerationStructureBuildGeometryInfo {
-    /// Returns a `AccelerationStructureBuildGeometryInfo` with the specified
-    /// `dst_acceleration_structure` and `geometries`.
+    /// Returns a `AccelerationStructureBuildGeometryInfo` with the specified `geometries`.
     #[inline]
-    pub fn new(
-        dst_acceleration_structure: Arc<AccelerationStructure>,
-        geometries: AccelerationStructureGeometries,
-    ) -> Self {
+    pub fn new(geometries: AccelerationStructureGeometries) -> Self {
         Self {
             flags: BuildAccelerationStructureFlags::empty(),
-            mode: BuildAccelerationStructureMode::Build,
-            dst_acceleration_structure,
+            mode: None,
+            dst_acceleration_structure: None,
             geometries,
             scratch_data: None,
             _ne: crate::NonExhaustive(()),
@@ -573,10 +575,12 @@ impl AccelerationStructureBuildGeometryInfo {
             }
         }
 
-        // VUID-VkAccelerationStructureBuildGeometryInfoKHR-commonparent
-        assert_eq!(device, dst_acceleration_structure.device().as_ref());
+        if let Some(dst_acceleration_structure) = dst_acceleration_structure {
+            // VUID-VkAccelerationStructureBuildGeometryInfoKHR-commonparent
+            assert_eq!(device, dst_acceleration_structure.device().as_ref());
+        }
 
-        if let BuildAccelerationStructureMode::Update(src_acceleration_structure) = mode {
+        if let Some(BuildAccelerationStructureMode::Update(src_acceleration_structure)) = mode {
             assert_eq!(device, src_acceleration_structure.device().as_ref());
         }
 
@@ -758,14 +762,16 @@ impl AccelerationStructureBuildGeometryInfo {
             ash::vk::AccelerationStructureBuildGeometryInfoKHR {
                 ty,
                 flags: flags.into(),
-                mode: mode.into(),
+                mode: mode.as_ref().map_or_else(Default::default, Into::into),
                 src_acceleration_structure: match mode {
-                    BuildAccelerationStructureMode::Build => Default::default(),
-                    BuildAccelerationStructureMode::Update(src_acceleration_structure) => {
+                    None | Some(BuildAccelerationStructureMode::Build) => Default::default(),
+                    Some(BuildAccelerationStructureMode::Update(src_acceleration_structure)) => {
                         src_acceleration_structure.handle()
                     }
                 },
-                dst_acceleration_structure: dst_acceleration_structure.handle(),
+                dst_acceleration_structure: dst_acceleration_structure
+                    .as_ref()
+                    .map_or_else(Default::default, VulkanObject::handle),
                 geometry_count: 0,
                 p_geometries: ptr::null(),
                 pp_geometries: ptr::null(),

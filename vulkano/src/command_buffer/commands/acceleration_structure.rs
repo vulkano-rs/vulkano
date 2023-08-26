@@ -756,6 +756,7 @@ fn add_build_geometry_resources(
         }
     };
 
+    let mode = mode.as_ref().unwrap();
     if let BuildAccelerationStructureMode::Update(src_acceleration_structure) = mode {
         let src_buffer = src_acceleration_structure.buffer();
         used_resources.push((
@@ -769,6 +770,7 @@ fn add_build_geometry_resources(
         ));
     }
 
+    let dst_acceleration_structure = dst_acceleration_structure.as_ref().unwrap();
     let dst_buffer = dst_acceleration_structure.buffer();
     used_resources.push((
         ResourceInCommand::Destination.into(),
@@ -851,6 +853,21 @@ where
             _ne,
         } = info;
 
+        let mode = mode.as_ref().ok_or(Box::new(ValidationError {
+            context: "info.mode".into(),
+            problem: "is `None`".into(),
+            // vuids?
+            ..Default::default()
+        }))?;
+        let dst_acceleration_structure =
+            dst_acceleration_structure
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    context: "info.dst_acceleration_structure".into(),
+                    problem: "is `None`".into(),
+                    // vuids?
+                    ..Default::default()
+                }))?;
         let scratch_data = scratch_data.as_ref().ok_or(Box::new(ValidationError {
             context: "info.scratch_data".into(),
             problem: "is `None`".into(),
@@ -1647,6 +1664,28 @@ where
             _ne,
         } = info;
 
+        let mode = mode.as_ref().ok_or(Box::new(ValidationError {
+            context: "info.mode".into(),
+            problem: "is `None`".into(),
+            // vuids?
+            ..Default::default()
+        }))?;
+        let dst_acceleration_structure =
+            dst_acceleration_structure
+                .as_ref()
+                .ok_or(Box::new(ValidationError {
+                    context: "info.dst_acceleration_structure".into(),
+                    problem: "is `None`".into(),
+                    // vuids?
+                    ..Default::default()
+                }))?;
+        let scratch_data = scratch_data.as_ref().ok_or(Box::new(ValidationError {
+            context: "info.scratch_data".into(),
+            problem: "is `None`".into(),
+            // vuids?
+            ..Default::default()
+        }))?;
+
         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-mode-04628
         // Ensured as long as `BuildAccelerationStructureMode` is exhaustive.
 
@@ -1666,13 +1705,6 @@ where
         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-dstAccelerationStructure-03706
         // VUID-vkCmdBuildAccelerationStructuresIndirectKHR-scratchData-03705
         // Ensured by unsafe on `AccelerationStructure::new`.
-
-        let scratch_data = scratch_data.as_ref().ok_or(Box::new(ValidationError {
-            context: "info.scratch_data".into(),
-            problem: "is `None`".into(),
-            // vuids?
-            ..Default::default()
-        }))?;
 
         if !scratch_data
             .buffer()
