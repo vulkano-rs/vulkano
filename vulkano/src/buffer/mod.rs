@@ -404,16 +404,14 @@ impl Buffer {
         let mut requirements = *raw_buffer.memory_requirements();
         requirements.layout = requirements.layout.align_to(layout.alignment()).unwrap();
 
-        let allocation = unsafe {
-            allocator
-                .allocate_unchecked(
-                    requirements,
-                    AllocationType::Linear,
-                    allocation_info,
-                    Some(DedicatedAllocation::Buffer(&raw_buffer)),
-                )
-                .map_err(BufferAllocateError::AllocateMemory)?
-        };
+        let allocation = allocator
+            .allocate(
+                requirements,
+                AllocationType::Linear,
+                allocation_info,
+                Some(DedicatedAllocation::Buffer(&raw_buffer)),
+            )
+            .map_err(BufferAllocateError::AllocateMemory)?;
 
         let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
             err.map(BufferAllocateError::BindMemory)

@@ -160,16 +160,14 @@ impl Image {
             })?;
         let requirements = raw_image.memory_requirements()[0];
 
-        let allocation = unsafe {
-            allocator
-                .allocate_unchecked(
-                    requirements,
-                    allocation_type,
-                    allocation_info,
-                    Some(DedicatedAllocation::Image(&raw_image)),
-                )
-                .map_err(ImageAllocateError::AllocateMemory)?
-        };
+        let allocation = allocator
+            .allocate(
+                requirements,
+                allocation_type,
+                allocation_info,
+                Some(DedicatedAllocation::Image(&raw_image)),
+            )
+            .map_err(ImageAllocateError::AllocateMemory)?;
 
         let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
             err.map(ImageAllocateError::BindMemory)
