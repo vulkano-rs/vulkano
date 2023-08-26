@@ -889,6 +889,7 @@ impl Display for SuballocatorError {
 ///         .unwrap(),
 ///         ..Default::default()
 ///     },
+///     false,
 /// )
 /// .unwrap();
 ///
