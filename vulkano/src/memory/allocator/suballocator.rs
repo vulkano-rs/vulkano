@@ -22,7 +22,6 @@ use crate::{
     sync::HostAccessError,
     DeviceSize, NonZeroDeviceSize, Validated, ValidationError, VulkanError,
 };
-use crossbeam_queue::ArrayQueue;
 use parking_lot::Mutex;
 use std::{
     cell::Cell,
@@ -71,10 +70,6 @@ enum AllocParent {
         allocator: Arc<BuddyAllocator>,
         order: usize,
         offset: DeviceSize,
-    },
-    Pool {
-        allocator: Arc<PoolAllocatorInner>,
-        index: DeviceSize,
     },
     Bump(Arc<BumpAllocator>),
     Root(Arc<DeviceMemory>),
@@ -287,7 +282,6 @@ impl MemoryAlloc {
         match &self.parent {
             AllocParent::FreeList { allocator, .. } => &allocator.device_memory,
             AllocParent::Buddy { allocator, .. } => &allocator.device_memory,
-            AllocParent::Pool { allocator, .. } => &allocator.device_memory,
             AllocParent::Bump(allocator) => &allocator.device_memory,
             AllocParent::Root(device_memory) => device_memory,
             AllocParent::Dedicated(device_memory) => device_memory,
@@ -303,7 +297,6 @@ impl MemoryAlloc {
         match &self.parent {
             AllocParent::FreeList { allocator, .. } => Some(&allocator.region),
             AllocParent::Buddy { allocator, .. } => Some(&allocator.region),
-            AllocParent::Pool { allocator, .. } => Some(&allocator.region),
             AllocParent::Bump(allocator) => Some(&allocator.region),
             AllocParent::Root(_) => None,
             AllocParent::Dedicated(_) => None,
@@ -379,7 +372,6 @@ impl MemoryAlloc {
         match &self.parent {
             AllocParent::FreeList { allocator, .. } => Some(&allocator.device_memory),
             AllocParent::Buddy { allocator, .. } => Some(&allocator.device_memory),
-            AllocParent::Pool { allocator, .. } => Some(&allocator.device_memory),
             AllocParent::Bump(allocator) => Some(&allocator.device_memory),
             AllocParent::Root(device_memory) => Some(device_memory),
             AllocParent::Dedicated(_) => None,
@@ -479,9 +471,6 @@ impl Drop for MemoryAlloc {
                 offset,
             } => {
                 unsafe { allocator.free(*order, *offset) };
-            }
-            AllocParent::Pool { allocator, index } => {
-                unsafe { allocator.free(*index) };
             }
             // The bump allocator can't free individually, but we need to keep a reference to it so
             // it don't get reset or dropped while in use.
@@ -1749,352 +1738,6 @@ struct BuddyAllocatorState {
     free_list: ArrayVec<Vec<DeviceSize>, { BuddyAllocator::MAX_ORDERS }>,
 }
 
-/// A [suballocator] using a pool of fixed-size blocks as a [free-list].
-///
-/// Since the size of the blocks is fixed, you can not create allocations bigger than that. You can
-/// create smaller ones, though, which leads to more and more [internal fragmentation] the smaller
-/// the allocations get. This is generally a good trade-off, as internal fragmentation is nowhere
-/// near as hard to deal with as [external fragmentation].
-///
-/// See also [the `Suballocator` implementation].
-///
-/// # Algorithm
-///
-/// The free-list contains indices of blocks in the region that are available, so allocation
-/// consists merely of popping an index from the free-list. The same goes for freeing, all that is
-/// required is to push the index of the block into the free-list. Note that this is only possible
-/// because the blocks have a fixed size. Due to this one fact, the free-list doesn't need to be
-/// sorted or traversed. As long as there is a free block, it will do, no matter which block it is.
-///
-/// Since the `PoolAllocator` doesn't keep a list of suballocations that are currently in use,
-/// resolving [buffer-image granularity] conflicts on a case-by-case basis is not possible.
-/// Therefore, it is an all or nothing situation:
-///
-/// - you use the allocator for only one type of allocation, [`Linear`] or [`NonLinear`], or
-/// - you allow both but align the blocks to the granularity so that no conflics can happen.
-///
-/// The way this is done is that every suballocation inherits the allocation type of the region.
-/// The latter is done by using a region whose allocation type is [`Unknown`]. You are discouraged
-/// from using this type if you can avoid it.
-///
-/// The block size can end up bigger than specified if the allocator is created with a region whose
-/// allocation type is `Unknown`. In that case all blocks are aligned to the buffer-image
-/// granularity, which may or may not cause signifficant memory usage increase. Say for example
-/// your driver reports a granularity of 4KiB. If you need a block size of 8KiB, you would waste no
-/// memory. On the other hand, if you needed a block size of 6KiB, you would be wasting 25% of the
-/// memory. In such a scenario you are highly encouraged to use a different allocation type.
-///
-/// The reverse is also true: with an allocation type other than `Unknown`, not all memory within a
-/// block may be usable depending on the requested [suballocation]. For instance, with a block size
-/// of 1152B (9 * 128B) and a suballocation with `alignment: 256`, a block at an odd index could
-/// not utilize its first 128B, reducing its effective size to 1024B. This is usually only relevant
-/// with small block sizes, as [alignment requirements] are usually rather small, but it completely
-/// depends on the resource and driver.
-///
-/// In summary, the block size you choose has a signifficant impact on internal fragmentation due
-/// to the two reasons described above. You need to choose your block size carefully, *especially*
-/// if you require small allocations. Some rough guidelines:
-///
-/// - Always [align] your blocks to a sufficiently large power of 2. This does **not** mean your
-///   block size must be a power of two. For example with a block size of 3KiB, your blocks would
-///   be aligned to 1KiB.
-/// - Prefer not using the allocation type `Unknown`. You can always create as many
-///   `PoolAllocator`s as you like for different allocation types and sizes, and they can all work
-///   within the same memory block. You should be safe from fragmentation if your blocks are
-///   aligned to 1KiB.
-/// - If you must use the allocation type `Unknown`, then you should be safe from fragmentation on
-///   pretty much any driver if your blocks are aligned to 64KiB. Keep in mind that this might
-///   change any time as new devices appear or new drivers come out. Always look at the properties
-///   of the devices you want to support before relying on any such data.
-///
-/// # Efficiency
-///
-/// In theory, a pool allocator is the ideal one because it causes no external fragmentation, and
-/// both allocation and freeing is *O*(1). It also never needs to lock and hence also lends itself
-/// perfectly to concurrency. But of course, there is the trade-off that block sizes are not
-/// dynamic.
-///
-/// As you can imagine, the `PoolAllocator` is the perfect fit if you know the sizes of the
-/// allocations you will be making, and they are more or less in the same size class. But this
-/// allocation algorithm really shines when combined with others, as most do. For one, nothing is
-/// stopping you from having multiple `PoolAllocator`s for many different size classes. You could
-/// consider a pool of pools, by layering `PoolAllocator` with itself, but this would have the
-/// downside that the regions of the pools for all size classes would have to match. Usually this
-/// is not desired. If you want pools for different size classes to all have about the same number
-/// of blocks, or you even know that some size classes require more or less blocks (because of how
-/// many resources you will be allocating for each), then you need an allocator that can allocate
-/// regions of different sizes. You can use the [`FreeListAllocator`] for this, if external
-/// fragmentation is not an issue, otherwise you might consider using the [`BuddyAllocator`]. On
-/// the other hand, you might also want to consider having a `PoolAllocator` at the top of a
-/// [hierarchy]. Again, this allocator never needs to lock making it *the* perfect fit for a global
-/// concurrent allocator, which hands out large regions which can then be suballocated locally on a
-/// thread, by the [`BumpAllocator`] for example.
-///
-/// # Examples
-///
-/// Basic usage together with [`GenericMemoryAllocator`]:
-///
-/// ```
-/// use std::sync::Arc;
-/// use vulkano::memory::allocator::{
-///     GenericMemoryAllocator, GenericMemoryAllocatorCreateInfo, PoolAllocator,
-/// };
-///
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let memory_allocator = GenericMemoryAllocator::<Arc<PoolAllocator<{ 64 * 1024 }>>>::new(
-///     device.clone(),
-///     GenericMemoryAllocatorCreateInfo {
-///         block_sizes: &[(0, 64 * 1024 * 1024)],
-///         ..Default::default()
-///     },
-/// )
-/// .unwrap();
-///
-/// // Now you can use `memory_allocator` to allocate whatever it is you need.
-/// ```
-///
-/// [suballocator]: Suballocator
-/// [free-list]: Suballocator#free-lists
-/// [internal fragmentation]: super#internal-fragmentation
-/// [external fragmentation]: super#external-fragmentation
-/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<PoolAllocator<BLOCK_SIZE>>
-/// [region]: Suballocator#regions
-/// [buffer-image granularity]: super#buffer-image-granularity
-/// [`Linear`]: AllocationType::Linear
-/// [`NonLinear`]: AllocationType::NonLinear
-/// [`Unknown`]: AllocationType::Unknown
-/// [suballocation]: SuballocationCreateInfo
-/// [alignment requirements]: super#memory-requirements
-/// [align]: super#alignment
-/// [hierarchy]: Suballocator#memory-hierarchies
-/// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct PoolAllocator<const BLOCK_SIZE: DeviceSize> {
-    inner: PoolAllocatorInner,
-}
-
-impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
-    /// Creates a new `PoolAllocator` for the given [region].
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `region.size < BLOCK_SIZE`.
-    /// - Panics if `region` is a [dedicated allocation].
-    ///
-    /// [region]: Suballocator#regions
-    /// [dedicated allocation]: MemoryAlloc::is_dedicated
-    #[inline]
-    pub fn new(
-        region: MemoryAlloc,
-        #[cfg(test)] buffer_image_granularity: DeviceAlignment,
-    ) -> Arc<Self> {
-        Arc::new(PoolAllocator {
-            inner: PoolAllocatorInner::new(
-                region,
-                BLOCK_SIZE,
-                #[cfg(test)]
-                buffer_image_granularity,
-            ),
-        })
-    }
-
-    /// Size of a block. Can be bigger than `BLOCK_SIZE` due to alignment requirements.
-    #[inline]
-    pub fn block_size(&self) -> DeviceSize {
-        self.inner.block_size
-    }
-
-    /// Total number of blocks available to the allocator. This is always equal to
-    /// `self.region().size() / self.block_size()`.
-    #[inline]
-    pub fn block_count(&self) -> usize {
-        self.inner.free_list.capacity()
-    }
-
-    /// Number of free blocks.
-    #[inline]
-    pub fn free_count(&self) -> usize {
-        self.inner.free_list.len()
-    }
-}
-
-unsafe impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE>> {
-    const IS_BLOCKING: bool = false;
-
-    const NEEDS_CLEANUP: bool = false;
-
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        PoolAllocator::new(
-            region,
-            #[cfg(test)]
-            DeviceAlignment::MIN,
-        )
-    }
-
-    /// Creates a new suballocation within the [region].
-    ///
-    /// > **Note**: `create_info.allocation_type` is silently ignored because all suballocations
-    /// > inherit the allocation type from the region.
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if the [free-list] is empty.
-    /// - Returns [`OutOfRegionMemory`] if the allocation can't fit inside a block. Only the first
-    ///   block in the free-list is tried, which means that if one block isn't usable due to
-    ///   [internal fragmentation] but a different one would be, you still get this error. See the
-    ///   [type-level documentation] for details on how to properly configure your allocator.
-    /// - Returns [`BlockSizeExceeded`] if `create_info.size` exceeds `BLOCK_SIZE`.
-    ///
-    /// [region]: Suballocator#regions
-    /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
-    /// [free-list]: Suballocator#free-lists
-    /// [internal fragmentation]: super#internal-fragmentation
-    /// [type-level documentation]: PoolAllocator
-    /// [`BlockSizeExceeded`]: SuballocatorError::BlockSizeExceeded
-    #[inline]
-    fn allocate(
-        &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocatorError> {
-        // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
-        //
-        // This is not quite optimal, because we are always cloning the `Arc` even if allocation
-        // fails, in which case the `Arc` gets cloned and dropped for no reason. Unfortunately,
-        // there is currently no way to turn `&Arc<T>` into `&Arc<U>` that is sound.
-        unsafe { Arc::from_raw(Arc::into_raw(self.clone()).cast::<PoolAllocatorInner>()) }
-            .allocate(create_info)
-    }
-
-    #[inline]
-    fn region(&self) -> &MemoryAlloc {
-        &self.inner.region
-    }
-
-    #[inline]
-    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
-        Arc::try_unwrap(self).map(|allocator| allocator.inner.region)
-    }
-
-    #[inline]
-    fn free_size(&self) -> DeviceSize {
-        self.free_count() as DeviceSize * self.block_size()
-    }
-
-    #[inline]
-    fn cleanup(&mut self) {}
-}
-
-unsafe impl<const BLOCK_SIZE: DeviceSize> DeviceOwned for PoolAllocator<BLOCK_SIZE> {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device_memory.device()
-    }
-}
-
-#[derive(Debug)]
-struct PoolAllocatorInner {
-    region: MemoryAlloc,
-    device_memory: Arc<DeviceMemory>,
-    atom_size: DeviceAlignment,
-    block_size: DeviceSize,
-    // Unsorted list of free block indices.
-    free_list: ArrayQueue<DeviceSize>,
-}
-
-impl PoolAllocatorInner {
-    fn new(
-        region: MemoryAlloc,
-        mut block_size: DeviceSize,
-        #[cfg(test)] buffer_image_granularity: DeviceAlignment,
-    ) -> Self {
-        let device_memory = region
-            .root()
-            .expect("dedicated allocations can't be suballocated")
-            .clone();
-        #[cfg(not(test))]
-        let buffer_image_granularity = device_memory
-            .device()
-            .physical_device()
-            .properties()
-            .buffer_image_granularity;
-        let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
-        if region.allocation_type == AllocationType::Unknown {
-            block_size = align_up(block_size, buffer_image_granularity);
-        }
-
-        let block_count = region.size / block_size;
-        let free_list = ArrayQueue::new(block_count as usize);
-        for i in 0..block_count {
-            free_list.push(i).unwrap();
-        }
-
-        PoolAllocatorInner {
-            region,
-            device_memory,
-            atom_size,
-            block_size,
-            free_list,
-        }
-    }
-
-    fn allocate(
-        self: Arc<Self>,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocatorError> {
-        let SuballocationCreateInfo {
-            layout,
-            allocation_type: _,
-            _ne: _,
-        } = create_info;
-
-        let size = layout.size();
-        let alignment = cmp::max(layout.alignment(), self.atom_size);
-        let index = self
-            .free_list
-            .pop()
-            .ok_or(SuballocatorError::OutOfRegionMemory)?;
-
-        // Indices in the free-list are confined to the range [0, region.size / block_size], so
-        // this can't overflow.
-        let relative_offset = index * self.block_size;
-        // This can't overflow because offsets are confined to the size of the root allocation,
-        // which can itself not exceed `DeviceLayout::MAX_SIZE`.
-        let offset = align_up(self.region.offset + relative_offset, alignment);
-
-        if offset + size > self.region.offset + relative_offset + self.block_size {
-            let _ = self.free_list.push(index);
-
-            return if size > self.block_size {
-                Err(SuballocatorError::BlockSizeExceeded)
-            } else {
-                // There is not enough space due to alignment requirements.
-                Err(SuballocatorError::OutOfRegionMemory)
-            };
-        }
-
-        Ok(MemoryAlloc {
-            offset,
-            size,
-            allocation_type: self.region.allocation_type,
-            atom_size: self.region.atom_size,
-            parent: AllocParent::Pool {
-                allocator: self,
-                index,
-            },
-        })
-    }
-
-    /// # Safety
-    ///
-    /// - `index` must refer to an occupied suballocation allocated by `self`.
-    unsafe fn free(&self, index: DeviceSize) {
-        let _ = self.free_list.push(index);
-    }
-}
-
 /// A [suballocator] which can allocate dynamically, but can only free all allocations at once.
 ///
 /// With bump allocation, the used up space increases linearly as allocations are made and
@@ -2600,133 +2243,6 @@ mod tests {
         let _alloc = allocator.allocate(dummy_info!()).unwrap();
         assert!(allocator.allocate(dummy_info!()).is_err());
         assert!(allocator.allocate(dummy_info_linear!()).is_err());
-    }
-
-    #[test]
-    fn pool_allocator_capacity() {
-        const BLOCK_SIZE: DeviceSize = 1024;
-
-        fn dummy_allocator(
-            device: Arc<Device>,
-            allocation_size: DeviceSize,
-        ) -> Arc<PoolAllocator<BLOCK_SIZE>> {
-            let device_memory = DeviceMemory::allocate(
-                device,
-                MemoryAllocateInfo {
-                    allocation_size,
-                    memory_type_index: 0,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-            PoolAllocator::new(
-                MemoryAlloc::new(device_memory),
-                DeviceAlignment::new(1).unwrap(),
-            )
-        }
-
-        let (device, _) = gfx_dev_and_queue!();
-
-        assert_should_panic!({ dummy_allocator(device.clone(), BLOCK_SIZE - 1) });
-
-        let allocator = dummy_allocator(device.clone(), 2 * BLOCK_SIZE - 1);
-        {
-            let alloc = allocator.allocate(dummy_info!()).unwrap();
-            assert!(allocator.allocate(dummy_info!()).is_err());
-
-            drop(alloc);
-            let _alloc = allocator.allocate(dummy_info!()).unwrap();
-        }
-
-        let allocator = dummy_allocator(device, 2 * BLOCK_SIZE);
-        {
-            let alloc1 = allocator.allocate(dummy_info!()).unwrap();
-            let alloc2 = allocator.allocate(dummy_info!()).unwrap();
-            assert!(allocator.allocate(dummy_info!()).is_err());
-
-            drop(alloc1);
-            let alloc1 = allocator.allocate(dummy_info!()).unwrap();
-            assert!(allocator.allocate(dummy_info!()).is_err());
-
-            drop(alloc1);
-            drop(alloc2);
-            let _alloc1 = allocator.allocate(dummy_info!()).unwrap();
-            let _alloc2 = allocator.allocate(dummy_info!()).unwrap();
-        }
-    }
-
-    #[test]
-    fn pool_allocator_respects_alignment() {
-        const BLOCK_SIZE: DeviceSize = 1024 + 128;
-
-        let info_a = dummy_info!(BLOCK_SIZE, 256);
-        let info_b = dummy_info!(1024, 256);
-
-        let allocator = {
-            let (device, _) = gfx_dev_and_queue!();
-            let device_memory = DeviceMemory::allocate(
-                device,
-                MemoryAllocateInfo {
-                    allocation_size: 10 * BLOCK_SIZE,
-                    memory_type_index: 0,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-            PoolAllocator::<BLOCK_SIZE>::new(
-                MemoryAlloc::new(device_memory),
-                DeviceAlignment::new(1).unwrap(),
-            )
-        };
-
-        // This uses the fact that block indices are inserted into the free-list in order, so
-        // the first allocation succeeds because the block has an even index, while the second
-        // has an odd index.
-        allocator.allocate(info_a.clone()).unwrap();
-        assert!(allocator.allocate(info_a.clone()).is_err());
-        allocator.allocate(info_a.clone()).unwrap();
-        assert!(allocator.allocate(info_a).is_err());
-
-        for _ in 0..10 {
-            allocator.allocate(info_b.clone()).unwrap();
-        }
-    }
-
-    #[test]
-    fn pool_allocator_respects_granularity() {
-        const BLOCK_SIZE: DeviceSize = 128;
-
-        fn dummy_allocator(
-            device: Arc<Device>,
-            allocation_type: AllocationType,
-        ) -> Arc<PoolAllocator<BLOCK_SIZE>> {
-            let device_memory = DeviceMemory::allocate(
-                device,
-                MemoryAllocateInfo {
-                    allocation_size: 1024,
-                    memory_type_index: 0,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let mut region = MemoryAlloc::new(device_memory);
-            unsafe { region.set_allocation_type(allocation_type) };
-
-            PoolAllocator::new(region, DeviceAlignment::new(256).unwrap())
-        }
-
-        let (device, _) = gfx_dev_and_queue!();
-
-        let allocator = dummy_allocator(device.clone(), AllocationType::Unknown);
-        assert!(allocator.block_count() == 4);
-
-        let allocator = dummy_allocator(device.clone(), AllocationType::Linear);
-        assert!(allocator.block_count() == 8);
-
-        let allocator = dummy_allocator(device, AllocationType::NonLinear);
-        assert!(allocator.block_count() == 8);
     }
 
     #[test]
