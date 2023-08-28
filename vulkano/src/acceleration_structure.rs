@@ -1056,7 +1056,7 @@ impl AccelerationStructureGeometryTrianglesData {
             .filter(|&c| c != 0)
             .min()
             .unwrap() as u32;
-        let smallest_component_bytes = (smallest_component_bits + 7) & !7;
+        let smallest_component_bytes = ((smallest_component_bits + 7) & !7) / 8;
 
         if vertex_stride % smallest_component_bytes != 0 {
             return Err(Box::new(ValidationError {

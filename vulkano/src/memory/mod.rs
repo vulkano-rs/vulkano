@@ -590,3 +590,27 @@ pub(crate) fn range(
 
     (start <= end && end <= len).then_some(Range { start, end })
 }
+
+/// Converts a `RangeBounds` into a `Range` without doing any bounds checking.
+pub(crate) fn range_unchecked(
+    range: impl RangeBounds<DeviceSize>,
+    bounds: RangeTo<DeviceSize>,
+) -> Range<DeviceSize> {
+    let len = bounds.end;
+
+    let start = match range.start_bound() {
+        Bound::Included(&start) => start,
+        Bound::Excluded(start) => start + 1,
+        Bound::Unbounded => 0,
+    };
+
+    let end = match range.end_bound() {
+        Bound::Included(end) => end + 1,
+        Bound::Excluded(&end) => end,
+        Bound::Unbounded => len,
+    };
+
+    debug_assert!(start <= end && end <= len);
+
+    Range { start, end }
+}
