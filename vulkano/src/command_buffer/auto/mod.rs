@@ -339,6 +339,7 @@ mod tests {
         shader::ShaderStages,
         sync::GpuFuture,
     };
+    use std::sync::Arc;
 
     #[test]
     fn basic_creation() {
@@ -376,10 +377,10 @@ mod tests {
         .unwrap();
 
         let queue = queues.next().unwrap();
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
         let source = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
@@ -394,7 +395,7 @@ mod tests {
         .unwrap();
 
         let destination = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()
@@ -506,9 +507,9 @@ mod tests {
     fn buffer_self_copy_overlapping() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let source = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
                 ..Default::default()
@@ -561,9 +562,9 @@ mod tests {
     fn buffer_self_copy_not_overlapping() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let source = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
                 ..Default::default()
@@ -613,10 +614,10 @@ mod tests {
             )
             .unwrap();
 
-            let memory_allocator = StandardMemoryAllocator::new_default(device);
+            let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
             // Create a tiny test buffer
             let buffer = Buffer::from_data(
-                &memory_allocator,
+                memory_allocator,
                 BufferCreateInfo {
                     usage: BufferUsage::TRANSFER_DST,
                     ..Default::default()
@@ -712,9 +713,9 @@ mod tests {
             )
             .unwrap();
 
-            let memory_allocator = StandardMemoryAllocator::new_default(device);
+            let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
             let buf = Buffer::from_data(
-                &memory_allocator,
+                memory_allocator,
                 BufferCreateInfo {
                     usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()

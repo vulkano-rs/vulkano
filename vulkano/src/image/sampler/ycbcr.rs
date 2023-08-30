@@ -48,7 +48,7 @@
 //! };
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
-//! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+//! # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 //! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
 //! #
 //! let conversion = SamplerYcbcrConversion::new(device.clone(), SamplerYcbcrConversionCreateInfo {
@@ -82,7 +82,7 @@
 //! .unwrap();
 //!
 //! let image = Image::new(
-//!     &memory_allocator,
+//!     memory_allocator.clone(),
 //!     ImageCreateInfo {
 //!         image_type: ImageType::Dim2d,
 //!         format: Format::G8_B8_R8_3PLANE_420_UNORM,

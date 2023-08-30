@@ -33,7 +33,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceLayout, MemoryAlloc},
+        allocator::{AllocationType, DeviceLayout, ResourceMemory},
         is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryPropertyFlags,
         MemoryRequirements,
     },
@@ -707,13 +707,13 @@ impl RawImage {
     ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
     pub fn bind_memory(
         self,
-        allocations: impl IntoIterator<Item = MemoryAlloc>,
+        allocations: impl IntoIterator<Item = ResourceMemory>,
     ) -> Result<
         Image,
         (
             Validated<VulkanError>,
             RawImage,
-            impl ExactSizeIterator<Item = MemoryAlloc>,
+            impl ExactSizeIterator<Item = ResourceMemory>,
         ),
     > {
         let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();
@@ -736,7 +736,7 @@ impl RawImage {
 
     fn validate_bind_memory(
         &self,
-        allocations: &[MemoryAlloc],
+        allocations: &[ResourceMemory],
     ) -> Result<(), Box<ValidationError>> {
         let physical_device = self.device().physical_device();
 
@@ -1072,13 +1072,13 @@ impl RawImage {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_memory_unchecked(
         self,
-        allocations: impl IntoIterator<Item = MemoryAlloc>,
+        allocations: impl IntoIterator<Item = ResourceMemory>,
     ) -> Result<
         Image,
         (
             VulkanError,
             RawImage,
-            impl ExactSizeIterator<Item = MemoryAlloc>,
+            impl ExactSizeIterator<Item = ResourceMemory>,
         ),
     > {
         let allocations: SmallVec<[_; 4]> = allocations.into_iter().collect();

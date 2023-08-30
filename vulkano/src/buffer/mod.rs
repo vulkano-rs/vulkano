@@ -85,8 +85,8 @@ use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
     memory::{
         allocator::{
-            AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocator,
-            MemoryAllocatorError,
+            AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAllocator,
+            MemoryAllocatorError, ResourceMemory,
         },
         DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
         ExternalMemoryProperties, MemoryRequirements,
@@ -141,7 +141,7 @@ pub mod view;
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-/// # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+/// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 /// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
 /// #
 /// // Simple iterator to construct test data.
@@ -149,7 +149,7 @@ pub mod view;
 ///
 /// // Create a host-accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = Buffer::from_iter(
-///     &memory_allocator,
+///     memory_allocator.clone(),
 ///     BufferCreateInfo {
 ///         // Specify that this buffer will be used as a transfer source.
 ///         usage: BufferUsage::TRANSFER_SRC,
@@ -167,7 +167,7 @@ pub mod view;
 ///
 /// // Create a buffer in device-local memory with enough space for a slice of `10_000` floats.
 /// let device_local_buffer = Buffer::new_slice::<f32>(
-///     &memory_allocator,
+///     memory_allocator.clone(),
 ///     BufferCreateInfo {
 ///         // Specify use as a storage buffer and transfer destination.
 ///         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
@@ -219,7 +219,7 @@ pub enum BufferMemory {
     /// The buffer is backed by normal memory, bound with [`bind_memory`].
     ///
     /// [`bind_memory`]: RawBuffer::bind_memory
-    Normal(MemoryAlloc),
+    Normal(ResourceMemory),
 
     /// The buffer is backed by sparse memory, bound with [`bind_sparse`].
     ///
@@ -237,10 +237,10 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if `create_info.size` is not zero.
     /// - Panics if the chosen memory type is not host-visible.
     pub fn from_data<T>(
-        allocator: &(impl MemoryAllocator + ?Sized),
+        allocator: Arc<dyn MemoryAllocator>,
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         data: T,
@@ -267,11 +267,11 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if `create_info.size` is not zero.
     /// - Panics if the chosen memory type is not host-visible.
     /// - Panics if `iter` is empty.
     pub fn from_iter<T, I>(
-        allocator: &(impl MemoryAllocator + ?Sized),
+        allocator: Arc<dyn MemoryAllocator>,
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         iter: I,
@@ -307,7 +307,7 @@ impl Buffer {
     ///
     /// - Panics if `buffer_info.size` is not zero.
     pub fn new_sized<T>(
-        allocator: &(impl MemoryAllocator + ?Sized),
+        allocator: Arc<dyn MemoryAllocator>,
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
     ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
@@ -333,7 +333,7 @@ impl Buffer {
     /// - Panics if `buffer_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_slice<T>(
-        allocator: &(impl MemoryAllocator + ?Sized),
+        allocator: Arc<dyn MemoryAllocator>,
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
@@ -352,7 +352,7 @@ impl Buffer {
     /// - Panics if `buffer_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_unsized<T>(
-        allocator: &(impl MemoryAllocator + ?Sized),
+        allocator: Arc<dyn MemoryAllocator>,
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
@@ -379,7 +379,7 @@ impl Buffer {
     /// - Panics if `buffer_info.size` is not zero.
     /// - Panics if `layout.alignment()` is greater than 64.
     pub fn new(
-        allocator: &(impl MemoryAllocator + ?Sized),
+        allocator: Arc<dyn MemoryAllocator>,
         mut create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
@@ -412,6 +412,7 @@ impl Buffer {
                 Some(DedicatedAllocation::Buffer(&raw_buffer)),
             )
             .map_err(BufferAllocateError::AllocateMemory)?;
+        let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
         let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
             err.map(BufferAllocateError::BindMemory)

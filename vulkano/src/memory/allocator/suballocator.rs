@@ -14,11 +14,14 @@
 //! [the parent module]: super
 
 use self::host::SlotId;
-use super::{align_down, align_up, array_vec::ArrayVec, DeviceAlignment, DeviceLayout};
+use super::{
+    align_down, align_up, array_vec::ArrayVec, AllocationHandle, DeviceAlignment, DeviceLayout,
+    MemoryAlloc, MemoryAllocator,
+};
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     image::ImageTiling,
-    memory::{self, is_aligned, DeviceMemory, MappedMemoryRange, MemoryPropertyFlags},
+    memory::{self, is_aligned, DeviceMemory, MappedMemoryRange},
     sync::HostAccessError,
     DeviceSize, NonZeroDeviceSize, Validated, ValidationError, VulkanError,
 };
@@ -28,7 +31,7 @@ use std::{
     cmp,
     error::Error,
     fmt::{self, Display},
-    mem::{self, ManuallyDrop},
+    mem::ManuallyDrop,
     ops::RangeBounds,
     ptr::{self, NonNull},
     sync::{
@@ -37,96 +40,137 @@ use std::{
     },
 };
 
-/// Memory allocations are portions of memory that are reserved for a specific resource or purpose.
+/// Memory that can be bound to resources.
 ///
-/// There's a few ways you can obtain a `MemoryAlloc` in Vulkano. Most commonly you will probably
-/// want to use a [memory allocator]. If you already have a [`DeviceMemory`] block on hand that you
-/// would like to turn into an allocation, you can use [the constructor]. Lastly, you can use a
-/// [suballocator] if you want to create multiple smaller allocations out of a bigger one.
+/// Most commonly you will want to obtain this by first using a [memory allocator] and then
+/// [constructing this object from its allocation]. Alternatively, if you want to bind a whole
+/// block of `DeviceMemory` to a resource, or can't go through an allocator, you can use [the
+/// dedicated constructor].
 ///
 /// [memory allocator]: super::MemoryAllocator
-/// [the constructor]: Self::new
-/// [suballocator]: Suballocator
+/// [the dedicated constructor]: Self::new_dedicated
 #[derive(Debug)]
-pub struct MemoryAlloc {
+pub struct ResourceMemory {
+    device_memory: ManuallyDrop<DeviceOwnedDebugWrapper<Arc<DeviceMemory>>>,
     offset: DeviceSize,
     size: DeviceSize,
-    // Needed when binding resources to the allocation in order to avoid aliasing memory.
     allocation_type: AllocationType,
-    // Used by the suballocators to align allocations to the non-coherent atom size when the memory
-    // type is host-visible but not host-coherent. This will be `None` for any other memory type.
-    atom_size: Option<DeviceAlignment>,
-    // Used in the `Drop` impl to free the allocation if required.
-    parent: AllocParent,
+    allocation_handle: AllocationHandle,
+    suballocation_handle: Option<AllocationHandle>,
+    allocator: Option<Arc<dyn MemoryAllocator>>,
 }
 
-#[derive(Debug)]
-enum AllocParent {
-    FreeList {
-        allocator: Arc<FreeListAllocator>,
-        id: SlotId,
-    },
-    Buddy {
-        allocator: Arc<BuddyAllocator>,
-        order: usize,
-        offset: DeviceSize,
-    },
-    Bump(Arc<BumpAllocator>),
-    Root(Arc<DeviceMemory>),
-    Dedicated(DeviceMemory),
-}
+impl ResourceMemory {
+    /// Creates a new `ResourceMemory` that has a whole device memory block dedicated to it. You
+    /// may use this when you obtain the memory in a way other than through the use of a memory
+    /// allocator, for instance by importing memory.
+    ///
+    /// This is safe because we take ownership of the device memory, so that there can be no
+    /// aliasing resources. On the other hand, the device memory can never be reused: it will be
+    /// freed once the returned object is dropped.
+    pub fn new_dedicated(device_memory: DeviceMemory) -> Self {
+        unsafe { Self::new_dedicated_unchecked(Arc::new(device_memory)) }
+    }
 
-impl MemoryAlloc {
-    /// Creates a new `MemoryAlloc`.
-    #[inline]
-    pub fn new(device_memory: DeviceMemory) -> Self {
-        // Sanity check: this would lead to UB when suballocating.
-        assert!(device_memory.allocation_size() <= DeviceLayout::MAX_SIZE);
-
-        let device = device_memory.device();
-        let physical_device = device.physical_device();
-        let memory_type_index = device_memory.memory_type_index();
-        let property_flags = &physical_device.memory_properties().memory_types
-            [memory_type_index as usize]
-            .property_flags;
-
-        let atom_size = (property_flags.intersects(MemoryPropertyFlags::HOST_VISIBLE)
-            && !property_flags.intersects(MemoryPropertyFlags::HOST_COHERENT))
-        .then_some(physical_device.properties().non_coherent_atom_size);
-
-        MemoryAlloc {
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_dedicated_unchecked(device_memory: Arc<DeviceMemory>) -> Self {
+        ResourceMemory {
             offset: 0,
             size: device_memory.allocation_size(),
             allocation_type: AllocationType::Unknown,
-            atom_size,
-            parent: if device_memory.is_dedicated() {
-                AllocParent::Dedicated(device_memory)
-            } else {
-                AllocParent::Root(Arc::new(device_memory))
-            },
+            allocation_handle: AllocationHandle(ptr::null_mut()),
+            suballocation_handle: None,
+            allocator: None,
+            device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(device_memory)),
         }
     }
 
-    /// Returns the offset of the allocation within the [`DeviceMemory`] block.
+    /// Creates a new `ResourceMemory` from an allocation of a memory allocator.
+    ///
+    /// Ownership of `allocation` is semantically transferred to this object, and it is deallocated
+    /// when the returned object is dropped.
+    ///
+    /// # Safety
+    ///
+    /// - `allocation` must refer to a **currently allocated** allocation of `allocator`.
+    /// - `allocation` must never be deallocated.
+    #[inline]
+    pub unsafe fn from_allocation(
+        allocator: Arc<dyn MemoryAllocator>,
+        allocation: MemoryAlloc,
+    ) -> Self {
+        if let Some(suballocation) = allocation.suballocation {
+            ResourceMemory {
+                offset: suballocation.offset,
+                size: suballocation.size,
+                allocation_type: allocation.allocation_type,
+                allocation_handle: allocation.allocation_handle,
+                suballocation_handle: Some(suballocation.handle),
+                allocator: Some(allocator),
+                device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(allocation.device_memory)),
+            }
+        } else {
+            ResourceMemory {
+                offset: 0,
+                size: allocation.device_memory.allocation_size(),
+                allocation_type: allocation.allocation_type,
+                allocation_handle: allocation.allocation_handle,
+                suballocation_handle: None,
+                allocator: Some(allocator),
+                device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(allocation.device_memory)),
+            }
+        }
+    }
+
+    /// Returns the underlying block of [`DeviceMemory`].
+    #[inline]
+    pub fn device_memory(&self) -> &Arc<DeviceMemory> {
+        &self.device_memory
+    }
+
+    /// Returns the offset (in bytes) within the [`DeviceMemory`] block where this `ResourceMemory`
+    /// beings.
+    ///
+    /// If this `ResourceMemory` is not a [suballocation], then this will be `0`.
+    ///
+    /// [suballocation]: Suballocation
     #[inline]
     pub fn offset(&self) -> DeviceSize {
         self.offset
     }
 
-    /// Returns the size of the allocation.
+    /// Returns the size (in bytes) of the `ResourceMemory`.
+    ///
+    /// If this `ResourceMemory` is not a [suballocation], then this will be equal to the
+    /// [allocation size] of the [`DeviceMemory`] block.
+    ///
+    /// [suballocation]: Suballocation
     #[inline]
     pub fn size(&self) -> DeviceSize {
         self.size
     }
 
-    /// Returns the type of resources that can be bound to this allocation.
+    /// Returns the type of resources that can be bound to this `ResourceMemory`.
+    ///
+    /// If this `ResourceMemory` is not a [suballocation], then this will be
+    /// [`AllocationType::Unknown`].
+    ///
+    /// [suballocation]: Suballocation
     #[inline]
     pub fn allocation_type(&self) -> AllocationType {
         self.allocation_type
     }
 
-    /// Returns the mapped pointer to a range of the allocation, or returns [`None`] if ouf of
-    /// bounds.
+    fn suballocation(&self) -> Option<Suballocation> {
+        self.suballocation_handle.map(|handle| Suballocation {
+            offset: self.offset,
+            size: self.size,
+            handle,
+        })
+    }
+
+    /// Returns the mapped pointer to a range of the `ResourceMemory`, or returns [`None`] if ouf
+    /// of bounds.
     ///
     /// `range` is specified in bytes relative to the beginning of `self` and must fall within the
     /// range of the memory mapping given to [`DeviceMemory::map`].
@@ -170,10 +214,12 @@ impl MemoryAlloc {
     }
 
     pub(crate) fn atom_size(&self) -> Option<DeviceAlignment> {
-        self.atom_size
+        let memory = self.device_memory();
+
+        memory.is_coherent().then_some(memory.atom_size())
     }
 
-    /// Invalidates the host (CPU) cache for a range of the allocation.
+    /// Invalidates the host cache for a range of the `ResourceMemory`.
     ///
     /// If the device memory is not [host-coherent], you must call this function before the memory
     /// is read by the host, if the device previously wrote to the memory. It has no effect if the
@@ -208,7 +254,7 @@ impl MemoryAlloc {
             .invalidate_range_unchecked(self.create_memory_range(memory_range))
     }
 
-    /// Flushes the host cache for a range of the allocation.
+    /// Flushes the host cache for a range of the `ResourceMemory`.
     ///
     /// If the device memory is not [host-coherent], you must call this function after writing to
     /// the memory, if the device is going to read the memory. It has no effect if the memory is
@@ -216,8 +262,8 @@ impl MemoryAlloc {
     ///
     /// # Safety
     ///
-    /// - There must be no operations pending or executing in a device queue, that access the
-    ///   specified `memory_range`.
+    /// - There must be no operations pending or executing in a device queue, that access any
+    ///   portion of the specified `memory_range`.
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
@@ -277,8 +323,8 @@ impl MemoryAlloc {
         // VUID-VkMappedMemoryRange-size-01390
         if memory_range.offset + size == self.size() {
             // We can align the end of the range like this without aliasing other allocations,
-            // because the suballocators ensure that all allocations are aligned to the atom size
-            // for non-host-coherent host-visible memory.
+            // because the memory allocator must ensure that all allocations are aligned to the
+            // atom size for non-host-coherent host-visible memory.
             let end = cmp::min(
                 align_up(offset + size, memory.atom_size()),
                 memory.allocation_size(),
@@ -292,215 +338,28 @@ impl MemoryAlloc {
             _ne: crate::NonExhaustive(()),
         }
     }
-
-    /// Returns the underlying block of [`DeviceMemory`].
-    #[inline]
-    pub fn device_memory(&self) -> &DeviceMemory {
-        match &self.parent {
-            AllocParent::FreeList { allocator, .. } => &allocator.device_memory,
-            AllocParent::Buddy { allocator, .. } => &allocator.device_memory,
-            AllocParent::Bump(allocator) => &allocator.device_memory,
-            AllocParent::Root(device_memory) => device_memory,
-            AllocParent::Dedicated(device_memory) => device_memory,
-        }
-    }
-
-    /// Returns the parent allocation if this allocation is a [suballocation], otherwise returns
-    /// [`None`].
-    ///
-    /// [suballocation]: Suballocator
-    #[inline]
-    pub fn parent_allocation(&self) -> Option<&Self> {
-        match &self.parent {
-            AllocParent::FreeList { allocator, .. } => Some(&allocator.region),
-            AllocParent::Buddy { allocator, .. } => Some(&allocator.region),
-            AllocParent::Bump(allocator) => Some(&allocator.region),
-            AllocParent::Root(_) => None,
-            AllocParent::Dedicated(_) => None,
-        }
-    }
-
-    /// Returns `true` if this allocation is the root of the [memory hierarchy].
-    ///
-    /// [memory hierarchy]: Suballocator#memory-hierarchies
-    #[inline]
-    pub fn is_root(&self) -> bool {
-        matches!(&self.parent, AllocParent::Root(_))
-    }
-
-    /// Returns `true` if this allocation is a [dedicated allocation].
-    ///
-    /// [dedicated allocation]: crate::memory::MemoryAllocateInfo#structfield.dedicated_allocation
-    #[inline]
-    pub fn is_dedicated(&self) -> bool {
-        matches!(&self.parent, AllocParent::Dedicated(_))
-    }
-
-    /// Returns the underlying block of [`DeviceMemory`] if this allocation [is the root
-    /// allocation] and is not [aliased], otherwise returns the allocation back wrapped in [`Err`].
-    ///
-    /// [is the root allocation]: Self::is_root
-    /// [aliased]: Self::alias
-    #[inline]
-    pub fn try_unwrap(self) -> Result<DeviceMemory, Self> {
-        let this = ManuallyDrop::new(self);
-
-        // SAFETY: This is safe because even if a panic happens, `self.parent` can not be
-        // double-freed since `self` was wrapped in `ManuallyDrop`. If we fail to unwrap the
-        // `DeviceMemory`, the copy of `self.parent` is forgotten and only then is the
-        // `ManuallyDrop` wrapper removed from `self`.
-        match unsafe { ptr::read(&this.parent) } {
-            AllocParent::Root(device_memory) => {
-                Arc::try_unwrap(device_memory).map_err(|device_memory| {
-                    mem::forget(device_memory);
-                    ManuallyDrop::into_inner(this)
-                })
-            }
-            parent => {
-                mem::forget(parent);
-                Err(ManuallyDrop::into_inner(this))
-            }
-        }
-    }
-
-    /// Duplicates the allocation, creating aliased memory. Returns [`None`] if the allocation [is
-    /// a dedicated allocation].
-    ///
-    /// You might consider using this method if you want to optimize memory usage by aliasing
-    /// render targets for example, in which case you will have to double and triple check that the
-    /// memory is not used concurrently unless it only involves reading. You are highly discouraged
-    /// from doing this unless you have a reason to.
-    ///
-    /// # Safety
-    ///
-    /// - You must ensure memory accesses are synchronized yourself.
-    ///
-    /// [memory hierarchy]: Suballocator#memory-hierarchies
-    /// [is a dedicated allocation]: Self::is_dedicated
-    #[inline]
-    pub unsafe fn alias(&self) -> Option<Self> {
-        self.root().map(|device_memory| MemoryAlloc {
-            parent: AllocParent::Root(device_memory.clone()),
-            ..*self
-        })
-    }
-
-    fn root(&self) -> Option<&Arc<DeviceMemory>> {
-        match &self.parent {
-            AllocParent::FreeList { allocator, .. } => Some(&allocator.device_memory),
-            AllocParent::Buddy { allocator, .. } => Some(&allocator.device_memory),
-            AllocParent::Bump(allocator) => Some(&allocator.device_memory),
-            AllocParent::Root(device_memory) => Some(device_memory),
-            AllocParent::Dedicated(_) => None,
-        }
-    }
-
-    /// Increases the offset of the allocation by the specified `amount` and shrinks its size by
-    /// the same amount.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the `amount` exceeds the size of the allocation.
-    #[inline]
-    pub fn shift(&mut self, amount: DeviceSize) {
-        assert!(amount <= self.size);
-
-        unsafe { self.set_offset(self.offset + amount) };
-        self.size -= amount;
-    }
-
-    /// Shrinks the size of the allocation to the specified `new_size`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the `new_size` exceeds the current size of the allocation.
-    #[inline]
-    pub fn shrink(&mut self, new_size: DeviceSize) {
-        assert!(new_size <= self.size);
-
-        self.size = new_size;
-    }
-
-    /// Sets the offset of the allocation without checking for memory aliasing.
-    ///
-    /// See also [`shift`], which moves the offset safely.
-    ///
-    /// # Safety
-    ///
-    /// - You must ensure that the allocation doesn't alias any other allocations within the
-    ///   [`DeviceMemory`] block, and if it does, then you must ensure memory accesses are
-    ///   synchronized yourself.
-    /// - You must ensure the allocation still fits inside the `DeviceMemory` block.
-    ///
-    /// [`shift`]: Self::shift
-    #[inline]
-    pub unsafe fn set_offset(&mut self, new_offset: DeviceSize) {
-        self.offset = new_offset;
-    }
-
-    /// Sets the size of the allocation without checking for memory aliasing.
-    ///
-    /// See also [`shrink`], which sets the size safely.
-    ///
-    /// # Safety
-    ///
-    /// - You must ensure that the allocation doesn't alias any other allocations within the
-    ///   [`DeviceMemory`] block, and if it does, then you must ensure memory accesses are
-    ///   synchronized yourself.
-    /// - You must ensure the allocation still fits inside the `DeviceMemory` block.
-    ///
-    /// [`shrink`]: Self::shrink
-    #[inline]
-    pub unsafe fn set_size(&mut self, new_size: DeviceSize) {
-        self.size = new_size;
-    }
-
-    /// Sets the allocation type.
-    ///
-    /// This might cause memory aliasing due to [buffer-image granularity] conflicts if the
-    /// allocation type is [`Linear`] or [`NonLinear`] and is changed to a different one.
-    ///
-    /// # Safety
-    ///
-    /// - You must ensure that the allocation doesn't alias any other allocations within the
-    ///   [`DeviceMemory`] block, and if it does, then you must ensure memory accesses are
-    ///   synchronized yourself.
-    ///
-    /// [buffer-image granularity]: super#buffer-image-granularity
-    /// [`Linear`]: AllocationType::Linear
-    /// [`NonLinear`]: AllocationType::NonLinear
-    #[inline]
-    pub unsafe fn set_allocation_type(&mut self, new_type: AllocationType) {
-        self.allocation_type = new_type;
-    }
 }
 
-impl Drop for MemoryAlloc {
+impl Drop for ResourceMemory {
     #[inline]
     fn drop(&mut self) {
-        match &self.parent {
-            AllocParent::FreeList { allocator, id } => {
-                unsafe { allocator.free(*id) };
-            }
-            AllocParent::Buddy {
-                allocator,
-                order,
-                offset,
-            } => {
-                unsafe { allocator.free(*order, *offset) };
-            }
-            // The bump allocator can't free individually, but we need to keep a reference to it so
-            // it don't get reset or dropped while in use.
-            AllocParent::Bump(_) => {}
-            // A root allocation frees itself once all references to the `DeviceMemory` are dropped.
-            AllocParent::Root(_) => {}
-            // Dedicated allocations free themselves when the `DeviceMemory` is dropped.
-            AllocParent::Dedicated(_) => {}
+        let device_memory = unsafe { ManuallyDrop::take(&mut self.device_memory) }.0;
+
+        if let Some(allocator) = &self.allocator {
+            let allocation = MemoryAlloc {
+                device_memory,
+                suballocation: self.suballocation(),
+                allocation_type: self.allocation_type,
+                allocation_handle: self.allocation_handle,
+            };
+
+            // SAFETY: Enforced by the safety contract of [`ResourceMemory::from_allocation`].
+            unsafe { allocator.deallocate(allocation) };
         }
     }
 }
 
-unsafe impl DeviceOwned for MemoryAlloc {
+unsafe impl DeviceOwned for ResourceMemory {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.device_memory().device()
@@ -512,9 +371,10 @@ unsafe impl DeviceOwned for MemoryAlloc {
 /// # Regions
 ///
 /// As the name implies, a region is a contiguous portion of memory. It may be the whole dedicated
-/// block of [`DeviceMemory`], or only a part of it. Regions are just [allocations] like any other,
-/// but we use this term to refer specifically to an allocation that is to be suballocated. Every
-/// suballocator is created with a region to work with.
+/// block of [`DeviceMemory`], or only a part of it. Or it may be a buffer, or only a part of a
+/// buffer. Regions are just allocations like any other, but we use this term to refer specifically
+/// to an allocation that is to be suballocated. Every suballocator is created with a region to
+/// work with.
 ///
 /// # Free-lists
 ///
@@ -536,60 +396,16 @@ unsafe impl DeviceOwned for MemoryAlloc {
 /// memory within a `DeviceMemory` block. You can suballocate the root into regions, which are then
 /// suballocated into further regions and so on, creating hierarchies of arbitrary height.
 ///
-/// As an added bonus, memory hierarchies lend themselves perfectly to the concept of composability
-/// we all love so much, making them a natural fit for Rust. For one, a region can be allocated any
-/// way, and fed into any suballocator. Also, once you are done with a branch of a hierarchy,
-/// meaning there are no more suballocations in use within the region of that branch, and you would
-/// like to reuse the region, you can do so safely! All suballocators have a `try_into_region`
-/// method for this purpose. This means that you can replace one suballocator with another without
-/// consulting any of the higher levels in the hierarchy.
-///
 /// # Examples
 ///
-/// Allocating a region to suballocatate:
-///
-/// ```
-/// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo, MemoryPropertyFlags, MemoryType};
-/// use vulkano::memory::allocator::MemoryAlloc;
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
-///
-/// // First you need to find a suitable memory type.
-/// let memory_type_index = device
-///     .physical_device()
-///     .memory_properties()
-///     .memory_types
-///     .iter()
-///     .enumerate()
-///     // In a real-world scenario, you would probably want to rank the memory types based on your
-///     // requirements, instead of picking the first one that satisfies them. Also, you have to
-///     // take the requirements of the resources you want to allocate memory for into consideration.
-///     .find_map(|(index, MemoryType { property_flags, .. })| {
-///         property_flags.intersects(MemoryPropertyFlags::DEVICE_LOCAL).then_some(index)
-///     })
-///     .unwrap() as u32;
-///
-/// let region = MemoryAlloc::new(
-///     DeviceMemory::allocate(
-///         device.clone(),
-///         MemoryAllocateInfo {
-///             allocation_size: 64 * 1024 * 1024,
-///             memory_type_index,
-///             ..Default::default()
-///         },
-///     )
-///     .unwrap(),
-/// );
-///
-/// // You can now feed `region` into any suballocator.
-/// ```
+/// TODO
 ///
 /// # Implementing the trait
 ///
-/// Please don't.
+/// TODO
 ///
-/// [allocations]: MemoryAlloc
 /// [pages]: super#pages
-pub unsafe trait Suballocator: DeviceOwned {
+pub unsafe trait Suballocator {
     /// Whether this allocator needs to block or not.
     ///
     /// This is used by the [`GenericMemoryAllocator`] to specialize the allocation strategy to the
@@ -609,32 +425,58 @@ pub unsafe trait Suballocator: DeviceOwned {
 
     /// Creates a new suballocator for the given [region].
     ///
+    /// # Arguments
+    ///
+    /// - `region_offset` - The offset where the region begins.
+    ///
+    /// - `region_size` - The size of the region.
+    ///
     /// [region]: Self#regions
-    fn new(region: MemoryAlloc) -> Self
+    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self
     where
         Self: Sized;
 
     /// Creates a new suballocation within the [region].
     ///
+    /// # Arguments
+    ///
+    /// - `layout` - The layout of the allocation.
+    ///
+    /// - `allocation_type` - The type of resources that can be bound to the allocation.
+    ///
+    /// - `buffer_image_granularity` - The [buffer-image granularity] device property.
+    ///
+    ///   This is provided as an argument here rather than on construction of the allocator to
+    ///   allow for optimizations: if you are only ever going to be creating allocations with the
+    ///   same `allocation_type` using this allocator, then you may hard-code this to
+    ///   [`DeviceAlignment::MIN`], in which case, after inlining, the logic for aligning the
+    ///   allocation to the buffer-image-granularity based on the allocation type of surrounding
+    ///   allocations can be optimized out.
+    ///
+    ///   You don't need to consider the buffer-image granularity for instance when suballocating a
+    ///   buffer, or when suballocating a [`DeviceMemory`] block that's only ever going to be used
+    ///   for optimal images. However, if you do allocate both linear and non-linear resources and
+    ///   don't specify the buffer-image granularity device property here, **you will get undefined
+    ///   behavior down the line**. Note that [`AllocationType::Unknown`] counts as both linear and
+    ///   non-linear at the same time: if you always use this as the `allocation_type` using this
+    ///   allocator, then it is valid to set this to `DeviceAlignment::MIN`, but **you must ensure
+    ///   all allocations are aligned to the buffer-image granularity at minimum**.
+    ///
     /// [region]: Self#regions
+    /// [buffer-image granularity]: super#buffer-image-granularity
     fn allocate(
         &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocatorError>;
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<Suballocation, SuballocatorError>;
 
-    /// Returns a reference to the underlying [region].
+    /// Deallocates the given `suballocation`.
     ///
-    /// [region]: Self#regions
-    fn region(&self) -> &MemoryAlloc;
-
-    /// Returns the underlying [region] if there are no other strong references to the allocator,
-    /// otherwise hands you back the allocator wrapped in [`Err`]. Allocations made with the
-    /// allocator count as references for as long as they are alive.
+    /// # Safety
     ///
-    /// [region]: Self#regions
-    fn try_into_region(self) -> Result<MemoryAlloc, Self>
-    where
-        Self: Sized;
+    /// - `suballocation` must refer to a **currently allocated** suballocation of `self`.
+    unsafe fn deallocate(&self, suballocation: Suballocation);
 
     /// Returns the total amount of free space that is left in the [region].
     ///
@@ -645,51 +487,15 @@ pub unsafe trait Suballocator: DeviceOwned {
     fn cleanup(&mut self);
 }
 
-/// Parameters to create a new [allocation] using a [suballocator].
-///
-/// [allocation]: MemoryAlloc
-/// [suballocator]: Suballocator
-#[derive(Clone, Debug)]
-pub struct SuballocationCreateInfo {
-    /// Memory layout required for the allocation.
-    ///
-    /// The default value is a layout with size [`DeviceLayout::MAX_SIZE`] and alignment
-    /// [`DeviceAlignment::MIN`], which must be overridden.
-    pub layout: DeviceLayout,
-
-    /// Type of resources that can be bound to the allocation.
-    ///
-    /// The default value is [`AllocationType::Unknown`].
-    pub allocation_type: AllocationType,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl Default for SuballocationCreateInfo {
-    #[inline]
-    fn default() -> Self {
-        SuballocationCreateInfo {
-            layout: DeviceLayout::new(
-                NonZeroDeviceSize::new(DeviceLayout::MAX_SIZE).unwrap(),
-                DeviceAlignment::MIN,
-            )
-            .unwrap(),
-            allocation_type: AllocationType::Unknown,
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
 /// Tells the [suballocator] what type of resource will be bound to the allocation, so that it can
 /// optimize memory usage while still respecting the [buffer-image granularity].
 ///
 /// [suballocator]: Suballocator
 /// [buffer-image granularity]: super#buffer-image-granularity
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum AllocationType {
-    /// The type of resource is unknown, it might be either linear or non-linear. What this means is
-    /// that allocations created with this type must always be aligned to the buffer-image
+    /// The type of resource is unknown, it might be either linear or non-linear. What this means
+    /// is that allocations created with this type must always be aligned to the buffer-image
     /// granularity.
     Unknown = 0,
 
@@ -713,8 +519,28 @@ impl From<ImageTiling> for AllocationType {
     }
 }
 
-/// Error that can be returned when using a [suballocator].
+/// An allocation made using a [suballocator].
 ///
+/// [suballocator]: Suballocator
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Suballocation {
+    /// The **absolute** offset within the [region]. That means that this is already offset by the
+    /// region's offset, **not relative to beginning of the region**. This offset will be aligned
+    /// to the requested alignment.
+    ///
+    /// [region]: Suballocator#regions
+    pub offset: DeviceSize,
+
+    /// The size of the allocation. This will be exactly equal to the requested size.
+    pub size: DeviceSize,
+
+    /// An opaque handle identifying the allocation within the allocator.
+    pub handle: AllocationHandle,
+}
+
+/// Error that can be returned when creating an [allocation] using a [suballocator].
+///
+/// [allocation]: Suballocation
 /// [suballocator]: Suballocator
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SuballocatorError {
@@ -739,16 +565,15 @@ impl Error for SuballocatorError {}
 
 impl Display for SuballocatorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::OutOfRegionMemory => "out of region memory",
-                Self::FragmentedRegion => "the region is too fragmented",
-                Self::BlockSizeExceeded =>
-                    "the allocation size was greater than the suballocator's block size",
+        let msg = match self {
+            Self::OutOfRegionMemory => "out of region memory",
+            Self::FragmentedRegion => "the region is too fragmented",
+            Self::BlockSizeExceeded => {
+                "the allocation size was greater than the suballocator's block size"
             }
-        )
+        };
+
+        f.write_str(msg)
     }
 }
 
@@ -760,7 +585,7 @@ impl Display for SuballocatorError {
 /// are made. Therefore, this allocator is best suited for long-lived allocations. If you need
 /// to create allocations of various sizes, but can't afford this fragmentation, then the
 /// [`BuddyAllocator`] is your best buddy. If you need to create allocations which share a similar
-/// size, consider the [`PoolAllocator`]. Lastly, if you need to allocate very often, then
+/// size, consider an allocation pool. Lastly, if you need to allocate very often, then
 /// [`BumpAllocator`] is best suited.
 ///
 /// See also [the `Suballocator` implementation].
@@ -792,115 +617,7 @@ impl Display for SuballocatorError {
 /// would be *O*(*n*). However, this scenario is extremely unlikely which is why we are not
 /// considering it in the above analysis. Additionally, if your free-list is filled with
 /// allocations that all have the same size then that seems pretty sus. Sounds like you're in dire
-/// need of a `PoolAllocator`.
-///
-/// # Examples
-///
-/// Most commonly you will not want to use this suballocator directly but rather use it within
-/// [`GenericMemoryAllocator`], having one global [`StandardMemoryAllocator`] for most if not all
-/// of your allocation needs.
-///
-/// Basic usage as a global allocator for long-lived resources:
-///
-/// ```
-/// use vulkano::{
-///     format::Format,
-///     image::{Image, ImageCreateInfo, ImageType, ImageUsage},
-///     memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
-/// };
-///
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// #
-/// let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
-///
-/// # fn read_textures() -> Vec<Vec<u8>> { Vec::new() }
-/// #
-/// // Allocate some resources.
-/// let textures_data: Vec<Vec<u8>> = read_textures();
-/// let textures = textures_data.into_iter().map(|data| {
-///     let image = Image::new(
-///         &memory_allocator,
-///         ImageCreateInfo {
-///             image_type: ImageType::Dim2d,
-///             format: Format::R8G8B8A8_UNORM,
-///             extent: [1024, 1024, 1],
-///             usage: ImageUsage::SAMPLED,
-///             ..Default::default()
-///         },
-///         AllocationCreateInfo::default(),
-///     )
-///     .unwrap();
-///
-///     // ...upload data...
-///
-///     image
-/// });
-/// ```
-///
-/// For use in allocating arenas for [`SubbufferAllocator`]:
-///
-/// ```
-/// use std::sync::Arc;
-/// use vulkano::{
-///     buffer::{
-///         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-///         BufferUsage,
-///     },
-///     memory::allocator::{MemoryTypeFilter, StandardMemoryAllocator},
-/// };
-///
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// #
-/// // We need to wrap the allocator in an `Arc` so that we can share ownership of it.
-/// let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-/// let buffer_allocator = SubbufferAllocator::new(
-///     memory_allocator.clone(),
-///     SubbufferAllocatorCreateInfo {
-///         buffer_usage: BufferUsage::TRANSFER_SRC,
-///         memory_type_filter: MemoryTypeFilter::PREFER_HOST
-///             | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-///         ..Default::default()
-///     },
-/// );
-///
-/// // You can continue using `memory_allocator` for other things.
-/// ```
-///
-/// Sometimes, it is neccessary to suballocate an allocation. If you don't want to allocate new
-/// [`DeviceMemory`] blocks to suballocate, perhaps because of concerns of memory wastage or
-/// allocation efficiency, you can use your existing global `StandardMemoryAllocator` to allocate
-/// regions for your suballocation needs:
-///
-/// ```
-/// use vulkano::memory::allocator::{
-///     DeviceLayout, MemoryAllocator, StandardMemoryAllocator, SuballocationCreateInfo,
-/// };
-///
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
-///
-/// # let memory_type_index = 0;
-/// let region = memory_allocator.allocate_from_type(
-///     // When choosing the index, you have to make sure that the memory type is allowed for the
-///     // type of resource that you want to bind the suballocations to.
-///     memory_type_index,
-///     SuballocationCreateInfo {
-///         layout: DeviceLayout::from_size_alignment(
-///             // This will be the size of your region.
-///             16 * 1024 * 1024,
-///             // It generally does not matter what the alignment is, because you're going to
-///             // suballocate the allocation anyway, and not bind it directly.
-///             1,
-///         )
-///         .unwrap(),
-///         ..Default::default()
-///     },
-///     false,
-/// )
-/// .unwrap();
-///
-/// // You can now feed the `region` into any suballocator.
-/// ```
+/// need of an allocation pool.
 ///
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
@@ -908,122 +625,55 @@ impl Display for SuballocatorError {
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<FreeListAllocator>
 /// [internal fragmentation]: super#internal-fragmentation
 /// [alignment requirements]: super#alignment
-/// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
-/// [`StandardMemoryAllocator`]: super::StandardMemoryAllocator
-/// [`SubbufferAllocator`]: crate::buffer::allocator::SubbufferAllocator
 #[derive(Debug)]
 pub struct FreeListAllocator {
-    region: MemoryAlloc,
-    device_memory: Arc<DeviceMemory>,
-    buffer_image_granularity: DeviceAlignment,
-    atom_size: DeviceAlignment,
+    region_offset: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
     state: Mutex<FreeListAllocatorState>,
 }
 
-impl FreeListAllocator {
+unsafe impl Suballocator for FreeListAllocator {
+    const IS_BLOCKING: bool = true;
+
+    const NEEDS_CLEANUP: bool = false;
+
     /// Creates a new `FreeListAllocator` for the given [region].
     ///
-    /// # Panics
-    ///
-    /// - Panics if `region.allocation_type` is not [`AllocationType::Unknown`]. This is done to
-    ///   avoid checking for a special case of [buffer-image granularity] conflict.
-    /// - Panics if `region` is a [dedicated allocation].
-    ///
     /// [region]: Suballocator#regions
-    /// [buffer-image granularity]: super#buffer-image-granularity
-    /// [dedicated allocation]: MemoryAlloc::is_dedicated
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
+    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self {
         // NOTE(Marc): This number was pulled straight out of my a-
         const AVERAGE_ALLOCATION_SIZE: DeviceSize = 64 * 1024;
 
-        assert!(region.allocation_type == AllocationType::Unknown);
+        let free_size = AtomicU64::new(region_size);
 
-        let device_memory = region
-            .root()
-            .expect("dedicated allocations can't be suballocated")
-            .clone();
-        let buffer_image_granularity = device_memory
-            .device()
-            .physical_device()
-            .properties()
-            .buffer_image_granularity;
-
-        let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
-        let free_size = AtomicU64::new(region.size);
-
-        let capacity = (region.size / AVERAGE_ALLOCATION_SIZE) as usize;
+        let capacity = (region_size / AVERAGE_ALLOCATION_SIZE) as usize;
         let mut nodes = host::PoolAllocator::new(capacity + 64);
         let mut free_list = Vec::with_capacity(capacity / 16 + 16);
         let root_id = nodes.allocate(SuballocationListNode {
             prev: None,
             next: None,
-            offset: region.offset,
-            size: region.size,
+            offset: region_offset,
+            size: region_size,
             ty: SuballocationType::Free,
         });
         free_list.push(root_id);
         let state = Mutex::new(FreeListAllocatorState { nodes, free_list });
 
-        Arc::new(FreeListAllocator {
-            region,
-            device_memory,
-            buffer_image_granularity,
-            atom_size,
+        FreeListAllocator {
+            region_offset,
             free_size,
             state,
-        })
+        }
     }
 
-    /// # Safety
-    ///
-    /// - `node_id` must refer to an occupied suballocation allocated by `self`.
-    unsafe fn free(&self, node_id: SlotId) {
-        let mut state = self.state.lock();
-        let node = state.nodes.get_mut(node_id);
-
-        debug_assert!(node.ty != SuballocationType::Free);
-
-        // Suballocation sizes are constrained by the size of the region, so they can't possibly
-        // overflow when added up.
-        self.free_size.fetch_add(node.size, Ordering::Release);
-
-        node.ty = SuballocationType::Free;
-        state.coalesce(node_id);
-        state.free(node_id);
-    }
-}
-
-unsafe impl Suballocator for Arc<FreeListAllocator> {
-    const IS_BLOCKING: bool = true;
-
-    const NEEDS_CLEANUP: bool = false;
-
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        FreeListAllocator::new(region)
-    }
-
-    /// Creates a new suballocation within the [region].
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if there are no free suballocations large enough so satisfy
-    ///   the request.
-    /// - Returns [`FragmentedRegion`] if a suballocation large enough to satisfy the request could
-    ///   have been formed, but wasn't because of [external fragmentation].
-    ///
-    /// [region]: Suballocator#regions
-    /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
-    /// [`FragmentedRegion`]: SuballocatorError::FragmentedRegion
-    /// [external fragmentation]: super#external-fragmentation
     #[inline]
     fn allocate(
         &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocatorError> {
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<Suballocation, SuballocatorError> {
         fn has_granularity_conflict(prev_ty: SuballocationType, ty: AllocationType) -> bool {
             if prev_ty == SuballocationType::Free {
                 false
@@ -1034,14 +684,8 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
             }
         }
 
-        let SuballocationCreateInfo {
-            layout,
-            allocation_type,
-            _ne: _,
-        } = create_info;
-
         let size = layout.size();
-        let alignment = cmp::max(layout.alignment(), self.atom_size);
+        let alignment = layout.alignment();
         let mut state = self.state.lock();
 
         unsafe {
@@ -1066,18 +710,22 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                         // `DeviceLayout::MAX_SIZE`.
                         let mut offset = align_up(suballoc.offset, alignment);
 
-                        if let Some(prev_id) = suballoc.prev {
-                            let prev = state.nodes.get(prev_id);
+                        if buffer_image_granularity != DeviceAlignment::MIN {
+                            debug_assert!(is_aligned(self.region_offset, buffer_image_granularity));
 
-                            if are_blocks_on_same_page(
-                                prev.offset,
-                                prev.size,
-                                offset,
-                                self.buffer_image_granularity,
-                            ) && has_granularity_conflict(prev.ty, allocation_type)
-                            {
-                                // This is overflow-safe for the same reason as above.
-                                offset = align_up(offset, self.buffer_image_granularity);
+                            if let Some(prev_id) = suballoc.prev {
+                                let prev = state.nodes.get(prev_id);
+
+                                if are_blocks_on_same_page(
+                                    prev.offset,
+                                    prev.size,
+                                    offset,
+                                    buffer_image_granularity,
+                                ) && has_granularity_conflict(prev.ty, allocation_type)
+                                {
+                                    // This is overflow-safe for the same reason as above.
+                                    offset = align_up(offset, buffer_image_granularity);
+                                }
                             }
                         }
 
@@ -1095,15 +743,10 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
                             // constrained by the remaining size of the region.
                             self.free_size.fetch_sub(size, Ordering::Release);
 
-                            return Ok(MemoryAlloc {
+                            return Ok(Suballocation {
                                 offset,
                                 size,
-                                allocation_type,
-                                atom_size: self.region.atom_size,
-                                parent: AllocParent::FreeList {
-                                    allocator: self.clone(),
-                                    id,
-                                },
+                                handle: AllocationHandle(id.get() as _),
                             });
                         }
                     }
@@ -1122,13 +765,22 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
     }
 
     #[inline]
-    fn region(&self) -> &MemoryAlloc {
-        &self.region
-    }
+    unsafe fn deallocate(&self, suballocation: Suballocation) {
+        // SAFETY: TODO
+        let node_id = SlotId::new(suballocation.handle.0 as _);
 
-    #[inline]
-    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
+        let mut state = self.state.lock();
+        let node = state.nodes.get_mut(node_id);
+
+        debug_assert!(node.ty != SuballocationType::Free);
+
+        // Suballocation sizes are constrained by the size of the region, so they can't possibly
+        // overflow when added up.
+        self.free_size.fetch_add(node.size, Ordering::Release);
+
+        node.ty = SuballocationType::Free;
+        state.coalesce(node_id);
+        state.free(node_id);
     }
 
     #[inline]
@@ -1138,13 +790,6 @@ unsafe impl Suballocator for Arc<FreeListAllocator> {
 
     #[inline]
     fn cleanup(&mut self) {}
-}
-
-unsafe impl DeviceOwned for FreeListAllocator {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.device_memory.device()
-    }
 }
 
 #[derive(Debug)]
@@ -1407,8 +1052,8 @@ impl FreeListAllocatorState {
 /// wasting 45% of the memory. Use this algorithm if you need to create and free a lot of
 /// allocations, which would cause too much external fragmentation when using
 /// [`FreeListAllocator`]. However, if the sizes of your allocations are more or less the same,
-/// then the [`PoolAllocator`] would be a better choice and would eliminate external fragmentation
-/// completely.
+/// then using an allocation pool would be a better choice and would eliminate external
+/// fragmentation completely.
 ///
 /// See also [the `Suballocator` implementation].
 ///
@@ -1432,8 +1077,8 @@ impl FreeListAllocatorState {
 ///
 /// It's safe to say that this algorithm works best if you have some level of control over your
 /// allocation sizes, so that you don't end up allocating twice as much memory. An example of this
-/// would be when you need to allocate regions for other allocators, such as the `PoolAllocator` or
-/// the [`BumpAllocator`].
+/// would be when you need to allocate regions for other allocators, such as for an allocation pool
+/// or the [`BumpAllocator`].
 ///
 /// # Efficiency
 ///
@@ -1442,45 +1087,14 @@ impl FreeListAllocatorState {
 /// freeing is *O*(*m*) in the worst case where *m* is the highest order, which equates to *O*(log
 /// (*n*)) where *n* is the size of the region.
 ///
-/// # Examples
-///
-/// Basic usage together with [`GenericMemoryAllocator`], to allocate resources that have a
-/// moderately low life span (for example if you have a lot of images, each of which needs to be
-/// resized every now and then):
-///
-/// ```
-/// use std::sync::Arc;
-/// use vulkano::memory::allocator::{
-///     BuddyAllocator, GenericMemoryAllocator, GenericMemoryAllocatorCreateInfo,
-/// };
-///
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let memory_allocator = GenericMemoryAllocator::<Arc<BuddyAllocator>>::new(
-///     device.clone(),
-///     GenericMemoryAllocatorCreateInfo {
-///         // Your block sizes must be powers of two, because `BuddyAllocator` only accepts
-///         // power-of-two-sized regions.
-///         block_sizes: &[(0, 64 * 1024 * 1024)],
-///         ..Default::default()
-///     },
-/// )
-/// .unwrap();
-///
-/// // Now you can use `memory_allocator` to allocate whatever it is you need.
-/// ```
-///
 /// [suballocator]: Suballocator
 /// [internal fragmentation]: super#internal-fragmentation
 /// [external fragmentation]: super#external-fragmentation
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BuddyAllocator>
 /// [region]: Suballocator#regions
-/// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
 #[derive(Debug)]
 pub struct BuddyAllocator {
-    region: MemoryAlloc,
-    device_memory: Arc<DeviceMemory>,
-    buffer_image_granularity: DeviceAlignment,
-    atom_size: DeviceAlignment,
+    region_offset: DeviceSize,
     // Total memory remaining in the region.
     free_size: AtomicU64,
     state: Mutex<BuddyAllocatorState>,
@@ -1492,133 +1106,53 @@ impl BuddyAllocator {
     /// Arbitrary maximum number of orders, used to avoid a 2D `Vec`. Together with a minimum node
     /// size of 16, this is enough for a 64GiB region.
     const MAX_ORDERS: usize = 32;
+}
+
+unsafe impl Suballocator for BuddyAllocator {
+    const IS_BLOCKING: bool = true;
+
+    const NEEDS_CLEANUP: bool = false;
 
     /// Creates a new `BuddyAllocator` for the given [region].
     ///
     /// # Panics
     ///
-    /// - Panics if `region.allocation_type` is not [`AllocationType::Unknown`]. This is done to
-    ///   avoid checking for a special case of [buffer-image granularity] conflict.
-    /// - Panics if `region.size` is not a power of two.
-    /// - Panics if `region.size` is not in the range \[16B,&nbsp;64GiB\].
-    /// - Panics if `region` is a [dedicated allocation].
+    /// - Panics if `region_size` is not a power of two.
+    /// - Panics if `region_size` is not in the range \[16B,&nbsp;64GiB\].
     ///
     /// [region]: Suballocator#regions
-    /// [buffer-image granularity]: super#buffer-image-granularity
-    /// [dedicated allocation]: MemoryAlloc::is_dedicated
-    #[inline]
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
+    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self {
         const EMPTY_FREE_LIST: Vec<DeviceSize> = Vec::new();
 
-        assert!(region.allocation_type == AllocationType::Unknown);
-        assert!(region.size.is_power_of_two());
-        assert!(region.size >= BuddyAllocator::MIN_NODE_SIZE);
+        assert!(region_size.is_power_of_two());
+        assert!(region_size >= BuddyAllocator::MIN_NODE_SIZE);
 
-        let max_order = (region.size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
+        let max_order = (region_size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
 
         assert!(max_order < BuddyAllocator::MAX_ORDERS);
 
-        let device_memory = region
-            .root()
-            .expect("dedicated allocations can't be suballocated")
-            .clone();
-        let buffer_image_granularity = device_memory
-            .device()
-            .physical_device()
-            .properties()
-            .buffer_image_granularity;
-        let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
-        let free_size = AtomicU64::new(region.size);
+        let free_size = AtomicU64::new(region_size);
 
         let mut free_list =
             ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; BuddyAllocator::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
-        free_list[max_order].push(region.offset);
+        free_list[max_order].push(region_offset);
         let state = Mutex::new(BuddyAllocatorState { free_list });
 
-        Arc::new(BuddyAllocator {
-            region,
-            device_memory,
-            buffer_image_granularity,
-            atom_size,
+        BuddyAllocator {
+            region_offset,
             free_size,
             state,
-        })
-    }
-
-    /// # Safety
-    ///
-    /// - `order` and `offset` must refer to an occupied suballocation allocated by `self`.
-    unsafe fn free(&self, order: usize, mut offset: DeviceSize) {
-        let min_order = order;
-        let mut state = self.state.lock();
-
-        debug_assert!(!state.free_list[order].contains(&offset));
-
-        // Try to coalesce nodes while incrementing the order.
-        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
-            // This can't discard any bits because `order` is confined to the range
-            // [0, log(region.size / BuddyAllocator::MIN_NODE_SIZE)].
-            let size = BuddyAllocator::MIN_NODE_SIZE << order;
-
-            // This can't overflow because the offsets in the free-list are confined to the range
-            // [region.offset, region.offset + region.size).
-            let buddy_offset = ((offset - self.region.offset) ^ size) + self.region.offset;
-
-            match free_list.binary_search(&buddy_offset) {
-                // If the buddy is in the free-list, we can coalesce.
-                Ok(index) => {
-                    free_list.remove(index);
-                    offset = cmp::min(offset, buddy_offset);
-                }
-                // Otherwise free the node.
-                Err(_) => {
-                    let (Ok(index) | Err(index)) = free_list.binary_search(&offset);
-                    free_list.insert(index, offset);
-
-                    // This can't discard any bits for the same reason as above.
-                    let size = BuddyAllocator::MIN_NODE_SIZE << min_order;
-
-                    // The sizes of suballocations allocated by `self` are constrained by that of
-                    // its region, so they can't possibly overflow when added up.
-                    self.free_size.fetch_add(size, Ordering::Release);
-
-                    break;
-                }
-            }
         }
     }
-}
 
-unsafe impl Suballocator for Arc<BuddyAllocator> {
-    const IS_BLOCKING: bool = true;
-
-    const NEEDS_CLEANUP: bool = false;
-
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        BuddyAllocator::new(region)
-    }
-
-    /// Creates a new suballocation within the [region].
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if there are no free nodes large enough so satisfy the
-    ///   request.
-    /// - Returns [`FragmentedRegion`] if a node large enough to satisfy the request could have
-    ///   been formed, but wasn't because of [external fragmentation].
-    ///
-    /// [region]: Suballocator#regions
-    /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
-    /// [`FragmentedRegion`]: SuballocatorError::FragmentedRegion
-    /// [external fragmentation]: super#external-fragmentation
     #[inline]
     fn allocate(
         &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocatorError> {
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<Suballocation, SuballocatorError> {
         /// Returns the largest power of two smaller or equal to the input, or zero if the input is
         /// zero.
         fn prev_power_of_two(val: DeviceSize) -> DeviceSize {
@@ -1633,22 +1167,20 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
             }
         }
 
-        let SuballocationCreateInfo {
-            layout,
-            allocation_type,
-            _ne: _,
-        } = create_info;
-
         let mut size = layout.size();
-        let mut alignment = cmp::max(layout.alignment(), self.atom_size);
+        let mut alignment = layout.alignment();
 
-        if allocation_type == AllocationType::Unknown
-            || allocation_type == AllocationType::NonLinear
-        {
-            // This can't overflow because `DeviceLayout` guarantees that `size` doesn't exceed
-            // `DeviceLayout::MAX_SIZE`.
-            size = align_up(size, self.buffer_image_granularity);
-            alignment = cmp::max(alignment, self.buffer_image_granularity);
+        if buffer_image_granularity != DeviceAlignment::MIN {
+            debug_assert!(is_aligned(self.region_offset, buffer_image_granularity));
+
+            if allocation_type == AllocationType::Unknown
+                || allocation_type == AllocationType::NonLinear
+            {
+                // This can't overflow because `DeviceLayout` guarantees that `size` doesn't exceed
+                // `DeviceLayout::MAX_SIZE`.
+                size = align_up(size, buffer_image_granularity);
+                alignment = cmp::max(alignment, buffer_image_granularity);
+            }
         }
 
         // `DeviceLayout` guarantees that its size does not exceed `DeviceLayout::MAX_SIZE`,
@@ -1693,16 +1225,10 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
                     // constrained by the remaining size of the region.
                     self.free_size.fetch_sub(size, Ordering::Release);
 
-                    return Ok(MemoryAlloc {
+                    return Ok(Suballocation {
                         offset,
                         size: layout.size(),
-                        allocation_type,
-                        atom_size: self.region.atom_size,
-                        parent: AllocParent::Buddy {
-                            allocator: self.clone(),
-                            order: min_order,
-                            offset, // The offset in the alloc itself can change.
-                        },
+                        handle: AllocationHandle(min_order as _),
                     });
                 }
             }
@@ -1717,13 +1243,47 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
     }
 
     #[inline]
-    fn region(&self) -> &MemoryAlloc {
-        &self.region
-    }
+    unsafe fn deallocate(&self, suballocation: Suballocation) {
+        let mut offset = suballocation.offset;
+        let order = suballocation.handle.0 as usize;
 
-    #[inline]
-    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
+        let min_order = order;
+        let mut state = self.state.lock();
+
+        debug_assert!(!state.free_list[order].contains(&offset));
+
+        // Try to coalesce nodes while incrementing the order.
+        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
+            // This can't discard any bits because `order` is confined to the range
+            // [0, log(region.size / BuddyAllocator::MIN_NODE_SIZE)].
+            let size = BuddyAllocator::MIN_NODE_SIZE << order;
+
+            // This can't overflow because the offsets in the free-list are confined to the range
+            // [region.offset, region.offset + region.size).
+            let buddy_offset = ((offset - self.region_offset) ^ size) + self.region_offset;
+
+            match free_list.binary_search(&buddy_offset) {
+                // If the buddy is in the free-list, we can coalesce.
+                Ok(index) => {
+                    free_list.remove(index);
+                    offset = cmp::min(offset, buddy_offset);
+                }
+                // Otherwise free the node.
+                Err(_) => {
+                    let (Ok(index) | Err(index)) = free_list.binary_search(&offset);
+                    free_list.insert(index, offset);
+
+                    // This can't discard any bits for the same reason as above.
+                    let size = BuddyAllocator::MIN_NODE_SIZE << min_order;
+
+                    // The sizes of suballocations allocated by `self` are constrained by that of
+                    // its region, so they can't possibly overflow when added up.
+                    self.free_size.fetch_add(size, Ordering::Release);
+
+                    break;
+                }
+            }
+        }
     }
 
     /// Returns the total amount of free space left in the [region] that is available to the
@@ -1738,13 +1298,6 @@ unsafe impl Suballocator for Arc<BuddyAllocator> {
 
     #[inline]
     fn cleanup(&mut self) {}
-}
-
-unsafe impl DeviceOwned for BuddyAllocator {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.device_memory.device()
-    }
 }
 
 #[derive(Debug)]
@@ -1780,12 +1333,9 @@ struct BuddyAllocatorState {
 /// used wrong, and is very susceptible to [memory leaks].
 ///
 /// Once you know that you are done with the allocations, meaning you know they have all been
-/// dropped, you can safely reset the allocator using the [`try_reset`] method as long as the
-/// allocator is not shared between threads. It is hard to safely reset a bump allocator that is
-/// used concurrently. In such a scenario it's best not to reset it at all and instead drop it once
-/// it reaches the end of the [region], freeing the region to a higher level in the [hierarchy]
-/// once all threads have dropped their reference to the allocator. This is one of the reasons you
-/// are generally advised to use one `BumpAllocator` per thread if you can.
+/// dropped, you can safely reset the allocator using the [`reset`] method as long as the allocator
+/// is not shared between threads. This is one of the reasons you are generally advised to use one
+/// `BumpAllocator` per thread if you can.
 ///
 /// # Efficiency
 ///
@@ -1806,119 +1356,56 @@ struct BuddyAllocatorState {
 /// [region]: Suballocator#regions
 /// [free-list]: Suballocator#free-lists
 /// [memory leaks]: super#leakage
-/// [`try_reset`]: Self::try_reset
+/// [`reset`]: Self::reset
 /// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
 pub struct BumpAllocator {
-    region: MemoryAlloc,
-    device_memory: Arc<DeviceMemory>,
-    buffer_image_granularity: DeviceAlignment,
-    atom_size: DeviceAlignment,
+    region_offset: DeviceSize,
+    region_size: DeviceSize,
     // Encodes the previous allocation type in the 2 least signifficant bits and the free start in
     // the rest.
     state: AtomicU64,
 }
 
 impl BumpAllocator {
-    /// Creates a new `BumpAllocator` for the given [region].
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `region` is a [dedicated allocation].
-    /// - Panics if `region.size` exceeds `DeviceLayout::MAX_SIZE >> 2`.
-    ///
-    /// [region]: Suballocator#regions
-    /// [dedicated allocation]: MemoryAlloc::is_dedicated
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
-        // Sanity check: this would lead to UB because of the left-shifting by 2 needed to encode
-        // the free-start into the state.
-        assert!(region.size <= (DeviceLayout::MAX_SIZE >> 2));
-
-        let device_memory = region
-            .root()
-            .expect("dedicated allocations can't be suballocated")
-            .clone();
-        let buffer_image_granularity = device_memory
-            .device()
-            .physical_device()
-            .properties()
-            .buffer_image_granularity;
-        let atom_size = region.atom_size.unwrap_or(DeviceAlignment::MIN);
-        let state = AtomicU64::new(region.allocation_type as DeviceSize);
-
-        Arc::new(BumpAllocator {
-            region,
-            device_memory,
-            buffer_image_granularity,
-            atom_size,
-            state,
-        })
-    }
-
-    /// Resets the free-start back to the beginning of the [region] if there are no other strong
-    /// references to the allocator.
+    /// Resets the free-start back to the beginning of the [region].
     ///
     /// [region]: Suballocator#regions
     #[inline]
-    pub fn try_reset(self: &mut Arc<Self>) -> Result<(), BumpAllocatorResetError> {
-        Arc::get_mut(self)
-            .map(|allocator| {
-                *allocator.state.get_mut() = allocator.region.allocation_type as DeviceSize;
-            })
-            .ok_or(BumpAllocatorResetError)
-    }
-
-    /// Resets the free-start to the beginning of the [region] without checking if there are other
-    /// strong references to the allocator.
-    ///
-    /// This could be useful if you cloned the [`Arc`] yourself, and can guarantee that no
-    /// allocations currently hold a reference to it.
-    ///
-    /// As a safe alternative, you can let the `Arc` do all the work. Simply drop it once it
-    /// reaches the end of the region. After all threads do that, the region will be freed to the
-    /// next level up the [hierarchy]. If you only use the allocator on one thread and need shared
-    /// ownership, you can use `Rc<RefCell<Arc<BumpAllocator>>>` together with [`try_reset`] for a
-    /// safe alternative as well.
-    ///
-    /// # Safety
-    ///
-    /// - All allocations made with the allocator must have been dropped.
-    ///
-    /// [region]: Suballocator#regions
-    /// [hierarchy]: Suballocator#memory-hierarchies
-    /// [`try_reset`]: Self::try_reset
-    #[inline]
-    pub unsafe fn reset_unchecked(&self) {
-        self.state
-            .store(self.region.allocation_type as DeviceSize, Ordering::Release);
+    pub fn reset(&mut self) {
+        *self.state.get_mut() = AllocationType::Unknown as DeviceSize;
     }
 }
 
-unsafe impl Suballocator for Arc<BumpAllocator> {
+unsafe impl Suballocator for BumpAllocator {
     const IS_BLOCKING: bool = false;
 
     const NEEDS_CLEANUP: bool = true;
 
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        BumpAllocator::new(region)
-    }
-
-    /// Creates a new suballocation within the [region].
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
-    ///   remaining in the region.
+    /// Creates a new `BumpAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions
-    /// [`allocate`]: Suballocator::allocate
-    /// [`OutOfRegionMemory`]: SuballocatorError::OutOfRegionMemory
+    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self {
+        // Sanity check: this would lead to UB because of the left-shifting by 2 needed to encode
+        // the free-start into the state.
+        assert!(region_size <= (DeviceLayout::MAX_SIZE >> 2));
+
+        let state = AtomicU64::new(AllocationType::Unknown as DeviceSize);
+
+        BumpAllocator {
+            region_offset,
+            region_size,
+            state,
+        }
+    }
+
     #[inline]
     fn allocate(
         &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocatorError> {
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<Suballocation, SuballocatorError> {
         const SPIN_LIMIT: u32 = 6;
 
         // NOTE(Marc): The following code is a minimal version `Backoff` taken from
@@ -1950,47 +1437,44 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
             prev_ty == AllocationType::Unknown || prev_ty != ty
         }
 
-        let SuballocationCreateInfo {
-            layout,
-            allocation_type,
-            _ne: _,
-        } = create_info;
-
         let size = layout.size();
-        let alignment = cmp::max(layout.alignment(), self.atom_size);
+        let alignment = layout.alignment();
         let backoff = Backoff::new();
         let mut state = self.state.load(Ordering::Relaxed);
 
         loop {
             let free_start = state >> 2;
-            let prev_alloc_type = match state & 0b11 {
-                0 => AllocationType::Unknown,
-                1 => AllocationType::Linear,
-                2 => AllocationType::NonLinear,
-                _ => unreachable!(),
-            };
 
             // These can't overflow because offsets are constrained by the size of the root
             // allocation, which can itself not exceed `DeviceLayout::MAX_SIZE`.
-            let prev_end = self.region.offset + free_start;
+            let prev_end = self.region_offset + free_start;
             let mut offset = align_up(prev_end, alignment);
 
-            if prev_end > 0
-                && are_blocks_on_same_page(0, prev_end, offset, self.buffer_image_granularity)
-                && has_granularity_conflict(prev_alloc_type, allocation_type)
-            {
-                offset = align_up(offset, self.buffer_image_granularity);
+            if buffer_image_granularity != DeviceAlignment::MIN {
+                let prev_alloc_type = match state & 0b11 {
+                    0 => AllocationType::Unknown,
+                    1 => AllocationType::Linear,
+                    2 => AllocationType::NonLinear,
+                    _ => unreachable!(),
+                };
+
+                if prev_end > 0
+                    && are_blocks_on_same_page(0, prev_end, offset, buffer_image_granularity)
+                    && has_granularity_conflict(prev_alloc_type, allocation_type)
+                {
+                    offset = align_up(offset, buffer_image_granularity);
+                }
             }
 
-            let relative_offset = offset - self.region.offset;
+            let relative_offset = offset - self.region_offset;
 
             let free_start = relative_offset + size;
 
-            if free_start > self.region.size {
+            if free_start > self.region_size {
                 return Err(SuballocatorError::OutOfRegionMemory);
             }
 
-            // This can't discard any bits because we checked that `region.size` does not exceed
+            // This can't discard any bits because we checked that `region_size` does not exceed
             // `DeviceLayout::MAX_SIZE >> 2`.
             let new_state = free_start << 2 | allocation_type as DeviceSize;
 
@@ -2001,12 +1485,10 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
                 Ordering::Relaxed,
             ) {
                 Ok(_) => {
-                    return Ok(MemoryAlloc {
+                    return Ok(Suballocation {
                         offset,
                         size,
-                        allocation_type,
-                        atom_size: self.region.atom_size,
-                        parent: AllocParent::Bump(self.clone()),
+                        handle: AllocationHandle(ptr::null_mut()),
                     });
                 }
                 Err(new_state) => {
@@ -2018,42 +1500,18 @@ unsafe impl Suballocator for Arc<BumpAllocator> {
     }
 
     #[inline]
-    fn region(&self) -> &MemoryAlloc {
-        &self.region
-    }
-
-    #[inline]
-    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
+    unsafe fn deallocate(&self, _suballocation: Suballocation) {
+        // such complex, very wow
     }
 
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.region.size - (self.state.load(Ordering::Acquire) >> 2)
+        self.region_size - (self.state.load(Ordering::Acquire) >> 2)
     }
 
     #[inline]
     fn cleanup(&mut self) {
-        let _ = self.try_reset();
-    }
-}
-
-unsafe impl DeviceOwned for BumpAllocator {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.device_memory.device()
-    }
-}
-
-/// Error that can be returned when resetting the [`BumpAllocator`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BumpAllocatorResetError;
-
-impl Error for BumpAllocatorResetError {}
-
-impl Display for BumpAllocatorResetError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("the allocator is still in use")
+        self.reset();
     }
 }
 
@@ -2082,8 +1540,8 @@ mod host {
 
     /// Allocates objects from a pool on the host, which has the following benefits:
     ///
-    /// - Allocation is much faster because there is no need to consult the global allocator or even
-    ///   worse, the operating system, each time a small object needs to be created.
+    /// - Allocation is much faster because there is no need to consult the global allocator or
+    ///   even worse, the operating system, each time a small object needs to be created.
     /// - Freeing is extremely fast, because the whole pool can be dropped at once. This is
     ///   particularily useful for linked structures, whose nodes need to be freed one-by-one by
     ///   traversing the whole structure otherwise.
@@ -2110,7 +1568,8 @@ mod host {
             }
         }
 
-        /// Allocates a slot and initializes it with the provided value. Returns the ID of the slot.
+        /// Allocates a slot and initializes it with the provided value. Returns the ID of the
+        /// slot.
         pub fn allocate(&mut self, val: T) -> SlotId {
             if let Some(id) = self.free_list.pop() {
                 *unsafe { self.get_mut(id) } = val;
@@ -2173,13 +1632,35 @@ mod host {
     /// of the actual ID to this `host` module, making it easier to reason about unsafe code.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(super) struct SlotId(NonZeroUsize);
+
+    impl SlotId {
+        /// # Safety
+        ///
+        /// - `val` must have previously acquired through [`SlotId::get`].
+        pub unsafe fn new(val: usize) -> Self {
+            SlotId(NonZeroUsize::new(val).unwrap())
+        }
+
+        pub fn get(self) -> usize {
+            self.0.get()
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::MemoryAllocateInfo;
+    use crossbeam_queue::ArrayQueue;
     use std::thread;
+
+    const fn unwrap<T: Copy>(opt: Option<T>) -> T {
+        match opt {
+            Some(x) => x,
+            None => panic!(),
+        }
+    }
+
+    const DUMMY_LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 1));
 
     #[test]
     fn free_list_allocator_capacity() {
@@ -2189,7 +1670,7 @@ mod tests {
         const REGION_SIZE: DeviceSize =
             (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2) * ALLOCATIONS_PER_THREAD;
 
-        let allocator = dummy_allocator!(FreeListAllocator, REGION_SIZE);
+        let allocator = FreeListAllocator::new(0, REGION_SIZE);
         let allocs = ArrayQueue::new((ALLOCATIONS_PER_THREAD * THREADS) as usize);
 
         // Using threads to randomize allocation order.
@@ -2198,68 +1679,124 @@ mod tests {
                 let (allocator, allocs) = (&allocator, &allocs);
 
                 scope.spawn(move || {
-                    let info = dummy_info!(i * ALLOCATION_STEP);
+                    let layout = DeviceLayout::from_size_alignment(i * ALLOCATION_STEP, 1).unwrap();
 
                     for _ in 0..ALLOCATIONS_PER_THREAD {
                         allocs
-                            .push(allocator.allocate(info.clone()).unwrap())
+                            .push(
+                                allocator
+                                    .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                                    .unwrap(),
+                            )
                             .unwrap();
                     }
                 });
             }
         });
 
-        assert!(allocator.allocate(dummy_info!()).is_err());
+        assert!(allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+            .is_err());
         assert!(allocator.free_size() == 0);
 
-        drop(allocs);
+        for alloc in allocs {
+            unsafe { allocator.deallocate(alloc) };
+        }
+
         assert!(allocator.free_size() == REGION_SIZE);
-        assert!(allocator.allocate(dummy_info!(REGION_SIZE)).is_ok());
+        let alloc = allocator
+            .allocate(
+                DeviceLayout::from_size_alignment(REGION_SIZE, 1).unwrap(),
+                AllocationType::Unknown,
+                DeviceAlignment::MIN,
+            )
+            .unwrap();
+        unsafe { allocator.deallocate(alloc) };
     }
 
     #[test]
     fn free_list_allocator_respects_alignment() {
         const REGION_SIZE: DeviceSize = 10 * 256;
+        const LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 256));
 
-        let info = dummy_info!(1, 256);
-
-        let allocator = dummy_allocator!(FreeListAllocator, REGION_SIZE);
+        let allocator = FreeListAllocator::new(0, REGION_SIZE);
         let mut allocs = Vec::with_capacity(10);
 
         for _ in 0..10 {
-            allocs.push(allocator.allocate(info.clone()).unwrap());
+            allocs.push(
+                allocator
+                    .allocate(LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+                    .unwrap(),
+            );
         }
 
-        assert!(allocator.allocate(info).is_err());
+        assert!(allocator
+            .allocate(LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+            .is_err());
         assert!(allocator.free_size() == REGION_SIZE - 10);
+
+        for alloc in allocs.drain(..) {
+            unsafe { allocator.deallocate(alloc) };
+        }
     }
 
     #[test]
     fn free_list_allocator_respects_granularity() {
-        const GRANULARITY: DeviceSize = 16;
-        const REGION_SIZE: DeviceSize = 2 * GRANULARITY;
+        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(16));
+        const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
-        let allocator = dummy_allocator!(FreeListAllocator, REGION_SIZE, GRANULARITY);
-        let mut linear_allocs = Vec::with_capacity(GRANULARITY as usize);
-        let mut nonlinear_allocs = Vec::with_capacity(GRANULARITY as usize);
+        let allocator = FreeListAllocator::new(0, REGION_SIZE);
+        let mut linear_allocs = Vec::with_capacity(REGION_SIZE as usize / 2);
+        let mut nonlinear_allocs = Vec::with_capacity(REGION_SIZE as usize / 2);
 
         for i in 0..REGION_SIZE {
             if i % 2 == 0 {
-                linear_allocs.push(allocator.allocate(dummy_info_linear!()).unwrap());
+                linear_allocs.push(
+                    allocator
+                        .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                        .unwrap(),
+                );
             } else {
-                nonlinear_allocs.push(allocator.allocate(dummy_info_nonlinear!()).unwrap());
+                nonlinear_allocs.push(
+                    allocator
+                        .allocate(DUMMY_LAYOUT, AllocationType::NonLinear, GRANULARITY)
+                        .unwrap(),
+                );
             }
         }
 
-        assert!(allocator.allocate(dummy_info_linear!()).is_err());
+        assert!(allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+            .is_err());
         assert!(allocator.free_size() == 0);
 
-        drop(linear_allocs);
-        assert!(allocator.allocate(dummy_info!(GRANULARITY)).is_ok());
+        for alloc in linear_allocs.drain(..) {
+            unsafe { allocator.deallocate(alloc) };
+        }
 
-        let _alloc = allocator.allocate(dummy_info!()).unwrap();
-        assert!(allocator.allocate(dummy_info!()).is_err());
-        assert!(allocator.allocate(dummy_info_linear!()).is_err());
+        let alloc = allocator
+            .allocate(
+                DeviceLayout::from_size_alignment(GRANULARITY.as_devicesize(), 1).unwrap(),
+                AllocationType::Unknown,
+                GRANULARITY,
+            )
+            .unwrap();
+        unsafe { allocator.deallocate(alloc) };
+
+        let alloc = allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Unknown, GRANULARITY)
+            .unwrap();
+        assert!(allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Unknown, GRANULARITY)
+            .is_err());
+        assert!(allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+            .is_err());
+        unsafe { allocator.deallocate(alloc) };
+
+        for alloc in nonlinear_allocs.drain(..) {
+            unsafe { allocator.deallocate(alloc) };
+        }
     }
 
     #[test]
@@ -2267,19 +1804,30 @@ mod tests {
         const MAX_ORDER: usize = 10;
         const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;
 
-        let allocator = dummy_allocator!(BuddyAllocator, REGION_SIZE);
+        let allocator = BuddyAllocator::new(0, REGION_SIZE);
         let mut allocs = Vec::with_capacity(1 << MAX_ORDER);
 
         for order in 0..=MAX_ORDER {
-            let size = BuddyAllocator::MIN_NODE_SIZE << order;
+            let layout =
+                DeviceLayout::from_size_alignment(BuddyAllocator::MIN_NODE_SIZE << order, 1)
+                    .unwrap();
 
             for _ in 0..1 << (MAX_ORDER - order) {
-                allocs.push(allocator.allocate(dummy_info!(size)).unwrap());
+                allocs.push(
+                    allocator
+                        .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                        .unwrap(),
+                );
             }
 
-            assert!(allocator.allocate(dummy_info!()).is_err());
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+                .is_err());
             assert!(allocator.free_size() == 0);
-            allocs.clear();
+
+            for alloc in allocs.drain(..) {
+                unsafe { allocator.deallocate(alloc) };
+            }
         }
 
         let mut orders = (0..MAX_ORDER).collect::<Vec<_>>();
@@ -2288,14 +1836,29 @@ mod tests {
             orders.rotate_left(mid);
 
             for &order in &orders {
-                let size = BuddyAllocator::MIN_NODE_SIZE << order;
-                allocs.push(allocator.allocate(dummy_info!(size)).unwrap());
+                let layout =
+                    DeviceLayout::from_size_alignment(BuddyAllocator::MIN_NODE_SIZE << order, 1)
+                        .unwrap();
+
+                allocs.push(
+                    allocator
+                        .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                        .unwrap(),
+                );
             }
 
-            let _alloc = allocator.allocate(dummy_info!()).unwrap();
-            assert!(allocator.allocate(dummy_info!()).is_err());
+            let alloc = allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+                .unwrap();
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+                .is_err());
             assert!(allocator.free_size() == 0);
-            allocs.clear();
+            unsafe { allocator.deallocate(alloc) };
+
+            for alloc in allocs.drain(..) {
+                unsafe { allocator.deallocate(alloc) };
+            }
         }
     }
 
@@ -2303,135 +1866,196 @@ mod tests {
     fn buddy_allocator_respects_alignment() {
         const REGION_SIZE: DeviceSize = 4096;
 
-        let allocator = dummy_allocator!(BuddyAllocator, REGION_SIZE);
+        let allocator = BuddyAllocator::new(0, REGION_SIZE);
 
         {
-            let info = dummy_info!(1, 4096);
+            let layout = DeviceLayout::from_size_alignment(1, 4096).unwrap();
 
-            let _alloc = allocator.allocate(info.clone()).unwrap();
-            assert!(allocator.allocate(info).is_err());
+            let alloc = allocator
+                .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                .unwrap();
+            assert!(allocator
+                .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                .is_err());
             assert!(allocator.free_size() == REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE);
+            unsafe { allocator.deallocate(alloc) };
         }
 
         {
-            let info_a = dummy_info!(1, 256);
-            let allocations_a = REGION_SIZE / info_a.layout.alignment().as_devicesize();
-            let info_b = dummy_info!(1, 16);
-            let allocations_b =
-                REGION_SIZE / info_b.layout.alignment().as_devicesize() - allocations_a;
+            let layout_a = DeviceLayout::from_size_alignment(1, 256).unwrap();
+            let allocations_a = REGION_SIZE / layout_a.alignment().as_devicesize();
+            let layout_b = DeviceLayout::from_size_alignment(1, 16).unwrap();
+            let allocations_b = REGION_SIZE / layout_b.alignment().as_devicesize() - allocations_a;
 
             let mut allocs =
                 Vec::with_capacity((REGION_SIZE / BuddyAllocator::MIN_NODE_SIZE) as usize);
 
             for _ in 0..allocations_a {
-                allocs.push(allocator.allocate(info_a.clone()).unwrap());
+                allocs.push(
+                    allocator
+                        .allocate(layout_a, AllocationType::Unknown, DeviceAlignment::MIN)
+                        .unwrap(),
+                );
             }
 
-            assert!(allocator.allocate(info_a).is_err());
+            assert!(allocator
+                .allocate(layout_a, AllocationType::Unknown, DeviceAlignment::MIN)
+                .is_err());
             assert!(
                 allocator.free_size()
                     == REGION_SIZE - allocations_a * BuddyAllocator::MIN_NODE_SIZE
             );
 
             for _ in 0..allocations_b {
-                allocs.push(allocator.allocate(info_b.clone()).unwrap());
+                allocs.push(
+                    allocator
+                        .allocate(layout_b, AllocationType::Unknown, DeviceAlignment::MIN)
+                        .unwrap(),
+                );
             }
 
-            assert!(allocator.allocate(dummy_info!()).is_err());
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+                .is_err());
             assert!(allocator.free_size() == 0);
+
+            for alloc in allocs {
+                unsafe { allocator.deallocate(alloc) };
+            }
         }
     }
 
     #[test]
     fn buddy_allocator_respects_granularity() {
-        const GRANULARITY: DeviceSize = 256;
-        const REGION_SIZE: DeviceSize = 2 * GRANULARITY;
+        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(256));
+        const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
-        let allocator = dummy_allocator!(BuddyAllocator, REGION_SIZE, GRANULARITY);
+        let allocator = BuddyAllocator::new(0, REGION_SIZE);
 
         {
             const ALLOCATIONS: DeviceSize = REGION_SIZE / BuddyAllocator::MIN_NODE_SIZE;
 
             let mut allocs = Vec::with_capacity(ALLOCATIONS as usize);
+
             for _ in 0..ALLOCATIONS {
-                allocs.push(allocator.allocate(dummy_info_linear!()).unwrap());
+                allocs.push(
+                    allocator
+                        .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                        .unwrap(),
+                );
             }
 
-            assert!(allocator.allocate(dummy_info_linear!()).is_err());
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                .is_err());
             assert!(allocator.free_size() == 0);
+
+            for alloc in allocs {
+                unsafe { allocator.deallocate(alloc) };
+            }
         }
 
         {
-            let _alloc1 = allocator.allocate(dummy_info!()).unwrap();
-            let _alloc2 = allocator.allocate(dummy_info!()).unwrap();
-            assert!(allocator.allocate(dummy_info!()).is_err());
+            let alloc1 = allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, GRANULARITY)
+                .unwrap();
+            let alloc2 = allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, GRANULARITY)
+                .unwrap();
+            assert!(allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+                .is_err());
             assert!(allocator.free_size() == 0);
+            unsafe { allocator.deallocate(alloc1) };
+            unsafe { allocator.deallocate(alloc2) };
         }
     }
 
     #[test]
     fn bump_allocator_respects_alignment() {
         const ALIGNMENT: DeviceSize = 16;
+        const REGION_SIZE: DeviceSize = 10 * ALIGNMENT;
 
-        let info = dummy_info!(1, ALIGNMENT);
-        let allocator = dummy_allocator!(BumpAllocator, ALIGNMENT * 10);
+        let layout = DeviceLayout::from_size_alignment(1, ALIGNMENT).unwrap();
+        let mut allocator = BumpAllocator::new(0, REGION_SIZE);
 
         for _ in 0..10 {
-            allocator.allocate(info.clone()).unwrap();
+            allocator
+                .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                .unwrap();
         }
 
-        assert!(allocator.allocate(info.clone()).is_err());
+        assert!(allocator
+            .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+            .is_err());
 
         for _ in 0..ALIGNMENT - 1 {
-            allocator.allocate(dummy_info!()).unwrap();
+            allocator
+                .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+                .unwrap();
         }
 
-        assert!(allocator.allocate(info).is_err());
+        assert!(allocator
+            .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+            .is_err());
         assert!(allocator.free_size() == 0);
+
+        allocator.reset();
+        assert!(allocator.free_size() == REGION_SIZE);
     }
 
     #[test]
     fn bump_allocator_respects_granularity() {
         const ALLOCATIONS: DeviceSize = 10;
-        const GRANULARITY: DeviceSize = 1024;
+        const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(1024));
+        const REGION_SIZE: DeviceSize = ALLOCATIONS * GRANULARITY.as_devicesize();
 
-        let mut allocator = dummy_allocator!(BumpAllocator, GRANULARITY * ALLOCATIONS, GRANULARITY);
+        let mut allocator = BumpAllocator::new(0, REGION_SIZE);
 
         for i in 0..ALLOCATIONS {
-            for _ in 0..GRANULARITY {
+            for _ in 0..GRANULARITY.as_devicesize() {
                 allocator
-                    .allocate(SuballocationCreateInfo {
-                        allocation_type: if i % 2 == 0 {
+                    .allocate(
+                        DUMMY_LAYOUT,
+                        if i % 2 == 0 {
                             AllocationType::NonLinear
                         } else {
                             AllocationType::Linear
                         },
-                        ..dummy_info!()
-                    })
+                        GRANULARITY,
+                    )
                     .unwrap();
             }
         }
 
-        assert!(allocator.allocate(dummy_info_linear!()).is_err());
+        assert!(allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+            .is_err());
         assert!(allocator.free_size() == 0);
 
-        allocator.try_reset().unwrap();
+        allocator.reset();
 
         for i in 0..ALLOCATIONS {
             allocator
-                .allocate(SuballocationCreateInfo {
-                    allocation_type: if i % 2 == 0 {
+                .allocate(
+                    DUMMY_LAYOUT,
+                    if i % 2 == 0 {
                         AllocationType::Linear
                     } else {
                         AllocationType::NonLinear
                     },
-                    ..dummy_info!()
-                })
+                    GRANULARITY,
+                )
                 .unwrap();
         }
 
-        assert!(allocator.allocate(dummy_info_linear!()).is_err());
-        assert!(allocator.free_size() == GRANULARITY - 1);
+        assert!(allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
+            .is_err());
+        assert!(allocator.free_size() == GRANULARITY.as_devicesize() - 1);
+
+        allocator.reset();
+        assert!(allocator.free_size() == REGION_SIZE);
     }
 
     #[test]
@@ -2442,90 +2066,30 @@ mod tests {
         const REGION_SIZE: DeviceSize =
             (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2) * ALLOCATIONS_PER_THREAD;
 
-        let mut allocator = dummy_allocator!(BumpAllocator, REGION_SIZE);
+        let mut allocator = BumpAllocator::new(0, REGION_SIZE);
 
         thread::scope(|scope| {
             for i in 1..=THREADS {
                 let allocator = &allocator;
 
                 scope.spawn(move || {
-                    let info = dummy_info!(i * ALLOCATION_STEP);
+                    let layout = DeviceLayout::from_size_alignment(i * ALLOCATION_STEP, 1).unwrap();
 
                     for _ in 0..ALLOCATIONS_PER_THREAD {
-                        allocator.allocate(info.clone()).unwrap();
+                        allocator
+                            .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
+                            .unwrap();
                     }
                 });
             }
         });
 
-        assert!(allocator.allocate(dummy_info!()).is_err());
+        assert!(allocator
+            .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
+            .is_err());
         assert!(allocator.free_size() == 0);
 
-        allocator.try_reset().unwrap();
+        allocator.reset();
         assert!(allocator.free_size() == REGION_SIZE);
     }
-
-    macro_rules! dummy_allocator {
-        ($type:ty, $size:expr) => {
-            dummy_allocator!($type, $size, 1)
-        };
-        ($type:ty, $size:expr, $granularity:expr) => {{
-            let (device, _) = gfx_dev_and_queue!();
-            let device_memory = DeviceMemory::allocate(
-                device,
-                MemoryAllocateInfo {
-                    allocation_size: $size,
-                    memory_type_index: 0,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let mut allocator = <$type>::new(MemoryAlloc::new(device_memory));
-            Arc::get_mut(&mut allocator)
-                .unwrap()
-                .buffer_image_granularity = DeviceAlignment::new($granularity).unwrap();
-
-            allocator
-        }};
-    }
-
-    macro_rules! dummy_info {
-        () => {
-            dummy_info!(1)
-        };
-        ($size:expr) => {
-            dummy_info!($size, 1)
-        };
-        ($size:expr, $alignment:expr) => {
-            SuballocationCreateInfo {
-                layout: DeviceLayout::new(
-                    NonZeroDeviceSize::new($size).unwrap(),
-                    DeviceAlignment::new($alignment).unwrap(),
-                )
-                .unwrap(),
-                allocation_type: AllocationType::Unknown,
-                ..Default::default()
-            }
-        };
-    }
-
-    macro_rules! dummy_info_linear {
-        ($($args:tt)*) => {
-            SuballocationCreateInfo {
-                allocation_type: AllocationType::Linear,
-                ..dummy_info!($($args)*)
-            }
-        };
-    }
-
-    macro_rules! dummy_info_nonlinear {
-        ($($args:tt)*) => {
-            SuballocationCreateInfo {
-                allocation_type: AllocationType::NonLinear,
-                ..dummy_info!($($args)*)
-            }
-        };
-    }
-
-    use {dummy_allocator, dummy_info, dummy_info_linear, dummy_info_nonlinear};
 }
