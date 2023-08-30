@@ -232,14 +232,14 @@ fn main() {
         future.wait(None).unwrap();
     }
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
     // Prepare test array `[0, 1, 2, 3....]`.
     let data_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator,
         BufferCreateInfo {
             usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()

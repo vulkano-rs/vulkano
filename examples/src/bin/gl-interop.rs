@@ -41,11 +41,10 @@ mod linux {
         },
         memory::{
             allocator::{
-                AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryTypeFilter,
-                StandardMemoryAllocator,
+                AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator,
             },
             DedicatedAllocation, DeviceMemory, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-            MemoryAllocateInfo,
+            MemoryAllocateInfo, ResourceMemory,
         },
         pipeline::{
             graphics::{
@@ -159,7 +158,7 @@ mod linux {
 
         let image = Arc::new(
             raw_image
-                .bind_memory([MemoryAlloc::new(image_memory)])
+                .bind_memory([ResourceMemory::new_dedicated(image_memory)])
                 .map_err(|(err, _, _)| err)
                 .unwrap(),
         );
@@ -464,7 +463,7 @@ mod linux {
         Vec<Arc<Framebuffer>>,
         Arc<Sampler>,
         Arc<GraphicsPipeline>,
-        StandardMemoryAllocator,
+        Arc<StandardMemoryAllocator>,
         Subbuffer<[MyVertex]>,
     ) {
         let library = VulkanLibrary::new().unwrap();
@@ -600,7 +599,7 @@ mod linux {
             .unwrap()
         };
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
         let vertices = [
             MyVertex {
@@ -617,7 +616,7 @@ mod linux {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()

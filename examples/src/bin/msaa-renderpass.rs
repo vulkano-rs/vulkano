@@ -62,7 +62,7 @@
 // non-multisampled image. This operation is not a regular blit (blitting a multisampled image is
 // an error), instead it is called *resolving* the image.
 
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -150,7 +150,7 @@ fn main() {
     .unwrap();
     let queue = queues.next().unwrap();
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     // Creating our intermediate multisampled image.
     //
@@ -158,7 +158,7 @@ fn main() {
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
     let intermediary = ImageView::new_default(
         Image::new(
-            &memory_allocator,
+            memory_allocator.clone(),
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
@@ -175,7 +175,7 @@ fn main() {
 
     // This is the final image that will receive the anti-aliased triangle.
     let image = Image::new(
-        &memory_allocator,
+        memory_allocator.clone(),
         ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::R8G8B8A8_UNORM,
@@ -299,7 +299,7 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -368,7 +368,7 @@ fn main() {
     let command_buffer_allocator = StandardCommandBufferAllocator::new(device, Default::default());
 
     let buf = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator,
         BufferCreateInfo {
             usage: BufferUsage::TRANSFER_DST,
             ..Default::default()

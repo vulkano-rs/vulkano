@@ -274,7 +274,7 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -293,7 +293,7 @@ fn main() {
     let uniform_buffers = (0..swapchain.image_count())
         .map(|_| {
             Buffer::new_sized(
-                &memory_allocator,
+                memory_allocator.clone(),
                 BufferCreateInfo {
                     usage: BufferUsage::UNIFORM_BUFFER,
                     ..Default::default()
@@ -312,7 +312,7 @@ fn main() {
     // is used exclusively for writing, swapping the two after each update.
     let textures = [(); 2].map(|_| {
         Image::new(
-            &memory_allocator,
+            memory_allocator.clone(),
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format: Format::R8G8B8A8_UNORM,
@@ -714,7 +714,7 @@ fn run_worker(
         // out-of-date texture is the current up-to-date texture and vice-versa, cycle repeating.
         let staging_buffers = [(); 2].map(|_| {
             Buffer::from_iter(
-                &memory_allocator,
+                memory_allocator.clone(),
                 BufferCreateInfo {
                     usage: BufferUsage::TRANSFER_SRC,
                     ..Default::default()

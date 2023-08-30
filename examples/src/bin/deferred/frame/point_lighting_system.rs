@@ -20,7 +20,7 @@ use vulkano::{
     },
     device::Queue,
     image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -54,7 +54,7 @@ impl PointLightingSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
-        memory_allocator: &impl MemoryAllocator,
+        memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> PointLightingSystem {

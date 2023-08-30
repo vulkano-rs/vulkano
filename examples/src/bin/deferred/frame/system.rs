@@ -155,7 +155,7 @@ impl FrameSystem {
         // will be replaced the first time we call `frame()`.
         let diffuse_buffer = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::A2B10G10R10_UNORM_PACK32,
@@ -172,7 +172,7 @@ impl FrameSystem {
         .unwrap();
         let normals_buffer = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R16G16B16A16_SFLOAT,
@@ -187,7 +187,7 @@ impl FrameSystem {
         .unwrap();
         let depth_buffer = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::D16_UNORM,
@@ -211,21 +211,21 @@ impl FrameSystem {
         let ambient_lighting_system = AmbientLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass.clone(),
-            &memory_allocator,
+            memory_allocator.clone(),
             command_buffer_allocator.clone(),
             descriptor_set_allocator.clone(),
         );
         let directional_lighting_system = DirectionalLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass.clone(),
-            &memory_allocator,
+            memory_allocator.clone(),
             command_buffer_allocator.clone(),
             descriptor_set_allocator.clone(),
         );
         let point_lighting_system = PointLightingSystem::new(
             gfx_queue.clone(),
             lighting_subpass,
-            &memory_allocator,
+            memory_allocator.clone(),
             command_buffer_allocator.clone(),
             descriptor_set_allocator,
         );
@@ -281,7 +281,7 @@ impl FrameSystem {
             // render pass their content becomes undefined.
             self.diffuse_buffer = ImageView::new_default(
                 Image::new(
-                    &self.memory_allocator,
+                    self.memory_allocator.clone(),
                     ImageCreateInfo {
                         extent,
                         format: Format::A2B10G10R10_UNORM_PACK32,
@@ -297,7 +297,7 @@ impl FrameSystem {
             .unwrap();
             self.normals_buffer = ImageView::new_default(
                 Image::new(
-                    &self.memory_allocator,
+                    self.memory_allocator.clone(),
                     ImageCreateInfo {
                         extent,
                         format: Format::R16G16B16A16_SFLOAT,
@@ -313,7 +313,7 @@ impl FrameSystem {
             .unwrap();
             self.depth_buffer = ImageView::new_default(
                 Image::new(
-                    &self.memory_allocator,
+                    self.memory_allocator.clone(),
                     ImageCreateInfo {
                         extent,
                         format: Format::D16_UNORM,

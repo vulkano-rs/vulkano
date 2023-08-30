@@ -326,7 +326,7 @@ fn main() {
         }
     }
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
@@ -353,7 +353,7 @@ fn main() {
 
         // Create a CPU-accessible buffer initialized with the vertex data.
         let temporary_accessible_buffer = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 // Specify this buffer will be used as a transfer source.
                 usage: BufferUsage::TRANSFER_SRC,
@@ -372,7 +372,7 @@ fn main() {
         // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT` number of
         // `Vertex`.
         let device_local_buffer = Buffer::new_slice::<Vertex>(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 // Specify use as a storage buffer, vertex buffer, and transfer destination.
                 usage: BufferUsage::STORAGE_BUFFER

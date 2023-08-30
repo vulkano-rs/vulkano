@@ -59,7 +59,7 @@ impl FractalComputePipeline {
         ];
         let palette_size = colors.len() as i32;
         let palette = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
@@ -119,7 +119,7 @@ impl FractalComputePipeline {
             colors.push([r, g, b, a]);
         }
         self.palette = Buffer::from_iter(
-            &self.memory_allocator,
+            self.memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()

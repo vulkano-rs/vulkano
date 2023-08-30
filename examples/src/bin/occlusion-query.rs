@@ -150,7 +150,7 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     #[derive(BufferContents, Vertex)]
     #[repr(C)]
@@ -206,7 +206,7 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -360,7 +360,7 @@ fn main() {
         &images,
         render_pass.clone(),
         &mut viewport,
-        &memory_allocator,
+        memory_allocator.clone(),
     );
 
     let mut recreate_swapchain = false;
@@ -401,7 +401,7 @@ fn main() {
                     &new_images,
                     render_pass.clone(),
                     &mut viewport,
-                    &memory_allocator,
+                    memory_allocator.clone(),
                 );
                 recreate_swapchain = false;
             }
@@ -565,7 +565,7 @@ fn window_size_dependent_setup(
     images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-    memory_allocator: &StandardMemoryAllocator,
+    memory_allocator: Arc<StandardMemoryAllocator>,
 ) -> Vec<Arc<Framebuffer>> {
     let extent = images[0].extent();
     viewport.extent = [extent[0] as f32, extent[1] as f32];
