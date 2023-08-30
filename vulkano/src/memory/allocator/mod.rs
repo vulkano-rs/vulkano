@@ -744,12 +744,6 @@ pub enum MemoryAllocatorError {
     /// This is returned when using [`MemoryAllocatePreference::NeverAllocate`] and the allocation
     /// size exceeded the block size for all heaps of suitable memory types.
     BlockSizeExceeded,
-
-    /// The block size for the suballocator was exceeded.
-    ///
-    /// This is returned when using [`GenericMemoryAllocator<Arc<PoolAllocator<BLOCK_SIZE>>>`] if
-    /// the allocation size exceeded `BLOCK_SIZE`.
-    SuballocatorBlockSizeExceeded,
 }
 
 impl Error for MemoryAllocatorError {
@@ -773,9 +767,6 @@ impl Display for MemoryAllocatorError {
             Self::BlockSizeExceeded => {
                 "the allocation size was greater than the block size for all heaps of suitable \
                 memory types and dedicated allocations were explicitly forbidden"
-            }
-            Self::SuballocatorBlockSizeExceeded => {
-                "the allocation size was greater than the suballocator's block size"
             }
         };
 
@@ -1168,12 +1159,10 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
                 blocks.binary_search_by_key(&size, |block| block.free_size());
 
             for block in &blocks[idx..] {
-                match block.allocate(layout, allocation_type, self.buffer_image_granularity) {
-                    Ok(allocation) => return Ok(allocation),
-                    Err(SuballocatorError::BlockSizeExceeded) => {
-                        return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
-                    }
-                    Err(_) => {}
+                if let Ok(allocation) =
+                    block.allocate(layout, allocation_type, self.buffer_image_granularity)
+                {
+                    return Ok(allocation);
                 }
             }
 
@@ -1192,14 +1181,10 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
 
             // Search in reverse order because we always append new blocks at the end.
             for block in blocks.iter().rev() {
-                match block.allocate(layout, allocation_type, self.buffer_image_granularity) {
-                    Ok(allocation) => return Ok(allocation),
-                    // This can happen when using the `PoolAllocator<BLOCK_SIZE>` if the allocation
-                    // size is greater than `BLOCK_SIZE`.
-                    Err(SuballocatorError::BlockSizeExceeded) => {
-                        return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
-                    }
-                    Err(_) => {}
+                if let Ok(allocation) =
+                    block.allocate(layout, allocation_type, self.buffer_image_granularity)
+                {
+                    return Ok(allocation);
                 }
             }
 
@@ -1209,15 +1194,10 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
 
             if blocks.len() > len {
                 // Another thread beat us to it and inserted a fresh block, try to suballocate it.
-                match blocks[len].allocate(layout, allocation_type, self.buffer_image_granularity) {
-                    Ok(allocation) => return Ok(allocation),
-                    // This can happen if this is the first block that was inserted and when using
-                    // the `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than
-                    // `BLOCK_SIZE`.
-                    Err(SuballocatorError::BlockSizeExceeded) => {
-                        return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
-                    }
-                    Err(_) => {}
+                if let Ok(allocation) =
+                    blocks[len].allocate(layout, allocation_type, self.buffer_image_granularity)
+                {
+                    return Ok(allocation);
                 }
             }
 
@@ -1285,11 +1265,6 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
             // This can't happen as the block is fresher than Febreze and we're still holding an
             // exclusive lock.
             Err(SuballocatorError::FragmentedRegion) => unreachable!(),
-            // This can happen if this is the first block that was inserted and when using the
-            // `PoolAllocator<BLOCK_SIZE>` if the allocation size is greater than `BLOCK_SIZE`.
-            Err(SuballocatorError::BlockSizeExceeded) => {
-                Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded)
-            }
         }
     }
 
@@ -1471,10 +1446,6 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
 
             match res {
                 Ok(allocation) => return Ok(allocation),
-                // This is not recoverable.
-                Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded) => {
-                    return Err(MemoryAllocatorError::SuballocatorBlockSizeExceeded);
-                }
                 // Try a different memory type.
                 Err(err) => {
                     memory_type_bits &= !(1 << memory_type_index);

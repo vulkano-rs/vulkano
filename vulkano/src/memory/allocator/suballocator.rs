@@ -213,16 +213,6 @@ pub enum SuballocatorError {
 
     /// The region has enough free space to satisfy the request but is too fragmented.
     FragmentedRegion,
-
-    /// The allocation was larger than the allocator's block size, meaning that this error would
-    /// arise with the parameters no matter the state the allocator was in.
-    ///
-    /// This can be used to let the [`GenericMemoryAllocator`] know that allocating a new block of
-    /// [`DeviceMemory`] and trying to suballocate it with the same parameters would not solve the
-    /// issue.
-    ///
-    /// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
-    BlockSizeExceeded,
 }
 
 impl Error for SuballocatorError {}
@@ -232,9 +222,6 @@ impl Display for SuballocatorError {
         let msg = match self {
             Self::OutOfRegionMemory => "out of region memory",
             Self::FragmentedRegion => "the region is too fragmented",
-            Self::BlockSizeExceeded => {
-                "the allocation size was greater than the suballocator's block size"
-            }
         };
 
         f.write_str(msg)
