@@ -219,7 +219,7 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
     };
 
     quote! {
-        #[derive(Clone, Debug, PartialEq, Eq)]
+        #[derive(Clone, Debug, PartialEq)]
         #[doc=#doc]
         pub enum #enum_name {
             #(#struct_items)*
@@ -522,7 +522,7 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
         let derives = match name_string.as_str() {
             "ExecutionModel" => quote! { #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)] },
-            "Decoration" => quote! { #[derive(Clone, Debug, PartialEq, Eq)] },
+            "Decoration" => quote! { #[derive(Clone, Debug, PartialEq)] },
             _ => quote! { #[derive(Clone, Copy, Debug, PartialEq, Eq)] },
         };
 
@@ -613,7 +613,8 @@ fn to_member_name(kind: &str, name: Option<&str>) -> Ident {
             "parameter_0_type_parameter_1_type" => format_ident!("parameter_types"),
             "the_name_of_the_opaque_type" => format_ident!("name"),
             "d_ref" => format_ident!("dref"),
-            "type" => format_ident!("ty"), // type is a keyword
+            "type" => format_ident!("ty"),   // type is a keyword
+            "use" => format_ident!("usage"), // use is a keyword
             _ => format_ident!("{}", name.replace("operand_", "operand")),
         }
     } else {
@@ -630,18 +631,9 @@ fn kinds_to_types(grammar: &SpirvGrammar) -> HashMap<&str, (TokenStream, TokenSt
                 "LiteralContextDependentNumber" => {
                     (quote! { Vec<u32> }, quote! { reader.remainder() })
                 }
-                "LiteralExtInstInteger" | "LiteralInteger" | "LiteralInt32" => {
+                "LiteralInteger" | "LiteralExtInstInteger" => {
                     (quote! { u32 }, quote! { reader.next_u32()? })
                 }
-                "LiteralInt64" => (quote! { u64 }, quote! { reader.next_u64()? }),
-                "LiteralFloat32" => (
-                    quote! { f32 },
-                    quote! { f32::from_bits(reader.next_u32()?) },
-                ),
-                "LiteralFloat64" => (
-                    quote! { f64 },
-                    quote! { f64::from_bits(reader.next_u64()?) },
-                ),
                 "LiteralSpecConstantOpInteger" => (
                     quote! { SpecConstantInstruction },
                     quote! { SpecConstantInstruction::parse(reader)? },
@@ -682,5 +674,12 @@ fn kinds_to_types(grammar: &SpirvGrammar) -> HashMap<&str, (TokenStream, TokenSt
 
             (k.kind.as_str(), (ty, parse))
         })
+        .chain([(
+            "LiteralFloat",
+            (
+                quote! { f32 },
+                quote! { f32::from_bits(reader.next_u32()?) },
+            ),
+        )])
         .collect()
 }

@@ -407,8 +407,10 @@ fn shader_execution(
         ExecutionModel::MissKHR => ShaderExecution::Miss,
         ExecutionModel::CallableKHR => ShaderExecution::Callable,
 
-        ExecutionModel::TaskNV => ShaderExecution::Task,
-        ExecutionModel::MeshNV => ShaderExecution::Mesh,
+        ExecutionModel::TaskEXT => ShaderExecution::Task,
+        ExecutionModel::TaskNV => todo!(),
+        ExecutionModel::MeshEXT => ShaderExecution::Mesh,
+        ExecutionModel::MeshNV => todo!(),
 
         ExecutionModel::Kernel => todo!(),
     }
