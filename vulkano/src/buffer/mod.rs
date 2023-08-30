@@ -86,10 +86,10 @@ use crate::{
     memory::{
         allocator::{
             AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAllocator,
-            MemoryAllocatorError, ResourceMemory,
+            MemoryAllocatorError,
         },
         DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        ExternalMemoryProperties, MemoryRequirements,
+        ExternalMemoryProperties, MemoryRequirements, ResourceMemory,
     },
     range_map::RangeMap,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},

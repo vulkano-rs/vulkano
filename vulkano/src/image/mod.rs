@@ -68,9 +68,9 @@ use crate::{
     format::{Format, FormatFeatures},
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{
-        allocator::{AllocationCreateInfo, MemoryAllocator, MemoryAllocatorError, ResourceMemory},
+        allocator::{AllocationCreateInfo, MemoryAllocator, MemoryAllocatorError},
         DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        ExternalMemoryProperties, MemoryRequirements,
+        ExternalMemoryProperties, MemoryRequirements, ResourceMemory,
     },
     range_map::RangeMap,
     swapchain::Swapchain,

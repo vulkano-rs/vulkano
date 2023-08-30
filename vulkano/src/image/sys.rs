@@ -33,9 +33,9 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceLayout, ResourceMemory},
+        allocator::{AllocationType, DeviceLayout},
         is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryPropertyFlags,
-        MemoryRequirements,
+        MemoryRequirements, ResourceMemory,
     },
     sync::Sharing,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,

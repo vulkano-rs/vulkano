@@ -20,9 +20,9 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceLayout, ResourceMemory},
+        allocator::{AllocationType, DeviceLayout},
         is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags,
-        MemoryPropertyFlags, MemoryRequirements,
+        MemoryPropertyFlags, MemoryRequirements, ResourceMemory,
     },
     sync::Sharing,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,

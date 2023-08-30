@@ -223,8 +223,8 @@ use self::array_vec::ArrayVec;
 pub use self::{
     layout::DeviceLayout,
     suballocator::{
-        AllocationType, BuddyAllocator, BumpAllocator, FreeListAllocator, ResourceMemory,
-        Suballocation, Suballocator, SuballocatorError,
+        AllocationType, BuddyAllocator, BumpAllocator, FreeListAllocator, Suballocation,
+        Suballocator, SuballocatorError,
     },
 };
 use super::{
