@@ -417,7 +417,8 @@ unsafe impl Suballocator for FreeListAllocator {
 
     #[inline]
     unsafe fn deallocate(&self, suballocation: Suballocation) {
-        // SAFETY: TODO
+        // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
+        // allocation of `self`.
         let node_id = SlotId::new(suballocation.handle.0 as _);
 
         let mut state = self.state.lock();

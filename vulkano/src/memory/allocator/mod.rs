@@ -1499,10 +1499,17 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
                 );
             }
 
-            // SAFETY: TODO
+            // SAFETY: The caller must guarantee that `allocation` refers to one allocated by
+            // `self`, therefore `block_ptr` must be the same one we gave out on allocation. We
+            // know that this pointer must be valid, because all blocks are boxed and pinned in
+            // memory and because a block isn't dropped until the allocator itself is dropped, at
+            // which point it would be impossible to call this method. We also know that it must be
+            // valid to take create a reference to the block, because we only ever access it via
+            // shared references.
             let block = &*block_ptr;
 
-            // SAFETY: TODO
+            // SAFETY: The caller must guarantee that `allocation` refers to a currenltly allocated
+            // allocation of `self`.
             block.deallocate(suballocation);
         }
     }
