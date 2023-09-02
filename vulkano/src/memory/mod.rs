@@ -293,7 +293,7 @@ impl ResourceMemory {
     pub(crate) fn atom_size(&self) -> Option<DeviceAlignment> {
         let memory = self.device_memory();
 
-        memory.is_coherent().then_some(memory.atom_size())
+        (!memory.is_coherent()).then_some(memory.atom_size())
     }
 
     /// Invalidates the host cache for a range of the `ResourceMemory`.
