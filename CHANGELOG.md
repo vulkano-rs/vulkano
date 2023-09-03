@@ -98,6 +98,15 @@ Changes to `Format`:
 - `ShaderScalarType` is renamed to `NumericType`.
 
 Changes to memory allocation:
+- The memory (sub)allocation API has been completely reworked.
+  - `Buffer` and `SubbufferAllocator` now take an `Arc<dyn MemoryAllocator>` on construction.
+  - `Suballocator` and `MemoryAllocator` now have explicit `deallocate` methods in order to fix all the flexibility issues.
+  - `Suballocator` is completely generic now in regards to the type of suballocation.
+  - `SuballocationCreateInfo` was removed.
+  - `MemoryAllocatePreference` and `AllocationType` are no longer marked `#[non_exhaustive]`.
+  - `MemoryAlloc` was replaced by `ResourceMemory`, `MemoryAlloc` now only represents specifically allocations made by `MemoryAllocator`.
+  - `PoolAllocator` was removed.
+  - `GenericMemoryAllocatorCreateInfo::allocation_type` was removed.
 - `AllocationCreateInfo::usage` and `SubbufferAllocatorCreateInfo::memory_usage` were replaced by a `memory_type_filter` field, to allow for a more flexible selection of the memory type. Additionally, `SubbufferAllocatorCreateInfo::memory_type_filter` defaults to `MemoryTypeFilter::PREFER_DEVICE` for consistency with `AllocationCreateInfo`, unlike the previous default of `MemoryUsage::Upload`.
 - `SubbufferAllocatorCreateInfo::buffer_usage` is now empty by default for consistency with `BufferCreateInfo`.
 - `MemoryAlloc::new` no longer returns a `Result`, and doesn't map the `DeviceMemory` automatically anymore.
