@@ -49,7 +49,7 @@
 //!   types.
 //! - Binding [imported] `DeviceMemory`.
 //!
-//! You can [create a `MemoryAlloc` from `DeviceMemory`] if you want to bind its own block of
+//! You can [create a `ResourceMemory` from `DeviceMemory`] if you want to bind its own block of
 //! memory to an image.
 //!
 //! [`ImageView`]: crate::image::view::ImageView
@@ -59,7 +59,7 @@
 //! [`DeviceMemory`]: crate::memory::DeviceMemory
 //! [allocated yourself]: crate::memory::DeviceMemory::allocate
 //! [imported]: crate::memory::DeviceMemory::import
-//! [create a `MemoryAlloc` from `DeviceMemory`]: MemoryAlloc::new
+//! [create a `ResourceMemory` from `DeviceMemory`]: ResourceMemory::new_dedicated
 
 pub use self::{aspect::*, layout::*, sys::ImageCreateInfo, usage::*};
 use self::{sys::RawImage, view::ImageViewType};
@@ -68,9 +68,9 @@ use crate::{
     format::{Format, FormatFeatures},
     macros::{vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
     memory::{
-        allocator::{AllocationCreateInfo, MemoryAlloc, MemoryAllocator, MemoryAllocatorError},
+        allocator::{AllocationCreateInfo, MemoryAllocator, MemoryAllocatorError},
         DedicatedAllocation, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        ExternalMemoryProperties, MemoryRequirements,
+        ExternalMemoryProperties, MemoryRequirements, ResourceMemory,
     },
     range_map::RangeMap,
     swapchain::Swapchain,
@@ -128,7 +128,7 @@ pub enum ImageMemory {
     /// The image is backed by normal memory, bound with [`bind_memory`].
     ///
     /// [`bind_memory`]: RawImage::bind_memory
-    Normal(SmallVec<[MemoryAlloc; 4]>),
+    Normal(SmallVec<[ResourceMemory; 4]>),
 
     /// The image is backed by sparse memory, bound with [`bind_sparse`].
     ///
@@ -145,7 +145,7 @@ pub enum ImageMemory {
 impl Image {
     /// Creates a new uninitialized `Image`.
     pub fn new(
-        allocator: &(impl MemoryAllocator + ?Sized),
+        allocator: Arc<dyn MemoryAllocator>,
         create_info: ImageCreateInfo,
         allocation_info: AllocationCreateInfo,
     ) -> Result<Arc<Self>, Validated<ImageAllocateError>> {
@@ -168,6 +168,7 @@ impl Image {
                 Some(DedicatedAllocation::Image(&raw_image)),
             )
             .map_err(ImageAllocateError::AllocateMemory)?;
+        let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
         let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
             err.map(ImageAllocateError::BindMemory)

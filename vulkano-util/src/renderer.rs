@@ -225,7 +225,7 @@ impl VulkanoWindowRenderer {
         let final_view_image = self.final_views[0].image();
         let image = ImageView::new_default(
             Image::new(
-                &self.memory_allocator,
+                self.memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format,

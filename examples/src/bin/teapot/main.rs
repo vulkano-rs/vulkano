@@ -162,7 +162,7 @@ fn main() {
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -176,7 +176,7 @@ fn main() {
     )
     .unwrap();
     let normals_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -190,7 +190,7 @@ fn main() {
     )
     .unwrap();
     let index_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::INDEX_BUFFER,
             ..Default::default()
@@ -247,7 +247,7 @@ fn main() {
         .unwrap();
 
     let (mut pipeline, mut framebuffers) = window_size_dependent_setup(
-        &memory_allocator,
+        memory_allocator.clone(),
         vs.clone(),
         fs.clone(),
         &images,
@@ -295,7 +295,7 @@ fn main() {
 
                     swapchain = new_swapchain;
                     let (new_pipeline, new_framebuffers) = window_size_dependent_setup(
-                        &memory_allocator,
+                        memory_allocator.clone(),
                         vs.clone(),
                         fs.clone(),
                         &new_images,
@@ -436,12 +436,13 @@ fn main() {
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
-    memory_allocator: &StandardMemoryAllocator,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     vs: EntryPoint,
     fs: EntryPoint,
     images: &[Arc<Image>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
+    let device = memory_allocator.device().clone();
     let extent = images[0].extent();
 
     let depth_buffer = ImageView::new_default(
@@ -480,7 +481,6 @@ fn window_size_dependent_setup(
     // driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = {
-        let device = memory_allocator.device();
         let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
             .definition(&vs.info().input_interface)
             .unwrap();
@@ -498,7 +498,7 @@ fn window_size_dependent_setup(
         let subpass = Subpass::from(render_pass, 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            device,
             None,
             GraphicsPipelineCreateInfo {
                 stages: stages.into_iter().collect(),

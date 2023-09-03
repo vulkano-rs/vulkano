@@ -12,7 +12,7 @@
 // multiple perspectives or cameras are very similar like in virtual reality or other types of
 // stereoscopic rendering where the left and right eye only differ in a small position offset.
 
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -134,10 +134,10 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     let image = Image::new(
-        &memory_allocator,
+        memory_allocator.clone(),
         ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::B8G8R8A8_SRGB,
@@ -171,7 +171,7 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -313,7 +313,7 @@ fn main() {
 
     let create_buffer = || {
         Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST,
                 ..Default::default()

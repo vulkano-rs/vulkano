@@ -20,9 +20,9 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceLayout, MemoryAlloc},
+        allocator::{AllocationType, DeviceLayout},
         is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags,
-        MemoryPropertyFlags, MemoryRequirements,
+        MemoryPropertyFlags, MemoryRequirements, ResourceMemory,
     },
     sync::Sharing,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
@@ -277,8 +277,8 @@ impl RawBuffer {
     /// Binds device memory to this buffer.
     pub fn bind_memory(
         self,
-        allocation: MemoryAlloc,
-    ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, MemoryAlloc)> {
+        allocation: ResourceMemory,
+    ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, ResourceMemory)> {
         if let Err(err) = self.validate_bind_memory(&allocation) {
             return Err((err.into(), self, allocation));
         }
@@ -287,7 +287,10 @@ impl RawBuffer {
             .map_err(|(err, buffer, allocation)| (err.into(), buffer, allocation))
     }
 
-    fn validate_bind_memory(&self, allocation: &MemoryAlloc) -> Result<(), Box<ValidationError>> {
+    fn validate_bind_memory(
+        &self,
+        allocation: &ResourceMemory,
+    ) -> Result<(), Box<ValidationError>> {
         assert_ne!(allocation.allocation_type(), AllocationType::NonLinear);
 
         let physical_device = self.device().physical_device();
@@ -497,8 +500,8 @@ impl RawBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_memory_unchecked(
         self,
-        allocation: MemoryAlloc,
-    ) -> Result<Buffer, (VulkanError, RawBuffer, MemoryAlloc)> {
+        allocation: ResourceMemory,
+    ) -> Result<Buffer, (VulkanError, RawBuffer, ResourceMemory)> {
         let memory = allocation.device_memory();
         let memory_offset = allocation.offset();
 

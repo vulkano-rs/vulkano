@@ -468,6 +468,7 @@ mod tests {
         shader::{ShaderModule, ShaderModuleCreateInfo},
         sync::{now, GpuFuture},
     };
+    use std::sync::Arc;
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error
@@ -531,9 +532,9 @@ mod tests {
             .unwrap()
         };
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let data_buffer = Buffer::from_data(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
@@ -662,9 +663,9 @@ mod tests {
             .unwrap()
         };
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let data_buffer = Buffer::from_data(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()

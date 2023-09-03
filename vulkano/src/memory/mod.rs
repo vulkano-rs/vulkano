@@ -91,24 +91,357 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StandardMemoryPool` that is shared by the `Device` object is used.
 
-use self::allocator::DeviceLayout;
+use self::allocator::{
+    align_up, AllocationHandle, AllocationType, DeviceLayout, MemoryAlloc, MemoryAllocator,
+    Suballocation,
+};
 pub use self::{alignment::*, device_memory::*};
 use crate::{
     buffer::{sys::RawBuffer, Subbuffer},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     image::{sys::RawImage, Image, ImageAspects},
     macros::vulkan_bitflags,
-    sync::semaphore::Semaphore,
-    DeviceSize,
+    sync::{semaphore::Semaphore, HostAccessError},
+    DeviceSize, Validated, ValidationError, VulkanError,
 };
 use std::{
+    cmp,
+    mem::ManuallyDrop,
     num::NonZeroU64,
     ops::{Bound, Range, RangeBounds, RangeTo},
+    ptr::{self, NonNull},
     sync::Arc,
 };
 
 mod alignment;
 pub mod allocator;
 mod device_memory;
+
+/// Memory that can be bound to resources.
+///
+/// Most commonly you will want to obtain this by first using a [memory allocator] and then
+/// [constructing this object from its allocation]. Alternatively, if you want to bind a whole
+/// block of `DeviceMemory` to a resource, or can't go through an allocator, you can use [the
+/// dedicated constructor].
+///
+/// [memory allocator]: allocator::MemoryAllocator
+/// [the dedicated constructor]: Self::new_dedicated
+#[derive(Debug)]
+pub struct ResourceMemory {
+    device_memory: ManuallyDrop<DeviceOwnedDebugWrapper<Arc<DeviceMemory>>>,
+    offset: DeviceSize,
+    size: DeviceSize,
+    allocation_type: AllocationType,
+    allocation_handle: AllocationHandle,
+    suballocation_handle: Option<AllocationHandle>,
+    allocator: Option<Arc<dyn MemoryAllocator>>,
+}
+
+impl ResourceMemory {
+    /// Creates a new `ResourceMemory` that has a whole device memory block dedicated to it. You
+    /// may use this when you obtain the memory in a way other than through the use of a memory
+    /// allocator, for instance by importing memory.
+    ///
+    /// This is safe because we take ownership of the device memory, so that there can be no
+    /// aliasing resources. On the other hand, the device memory can never be reused: it will be
+    /// freed once the returned object is dropped.
+    pub fn new_dedicated(device_memory: DeviceMemory) -> Self {
+        unsafe { Self::new_dedicated_unchecked(Arc::new(device_memory)) }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_dedicated_unchecked(device_memory: Arc<DeviceMemory>) -> Self {
+        ResourceMemory {
+            offset: 0,
+            size: device_memory.allocation_size(),
+            allocation_type: AllocationType::Unknown,
+            allocation_handle: AllocationHandle(ptr::null_mut()),
+            suballocation_handle: None,
+            allocator: None,
+            device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(device_memory)),
+        }
+    }
+
+    /// Creates a new `ResourceMemory` from an allocation of a memory allocator.
+    ///
+    /// Ownership of `allocation` is semantically transferred to this object, and it is deallocated
+    /// when the returned object is dropped.
+    ///
+    /// # Safety
+    ///
+    /// - `allocation` must refer to a **currently allocated** allocation of `allocator`.
+    /// - `allocation` must never be deallocated.
+    #[inline]
+    pub unsafe fn from_allocation(
+        allocator: Arc<dyn MemoryAllocator>,
+        allocation: MemoryAlloc,
+    ) -> Self {
+        if let Some(suballocation) = allocation.suballocation {
+            ResourceMemory {
+                offset: suballocation.offset,
+                size: suballocation.size,
+                allocation_type: allocation.allocation_type,
+                allocation_handle: allocation.allocation_handle,
+                suballocation_handle: Some(suballocation.handle),
+                allocator: Some(allocator),
+                device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(allocation.device_memory)),
+            }
+        } else {
+            ResourceMemory {
+                offset: 0,
+                size: allocation.device_memory.allocation_size(),
+                allocation_type: allocation.allocation_type,
+                allocation_handle: allocation.allocation_handle,
+                suballocation_handle: None,
+                allocator: Some(allocator),
+                device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(allocation.device_memory)),
+            }
+        }
+    }
+
+    /// Returns the underlying block of [`DeviceMemory`].
+    #[inline]
+    pub fn device_memory(&self) -> &Arc<DeviceMemory> {
+        &self.device_memory
+    }
+
+    /// Returns the offset (in bytes) within the [`DeviceMemory`] block where this `ResourceMemory`
+    /// beings.
+    ///
+    /// If this `ResourceMemory` is not a [suballocation], then this will be `0`.
+    ///
+    /// [suballocation]: Suballocation
+    #[inline]
+    pub fn offset(&self) -> DeviceSize {
+        self.offset
+    }
+
+    /// Returns the size (in bytes) of the `ResourceMemory`.
+    ///
+    /// If this `ResourceMemory` is not a [suballocation], then this will be equal to the
+    /// [allocation size] of the [`DeviceMemory`] block.
+    ///
+    /// [suballocation]: Suballocation
+    #[inline]
+    pub fn size(&self) -> DeviceSize {
+        self.size
+    }
+
+    /// Returns the type of resources that can be bound to this `ResourceMemory`.
+    ///
+    /// If this `ResourceMemory` is not a [suballocation], then this will be
+    /// [`AllocationType::Unknown`].
+    ///
+    /// [suballocation]: Suballocation
+    #[inline]
+    pub fn allocation_type(&self) -> AllocationType {
+        self.allocation_type
+    }
+
+    fn suballocation(&self) -> Option<Suballocation> {
+        self.suballocation_handle.map(|handle| Suballocation {
+            offset: self.offset,
+            size: self.size,
+            handle,
+        })
+    }
+
+    /// Returns the mapped pointer to a range of the `ResourceMemory`, or returns [`None`] if ouf
+    /// of bounds.
+    ///
+    /// `range` is specified in bytes relative to the beginning of `self` and must fall within the
+    /// range of the memory mapping given to [`DeviceMemory::map`].
+    ///
+    /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
+    ///
+    /// [`MappingState::slice`]: crate::memory::MappingState::slice
+    #[inline]
+    pub fn mapped_slice(
+        &self,
+        range: impl RangeBounds<DeviceSize>,
+    ) -> Option<Result<NonNull<[u8]>, HostAccessError>> {
+        let mut range = self::range(range, ..self.size())?;
+        range.start += self.offset();
+        range.end += self.offset();
+
+        let res = if let Some(state) = self.device_memory().mapping_state() {
+            state.slice(range).ok_or(HostAccessError::OutOfMappedRange)
+        } else {
+            Err(HostAccessError::NotHostMapped)
+        };
+
+        Some(res)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn mapped_slice_unchecked(
+        &self,
+        range: impl RangeBounds<DeviceSize>,
+    ) -> Result<NonNull<[u8]>, HostAccessError> {
+        let mut range = self::range_unchecked(range, ..self.size());
+        range.start += self.offset();
+        range.end += self.offset();
+
+        if let Some(state) = self.device_memory().mapping_state() {
+            state.slice(range).ok_or(HostAccessError::OutOfMappedRange)
+        } else {
+            Err(HostAccessError::NotHostMapped)
+        }
+    }
+
+    pub(crate) fn atom_size(&self) -> Option<DeviceAlignment> {
+        let memory = self.device_memory();
+
+        (!memory.is_coherent()).then_some(memory.atom_size())
+    }
+
+    /// Invalidates the host cache for a range of the `ResourceMemory`.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function before the memory
+    /// is read by the host, if the device previously wrote to the memory. It has no effect if the
+    /// memory is host-coherent.
+    ///
+    /// # Safety
+    ///
+    /// - If there are memory writes by the device that have not been propagated into the host
+    ///   cache, then there must not be any references in Rust code to any portion of the specified
+    ///   `memory_range`.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    #[inline]
+    pub unsafe fn invalidate_range(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_memory_range(&memory_range)?;
+
+        self.device_memory()
+            .invalidate_range(self.create_memory_range(memory_range))
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn invalidate_range_unchecked(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), VulkanError> {
+        self.device_memory()
+            .invalidate_range_unchecked(self.create_memory_range(memory_range))
+    }
+
+    /// Flushes the host cache for a range of the `ResourceMemory`.
+    ///
+    /// If the device memory is not [host-coherent], you must call this function after writing to
+    /// the memory, if the device is going to read the memory. It has no effect if the memory is
+    /// host-coherent.
+    ///
+    /// # Safety
+    ///
+    /// - There must be no operations pending or executing in a device queue, that access any
+    ///   portion of the specified `memory_range`.
+    ///
+    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    #[inline]
+    pub unsafe fn flush_range(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_memory_range(&memory_range)?;
+
+        self.device_memory()
+            .flush_range(self.create_memory_range(memory_range))
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn flush_range_unchecked(
+        &self,
+        memory_range: MappedMemoryRange,
+    ) -> Result<(), VulkanError> {
+        self.device_memory()
+            .flush_range_unchecked(self.create_memory_range(memory_range))
+    }
+
+    fn validate_memory_range(
+        &self,
+        memory_range: &MappedMemoryRange,
+    ) -> Result<(), Box<ValidationError>> {
+        let &MappedMemoryRange {
+            offset,
+            size,
+            _ne: _,
+        } = memory_range;
+
+        if !(offset <= self.size() && size <= self.size() - offset) {
+            return Err(Box::new(ValidationError {
+                context: "memory_range".into(),
+                problem: "is not contained within the allocation".into(),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    fn create_memory_range(&self, memory_range: MappedMemoryRange) -> MappedMemoryRange {
+        let MappedMemoryRange {
+            mut offset,
+            mut size,
+            _ne: _,
+        } = memory_range;
+
+        let memory = self.device_memory();
+
+        offset += self.offset();
+
+        // VUID-VkMappedMemoryRange-size-01390
+        if memory_range.offset + size == self.size() {
+            // We can align the end of the range like this without aliasing other allocations,
+            // because the memory allocator must ensure that all allocations are aligned to the
+            // atom size for non-host-coherent host-visible memory.
+            let end = cmp::min(
+                align_up(offset + size, memory.atom_size()),
+                memory.allocation_size(),
+            );
+            size = end - offset;
+        }
+
+        MappedMemoryRange {
+            offset,
+            size,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl Drop for ResourceMemory {
+    #[inline]
+    fn drop(&mut self) {
+        let device_memory = unsafe { ManuallyDrop::take(&mut self.device_memory) }.0;
+
+        if let Some(allocator) = &self.allocator {
+            let allocation = MemoryAlloc {
+                device_memory,
+                suballocation: self.suballocation(),
+                allocation_type: self.allocation_type,
+                allocation_handle: self.allocation_handle,
+            };
+
+            // SAFETY: Enforced by the safety contract of [`ResourceMemory::from_allocation`].
+            unsafe { allocator.deallocate(allocation) };
+        }
+    }
+}
+
+unsafe impl DeviceOwned for ResourceMemory {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.device_memory().device()
+    }
+}
 
 /// Properties of the memory in a physical device.
 #[derive(Clone, Debug)]

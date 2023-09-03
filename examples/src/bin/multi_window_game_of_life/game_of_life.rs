@@ -23,7 +23,7 @@ use vulkano::{
     device::Queue,
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -46,7 +46,7 @@ pub struct GameOfLifeComputePipeline {
     image: Arc<ImageView>,
 }
 
-fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuffer<[u32]> {
+fn rand_grid(memory_allocator: Arc<StandardMemoryAllocator>, size: [u32; 2]) -> Subbuffer<[u32]> {
     Buffer::from_iter(
         memory_allocator,
         BufferCreateInfo {
@@ -66,8 +66,8 @@ fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 2]) -> Subbuff
 impl GameOfLifeComputePipeline {
     pub fn new(app: &App, compute_queue: Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
         let memory_allocator = app.context.memory_allocator();
-        let life_in = rand_grid(memory_allocator, size);
-        let life_out = rand_grid(memory_allocator, size);
+        let life_in = rand_grid(memory_allocator.clone(), size);
+        let life_out = rand_grid(memory_allocator.clone(), size);
 
         let compute_life_pipeline = {
             let device = compute_queue.device();
@@ -94,7 +94,7 @@ impl GameOfLifeComputePipeline {
 
         let image = ImageView::new_default(
             Image::new(
-                memory_allocator,
+                memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,

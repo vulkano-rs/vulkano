@@ -301,7 +301,7 @@ where
     /// 64. [`SubbufferAllocator`] does this automatically.
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`invalidate_range`]: crate::memory::allocator::MemoryAlloc::invalidate_range
+    /// [`invalidate_range`]: crate::memory::ResourceMemory::invalidate_range
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`write`]: Self::write
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
@@ -312,8 +312,8 @@ where
         };
 
         let range = if let Some(atom_size) = allocation.atom_size() {
-            // This works because the suballocators align allocations to the non-coherent atom size
-            // when the memory is host-visible but not host-coherent.
+            // This works because the memory allocator must align allocations to the non-coherent
+            // atom size when the memory is host-visible but not host-coherent.
             let start = align_down(self.offset, atom_size);
             let end = cmp::min(
                 align_up(self.offset + self.size, atom_size),
@@ -387,7 +387,7 @@ where
     /// does this automatically.
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`flush_range`]: crate::memory::allocator::MemoryAlloc::flush_range
+    /// [`flush_range`]: crate::memory::ResourceMemory::flush_range
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`read`]: Self::read
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
@@ -398,8 +398,8 @@ where
         };
 
         let range = if let Some(atom_size) = allocation.atom_size() {
-            // This works because the suballocators align allocations to the non-coherent atom size
-            // when the memory is host-visible but not host-coherent.
+            // This works because the memory allocator must align allocations to the non-coherent
+            // atom size when the memory is host-visible but not host-coherent.
             let start = align_down(self.offset, atom_size);
             let end = cmp::min(
                 align_up(self.offset + self.size, atom_size),
@@ -1142,7 +1142,7 @@ mod tests {
                 AllocationCreateInfo, AllocationType, DeviceLayout, MemoryAllocator,
                 StandardMemoryAllocator,
             },
-            MemoryRequirements,
+            MemoryRequirements, ResourceMemory,
         },
     };
 
@@ -1211,10 +1211,10 @@ mod tests {
     #[test]
     fn split_at() {
         let (device, _) = gfx_dev_and_queue!();
-        let allocator = StandardMemoryAllocator::new_default(device);
+        let allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer = Buffer::new_slice::<u32>(
-            &allocator,
+            allocator,
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
@@ -1248,7 +1248,7 @@ mod tests {
     #[test]
     fn cast_aligned() {
         let (device, _) = gfx_dev_and_queue!();
-        let allocator = StandardMemoryAllocator::new_default(device.clone());
+        let allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
         let raw_buffer = RawBuffer::new(
             device,
@@ -1288,6 +1288,7 @@ mod tests {
                 None,
             )
             .unwrap();
+        let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
         let buffer = Buffer::from_raw(raw_buffer, BufferMemory::Normal(allocation));
         let buffer = Subbuffer::from(Arc::new(buffer));

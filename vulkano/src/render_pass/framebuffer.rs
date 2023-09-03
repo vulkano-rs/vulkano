@@ -665,6 +665,7 @@ mod tests {
             SubpassDescription,
         },
     };
+    use std::sync::Arc;
 
     #[test]
     fn simple_create() {
@@ -687,10 +688,10 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
         let view = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
@@ -768,10 +769,10 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
         let view = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8_UNORM,
@@ -818,10 +819,10 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
         let view = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
@@ -868,10 +869,10 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
         let view = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
@@ -924,10 +925,10 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
         let a = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
@@ -942,7 +943,7 @@ mod tests {
         .unwrap();
         let b = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
@@ -998,10 +999,10 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
         let view = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
@@ -1046,10 +1047,10 @@ mod tests {
         )
         .unwrap();
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
         let a = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,
@@ -1064,7 +1065,7 @@ mod tests {
         .unwrap();
         let b = ImageView::new_default(
             Image::new(
-                &memory_allocator,
+                memory_allocator,
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
                     format: Format::R8G8B8A8_UNORM,

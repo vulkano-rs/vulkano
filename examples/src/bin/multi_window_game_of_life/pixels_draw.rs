@@ -91,7 +91,7 @@ impl PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let memory_allocator = app.context.memory_allocator();
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
@@ -105,7 +105,7 @@ impl PixelsDrawPipeline {
         )
         .unwrap();
         let index_buffer = Buffer::from_iter(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::INDEX_BUFFER,
                 ..Default::default()

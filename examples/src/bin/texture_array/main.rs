@@ -157,7 +157,7 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     #[derive(BufferContents, Vertex)]
     #[repr(C)]
@@ -181,7 +181,7 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -235,7 +235,7 @@ fn main() {
                 .product::<DeviceSize>()
             * array_layers as DeviceSize;
         let upload_buffer = Buffer::new_slice(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
@@ -266,7 +266,7 @@ fn main() {
         }
 
         let image = Image::new(
-            &memory_allocator,
+            memory_allocator,
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
                 format,

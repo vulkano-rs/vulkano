@@ -46,7 +46,7 @@ impl TriangleDrawSystem {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
-        memory_allocator: &StandardMemoryAllocator,
+        memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     ) -> TriangleDrawSystem {
         let vertices = [

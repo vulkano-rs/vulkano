@@ -174,7 +174,7 @@ fn main() {
     let triangle_draw_system = TriangleDrawSystem::new(
         queue.clone(),
         frame_system.deferred_subpass(),
-        &memory_allocator,
+        memory_allocator.clone(),
         command_buffer_allocator,
     );
 

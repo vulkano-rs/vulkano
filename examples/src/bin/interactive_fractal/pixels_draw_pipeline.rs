@@ -22,7 +22,7 @@ use vulkano::{
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
         view::ImageView,
     },
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -89,13 +89,13 @@ impl PixelsDrawPipeline {
     pub fn new(
         gfx_queue: Arc<Queue>,
         subpass: Subpass,
-        memory_allocator: &impl MemoryAllocator,
+        memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()

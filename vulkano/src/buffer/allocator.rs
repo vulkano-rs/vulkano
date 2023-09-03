@@ -134,7 +134,7 @@ const MAX_ARENAS: usize = 32;
 /// }
 /// ```
 #[derive(Debug)]
-pub struct SubbufferAllocator<A = Arc<StandardMemoryAllocator>> {
+pub struct SubbufferAllocator<A = StandardMemoryAllocator> {
     state: UnsafeCell<SubbufferAllocatorState<A>>,
 }
 
@@ -143,7 +143,7 @@ where
     A: MemoryAllocator,
 {
     /// Creates a new `SubbufferAllocator`.
-    pub fn new(memory_allocator: A, create_info: SubbufferAllocatorCreateInfo) -> Self {
+    pub fn new(memory_allocator: Arc<A>, create_info: SubbufferAllocatorCreateInfo) -> Self {
         let SubbufferAllocatorCreateInfo {
             arena_size,
             buffer_usage,
@@ -278,7 +278,7 @@ where
 
 #[derive(Debug)]
 struct SubbufferAllocatorState<A> {
-    memory_allocator: A,
+    memory_allocator: Arc<A>,
     buffer_usage: BufferUsage,
     memory_type_filter: MemoryTypeFilter,
     // The alignment required for the subbuffers.
@@ -358,7 +358,7 @@ where
 
     fn create_arena(&self) -> Result<Arc<Buffer>, MemoryAllocatorError> {
         Buffer::new(
-            &self.memory_allocator,
+            self.memory_allocator.clone(),
             BufferCreateInfo {
                 usage: self.buffer_usage,
                 ..Default::default()
@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn reserve() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer_allocator = SubbufferAllocator::new(
             memory_allocator,
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn capacity_increase() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer_allocator = SubbufferAllocator::new(
             memory_allocator,

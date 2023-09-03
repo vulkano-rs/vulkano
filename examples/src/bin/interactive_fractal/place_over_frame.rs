@@ -18,7 +18,7 @@ use vulkano::{
     device::Queue,
     format::Format,
     image::view::ImageView,
-    memory::allocator::MemoryAllocator,
+    memory::allocator::StandardMemoryAllocator,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
@@ -34,7 +34,7 @@ pub struct RenderPassPlaceOverFrame {
 impl RenderPassPlaceOverFrame {
     pub fn new(
         gfx_queue: Arc<Queue>,
-        memory_allocator: &impl MemoryAllocator,
+        memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         output_format: Format,

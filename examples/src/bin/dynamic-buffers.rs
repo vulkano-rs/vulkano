@@ -13,7 +13,7 @@
 // Each draw or dispatch call can specify an offset into the buffer to read object data from,
 // without having to rebind descriptor sets.
 
-use std::{iter::repeat, mem::size_of};
+use std::{iter::repeat, mem::size_of, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -153,7 +153,7 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
@@ -188,7 +188,7 @@ fn main() {
     };
 
     let input_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::UNIFORM_BUFFER,
             ..Default::default()
@@ -203,7 +203,7 @@ fn main() {
     .unwrap();
 
     let output_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator,
         BufferCreateInfo {
             usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()

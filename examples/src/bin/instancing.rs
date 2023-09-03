@@ -168,7 +168,7 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     // We now create a buffer that will store the shape of our triangle. This triangle is identical
     // to the one in the `triangle.rs` example.
@@ -184,7 +184,7 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()
@@ -222,7 +222,7 @@ fn main() {
         data
     };
     let instance_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator,
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()

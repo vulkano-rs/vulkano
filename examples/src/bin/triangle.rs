@@ -256,7 +256,7 @@ fn main() {
         .unwrap()
     };
 
-    let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
     // We now create a buffer that will store the shape of our triangle. We use `#[repr(C)]` here
     // to force rustc to use a defined layout for our data, as the default representation has *no
@@ -280,7 +280,7 @@ fn main() {
         },
     ];
     let vertex_buffer = Buffer::from_iter(
-        &memory_allocator,
+        memory_allocator,
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
             ..Default::default()

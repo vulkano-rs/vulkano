@@ -25,9 +25,9 @@
 //! use vulkano::memory::allocator::AllocationCreateInfo;
 //!
 //! # let queue: Arc<vulkano::device::Queue> = return;
-//! # let memory_allocator: vulkano::memory::allocator::StandardMemoryAllocator = return;
+//! # let memory_allocator: Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
 //! let buffer = Buffer::new_slice::<u32>(
-//!     &memory_allocator,
+//!     memory_allocator.clone(),
 //!     BufferCreateInfo {
 //!         usage: BufferUsage::STORAGE_TEXEL_BUFFER,
 //!         ..Default::default()
@@ -456,15 +456,16 @@ mod tests {
         format::Format,
         memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     };
+    use std::sync::Arc;
 
     #[test]
     fn create_uniform() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer = Buffer::new_slice::<[u8; 4]>(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::UNIFORM_TEXEL_BUFFER,
                 ..Default::default()
@@ -488,10 +489,10 @@ mod tests {
     fn create_storage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer = Buffer::new_slice::<[u8; 4]>(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
@@ -514,10 +515,10 @@ mod tests {
     fn create_storage_atomic() {
         // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer = Buffer::new_slice::<u32>(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
@@ -540,10 +541,10 @@ mod tests {
     fn wrong_usage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer = Buffer::new_slice::<[u8; 4]>(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_DST, // Dummy value
                 ..Default::default()
@@ -568,10 +569,10 @@ mod tests {
     #[test]
     fn unsupported_format() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_allocator = StandardMemoryAllocator::new_default(device);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
 
         let buffer = Buffer::new_slice::<[f64; 4]>(
-            &memory_allocator,
+            memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::UNIFORM_TEXEL_BUFFER | BufferUsage::STORAGE_TEXEL_BUFFER,
                 ..Default::default()
