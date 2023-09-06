@@ -12,7 +12,7 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
-    memory::{allocator::DeviceLayout, is_aligned, MemoryPropertyFlags},
+    memory::{is_aligned, MemoryPropertyFlags},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
@@ -284,9 +284,6 @@ impl DeviceMemory {
             output.assume_init()
         };
 
-        // Sanity check: this would lead to UB when suballocating.
-        assert!(allocation_size <= DeviceLayout::MAX_SIZE);
-
         let atom_size = device.physical_device().properties().non_coherent_atom_size;
 
         let is_coherent = device.physical_device().memory_properties().memory_types
@@ -332,9 +329,6 @@ impl DeviceMemory {
             flags,
             _ne: _,
         } = allocate_info;
-
-        // Sanity check: this would lead to UB when suballocating.
-        assert!(allocation_size <= DeviceLayout::MAX_SIZE);
 
         let atom_size = device.physical_device().properties().non_coherent_atom_size;
 

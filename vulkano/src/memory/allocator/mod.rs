@@ -219,7 +219,7 @@
 mod layout;
 pub mod suballocator;
 
-use self::array_vec::ArrayVec;
+use self::{array_vec::ArrayVec, suballocator::Region};
 pub use self::{
     layout::DeviceLayout,
     suballocator::{
@@ -1535,7 +1535,10 @@ struct Block<S> {
 
 impl<S: Suballocator> Block<S> {
     fn new(device_memory: Arc<DeviceMemory>) -> Box<Self> {
-        let suballocator = S::new(0, device_memory.allocation_size());
+        let suballocator = S::new(Region {
+            offset: 0,
+            size: device_memory.allocation_size(),
+        });
 
         Box::new(Block {
             device_memory,
