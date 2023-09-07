@@ -239,7 +239,7 @@ use crate::{
     VulkanError,
 };
 use ash::vk::{MAX_MEMORY_HEAPS, MAX_MEMORY_TYPES};
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
@@ -878,7 +878,7 @@ pub struct GenericMemoryAllocator<S> {
 
 #[derive(Debug)]
 struct Pool<S> {
-    blocks: RwLock<Vec<Box<Block<S>>>>,
+    blocks: Mutex<Vec<Box<Block<S>>>>,
     // This is cached here for faster access, so we don't need to hop through 3 pointers.
     memory_type: ash::vk::MemoryType,
     atom_size: DeviceAlignment,
@@ -888,7 +888,7 @@ impl<S> GenericMemoryAllocator<S> {
     // This is a false-positive, we only use this const for static initialization.
     #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY_POOL: Pool<S> = Pool {
-        blocks: RwLock::new(Vec::new()),
+        blocks: Mutex::new(Vec::new()),
         memory_type: ash::vk::MemoryType {
             property_flags: ash::vk::MemoryPropertyFlags::empty(),
             heap_index: 0,
@@ -1068,7 +1068,7 @@ impl<S> GenericMemoryAllocator<S> {
     }
 }
 
-unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for GenericMemoryAllocator<S> {
+unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryAllocator<S> {
     fn find_memory_type_index(
         &self,
         memory_type_bits: u32,
@@ -1145,64 +1145,19 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
 
         layout = layout.align_to(pool.atom_size).unwrap();
 
-        let mut blocks = if S::IS_BLOCKING {
-            // If the allocation algorithm needs to block, then there's no point in trying to avoid
-            // locks here either. In that case the best strategy is to take full advantage of it by
-            // always taking an exclusive lock, which lets us sort the blocks by free size. If you
-            // as a user want to avoid locks, simply don't share the allocator between threads. You
-            // can create as many allocators as you wish, but keep in mind that that will waste a
-            // huge amount of memory unless you configure your block sizes properly!
+        let mut blocks = pool.blocks.lock();
 
-            let mut blocks = pool.blocks.write();
-            blocks.sort_by_key(|block| block.free_size());
-            let (Ok(idx) | Err(idx)) =
-                blocks.binary_search_by_key(&size, |block| block.free_size());
+        // TODO: Incremental sorting
+        blocks.sort_by_key(|block| block.free_size());
+        let (Ok(idx) | Err(idx)) = blocks.binary_search_by_key(&size, |block| block.free_size());
 
-            for block in &blocks[idx..] {
-                if let Ok(allocation) =
-                    block.allocate(layout, allocation_type, self.buffer_image_granularity)
-                {
-                    return Ok(allocation);
-                }
+        for block in &blocks[idx..] {
+            if let Ok(allocation) =
+                block.allocate(layout, allocation_type, self.buffer_image_granularity)
+            {
+                return Ok(allocation);
             }
-
-            blocks
-        } else {
-            // If the allocation algorithm is lock-free, then we should avoid taking an exclusive
-            // lock unless it is absolutely neccessary (meaning, only when allocating a new
-            // `DeviceMemory` block and inserting it into a pool). This has the disadvantage that
-            // traversing the pool is O(n), which is not a problem since the number of blocks is
-            // expected to be small. If there are more than 10 blocks in a pool then that's a
-            // configuration error. Also, sorting the blocks before each allocation would be less
-            // efficient because to get the free size of the `PoolAllocator` and `BumpAllocator`
-            // has the same performance as trying to allocate.
-
-            let blocks = pool.blocks.read();
-
-            // Search in reverse order because we always append new blocks at the end.
-            for block in blocks.iter().rev() {
-                if let Ok(allocation) =
-                    block.allocate(layout, allocation_type, self.buffer_image_granularity)
-                {
-                    return Ok(allocation);
-                }
-            }
-
-            let len = blocks.len();
-            drop(blocks);
-            let blocks = pool.blocks.write();
-
-            if blocks.len() > len {
-                // Another thread beat us to it and inserted a fresh block, try to suballocate it.
-                if let Ok(allocation) =
-                    blocks[len].allocate(layout, allocation_type, self.buffer_image_granularity)
-                {
-                    return Ok(allocation);
-                }
-            }
-
-            blocks
-        };
+        }
 
         // For bump allocators, first do a garbage sweep and try to allocate again.
         if S::NEEDS_CLEANUP {
@@ -1484,33 +1439,30 @@ unsafe impl<S: Suballocator + Send + Sync + 'static> MemoryAllocator for Generic
 
     unsafe fn deallocate(&self, allocation: MemoryAlloc) {
         if let Some(suballocation) = allocation.suballocation {
+            let memory_type_index = allocation.device_memory.memory_type_index();
+            let pool = self.pools[memory_type_index as usize].blocks.lock();
             let block_ptr = allocation.allocation_handle.0 as *const Block<S>;
 
             // TODO: Maybe do a similar check for dedicated blocks.
-            #[cfg(debug_assertions)]
-            {
-                let memory_type_index = allocation.device_memory.memory_type_index();
-                let pool = self.pools[memory_type_index as usize].blocks.read();
-
-                assert!(
-                    pool.iter()
-                        .any(|block| &**block as *const Block<S> == block_ptr),
-                    "attempted to deallocate a memory block that does not belong to this allocator",
-                );
-            }
+            debug_assert!(
+                pool.iter()
+                    .any(|block| &**block as *const Block<S> == block_ptr),
+                "attempted to deallocate a memory block that does not belong to this allocator",
+            );
 
             // SAFETY: The caller must guarantee that `allocation` refers to one allocated by
             // `self`, therefore `block_ptr` must be the same one we gave out on allocation. We
             // know that this pointer must be valid, because all blocks are boxed and pinned in
             // memory and because a block isn't dropped until the allocator itself is dropped, at
             // which point it would be impossible to call this method. We also know that it must be
-            // valid to create a reference to the block, because we only ever access it via shared
-            // references.
+            // valid to create a reference to the block, because we locked the pool it belongs to.
             let block = &*block_ptr;
 
             // SAFETY: The caller must guarantee that `allocation` refers to a currently allocated
             // allocation of `self`.
             block.deallocate(suballocation);
+
+            drop(pool);
         }
     }
 }
