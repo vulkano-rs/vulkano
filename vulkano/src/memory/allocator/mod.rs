@@ -257,7 +257,28 @@ const G: DeviceSize = 1024 * M;
 ///
 /// # Safety
 ///
-/// TODO
+/// - `allocate`, `allocate_from_type` and `allocate_dedicated` must return a memory block that is
+///   in bounds of its device memory.
+/// - `allocate` and `allocate_from_type` must return a memory block that is aligned to the
+///   requested alignment, meaning that the offset must be a multiple of the requested alignment.
+/// - `allocate` and `allocate_from_type` must return a memory block that doesn't alias any other
+///   currently allocated memory blocks:
+///   - Two currently allocated memory blocks must not share any memory locations, meaning that the
+///     intersection of the byte ranges of the two memory blocks must be empty.
+///   - Two neighboring currently allocated memory blocks must not share any [page] whose size is
+///     given by the [buffer-image granularity], unless either both were allocated with
+///     [`AllocationType::Linear`] or both were allocated with [`AllocationType::NonLinear`].
+///   - The size does **not** have to be padded to the alignment. That is, as long the offset is
+///     aligned and the memory blocks don't share any memory locations, a memory block is not
+///     considered to alias another even if the padded size shares memory locations with another
+///     memory block.
+/// - A memory block must stay allocated until either `deallocate` is called on it or the allocator
+///   is dropped. If the allocator is cloned, it must produce the same allocator, and memory blocks
+///   must stay allocated until either `deallocate` is called on the memory block using any of the
+///   clones or all of the clones have been dropped.
+///
+/// [page]: self#pages
+/// [buffer-image granularity]: self#buffer-image-granularity
 pub unsafe trait MemoryAllocator: DeviceOwned + Send + Sync + 'static {
     /// Finds the most suitable memory type index in `memory_type_bits` using the given `filter`.
     /// Returns [`None`] if the requirements are too strict and no memory type is able to satisfy
