@@ -312,16 +312,12 @@ unsafe impl Suballocator for FreeListAllocator {
     ///
     /// [region]: Suballocator#regions
     fn new(region: Region) -> Self {
-        // NOTE(Marc): This number was pulled straight out of my a-
-        const AVERAGE_ALLOCATION_SIZE: DeviceSize = 64 * 1024;
-
         assert!(region.offset.saturating_add(region.size) <= DeviceLayout::MAX_SIZE);
 
         let free_size = Cell::new(region.size);
 
-        let capacity = (region.size / AVERAGE_ALLOCATION_SIZE) as usize;
-        let mut nodes = host::PoolAllocator::new(capacity + 64);
-        let mut free_list = Vec::with_capacity(capacity / 16 + 16);
+        let mut nodes = host::PoolAllocator::new(256);
+        let mut free_list = Vec::with_capacity(32);
         let root_id = nodes.allocate(SuballocationListNode {
             prev: None,
             next: None,
@@ -784,7 +780,7 @@ impl BuddyAllocator {
     const MIN_NODE_SIZE: DeviceSize = 16;
 
     /// Arbitrary maximum number of orders, used to avoid a 2D `Vec`. Together with a minimum node
-    /// size of 16, this is enough for a 64GiB region.
+    /// size of 16, this is enough for a 32GiB region.
     const MAX_ORDERS: usize = 32;
 }
 
@@ -797,7 +793,7 @@ unsafe impl Suballocator for BuddyAllocator {
     ///
     /// - Panics if the end of the region is not less than or equal to [`DeviceLayout::MAX_SIZE`].
     /// - Panics if `region.size` is not a power of two.
-    /// - Panics if `region.size` is not in the range \[16B,&nbsp;64GiB\].
+    /// - Panics if `region.size` is not in the range \[16B,&nbsp;32GiB\].
     ///
     /// [region]: Suballocator#regions
     fn new(region: Region) -> Self {
@@ -1286,6 +1282,62 @@ mod tests {
     const DUMMY_LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 1));
 
     #[test]
+    fn free_list_allocator_region() {
+        let _ = FreeListAllocator::new(Region {
+            offset: DeviceLayout::MAX_SIZE,
+            size: 0,
+        });
+        assert_should_panic!({
+            FreeListAllocator::new(Region {
+                offset: DeviceLayout::MAX_SIZE + 1,
+                size: 0,
+            })
+        });
+        assert_should_panic!({
+            FreeListAllocator::new(Region {
+                offset: DeviceLayout::MAX_SIZE,
+                size: 1,
+            })
+        });
+
+        let _ = FreeListAllocator::new(Region {
+            offset: 0,
+            size: DeviceLayout::MAX_SIZE,
+        });
+        assert_should_panic!({
+            FreeListAllocator::new(Region {
+                offset: 0,
+                size: DeviceLayout::MAX_SIZE + 1,
+            })
+        });
+        assert_should_panic!({
+            FreeListAllocator::new(Region {
+                offset: 1,
+                size: DeviceLayout::MAX_SIZE,
+            })
+        });
+
+        assert_should_panic!({
+            FreeListAllocator::new(Region {
+                offset: DeviceSize::MAX,
+                size: 1,
+            })
+        });
+        assert_should_panic!({
+            FreeListAllocator::new(Region {
+                offset: 1,
+                size: DeviceSize::MAX,
+            })
+        });
+        assert_should_panic!({
+            FreeListAllocator::new(Region {
+                offset: DeviceSize::MAX,
+                size: DeviceSize::MAX,
+            })
+        });
+    }
+
+    #[test]
     fn free_list_allocator_capacity() {
         const THREADS: DeviceSize = 12;
         const ALLOCATIONS_PER_THREAD: DeviceSize = 100;
@@ -1432,6 +1484,74 @@ mod tests {
         for alloc in nonlinear_allocs.drain(..) {
             unsafe { allocator.deallocate(alloc) };
         }
+    }
+
+    #[test]
+    fn buddy_allocator_region() {
+        let _ = BuddyAllocator::new(Region {
+            offset: DeviceLayout::MAX_SIZE - (1 << 4),
+            size: 1 << 4,
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: DeviceLayout::MAX_SIZE - (1 << 4) + 1,
+                size: 1 << 4,
+            })
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: 0,
+                size: (1 << 4) + 1,
+            })
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: 0,
+                size: 1 << 3,
+            })
+        });
+
+        let _ = BuddyAllocator::new(Region {
+            offset: 0,
+            size: 1 << 35,
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: DeviceLayout::MAX_SIZE - (1 << 35) + 1,
+                size: 1 << 35,
+            })
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: 0,
+                size: (1 << 35) - 1,
+            })
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: 0,
+                size: 1 << 36,
+            })
+        });
+
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: DeviceSize::MAX,
+                size: 1 << 4,
+            })
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: 1 << 63,
+                size: 1 << 63,
+            })
+        });
+        assert_should_panic!({
+            BuddyAllocator::new(Region {
+                offset: DeviceSize::MAX,
+                size: 1 << 63,
+            })
+        });
     }
 
     #[test]
@@ -1613,6 +1733,62 @@ mod tests {
             unsafe { allocator.deallocate(alloc1) };
             unsafe { allocator.deallocate(alloc2) };
         }
+    }
+
+    #[test]
+    fn bump_allocator_region() {
+        let _ = BumpAllocator::new(Region {
+            offset: DeviceLayout::MAX_SIZE,
+            size: 0,
+        });
+        assert_should_panic!({
+            BumpAllocator::new(Region {
+                offset: DeviceLayout::MAX_SIZE + 1,
+                size: 0,
+            })
+        });
+        assert_should_panic!({
+            BumpAllocator::new(Region {
+                offset: DeviceLayout::MAX_SIZE,
+                size: 1,
+            })
+        });
+
+        let _ = BumpAllocator::new(Region {
+            offset: 0,
+            size: DeviceLayout::MAX_SIZE,
+        });
+        assert_should_panic!({
+            BumpAllocator::new(Region {
+                offset: 0,
+                size: DeviceLayout::MAX_SIZE + 1,
+            })
+        });
+        assert_should_panic!({
+            BumpAllocator::new(Region {
+                offset: 1,
+                size: DeviceLayout::MAX_SIZE,
+            })
+        });
+
+        assert_should_panic!({
+            BumpAllocator::new(Region {
+                offset: DeviceSize::MAX,
+                size: 1,
+            })
+        });
+        assert_should_panic!({
+            BumpAllocator::new(Region {
+                offset: 1,
+                size: DeviceSize::MAX,
+            })
+        });
+        assert_should_panic!({
+            BumpAllocator::new(Region {
+                offset: DeviceSize::MAX,
+                size: DeviceSize::MAX,
+            })
+        });
     }
 
     #[test]
