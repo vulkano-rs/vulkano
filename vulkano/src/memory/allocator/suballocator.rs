@@ -159,10 +159,10 @@ mod region {
     /// buffer-image granularity conflict between the parent suballocator's allocations and the
     /// child suballocator's allocations.
     ///
-    /// [region]: Suballocator#region
-    /// [suballocator]: Suballocator
-    /// [suballocations]: Suballocation
-    /// [buffer-image granularity]: super#buffer-image-granularity
+    /// [region]: super::Suballocator#regions
+    /// [suballocator]: super::Suballocator
+    /// [suballocations]: super::Suballocation
+    /// [buffer-image granularity]: super::super#buffer-image-granularity
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct Region {
         offset: DeviceSize,
