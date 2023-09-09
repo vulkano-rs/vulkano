@@ -850,12 +850,6 @@ impl StandardMemoryAllocator {
 /// another block. No `DeviceMemory` is allocated when the allocator is created, the blocks are
 /// only allocated once they are needed.
 ///
-/// # Locking behavior
-///
-/// The allocator never needs to lock while suballocating unless `S` needs to lock. The only time
-/// when a pool must be locked is when a new `DeviceMemory` block is allocated for the pool. This
-/// means that the allocator is suited to both locking and lock-free (sub)allocation algorithms.
-///
 /// [memory allocator]: MemoryAllocator
 /// [suballocate]: Suballocator
 /// [the `MemoryAllocator` implementation]: Self#impl-MemoryAllocator-for-GenericMemoryAllocator<S>
