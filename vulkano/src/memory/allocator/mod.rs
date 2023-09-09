@@ -1535,10 +1535,10 @@ struct Block<S> {
 
 impl<S: Suballocator> Block<S> {
     fn new(device_memory: Arc<DeviceMemory>) -> Box<Self> {
-        let suballocator = S::new(Region {
-            offset: 0,
-            size: device_memory.allocation_size(),
-        });
+        let suballocator = S::new(
+            Region::new(0, device_memory.allocation_size())
+                .expect("we somehow managed to allocate more than `DeviceLayout::MAX_SIZE` bytes"),
+        );
 
         Box::new(Block {
             device_memory,
