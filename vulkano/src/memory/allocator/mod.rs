@@ -268,6 +268,8 @@ const G: DeviceSize = 1024 * M;
 ///   - Two neighboring currently allocated memory blocks must not share any [page] whose size is
 ///     given by the [buffer-image granularity], unless either both were allocated with
 ///     [`AllocationType::Linear`] or both were allocated with [`AllocationType::NonLinear`].
+///   - For all [host-visible] memory types that are not [host-coherent], all memory blocks must be
+///     aligned to the [non-coherent atom size].
 ///   - The size does **not** have to be padded to the alignment. That is, as long the offset is
 ///     aligned and the memory blocks don't share any memory locations, a memory block is not
 ///     considered to alias another even if the padded size shares memory locations with another
@@ -279,6 +281,9 @@ const G: DeviceSize = 1024 * M;
 ///
 /// [page]: self#pages
 /// [buffer-image granularity]: self#buffer-image-granularity
+/// [host-visible]: MemoryPropertyFlags::HOST_VISIBLE
+/// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+/// [non-coherent atom size]: crate::device::Properties::non_coherent_atom_size
 pub unsafe trait MemoryAllocator: DeviceOwned + Send + Sync + 'static {
     /// Finds the most suitable memory type index in `memory_type_bits` using the given `filter`.
     /// Returns [`None`] if the requirements are too strict and no memory type is able to satisfy
