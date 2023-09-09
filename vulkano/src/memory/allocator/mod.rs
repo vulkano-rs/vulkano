@@ -1115,13 +1115,10 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     /// - Returns [`BlockSizeExceeded`] if `create_info.layout.size()` is greater than the block
     ///   size corresponding to the heap that the memory type corresponding to `memory_type_index`
     ///   resides in.
-    /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
-    ///   `create_info.layout.size()` is greater than `BLOCK_SIZE`.
     ///
     /// [`AllocateDeviceMemory`]: MemoryAllocatorError::AllocateDeviceMemory
     /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
-    /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
         &self,
         memory_type_index: u32,
@@ -1259,9 +1256,6 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is
     ///   greater than the block size for all heaps of suitable memory types.
-    /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
-    ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
-    ///   created.
     ///
     /// [`RawBuffer::memory_requirements`]: crate::buffer::sys::RawBuffer::memory_requirements
     /// [`RawImage::memory_requirements`]: crate::image::sys::RawImage::memory_requirements
@@ -1274,7 +1268,6 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
     /// [`DedicatedAllocationRequired`]: MemoryAllocatorError::DedicatedAllocationRequired
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
-    /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate(
         &self,
         requirements: MemoryRequirements,
