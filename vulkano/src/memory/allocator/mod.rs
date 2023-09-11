@@ -692,14 +692,6 @@ pub struct MemoryAlloc {
     /// allocation.
     pub suballocation: Option<Suballocation>,
 
-    /// The type of resources that can be bound to this memory block. This will be exactly equal to
-    /// the requested allocation type.
-    ///
-    /// For dedicated allocations it doesn't matter what this is, as there aren't going to be any
-    /// neighboring suballocations. Therefore the allocator implementation is advised to always set
-    /// this to [`AllocationType::Unknown`] in that case for maximum flexibility.
-    pub allocation_type: AllocationType,
-
     /// An opaque handle identifying the allocation inside the allocator.
     pub allocation_handle: AllocationHandle,
 }
@@ -1419,7 +1411,6 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         Ok(MemoryAlloc {
             device_memory,
             suballocation: None,
-            allocation_type: AllocationType::Unknown,
             allocation_handle: AllocationHandle(ptr::null_mut()),
         })
     }
@@ -1543,7 +1534,6 @@ impl<S: Suballocator> Block<S> {
         Ok(MemoryAlloc {
             device_memory: self.device_memory.clone(),
             suballocation: Some(suballocation),
-            allocation_type,
             allocation_handle: AllocationHandle(self as *const Block<S> as _),
         })
     }

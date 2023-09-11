@@ -188,6 +188,10 @@ pub struct Suballocation {
     /// The size of the allocation. This will be exactly equal to the requested size.
     pub size: DeviceSize,
 
+    /// The type of resources that can be bound to this memory block. This will be exactly equal to
+    /// the requested allocation type.
+    pub allocation_type: AllocationType,
+
     /// An opaque handle identifying the allocation within the allocator.
     pub handle: AllocationHandle,
 }
@@ -385,6 +389,7 @@ unsafe impl Suballocator for FreeListAllocator {
                             return Ok(Suballocation {
                                 offset,
                                 size,
+                                allocation_type,
                                 handle: AllocationHandle(id.get() as _),
                             });
                         }
@@ -866,6 +871,7 @@ unsafe impl Suballocator for BuddyAllocator {
                     return Ok(Suballocation {
                         offset,
                         size: layout.size(),
+                        allocation_type,
                         handle: AllocationHandle(min_order as _),
                     });
                 }
@@ -1071,6 +1077,7 @@ unsafe impl Suballocator for BumpAllocator {
         Ok(Suballocation {
             offset,
             size,
+            allocation_type,
             handle: AllocationHandle(ptr::null_mut()),
         })
     }
