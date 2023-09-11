@@ -114,6 +114,7 @@ Changes to memory allocation:
 - `MemoryAlloc::{invalidate, flush}_range` now take a `MappedMemoryRange` as argument.
 - Merged `MemoryAllocator::allocate_from_type_unchecked` into `MemoryAllocator::allocate_from_type` and `MemoryAllocator::allocate_unchecked` into `MemoryAllocator::allocate`.
 - Replaced `MemoryAllocator::allocate_dedicated_unchecked` with `MemoryAllocator::allocate_dedicated`.
+- `FreeListAllocator`, `BuddyAllocator` and `BumpAllocator` are no longer `Sync`.
 
 Changes to synchronization primitives:
 - `Event::signaled` is renamed to `is_signaled`, to match the method on `Fence`.
