@@ -259,8 +259,6 @@ const G: DeviceSize = 1024 * M;
 ///
 /// - `allocate`, `allocate_from_type` and `allocate_dedicated` must return a memory block that is
 ///   in bounds of its device memory.
-/// - `allocate` and `allocate_from_type` must return a memory block that is aligned to the
-///   requested alignment, meaning that the offset must be a multiple of the requested alignment.
 /// - `allocate` and `allocate_from_type` must return a memory block that doesn't alias any other
 ///   currently allocated memory blocks:
 ///   - Two currently allocated memory blocks must not share any memory locations, meaning that the

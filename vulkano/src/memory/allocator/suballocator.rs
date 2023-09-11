@@ -68,8 +68,6 @@ use std::{
 /// this trait, but if you **must**:
 ///
 /// - `allocate` must return a memory block that is in bounds of the region.
-/// - `allocate` must return a memory block that is aligned to the requested alignment, meaning
-///   that the offset must be a multiple of the requested alignment.
 /// - `allocate` must return a memory block that doesn't alias any other currently allocated
 ///   memory blocks:
 ///   - Two currently allocated memory blocks must not share any memory locations, meaning that the
