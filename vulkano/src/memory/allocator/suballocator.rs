@@ -22,7 +22,7 @@ use std::{
     cell::{Cell, UnsafeCell},
     cmp,
     error::Error,
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     ptr,
 };
 
@@ -132,6 +132,12 @@ pub unsafe trait Suballocator {
     ///
     /// There must be no current allocations as they might get freed.
     fn cleanup(&mut self);
+}
+
+impl Debug for dyn Suballocator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Suballocator").finish_non_exhaustive()
+    }
 }
 
 /// Tells the [suballocator] what type of resource will be bound to the allocation, so that it can
