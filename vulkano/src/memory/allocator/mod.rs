@@ -257,7 +257,31 @@ const G: DeviceSize = 1024 * M;
 ///
 /// # Safety
 ///
-/// TODO
+/// - `allocate`, `allocate_from_type` and `allocate_dedicated` must return a memory block that is
+///   in bounds of its device memory.
+/// - `allocate` and `allocate_from_type` must return a memory block that doesn't alias any other
+///   currently allocated memory blocks:
+///   - Two currently allocated memory blocks must not share any memory locations, meaning that the
+///     intersection of the byte ranges of the two memory blocks must be empty.
+///   - Two neighboring currently allocated memory blocks must not share any [page] whose size is
+///     given by the [buffer-image granularity], unless either both were allocated with
+///     [`AllocationType::Linear`] or both were allocated with [`AllocationType::NonLinear`].
+///   - For all [host-visible] memory types that are not [host-coherent], all memory blocks must be
+///     aligned to the [non-coherent atom size].
+///   - The size does **not** have to be padded to the alignment. That is, as long the offset is
+///     aligned and the memory blocks don't share any memory locations, a memory block is not
+///     considered to alias another even if the padded size shares memory locations with another
+///     memory block.
+/// - A memory block must stay allocated until either `deallocate` is called on it or the allocator
+///   is dropped. If the allocator is cloned, it must produce the same allocator, and memory blocks
+///   must stay allocated until either `deallocate` is called on the memory block using any of the
+///   clones or all of the clones have been dropped.
+///
+/// [page]: self#pages
+/// [buffer-image granularity]: self#buffer-image-granularity
+/// [host-visible]: MemoryPropertyFlags::HOST_VISIBLE
+/// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
+/// [non-coherent atom size]: crate::device::Properties::non_coherent_atom_size
 pub unsafe trait MemoryAllocator: DeviceOwned + Send + Sync + 'static {
     /// Finds the most suitable memory type index in `memory_type_bits` using the given `filter`.
     /// Returns [`None`] if the requirements are too strict and no memory type is able to satisfy
@@ -692,14 +716,6 @@ pub struct MemoryAlloc {
     /// allocation.
     pub suballocation: Option<Suballocation>,
 
-    /// The type of resources that can be bound to this memory block. This will be exactly equal to
-    /// the requested allocation type.
-    ///
-    /// For dedicated allocations it doesn't matter what this is, as there aren't going to be any
-    /// neighboring suballocations. Therefore the allocator implementation is advised to always set
-    /// this to [`AllocationType::Unknown`] in that case for maximum flexibility.
-    pub allocation_type: AllocationType,
-
     /// An opaque handle identifying the allocation inside the allocator.
     pub allocation_handle: AllocationHandle,
 }
@@ -849,12 +865,6 @@ impl StandardMemoryAllocator {
 /// In all other cases, `DeviceMemory` is only allocated if a pool runs out of memory and needs
 /// another block. No `DeviceMemory` is allocated when the allocator is created, the blocks are
 /// only allocated once they are needed.
-///
-/// # Locking behavior
-///
-/// The allocator never needs to lock while suballocating unless `S` needs to lock. The only time
-/// when a pool must be locked is when a new `DeviceMemory` block is allocated for the pool. This
-/// means that the allocator is suited to both locking and lock-free (sub)allocation algorithms.
 ///
 /// [memory allocator]: MemoryAllocator
 /// [suballocate]: Suballocator
@@ -1121,13 +1131,10 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     /// - Returns [`BlockSizeExceeded`] if `create_info.layout.size()` is greater than the block
     ///   size corresponding to the heap that the memory type corresponding to `memory_type_index`
     ///   resides in.
-    /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
-    ///   `create_info.layout.size()` is greater than `BLOCK_SIZE`.
     ///
     /// [`AllocateDeviceMemory`]: MemoryAllocatorError::AllocateDeviceMemory
     /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
-    /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate_from_type(
         &self,
         memory_type_index: u32,
@@ -1251,9 +1258,6 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     /// - Returns [`BlockSizeExceeded`] if `create_info.allocate_preference` is
     ///   [`MemoryAllocatePreference::NeverAllocate`] and `create_info.requirements.size` is
     ///   greater than the block size for all heaps of suitable memory types.
-    /// - Returns [`SuballocatorBlockSizeExceeded`] if `S` is `PoolAllocator<BLOCK_SIZE>` and
-    ///   `create_info.size` is greater than `BLOCK_SIZE` and a dedicated allocation was not
-    ///   created.
     ///
     /// [`RawBuffer::memory_requirements`]: crate::buffer::sys::RawBuffer::memory_requirements
     /// [`RawImage::memory_requirements`]: crate::image::sys::RawImage::memory_requirements
@@ -1266,7 +1270,6 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     /// [`OutOfPoolMemory`]: MemoryAllocatorError::OutOfPoolMemory
     /// [`DedicatedAllocationRequired`]: MemoryAllocatorError::DedicatedAllocationRequired
     /// [`BlockSizeExceeded`]: MemoryAllocatorError::BlockSizeExceeded
-    /// [`SuballocatorBlockSizeExceeded`]: MemoryAllocatorError::SuballocatorBlockSizeExceeded
     fn allocate(
         &self,
         requirements: MemoryRequirements,
@@ -1418,7 +1421,6 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         Ok(MemoryAlloc {
             device_memory,
             suballocation: None,
-            allocation_type: AllocationType::Unknown,
             allocation_handle: AllocationHandle(ptr::null_mut()),
         })
     }
@@ -1546,7 +1548,6 @@ impl<S: Suballocator> Block<S> {
         Ok(MemoryAlloc {
             device_memory: self.device_memory.clone(),
             suballocation: Some(suballocation),
-            allocation_type,
             allocation_handle: AllocationHandle(self as *mut Block<S> as _),
         })
     }

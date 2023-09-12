@@ -180,7 +180,7 @@ impl ResourceMemory {
             ResourceMemory {
                 offset: suballocation.offset,
                 size: suballocation.size,
-                allocation_type: allocation.allocation_type,
+                allocation_type: suballocation.allocation_type,
                 allocation_handle: allocation.allocation_handle,
                 suballocation_handle: Some(suballocation.handle),
                 allocator: Some(allocator),
@@ -190,7 +190,7 @@ impl ResourceMemory {
             ResourceMemory {
                 offset: 0,
                 size: allocation.device_memory.allocation_size(),
-                allocation_type: allocation.allocation_type,
+                allocation_type: AllocationType::Unknown,
                 allocation_handle: allocation.allocation_handle,
                 suballocation_handle: None,
                 allocator: Some(allocator),
@@ -242,6 +242,7 @@ impl ResourceMemory {
         self.suballocation_handle.map(|handle| Suballocation {
             offset: self.offset,
             size: self.size,
+            allocation_type: self.allocation_type,
             handle,
         })
     }
@@ -426,7 +427,6 @@ impl Drop for ResourceMemory {
             let allocation = MemoryAlloc {
                 device_memory,
                 suballocation: self.suballocation(),
-                allocation_type: self.allocation_type,
                 allocation_handle: self.allocation_handle,
             };
 

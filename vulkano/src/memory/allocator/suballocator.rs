@@ -50,7 +50,7 @@ use std::{
 /// trade-offs and are best suited to specific tasks. To account for all possible use-cases,
 /// Vulkano offers the ability to create *memory hierarchies*. We refer to the `DeviceMemory` as
 /// the root of any such hierarchy, even though technically the driver has levels that are further
-/// up, because those `DeviceMemory` blocks need to be allocated from physical memory [pages]
+/// up, because those `DeviceMemory` blocks need to be allocated from physical memory pages
 /// themselves, but since those levels are not accessible to us we don't need to consider them. You
 /// can create any number of levels/branches from there, bounded only by the amount of available
 /// memory within a `DeviceMemory` block. You can suballocate the root into regions, which are then
@@ -60,12 +60,31 @@ use std::{
 ///
 /// TODO
 ///
-/// # Implementing the trait
+/// # Safety
 ///
-/// TODO
+/// First consider using the provided implementations as there should be no reason to implement
+/// this trait, but if you **must**:
+///
+/// - `allocate` must return a memory block that is in bounds of the region.
+/// - `allocate` must return a memory block that doesn't alias any other currently allocated
+///   memory blocks:
+///   - Two currently allocated memory blocks must not share any memory locations, meaning that the
+///     intersection of the byte ranges of the two memory blocks must be empty.
+///   - Two neighboring currently allocated memory blocks must not share any [page] whose size is
+///     given by the [buffer-image granularity], unless either both were allocated with
+///     [`AllocationType::Linear`] or both were allocated with [`AllocationType::NonLinear`].
+///   - The size does **not** have to be padded to the alignment. That is, as long the offset is
+///     aligned and the memory blocks don't share any memory locations, a memory block is not
+///     considered to alias another even if the padded size shares memory locations with another
+///     memory block.
+/// - A memory block must stay allocated until either `deallocate` is called on it or the allocator
+///   is dropped. If the allocator is cloned, it must produce the same allocator, and memory blocks
+///   must stay allocated until either `deallocate` is called on the memory block using any of the
+///   clones or all of the clones have been dropped.
 ///
 /// [`DeviceMemory`]: crate::memory::DeviceMemory
-/// [pages]: super#pages
+/// [page]: super#pages
+/// [buffer-image granularity]: super#buffer-image-granularity
 pub unsafe trait Suballocator {
     /// Creates a new suballocator for the given [region].
     ///
@@ -186,6 +205,10 @@ pub struct Suballocation {
 
     /// The size of the allocation. This will be exactly equal to the requested size.
     pub size: DeviceSize,
+
+    /// The type of resources that can be bound to this memory block. This will be exactly equal to
+    /// the requested allocation type.
+    pub allocation_type: AllocationType,
 
     /// An opaque handle identifying the allocation within the allocator.
     pub handle: AllocationHandle,
@@ -382,6 +405,7 @@ unsafe impl Suballocator for FreeListAllocator {
                             return Ok(Suballocation {
                                 offset,
                                 size,
+                                allocation_type,
                                 handle: AllocationHandle(id.get() as _),
                             });
                         }
@@ -861,6 +885,7 @@ unsafe impl Suballocator for BuddyAllocator {
                     return Ok(Suballocation {
                         offset,
                         size: layout.size(),
+                        allocation_type,
                         handle: AllocationHandle(min_order as _),
                     });
                 }
@@ -1064,6 +1089,7 @@ unsafe impl Suballocator for BumpAllocator {
         Ok(Suballocation {
             offset,
             size,
+            allocation_type,
             handle: AllocationHandle(ptr::null_mut()),
         })
     }
