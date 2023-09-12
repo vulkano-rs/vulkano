@@ -305,7 +305,7 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if `create_info.size` is not zero.
     pub fn new_sized<T>(
         allocator: Arc<dyn MemoryAllocator>,
         create_info: BufferCreateInfo,
@@ -330,7 +330,7 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if `create_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_slice<T>(
         allocator: Arc<dyn MemoryAllocator>,
@@ -349,7 +349,7 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if `create_info.size` is not zero.
     /// - Panics if `len` is zero.
     pub fn new_unsized<T>(
         allocator: Arc<dyn MemoryAllocator>,
@@ -376,7 +376,7 @@ impl Buffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `buffer_info.size` is not zero.
+    /// - Panics if `create_info.size` is not zero.
     /// - Panics if `layout.alignment()` is greater than 64.
     pub fn new(
         allocator: Arc<dyn MemoryAllocator>,
@@ -388,11 +388,7 @@ impl Buffer {
         // TODO: Enable once sparse binding materializes
         // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
 
-        assert!(
-            create_info.size == 0,
-            "`Buffer::new*` functions set the `buffer_info.size` field themselves, you should not \
-            set it yourself",
-        );
+        assert_eq!(create_info.size, 0, "`Buffer::new*` functions set the `create_info.size` field themselves, you should not set it yourself");
 
         create_info.size = layout.size();
 
