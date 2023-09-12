@@ -751,7 +751,7 @@ impl SpecializedShaderModule {
         base_module: Arc<ShaderModule>,
         specialization_info: HashMap<u32, SpecializationConstant>,
     ) -> Arc<Self> {
-        let spirv = base_module.spirv.has_specialization().then(|| {
+        let spirv = (!base_module.specialization_constants.is_empty()).then(|| {
             let mut spirv = base_module.spirv.clone();
             spirv.apply_specialization(&specialization_info);
             spirv

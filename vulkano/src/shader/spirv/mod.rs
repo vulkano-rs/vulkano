@@ -440,21 +440,6 @@ impl Spirv {
         self.functions.values()
     }
 
-    /// Returns whether the module has specialization constant instructions.
-    #[inline]
-    pub fn has_specialization(&self) -> bool {
-        self.instructions_global.iter().any(|instruction| {
-            matches!(
-                instruction.as_ref(),
-                Instruction::SpecConstantFalse { .. }
-                    | Instruction::SpecConstantTrue { .. }
-                    | Instruction::SpecConstant { .. }
-                    | Instruction::SpecConstantComposite { .. }
-                    | Instruction::SpecConstantOp { .. }
-            )
-        })
-    }
-
     pub fn apply_specialization(
         &mut self,
         specialization_info: &HashMap<u32, SpecializationConstant>,
