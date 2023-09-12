@@ -243,6 +243,7 @@ use parking_lot::Mutex;
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    mem,
     ops::BitOr,
     ptr,
     sync::Arc,
@@ -727,6 +728,24 @@ pub struct AllocationHandle(pub *mut ());
 
 unsafe impl Send for AllocationHandle {}
 unsafe impl Sync for AllocationHandle {}
+
+impl AllocationHandle {
+    /// Stores a index inside an `AllocationHandle`.
+    #[allow(clippy::useless_transmute)]
+    #[inline]
+    pub const fn from_index(index: usize) -> Self {
+        // SAFETY: `usize` and `*mut ()` have the same layout.
+        AllocationHandle(unsafe { mem::transmute::<usize, *mut ()>(index) })
+    }
+
+    /// Retrieves a previously-stored index from the `AllocationHandle`.
+    #[allow(clippy::transmutes_expressible_as_ptr_casts)]
+    #[inline]
+    pub const fn into_index(self) -> usize {
+        // SAFETY: `usize` and `*mut ()` have the same layout.
+        unsafe { mem::transmute::<*mut (), usize>(self.0) }
+    }
+}
 
 /// Error that can be returned when creating an [allocation] using a [memory allocator].
 ///
