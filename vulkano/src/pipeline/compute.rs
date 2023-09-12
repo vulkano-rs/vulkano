@@ -108,7 +108,6 @@ impl ComputePipeline {
             let &PipelineShaderStageCreateInfo {
                 flags,
                 ref entry_point,
-                ref specialization_info,
                 ref required_subgroup_size,
                 _ne: _,
             } = stage;
@@ -117,7 +116,9 @@ impl ComputePipeline {
             name_vk = CString::new(entry_point_info.name.as_str()).unwrap();
 
             specialization_data_vk = Vec::new();
-            specialization_map_entries_vk = specialization_info
+            specialization_map_entries_vk = entry_point
+                .module()
+                .specialization_info()
                 .iter()
                 .map(|(&constant_id, value)| {
                     let data = value.as_bytes();
@@ -403,7 +404,6 @@ impl ComputePipelineCreateInfo {
         let &PipelineShaderStageCreateInfo {
             flags: _,
             ref entry_point,
-            specialization_info: _,
             required_subgroup_size: _vk,
             _ne: _,
         } = &stage;
@@ -509,14 +509,15 @@ mod tests {
             ];
             let module =
                 ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
-            module.entry_point("main").unwrap()
+            module
+                .with_specialization([(83, 0x12345678i32.into())].into_iter().collect())
+                .unwrap()
+                .entry_point("main")
+                .unwrap()
         };
 
         let pipeline = {
-            let stage = PipelineShaderStageCreateInfo {
-                specialization_info: [(83, 0x12345678i32.into())].into_iter().collect(),
-                ..PipelineShaderStageCreateInfo::new(cs)
-            };
+            let stage = PipelineShaderStageCreateInfo::new(cs);
             let layout = PipelineLayout::new(
                 device.clone(),
                 PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])

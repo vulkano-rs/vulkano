@@ -8,7 +8,6 @@
 // according to those terms.
 
 use crate::{
-    entry_point,
     structs::{self, TypeRegistry},
     MacroInput,
 };
@@ -23,10 +22,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use syn::{Error, LitStr};
-use vulkano::{
-    shader::{reflect, spirv::Spirv},
-    Version,
-};
+use vulkano::shader::spirv::Spirv;
 
 pub struct Shader {
     pub source: LitStr,
@@ -238,29 +234,6 @@ pub(super) fn reflect(
         }
     });
 
-    let spirv_version = {
-        let Version {
-            major,
-            minor,
-            patch,
-        } = shader.spirv.version();
-
-        quote! {
-            ::vulkano::Version {
-                major: #major,
-                minor: #minor,
-                patch: #patch,
-            }
-        }
-    };
-    let spirv_capabilities = reflect::spirv_capabilities(&shader.spirv).map(|capability| {
-        let name = format_ident!("{}", format!("{:?}", capability));
-        quote! { &::vulkano::shader::spirv::Capability::#name }
-    });
-    let spirv_extensions = reflect::spirv_extensions(&shader.spirv);
-    let entry_points =
-        reflect::entry_points(&shader.spirv).map(|info| entry_point::write_entry_point(&info));
-
     let load_name = if shader.name.is_empty() {
         format_ident!("load")
     } else {
@@ -282,13 +255,9 @@ pub(super) fn reflect(
             static WORDS: &[u32] = &[ #( #words ),* ];
 
             unsafe {
-                ::vulkano::shader::ShaderModule::new_with_data(
+                ::vulkano::shader::ShaderModule::new(
                     device,
                     ::vulkano::shader::ShaderModuleCreateInfo::new(&WORDS),
-                    [ #( #entry_points ),* ],
-                    #spirv_version,
-                    [ #( #spirv_capabilities ),* ],
-                    [ #( #spirv_extensions ),* ],
                 )
             }
         }
@@ -302,6 +271,7 @@ pub(super) fn reflect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vulkano::shader::reflect;
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> Vec<String> {
         paths

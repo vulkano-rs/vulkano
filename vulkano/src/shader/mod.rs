@@ -131,6 +131,7 @@
 //! [`scalar_block_layout`]: crate::device::Features::scalar_block_layout
 //! [`uniform_buffer_standard_layout`]: crate::device::Features::uniform_buffer_standard_layout
 
+use self::spirv::Instruction;
 use crate::{
     descriptor_set::layout::DescriptorType,
     device::{Device, DeviceOwned},
@@ -170,7 +171,9 @@ pub struct ShaderModule {
     handle: ash::vk::ShaderModule,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
-    entry_point_infos: SmallVec<[EntryPointInfo; 1]>,
+
+    spirv: Spirv,
+    specialization_constants: HashMap<u32, SpecializationConstant>,
 }
 
 impl ShaderModule {
@@ -192,50 +195,18 @@ impl ShaderModule {
             })
         })?;
 
-        Self::new_with_data(
-            device,
-            create_info,
-            reflect::entry_points(&spirv),
-            spirv.version(),
-            reflect::spirv_capabilities(&spirv),
-            reflect::spirv_extensions(&spirv),
-        )
+        Self::validate_new(&device, &create_info, &spirv)?;
+
+        Ok(Self::new_with_spirv_unchecked(device, create_info, spirv)?)
     }
 
-    // This is public only for vulkano-shaders, do not use otherwise.
-    #[doc(hidden)]
-    pub unsafe fn new_with_data<'a>(
-        device: Arc<Device>,
-        create_info: ShaderModuleCreateInfo<'_>,
-        entry_points: impl IntoIterator<Item = EntryPointInfo>,
-        spirv_version: Version,
-        spirv_capabilities: impl IntoIterator<Item = &'a Capability>,
-        spirv_extensions: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
-        Self::validate_new(
-            &device,
-            &create_info,
-            spirv_version,
-            spirv_capabilities,
-            spirv_extensions,
-        )?;
-
-        Ok(Self::new_with_data_unchecked(
-            device,
-            create_info,
-            entry_points,
-        )?)
-    }
-
-    fn validate_new<'a>(
+    fn validate_new(
         device: &Device,
         create_info: &ShaderModuleCreateInfo<'_>,
-        spirv_version: Version,
-        spirv_capabilities: impl IntoIterator<Item = &'a Capability>,
-        spirv_extensions: impl IntoIterator<Item = &'a str>,
+        spirv: &Spirv,
     ) -> Result<(), Box<ValidationError>> {
         create_info
-            .validate(device, spirv_version, spirv_capabilities, spirv_extensions)
+            .validate(device, spirv)
             .map_err(|err| err.add_context("create_info"))?;
 
         Ok(())
@@ -247,14 +218,13 @@ impl ShaderModule {
         create_info: ShaderModuleCreateInfo<'_>,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
         let spirv = Spirv::new(create_info.code).unwrap();
-
-        Self::new_with_data_unchecked(device, create_info, reflect::entry_points(&spirv))
+        Self::new_with_spirv_unchecked(device, create_info, spirv)
     }
 
-    unsafe fn new_with_data_unchecked(
+    unsafe fn new_with_spirv_unchecked(
         device: Arc<Device>,
         create_info: ShaderModuleCreateInfo<'_>,
-        entry_points: impl IntoIterator<Item = EntryPointInfo>,
+        spirv: Spirv,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
         let &ShaderModuleCreateInfo { code, _ne: _ } = &create_info;
 
@@ -279,11 +249,11 @@ impl ShaderModule {
             output.assume_init()
         };
 
-        Ok(Self::from_handle_with_data(
+        Ok(Self::from_handle_with_spirv(
             device,
             handle,
             create_info,
-            entry_points,
+            spirv,
         ))
     }
 
@@ -299,22 +269,25 @@ impl ShaderModule {
         create_info: ShaderModuleCreateInfo<'_>,
     ) -> Arc<ShaderModule> {
         let spirv = Spirv::new(create_info.code).unwrap();
-
-        Self::from_handle_with_data(device, handle, create_info, reflect::entry_points(&spirv))
+        Self::from_handle_with_spirv(device, handle, create_info, spirv)
     }
 
-    unsafe fn from_handle_with_data(
+    unsafe fn from_handle_with_spirv(
         device: Arc<Device>,
         handle: ash::vk::ShaderModule,
         create_info: ShaderModuleCreateInfo<'_>,
-        entry_points: impl IntoIterator<Item = EntryPointInfo>,
+        spirv: Spirv,
     ) -> Arc<ShaderModule> {
         let ShaderModuleCreateInfo { code: _, _ne: _ } = create_info;
+        let specialization_constants = reflect::specialization_constants(&spirv);
+
         Arc::new(ShaderModule {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
-            entry_point_infos: entry_points.into_iter().collect(),
+
+            spirv,
+            specialization_constants,
         })
     }
 
@@ -350,6 +323,460 @@ impl ShaderModule {
     ) -> Result<Arc<ShaderModule>, Validated<VulkanError>> {
         let words = spirv::bytes_to_words(bytes).unwrap();
         Self::new(device, ShaderModuleCreateInfo::new(&words))
+    }
+
+    /// Returns the specialization constants that are defined in the module,
+    /// along with their default values.
+    ///
+    /// Specialization constants are constants whose value can be overridden when you create
+    /// a pipeline. They are indexed by their `constant_id`.
+    #[inline]
+    pub fn specialization_constants(&self) -> &HashMap<u32, SpecializationConstant> {
+        &self.specialization_constants
+    }
+
+    /// Applies the specialization constants to the shader module,
+    /// and returns a specialized version of the module.
+    ///
+    /// Constants that are not given a value here will have the default value that was specified
+    /// for them in the shader code.
+    /// When provided, they must have the same type as defined in the shader (as returned by
+    /// [`specialization_constants`]).
+    ///
+    /// [`specialization_constants`]: Self::specialization_constants
+    #[inline]
+    pub fn with_specialization(
+        self: &Arc<Self>,
+        specialization_info: HashMap<u32, SpecializationConstant>,
+    ) -> Result<Arc<SpecializedShaderModule>, Box<ValidationError>> {
+        SpecializedShaderModule::new(self.clone(), specialization_info)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn with_specialization_unchecked(
+        self: &Arc<Self>,
+        specialization_info: HashMap<u32, SpecializationConstant>,
+    ) -> Arc<SpecializedShaderModule> {
+        SpecializedShaderModule::new_unchecked(self.clone(), specialization_info)
+    }
+
+    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// and then calling [`SpecializedShaderModule::entry_point`].
+    ///
+    /// [`with_specialization`]: Self::with_specialization
+    #[inline]
+    pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
+        unsafe {
+            self.with_specialization_unchecked(HashMap::default())
+                .entry_point(name)
+        }
+    }
+
+    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// and then calling [`SpecializedShaderModule::entry_point_with_execution`].
+    ///
+    /// [`with_specialization`]: Self::with_specialization
+    #[inline]
+    pub fn entry_point_with_execution(
+        self: &Arc<Self>,
+        name: &str,
+        execution: ExecutionModel,
+    ) -> Option<EntryPoint> {
+        unsafe {
+            self.with_specialization_unchecked(HashMap::default())
+                .entry_point_with_execution(name, execution)
+        }
+    }
+
+    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// and then calling [`SpecializedShaderModule::single_entry_point`].
+    ///
+    /// [`with_specialization`]: Self::with_specialization
+    #[inline]
+    pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
+        unsafe {
+            self.with_specialization_unchecked(HashMap::default())
+                .single_entry_point()
+        }
+    }
+
+    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// and then calling [`SpecializedShaderModule::single_entry_point_with_execution`].
+    ///
+    /// [`with_specialization`]: Self::with_specialization
+    #[inline]
+    pub fn single_entry_point_with_execution(
+        self: &Arc<Self>,
+        execution: ExecutionModel,
+    ) -> Option<EntryPoint> {
+        unsafe {
+            self.with_specialization_unchecked(HashMap::default())
+                .single_entry_point_with_execution(execution)
+        }
+    }
+}
+
+impl Drop for ShaderModule {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            (fns.v1_0.destroy_shader_module)(self.device.handle(), self.handle, ptr::null());
+        }
+    }
+}
+
+unsafe impl VulkanObject for ShaderModule {
+    type Handle = ash::vk::ShaderModule;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for ShaderModule {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl_id_counter!(ShaderModule);
+
+pub struct ShaderModuleCreateInfo<'a> {
+    /// The SPIR-V code, in the form of 32-bit words.
+    ///
+    /// There is no default value.
+    pub code: &'a [u32],
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl<'a> ShaderModuleCreateInfo<'a> {
+    /// Returns a `ShaderModuleCreateInfo` with the specified `code`.
+    #[inline]
+    pub fn new(code: &'a [u32]) -> Self {
+        Self {
+            code,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(
+        &self,
+        device: &Device,
+        spirv: &Spirv,
+    ) -> Result<(), Box<ValidationError>> {
+        let &Self { code, _ne: _ } = self;
+
+        if code.is_empty() {
+            return Err(Box::new(ValidationError {
+                context: "code".into(),
+                problem: "is empty".into(),
+                vuids: &["VUID-VkShaderModuleCreateInfo-codeSize-01085"],
+                ..Default::default()
+            }));
+        }
+
+        let spirv_version = Version {
+            patch: 0, // Ignore the patch version
+            ..spirv.version()
+        };
+
+        {
+            match spirv_version {
+                Version::V1_0 => None,
+                Version::V1_1 | Version::V1_2 | Version::V1_3 => {
+                    (!(device.api_version() >= Version::V1_1)).then_some(RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
+                    ]))
+                }
+                Version::V1_4 => (!(device.api_version() >= Version::V1_2
+                    || device.enabled_extensions().khr_spirv_1_4))
+                    .then_some(RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                        RequiresAllOf(&[Requires::DeviceExtension("khr_spirv_1_4")]),
+                    ])),
+                Version::V1_5 => {
+                    (!(device.api_version() >= Version::V1_2)).then_some(RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                    ]))
+                }
+                Version::V1_6 => {
+                    (!(device.api_version() >= Version::V1_3)).then_some(RequiresOneOf(&[
+                        RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    ]))
+                }
+                _ => {
+                    return Err(Box::new(ValidationError {
+                        context: "code".into(),
+                        problem: format!(
+                            "uses SPIR-V version {}.{}, which is not supported by Vulkan",
+                            spirv_version.major, spirv_version.minor
+                        )
+                        .into(),
+                        // vuids?
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+        .map_or(Ok(()), |requires_one_of| {
+            Err(Box::new(ValidationError {
+                context: "code".into(),
+                problem: format!(
+                    "uses SPIR-V version {}.{}",
+                    spirv_version.major, spirv_version.minor
+                )
+                .into(),
+                requires_one_of,
+                ..Default::default()
+            }))
+        })?;
+
+        for &capability in
+            spirv
+                .iter_capability()
+                .filter_map(|instruction| match instruction.as_ref() {
+                    Instruction::Capability { capability } => Some(capability),
+                    _ => None,
+                })
+        {
+            validate_spirv_capability(device, capability).map_err(|err| err.add_context("code"))?;
+        }
+
+        for extension in
+            spirv
+                .iter_extension()
+                .filter_map(|instruction| match instruction.as_ref() {
+                    Instruction::Extension { name } => Some(name.as_str()),
+                    _ => None,
+                })
+        {
+            validate_spirv_extension(device, extension).map_err(|err| err.add_context("code"))?;
+        }
+
+        // VUID-VkShaderModuleCreateInfo-pCode-08736
+        // VUID-VkShaderModuleCreateInfo-pCode-08737
+        // VUID-VkShaderModuleCreateInfo-pCode-08738
+        // Unsafe
+
+        Ok(())
+    }
+}
+
+/// The value to provide for a specialization constant, when creating a pipeline.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SpecializationConstant {
+    Bool(bool),
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    F16(f16),
+    F32(f32),
+    F64(f64),
+}
+
+impl SpecializationConstant {
+    /// Returns the value as a byte slice. Booleans are expanded to a `VkBool32` value.
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Bool(false) => bytes_of(&ash::vk::FALSE),
+            Self::Bool(true) => bytes_of(&ash::vk::TRUE),
+            Self::U8(value) => bytes_of(value),
+            Self::U16(value) => bytes_of(value),
+            Self::U32(value) => bytes_of(value),
+            Self::U64(value) => bytes_of(value),
+            Self::I8(value) => bytes_of(value),
+            Self::I16(value) => bytes_of(value),
+            Self::I32(value) => bytes_of(value),
+            Self::I64(value) => bytes_of(value),
+            Self::F16(value) => bytes_of(value),
+            Self::F32(value) => bytes_of(value),
+            Self::F64(value) => bytes_of(value),
+        }
+    }
+
+    /// Returns whether `self` and `other` have the same type, ignoring the value.
+    #[inline]
+    pub fn eq_type(&self, other: &Self) -> bool {
+        discriminant(self) == discriminant(other)
+    }
+}
+
+impl From<bool> for SpecializationConstant {
+    #[inline]
+    fn from(value: bool) -> Self {
+        SpecializationConstant::Bool(value)
+    }
+}
+
+impl From<i8> for SpecializationConstant {
+    #[inline]
+    fn from(value: i8) -> Self {
+        SpecializationConstant::I8(value)
+    }
+}
+
+impl From<i16> for SpecializationConstant {
+    #[inline]
+    fn from(value: i16) -> Self {
+        SpecializationConstant::I16(value)
+    }
+}
+
+impl From<i32> for SpecializationConstant {
+    #[inline]
+    fn from(value: i32) -> Self {
+        SpecializationConstant::I32(value)
+    }
+}
+
+impl From<i64> for SpecializationConstant {
+    #[inline]
+    fn from(value: i64) -> Self {
+        SpecializationConstant::I64(value)
+    }
+}
+
+impl From<u8> for SpecializationConstant {
+    #[inline]
+    fn from(value: u8) -> Self {
+        SpecializationConstant::U8(value)
+    }
+}
+
+impl From<u16> for SpecializationConstant {
+    #[inline]
+    fn from(value: u16) -> Self {
+        SpecializationConstant::U16(value)
+    }
+}
+
+impl From<u32> for SpecializationConstant {
+    #[inline]
+    fn from(value: u32) -> Self {
+        SpecializationConstant::U32(value)
+    }
+}
+
+impl From<u64> for SpecializationConstant {
+    #[inline]
+    fn from(value: u64) -> Self {
+        SpecializationConstant::U64(value)
+    }
+}
+
+impl From<f16> for SpecializationConstant {
+    #[inline]
+    fn from(value: f16) -> Self {
+        SpecializationConstant::F16(value)
+    }
+}
+
+impl From<f32> for SpecializationConstant {
+    #[inline]
+    fn from(value: f32) -> Self {
+        SpecializationConstant::F32(value)
+    }
+}
+
+impl From<f64> for SpecializationConstant {
+    #[inline]
+    fn from(value: f64) -> Self {
+        SpecializationConstant::F64(value)
+    }
+}
+
+/// A shader module with specialization constants applied.
+#[derive(Debug)]
+pub struct SpecializedShaderModule {
+    base_module: Arc<ShaderModule>,
+    specialization_info: HashMap<u32, SpecializationConstant>,
+    _spirv: Option<Spirv>,
+    entry_point_infos: SmallVec<[EntryPointInfo; 1]>,
+}
+
+impl SpecializedShaderModule {
+    /// Returns `base_module` specialized with `specialization_info`.
+    #[inline]
+    pub fn new(
+        base_module: Arc<ShaderModule>,
+        specialization_info: HashMap<u32, SpecializationConstant>,
+    ) -> Result<Arc<Self>, Box<ValidationError>> {
+        Self::validate_new(&base_module, &specialization_info)?;
+
+        unsafe { Ok(Self::new_unchecked(base_module, specialization_info)) }
+    }
+
+    fn validate_new(
+        base_module: &ShaderModule,
+        specialization_info: &HashMap<u32, SpecializationConstant>,
+    ) -> Result<(), Box<ValidationError>> {
+        for (&constant_id, provided_value) in specialization_info {
+            // Per `VkSpecializationMapEntry` spec:
+            // "If a constantID value is not a specialization constant ID used in the shader,
+            // that map entry does not affect the behavior of the pipeline."
+            // We *may* want to be stricter than this for the sake of catching user errors?
+            if let Some(default_value) = base_module.specialization_constants.get(&constant_id) {
+                // Check for equal types rather than only equal size.
+                if !provided_value.eq_type(default_value) {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`specialization_info[{0}]` does not have the same type as \
+                            `base_module.specialization_constants()[{0}]`",
+                            constant_id
+                        )
+                        .into(),
+                        vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        base_module: Arc<ShaderModule>,
+        specialization_info: HashMap<u32, SpecializationConstant>,
+    ) -> Arc<Self> {
+        let spirv = base_module.spirv.has_specialization().then(|| {
+            let mut spirv = base_module.spirv.clone();
+            spirv.apply_specialization(&specialization_info);
+            spirv
+        });
+        let entry_point_infos =
+            reflect::entry_points(spirv.as_ref().unwrap_or(&base_module.spirv)).collect();
+
+        Arc::new(Self {
+            base_module,
+            specialization_info,
+            _spirv: spirv,
+            entry_point_infos,
+        })
+    }
+
+    /// Returns the base module, without specialization applied.
+    #[inline]
+    pub fn base_module(&self) -> &Arc<ShaderModule> {
+        &self.base_module
+    }
+
+    /// Returns the specialization constants that have been applied to the module.
+    #[inline]
+    pub fn specialization_info(&self) -> &HashMap<u32, SpecializationConstant> {
+        &self.specialization_info
     }
 
     /// Returns information about the entry point with the provided name. Returns `None` if no entry
@@ -403,7 +830,7 @@ impl ShaderModule {
     /// with the provided `ExecutionModel`. Returns `None` if no entry point was found or multiple
     /// entry points have been found matching the provided `ExecutionModel`.
     #[inline]
-    pub fn single_entry_point_of_execution(
+    pub fn single_entry_point_with_execution(
         self: &Arc<Self>,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
@@ -411,138 +838,19 @@ impl ShaderModule {
     }
 }
 
-impl Drop for ShaderModule {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_shader_module)(self.device.handle(), self.handle, ptr::null());
-        }
-    }
-}
-
-unsafe impl VulkanObject for ShaderModule {
+unsafe impl VulkanObject for SpecializedShaderModule {
     type Handle = ash::vk::ShaderModule;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
-        self.handle
+        self.base_module.handle
     }
 }
 
-unsafe impl DeviceOwned for ShaderModule {
+unsafe impl DeviceOwned for SpecializedShaderModule {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl_id_counter!(ShaderModule);
-
-pub struct ShaderModuleCreateInfo<'a> {
-    /// The SPIR-V code, in the form of 32-bit words.
-    ///
-    /// There is no default value.
-    pub code: &'a [u32],
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl<'a> ShaderModuleCreateInfo<'a> {
-    /// Returns a `ShaderModuleCreateInfo` with the specified `code`.
-    #[inline]
-    pub fn new(code: &'a [u32]) -> Self {
-        Self {
-            code,
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
-    pub(crate) fn validate<'b>(
-        &self,
-        device: &Device,
-        mut spirv_version: Version,
-        spirv_capabilities: impl IntoIterator<Item = &'b Capability>,
-        spirv_extensions: impl IntoIterator<Item = &'b str>,
-    ) -> Result<(), Box<ValidationError>> {
-        let &Self { code, _ne: _ } = self;
-
-        if code.is_empty() {
-            return Err(Box::new(ValidationError {
-                context: "code".into(),
-                problem: "is empty".into(),
-                vuids: &["VUID-VkShaderModuleCreateInfo-codeSize-01085"],
-                ..Default::default()
-            }));
-        }
-
-        {
-            spirv_version.patch = 0; // Ignore the patch version
-
-            match spirv_version {
-                Version::V1_0 => None,
-                Version::V1_1 | Version::V1_2 | Version::V1_3 => {
-                    (!(device.api_version() >= Version::V1_1)).then_some(RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
-                    ]))
-                }
-                Version::V1_4 => (!(device.api_version() >= Version::V1_2
-                    || device.enabled_extensions().khr_spirv_1_4))
-                    .then_some(RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
-                        RequiresAllOf(&[Requires::DeviceExtension("khr_spirv_1_4")]),
-                    ])),
-                Version::V1_5 => {
-                    (!(device.api_version() >= Version::V1_2)).then_some(RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
-                    ]))
-                }
-                Version::V1_6 => {
-                    (!(device.api_version() >= Version::V1_3)).then_some(RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    ]))
-                }
-                _ => {
-                    return Err(Box::new(ValidationError {
-                        context: "code".into(),
-                        problem: format!(
-                            "uses SPIR-V version {}.{}, which is not supported by Vulkan",
-                            spirv_version.major, spirv_version.minor
-                        )
-                        .into(),
-                        // vuids?
-                        ..Default::default()
-                    }));
-                }
-            }
-        }
-        .map_or(Ok(()), |requires_one_of| {
-            Err(Box::new(ValidationError {
-                context: "code".into(),
-                problem: format!(
-                    "uses SPIR-V version {}.{}",
-                    spirv_version.major, spirv_version.minor
-                )
-                .into(),
-                requires_one_of,
-                ..Default::default()
-            }))
-        })?;
-
-        for &capability in spirv_capabilities {
-            validate_spirv_capability(device, capability).map_err(|err| err.add_context("code"))?;
-        }
-
-        for extension in spirv_extensions {
-            validate_spirv_extension(device, extension).map_err(|err| err.add_context("code"))?;
-        }
-
-        // VUID-VkShaderModuleCreateInfo-pCode-08736
-        // VUID-VkShaderModuleCreateInfo-pCode-08737
-        // VUID-VkShaderModuleCreateInfo-pCode-08738
-        // Unsafe
-
-        Ok(())
+        &self.base_module.device
     }
 }
 
@@ -553,81 +861,8 @@ pub struct EntryPointInfo {
     pub execution: ShaderExecution,
     pub descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     pub push_constant_requirements: Option<PushConstantRange>,
-    pub specialization_constants: HashMap<u32, SpecializationConstant>,
     pub input_interface: ShaderInterface,
     pub output_interface: ShaderInterface,
-}
-
-impl EntryPointInfo {
-    /// The local size in Compute shaders, None otherwise.
-    ///
-    /// `specialization_info` is used for LocalSizeId / WorkgroupSizeId, using specialization_constants if not found.
-    /// Errors if specialization constants are not found or are not u32's.
-    pub(crate) fn local_size(
-        &self,
-        specialization_info: &HashMap<u32, SpecializationConstant>,
-    ) -> Result<Option<[u32; 3]>, Box<ValidationError>> {
-        if let ShaderExecution::Compute(execution) = self.execution {
-            match execution {
-                ComputeShaderExecution::LocalSize(local_size)
-                | ComputeShaderExecution::LocalSizeId(local_size) => {
-                    let mut output = [0; 3];
-                    for (output, local_size) in output.iter_mut().zip(local_size) {
-                        let id = match local_size {
-                            LocalSize::Literal(literal) => {
-                                *output = literal;
-                                continue;
-                            }
-                            LocalSize::SpecId(id) => id,
-                        };
-                        if let Some(default) = self.specialization_constants.get(&id) {
-                            let default_value = if let SpecializationConstant::U32(default_value) =
-                                default
-                            {
-                                default_value
-                            } else {
-                                return Err(Box::new(ValidationError {
-                                    problem: format!(
-                                        "`entry_point.info().specialization_constants[{id}]` is not a 32 bit integer"
-                                    )
-                                    .into(),
-                                    ..Default::default()
-                                }));
-                            };
-                            if let Some(provided) = specialization_info.get(&id) {
-                                if let SpecializationConstant::U32(provided_value) = provided {
-                                    *output = *provided_value;
-                                } else {
-                                    return Err(Box::new(ValidationError {
-                                        problem: format!(
-                                            "`specialization_info[{0}]` does not have the same type as \
-                                            `entry_point.info().specialization_constants[{0}]`",
-                                            id,
-                                        )
-                                        .into(),
-                                        vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
-                                        ..Default::default()
-                                    }));
-                                }
-                            }
-                            *output = *default_value;
-                        } else {
-                            return Err(Box::new(ValidationError {
-                                    problem: format!(
-                                        "specialization constant {id} not found in `entry_point.info().specialization_constants`"
-                                    )
-                                    .into(),
-                                    ..Default::default()
-                                }));
-                        }
-                    }
-                    Ok(Some(output))
-                }
-            }
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 /// Represents a shader entry point in a shader module.
@@ -635,14 +870,14 @@ impl EntryPointInfo {
 /// Can be obtained by calling [`entry_point`](ShaderModule::entry_point) on the shader module.
 #[derive(Clone, Debug)]
 pub struct EntryPoint {
-    module: Arc<ShaderModule>,
+    module: Arc<SpecializedShaderModule>,
     info_index: usize,
 }
 
 impl EntryPoint {
     /// Returns the module this entry point comes from.
     #[inline]
-    pub fn module(&self) -> &Arc<ShaderModule> {
+    pub fn module(&self) -> &Arc<SpecializedShaderModule> {
         &self.module
     }
 
@@ -780,30 +1015,15 @@ pub enum FragmentTestsStages {
     EarlyAndLate,
 }
 
-/// LocalSize.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LocalSize {
-    Literal(u32),
-    SpecId(u32),
-}
-
 /// The mode in which the compute shader executes.
-///
-/// The workgroup size is specified for x, y, and z dimensions.
-///
-/// Constants are resolved to literals, while specialization constants
-/// map to spec ids.
 ///
 /// The `WorkgroupSize` builtin overrides the values specified in the
 /// execution mode. It can decorate a 3 component ConstantComposite or
 /// SpecConstantComposite vector.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ComputeShaderExecution {
+pub struct ComputeShaderExecution {
     /// Workgroup size in x, y, and z.
-    LocalSize([LocalSize; 3]),
-    /// Requires spirv 1.2.
-    /// Like `LocalSize`, but uses ids instead of literals.
-    LocalSizeId([LocalSize; 3]),
+    pub local_size: [u32; 3],
 }
 
 /// The requirements imposed by a shader on a binding within a descriptor set layout, and on any
@@ -992,135 +1212,6 @@ impl DescriptorRequirements {
         *sampler_no_ycbcr_conversion |= other.sampler_no_ycbcr_conversion;
         sampler_with_images.extend(&other.sampler_with_images);
         *storage_image_atomic |= other.storage_image_atomic;
-    }
-}
-
-/// The value to provide for a specialization constant, when creating a pipeline.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum SpecializationConstant {
-    Bool(bool),
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    F16(f16),
-    F32(f32),
-    F64(f64),
-}
-
-impl SpecializationConstant {
-    /// Returns the value as a byte slice. Booleans are expanded to a `VkBool32` value.
-    #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Self::Bool(false) => bytes_of(&ash::vk::FALSE),
-            Self::Bool(true) => bytes_of(&ash::vk::TRUE),
-            Self::I8(value) => bytes_of(value),
-            Self::I16(value) => bytes_of(value),
-            Self::I32(value) => bytes_of(value),
-            Self::I64(value) => bytes_of(value),
-            Self::U8(value) => bytes_of(value),
-            Self::U16(value) => bytes_of(value),
-            Self::U32(value) => bytes_of(value),
-            Self::U64(value) => bytes_of(value),
-            Self::F16(value) => bytes_of(value),
-            Self::F32(value) => bytes_of(value),
-            Self::F64(value) => bytes_of(value),
-        }
-    }
-
-    /// Returns whether `self` and `other` have the same type, ignoring the value.
-    #[inline]
-    pub fn eq_type(&self, other: &Self) -> bool {
-        discriminant(self) == discriminant(other)
-    }
-}
-
-impl From<bool> for SpecializationConstant {
-    #[inline]
-    fn from(value: bool) -> Self {
-        SpecializationConstant::Bool(value)
-    }
-}
-
-impl From<i8> for SpecializationConstant {
-    #[inline]
-    fn from(value: i8) -> Self {
-        SpecializationConstant::I8(value)
-    }
-}
-
-impl From<i16> for SpecializationConstant {
-    #[inline]
-    fn from(value: i16) -> Self {
-        SpecializationConstant::I16(value)
-    }
-}
-
-impl From<i32> for SpecializationConstant {
-    #[inline]
-    fn from(value: i32) -> Self {
-        SpecializationConstant::I32(value)
-    }
-}
-
-impl From<i64> for SpecializationConstant {
-    #[inline]
-    fn from(value: i64) -> Self {
-        SpecializationConstant::I64(value)
-    }
-}
-
-impl From<u8> for SpecializationConstant {
-    #[inline]
-    fn from(value: u8) -> Self {
-        SpecializationConstant::U8(value)
-    }
-}
-
-impl From<u16> for SpecializationConstant {
-    #[inline]
-    fn from(value: u16) -> Self {
-        SpecializationConstant::U16(value)
-    }
-}
-
-impl From<u32> for SpecializationConstant {
-    #[inline]
-    fn from(value: u32) -> Self {
-        SpecializationConstant::U32(value)
-    }
-}
-
-impl From<u64> for SpecializationConstant {
-    #[inline]
-    fn from(value: u64) -> Self {
-        SpecializationConstant::U64(value)
-    }
-}
-
-impl From<f16> for SpecializationConstant {
-    #[inline]
-    fn from(value: f16) -> Self {
-        SpecializationConstant::F16(value)
-    }
-}
-
-impl From<f32> for SpecializationConstant {
-    #[inline]
-    fn from(value: f32) -> Self {
-        SpecializationConstant::F32(value)
-    }
-}
-
-impl From<f64> for SpecializationConstant {
-    #[inline]
-    fn from(value: f64) -> Self {
-        SpecializationConstant::F64(value)
     }
 }
 

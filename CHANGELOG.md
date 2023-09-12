@@ -165,7 +165,7 @@ Changes to the `khr_display` extension:
 - Added `DeviceMemory::{map, unmap, mapping_state, invalidate_range, flush_range}`, `MappedDeviceMemory` has been deprecated.
 - Added `MemoryMapInfo`, `MemoryUnmapInfo`, `MappingState` and `MappedMemoryRange`.
 - Added `ShaderModule::single_entry_point()` which may replace `entry_point("main")` calls in common setups.
-- Added `ShaderModule::single_entry_point_of_execution`.
+- Added `ShaderModule::single_entry_point_with_execution`.
 - Added `GenericMemoryAllocatorCreateInfo::memory_type_bits` and `AllocationCreateInfo::memory_type_bits`.
 
 ### Bugs fixed

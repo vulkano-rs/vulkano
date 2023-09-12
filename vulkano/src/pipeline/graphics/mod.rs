@@ -215,7 +215,6 @@ impl GraphicsPipeline {
                 let &PipelineShaderStageCreateInfo {
                     flags,
                     ref entry_point,
-                    ref specialization_info,
                     ref required_subgroup_size,
                     _ne: _,
                 } = stage;
@@ -224,7 +223,9 @@ impl GraphicsPipeline {
                 let stage = ShaderStage::from(&entry_point_info.execution);
 
                 let mut specialization_data_vk: Vec<u8> = Vec::new();
-                let specialization_map_entries_vk: Vec<_> = specialization_info
+                let specialization_map_entries_vk: Vec<_> = entry_point
+                    .module()
+                    .specialization_info()
                     .iter()
                     .map(|(&constant_id, value)| {
                         let data = value.as_bytes();
@@ -2489,7 +2490,6 @@ impl GraphicsPipelineCreateInfo {
             let &PipelineShaderStageCreateInfo {
                 flags: _,
                 ref entry_point,
-                specialization_info: _,
                 required_subgroup_size: _vk,
                 _ne: _,
             } = stage;
