@@ -455,6 +455,15 @@ impl Spirv {
             if let Some(id) = instruction.result_id() {
                 if let Some(id_info) = self.ids.get_mut(&id) {
                     id_info.instruction = instruction.clone();
+                    id_info.decorations.retain(|instruction| {
+                        !matches!(
+                            instruction.as_ref(),
+                            Instruction::Decorate {
+                                decoration: Decoration::SpecId { .. },
+                                ..
+                            }
+                        )
+                    });
                 } else {
                     self.ids.insert(
                         id,
@@ -469,6 +478,16 @@ impl Spirv {
                 }
             }
         }
+
+        self.instructions_decoration.retain(|instruction| {
+            !matches!(
+                instruction.as_ref(),
+                Instruction::Decorate {
+                    decoration: Decoration::SpecId { .. },
+                    ..
+                }
+            )
+        });
     }
 }
 
