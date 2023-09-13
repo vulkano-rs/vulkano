@@ -17,6 +17,7 @@
 
 use crate::{shader::SpecializationConstant, Version};
 use ahash::HashMap;
+use smallvec::{smallvec, SmallVec};
 use std::{
     borrow::Cow,
     error::Error,
@@ -214,7 +215,160 @@ impl Spirv {
             }
         }
 
-        let mut spirv = Spirv {
+        let instruction_memory_model = instructions_memory_model.drain(..).next().unwrap();
+
+        // Add decorations to ids,
+        // while also expanding decoration groups into individual decorations.
+        let mut decoration_groups: HashMap<Id, Vec<Arc<Instruction>>> = HashMap::default();
+        let instructions_decoration = instructions_decoration
+            .into_iter()
+            .flat_map(|instruction| -> SmallVec<[Arc<Instruction>; 1]> {
+                match *instruction.as_ref() {
+                    Instruction::Decorate { target, .. }
+                    | Instruction::DecorateId { target, .. }
+                    | Instruction::DecorateString { target, .. } => {
+                        let id_info = ids.get_mut(&target).unwrap();
+
+                        if matches!(
+                            id_info.instruction().as_ref(),
+                            Instruction::DecorationGroup { .. }
+                        ) {
+                            decoration_groups
+                                .entry(target)
+                                .or_default()
+                                .push(instruction);
+                            smallvec![]
+                        } else {
+                            id_info.decorations.push(instruction.clone());
+                            smallvec![instruction]
+                        }
+                    }
+                    Instruction::MemberDecorate {
+                        structure_type: target,
+                        member,
+                        ..
+                    }
+                    | Instruction::MemberDecorateString {
+                        struct_type: target,
+                        member,
+                        ..
+                    } => {
+                        ids.get_mut(&target).unwrap().members[member as usize]
+                            .decorations
+                            .push(instruction.clone());
+                        smallvec![instruction]
+                    }
+                    Instruction::DecorationGroup { result_id } => {
+                        // Drop the instruction altogether.
+                        decoration_groups.entry(result_id).or_default();
+                        ids.remove(&result_id);
+                        smallvec![]
+                    }
+                    Instruction::GroupDecorate {
+                        decoration_group,
+                        ref targets,
+                    } => {
+                        let decorations = &decoration_groups[&decoration_group];
+
+                        (targets.iter().copied())
+                            .flat_map(|target| {
+                                decorations
+                                    .iter()
+                                    .map(move |instruction| (target, instruction))
+                            })
+                            .map(|(target, instruction)| {
+                                let id_info = ids.get_mut(&target).unwrap();
+
+                                match *instruction.as_ref() {
+                                    Instruction::Decorate { ref decoration, .. } => {
+                                        let instruction = Arc::new(Instruction::Decorate {
+                                            target,
+                                            decoration: decoration.clone(),
+                                        });
+                                        id_info.decorations.push(instruction.clone());
+                                        instruction
+                                    }
+                                    Instruction::DecorateId { ref decoration, .. } => {
+                                        let instruction = Arc::new(Instruction::DecorateId {
+                                            target,
+                                            decoration: decoration.clone(),
+                                        });
+                                        id_info.decorations.push(instruction.clone());
+                                        instruction
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            })
+                            .collect()
+                    }
+                    Instruction::GroupMemberDecorate {
+                        decoration_group,
+                        ref targets,
+                    } => {
+                        let decorations = &decoration_groups[&decoration_group];
+
+                        (targets.iter().copied())
+                            .flat_map(|target| {
+                                decorations
+                                    .iter()
+                                    .map(move |instruction| (target, instruction))
+                            })
+                            .map(|((structure_type, member), instruction)| {
+                                let member_info =
+                                    &mut ids.get_mut(&structure_type).unwrap().members
+                                        [member as usize];
+
+                                match *instruction.as_ref() {
+                                    Instruction::Decorate { ref decoration, .. } => {
+                                        let instruction = Arc::new(Instruction::MemberDecorate {
+                                            structure_type,
+                                            member,
+                                            decoration: decoration.clone(),
+                                        });
+                                        member_info.decorations.push(instruction.clone());
+                                        instruction
+                                    }
+                                    Instruction::DecorateId { .. } => {
+                                        panic!(
+                                            "a DecorateId instruction targets a decoration group, \
+                                            and that decoration group is applied using a \
+                                            GroupMemberDecorate instruction, but there is no \
+                                            MemberDecorateId instruction"
+                                        );
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            })
+                            .collect()
+                    }
+                    _ => smallvec![instruction],
+                }
+            })
+            .collect();
+
+        instructions_name.retain(|instruction| match *instruction.as_ref() {
+            Instruction::Name { target, .. } => {
+                if let Some(id_info) = ids.get_mut(&target) {
+                    id_info.names.push(instruction.clone());
+                    true
+                } else {
+                    false
+                }
+            }
+            Instruction::MemberName { ty, member, .. } => {
+                if let Some(id_info) = ids.get_mut(&ty) {
+                    id_info.members[member as usize]
+                        .names
+                        .push(instruction.clone());
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => unreachable!(),
+        });
+
+        Ok(Spirv {
             version,
             bound,
             ids,
@@ -222,124 +376,14 @@ impl Spirv {
             instructions_capability,
             instructions_extension,
             instructions_ext_inst_import,
-            instruction_memory_model: instructions_memory_model.drain(..).next().unwrap(),
+            instruction_memory_model,
             instructions_entry_point,
             instructions_execution_mode,
             instructions_name,
             instructions_decoration,
             instructions_global,
             functions,
-        };
-
-        for instruction in &spirv.instructions_name {
-            match instruction.as_ref() {
-                Instruction::Name { target, .. } => {
-                    spirv
-                        .ids
-                        .get_mut(target)
-                        .unwrap()
-                        .names
-                        .push(instruction.clone());
-                }
-                Instruction::MemberName { ty, member, .. } => {
-                    spirv.ids.get_mut(ty).unwrap().members[*member as usize]
-                        .names
-                        .push(instruction.clone());
-                }
-                _ => unreachable!(),
-            }
-        }
-
-        // First handle all regular decorations, including those targeting decoration groups.
-        for instruction in &spirv.instructions_decoration {
-            match instruction.as_ref() {
-                Instruction::Decorate { target, .. }
-                | Instruction::DecorateId { target, .. }
-                | Instruction::DecorateString { target, .. } => {
-                    spirv
-                        .ids
-                        .get_mut(target)
-                        .unwrap()
-                        .decorations
-                        .push(instruction.clone());
-                }
-                Instruction::MemberDecorate {
-                    structure_type: target,
-                    member,
-                    ..
-                }
-                | Instruction::MemberDecorateString {
-                    struct_type: target,
-                    member,
-                    ..
-                } => {
-                    spirv.ids.get_mut(target).unwrap().members[*member as usize]
-                        .decorations
-                        .push(instruction.clone());
-                }
-                _ => (),
-            }
-        }
-
-        // Then, with decoration groups having their lists complete, handle group decorates.
-        for instruction in &spirv.instructions_decoration {
-            match *instruction.as_ref() {
-                Instruction::GroupDecorate {
-                    decoration_group,
-                    ref targets,
-                    ..
-                } => {
-                    let instructions = {
-                        let data = &spirv.ids[&decoration_group];
-                        if !matches!(
-                            data.instruction.as_ref(),
-                            Instruction::DecorationGroup { .. }
-                        ) {
-                            return Err(SpirvError::GroupDecorateNotGroup {
-                                id: decoration_group,
-                            });
-                        };
-                        data.decorations.clone()
-                    };
-
-                    for target in targets {
-                        spirv
-                            .ids
-                            .get_mut(target)
-                            .unwrap()
-                            .decorations
-                            .extend(instructions.iter().cloned());
-                    }
-                }
-                Instruction::GroupMemberDecorate {
-                    decoration_group,
-                    ref targets,
-                    ..
-                } => {
-                    let instructions = {
-                        let data = &spirv.ids[&decoration_group];
-                        if !matches!(
-                            data.instruction.as_ref(),
-                            Instruction::DecorationGroup { .. }
-                        ) {
-                            return Err(SpirvError::GroupDecorateNotGroup {
-                                id: decoration_group,
-                            });
-                        };
-                        data.decorations.clone()
-                    };
-
-                    for (target, member) in targets {
-                        spirv.ids.get_mut(target).unwrap().members[*member as usize]
-                            .decorations
-                            .extend(instructions.iter().cloned());
-                    }
-                }
-                _ => (),
-            }
-        }
-
-        Ok(spirv)
+        })
     }
 
     /// Returns the SPIR-V version that the module is compiled for.
@@ -533,8 +577,7 @@ impl IdInfo {
         self.names.iter()
     }
 
-    /// Returns an iterator over all decorate instructions, that target this `Id`. This includes any
-    /// decorate instructions that target this `Id` indirectly via a `DecorationGroup`.
+    /// Returns an iterator over all decorate instructions, that target this `Id`.
     #[inline]
     pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
         self.decorations.iter()
@@ -562,9 +605,7 @@ impl StructMemberInfo {
         self.names.iter()
     }
 
-    /// Returns an iterator over all decorate instructions that target this struct member. This
-    /// includes any decorate instructions that target this member indirectly via a
-    /// `DecorationGroup`.
+    /// Returns an iterator over all decorate instructions that target this struct member.
     #[inline]
     pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
         self.decorations.iter()
@@ -709,8 +750,6 @@ impl<'a> InstructionReader<'a> {
 #[derive(Clone, Debug)]
 pub enum SpirvError {
     DuplicateId { id: Id },
-    GroupDecorateNotGroup { id: Id },
-    IdOutOfBounds { id: Id, bound: u32 },
     InvalidHeader,
     ParseError(ParseError),
 }
@@ -719,15 +758,6 @@ impl Display for SpirvError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DuplicateId { id } => write!(f, "id {} is assigned more than once", id,),
-            Self::GroupDecorateNotGroup { id } => write!(
-                f,
-                "a GroupDecorate or GroupMemberDecorate instruction referred to Id {} \
-                that was not a DecorationGroup",
-                id,
-            ),
-            Self::IdOutOfBounds { id, bound } => {
-                write!(f, "id {} is not below the maximum bound {}", id, bound,)
-            }
             Self::InvalidHeader => write!(f, "the SPIR-V module header is invalid"),
             Self::ParseError(_) => write!(f, "parse error"),
         }
