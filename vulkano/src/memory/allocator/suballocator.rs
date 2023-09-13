@@ -409,7 +409,7 @@ unsafe impl Suballocator for FreeListAllocator {
                                 offset,
                                 size,
                                 allocation_type,
-                                handle: AllocationHandle(id.get() as _),
+                                handle: AllocationHandle::from_index(id.get()),
                             });
                         }
                     }
@@ -431,7 +431,7 @@ unsafe impl Suballocator for FreeListAllocator {
     unsafe fn deallocate(&self, suballocation: Suballocation) {
         // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
         // allocation of `self`.
-        let node_id = SlotId::new(suballocation.handle.0 as _);
+        let node_id = SlotId::new(suballocation.handle.into_index());
 
         let state = unsafe { &mut *self.state.get() };
         let node = state.nodes.get_mut(node_id);
@@ -891,7 +891,7 @@ unsafe impl Suballocator for BuddyAllocator {
                         offset,
                         size: layout.size(),
                         allocation_type,
-                        handle: AllocationHandle(min_order as _),
+                        handle: AllocationHandle::from_index(min_order),
                     });
                 }
             }
@@ -908,7 +908,7 @@ unsafe impl Suballocator for BuddyAllocator {
     #[inline]
     unsafe fn deallocate(&self, suballocation: Suballocation) {
         let mut offset = suballocation.offset;
-        let order = suballocation.handle.0 as usize;
+        let order = suballocation.handle.into_index();
 
         let min_order = order;
         let state = unsafe { &mut *self.state.get() };
