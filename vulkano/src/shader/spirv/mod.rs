@@ -16,7 +16,7 @@
 //! [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html).
 
 use crate::{shader::SpecializationConstant, Version};
-use ahash::{HashMap, HashMapExt};
+use ahash::HashMap;
 use std::{
     borrow::Cow,
     error::Error,
@@ -67,16 +67,9 @@ impl Spirv {
             patch: words[1] & 0x000000ff,
         };
 
-        let bound = words[3];
-        let instructions: Vec<_> = iter_instructions(&words[5..]).collect::<Result<_, _>>()?;
-
-        // It is impossible for a valid SPIR-V file to contain more Ids than instructions, so put
-        // a sane upper limit on the allocation. This prevents a malicious file from causing huge
-        // memory allocations.
-        let mut ids = HashMap::with_capacity(instructions.len().min(bound as usize));
-
         // For safety, we recalculate the bound ourselves.
-        let mut actual_bound = 0;
+        let mut bound = 0;
+        let mut ids = HashMap::default();
 
         let mut instructions_capability = Vec::new();
         let mut instructions_extension = Vec::new();
@@ -91,13 +84,11 @@ impl Spirv {
         let mut functions = HashMap::default();
         let mut current_function: Option<&mut Vec<Arc<Instruction>>> = None;
 
-        for instruction in instructions {
-            if let Some(id) = instruction.result_id() {
-                if u32::from(id) >= bound {
-                    return Err(SpirvError::IdOutOfBounds { id, bound });
-                }
+        for instruction in iter_instructions(&words[5..]) {
+            let instruction = instruction?;
 
-                actual_bound = actual_bound.max(u32::from(id) + 1);
+            if let Some(id) = instruction.result_id() {
+                bound = bound.max(u32::from(id) + 1);
 
                 let members =
                     if let Instruction::TypeStruct { member_types, .. } = instruction.as_ref() {
@@ -225,7 +216,7 @@ impl Spirv {
 
         let mut spirv = Spirv {
             version,
-            bound: actual_bound,
+            bound,
             ids,
 
             instructions_capability,
