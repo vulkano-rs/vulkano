@@ -22,7 +22,7 @@ use std::{
     cell::{Cell, UnsafeCell},
     cmp,
     error::Error,
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     ptr,
 };
 
@@ -86,15 +86,6 @@ use std::{
 /// [page]: super#pages
 /// [buffer-image granularity]: super#buffer-image-granularity
 pub unsafe trait Suballocator {
-    /// Whether the allocator needs [`cleanup`] to be called before memory can be released.
-    ///
-    /// This is used by the [`GenericMemoryAllocator`] to specialize the allocation strategy to the
-    /// suballocator at compile time.
-    ///
-    /// [`cleanup`]: Self::cleanup
-    /// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
-    const NEEDS_CLEANUP: bool;
-
     /// Creates a new suballocator for the given [region].
     ///
     /// # Arguments
@@ -157,7 +148,15 @@ pub unsafe trait Suballocator {
     fn free_size(&self) -> DeviceSize;
 
     /// Tries to free some space, if applicable.
+    ///
+    /// There must be no current allocations as they might get freed.
     fn cleanup(&mut self);
+}
+
+impl Debug for dyn Suballocator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Suballocator").finish_non_exhaustive()
+    }
 }
 
 /// Tells the [suballocator] what type of resource will be bound to the allocation, so that it can
@@ -298,8 +297,6 @@ pub struct FreeListAllocator {
 }
 
 unsafe impl Suballocator for FreeListAllocator {
-    const NEEDS_CLEANUP: bool = false;
-
     /// Creates a new `FreeListAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions
@@ -773,8 +770,6 @@ impl BuddyAllocator {
 }
 
 unsafe impl Suballocator for BuddyAllocator {
-    const NEEDS_CLEANUP: bool = false;
-
     /// Creates a new `BuddyAllocator` for the given [region].
     ///
     /// # Panics
@@ -1041,8 +1036,6 @@ impl BumpAllocator {
 }
 
 unsafe impl Suballocator for BumpAllocator {
-    const NEEDS_CLEANUP: bool = true;
-
     /// Creates a new `BumpAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions

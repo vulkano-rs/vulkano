@@ -1177,25 +1177,11 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         blocks.sort_by_key(|block| block.free_size());
         let (Ok(idx) | Err(idx)) = blocks.binary_search_by_key(&size, |block| block.free_size());
 
-        for block in &blocks[idx..] {
+        for block in &mut blocks[idx..] {
             if let Ok(allocation) =
                 block.allocate(layout, allocation_type, self.buffer_image_granularity)
             {
                 return Ok(allocation);
-            }
-        }
-
-        // For bump allocators, first do a garbage sweep and try to allocate again.
-        if S::NEEDS_CLEANUP {
-            blocks.iter_mut().for_each(|block| block.cleanup());
-            blocks.sort_unstable_by_key(|block| block.free_size());
-
-            if let Some(block) = blocks.last() {
-                if let Ok(allocation) =
-                    block.allocate(layout, allocation_type, self.buffer_image_granularity)
-                {
-                    return Ok(allocation);
-                }
             }
         }
 
@@ -1237,7 +1223,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         };
 
         blocks.push(block);
-        let block = blocks.last().unwrap();
+        let block = blocks.last_mut().unwrap();
 
         match block.allocate(layout, allocation_type, self.buffer_image_granularity) {
             Ok(allocation) => Ok(allocation),
@@ -1462,7 +1448,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         if let Some(suballocation) = allocation.suballocation {
             let memory_type_index = allocation.device_memory.memory_type_index();
             let pool = self.pools[memory_type_index as usize].blocks.lock();
-            let block_ptr = allocation.allocation_handle.0 as *const Block<S>;
+            let block_ptr = allocation.allocation_handle.0 as *mut Block<S>;
 
             // TODO: Maybe do a similar check for dedicated blocks.
             debug_assert!(
@@ -1477,7 +1463,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             // memory and because a block isn't dropped until the allocator itself is dropped, at
             // which point it would be impossible to call this method. We also know that it must be
             // valid to create a reference to the block, because we locked the pool it belongs to.
-            let block = &*block_ptr;
+            let block = &mut *block_ptr;
 
             // SAFETY: The caller must guarantee that `allocation` refers to a currently allocated
             // allocation of `self`.
@@ -1552,6 +1538,7 @@ unsafe impl<S> DeviceOwned for GenericMemoryAllocator<S> {
 struct Block<S> {
     device_memory: Arc<DeviceMemory>,
     suballocator: S,
+    allocation_count: usize,
 }
 
 impl<S: Suballocator> Block<S> {
@@ -1561,11 +1548,12 @@ impl<S: Suballocator> Block<S> {
         Box::new(Block {
             device_memory,
             suballocator,
+            allocation_count: 0,
         })
     }
 
     fn allocate(
-        &self,
+        &mut self,
         layout: DeviceLayout,
         allocation_type: AllocationType,
         buffer_image_granularity: DeviceAlignment,
@@ -1574,23 +1562,28 @@ impl<S: Suballocator> Block<S> {
             self.suballocator
                 .allocate(layout, allocation_type, buffer_image_granularity)?;
 
+        self.allocation_count += 1;
+
         Ok(MemoryAlloc {
             device_memory: self.device_memory.clone(),
             suballocation: Some(suballocation),
-            allocation_handle: AllocationHandle(self as *const Block<S> as _),
+            allocation_handle: AllocationHandle(self as *mut Block<S> as _),
         })
     }
 
-    unsafe fn deallocate(&self, suballocation: Suballocation) {
-        self.suballocator.deallocate(suballocation)
+    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
+        self.suballocator.deallocate(suballocation);
+
+        self.allocation_count -= 1;
+
+        // For bump allocators, reset the free-start once there are no remaining allocations.
+        if self.allocation_count == 0 {
+            self.suballocator.cleanup();
+        }
     }
 
     fn free_size(&self) -> DeviceSize {
         self.suballocator.free_size()
-    }
-
-    fn cleanup(&mut self) {
-        self.suballocator.cleanup();
     }
 }
 
