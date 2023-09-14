@@ -118,14 +118,15 @@ fn main() {
     let pipeline = {
         let cs = cs::load(device.clone())
             .unwrap()
+            .specialize(
+                [(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())]
+                    .into_iter()
+                    .collect(),
+            )
+            .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo {
-            specialization_info: [(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())]
-                .into_iter()
-                .collect(),
-            ..PipelineShaderStageCreateInfo::new(cs)
-        };
+        let stage = PipelineShaderStageCreateInfo::new(cs);
         let layout = PipelineLayout::new(
             device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])

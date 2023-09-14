@@ -14,9 +14,13 @@ use once_cell::sync::Lazy;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
+// From the documentation of the OpSpecConstantOp instruction.
+// The instructions requiring the Kernel capability are not listed,
+// as this capability is not supported by Vulkan.
 static SPEC_CONSTANT_OP: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     HashSet::from_iter([
         "SConvert",
+        "UConvert",
         "FConvert",
         "SNegate",
         "Not",
@@ -54,27 +58,6 @@ static SPEC_CONSTANT_OP: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         "UGreaterThanEqual",
         "SGreaterThanEqual",
         "QuantizeToF16",
-        "ConvertFToS",
-        "ConvertSToF",
-        "ConvertFToU",
-        "ConvertUToF",
-        "UConvert",
-        "ConvertPtrToU",
-        "ConvertUToPtr",
-        "GenericCastToPtr",
-        "PtrCastToGeneric",
-        "Bitcast",
-        "FNegate",
-        "FAdd",
-        "FSub",
-        "FMul",
-        "FDiv",
-        "FRem",
-        "FMod",
-        "AccessChain",
-        "InBoundsAccessChain",
-        "PtrAccessChain",
-        "InBoundsPtrAccessChain",
     ])
 });
 
@@ -228,7 +211,7 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
         impl #enum_name {
             #[allow(dead_code)]
             fn parse(reader: &mut InstructionReader<'_>) -> Result<Self, ParseError> {
-                let opcode = (reader.next_u32()? & 0xffff) as u16;
+                let opcode = (reader.next_word()? & 0xffff) as u16;
 
                 Ok(match opcode {
                     #(#parse_items)*
@@ -391,7 +374,7 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
             impl #name {
                 #[allow(dead_code)]
                 fn parse(reader: &mut InstructionReader<'_>) -> Result<#name, ParseError> {
-                    let value = reader.next_u32()?;
+                    let value = reader.next_word()?;
 
                     Ok(Self {
                         #(#parse_items)*
@@ -536,7 +519,7 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
             impl #name {
                 #[allow(dead_code)]
                 fn parse(reader: &mut InstructionReader<'_>) -> Result<#name, ParseError> {
-                    Ok(match reader.next_u32()? {
+                    Ok(match reader.next_word()? {
                         #(#parse_items)*
                         value => return Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),
                     })
@@ -632,7 +615,7 @@ fn kinds_to_types(grammar: &SpirvGrammar) -> HashMap<&str, (TokenStream, TokenSt
                     (quote! { Vec<u32> }, quote! { reader.remainder() })
                 }
                 "LiteralInteger" | "LiteralExtInstInteger" => {
-                    (quote! { u32 }, quote! { reader.next_u32()? })
+                    (quote! { u32 }, quote! { reader.next_word()? })
                 }
                 "LiteralSpecConstantOpInteger" => (
                     quote! { SpecConstantInstruction },
@@ -643,8 +626,8 @@ fn kinds_to_types(grammar: &SpirvGrammar) -> HashMap<&str, (TokenStream, TokenSt
                     quote! { (Id, Id) },
                     quote! {
                         (
-                            Id(reader.next_u32()?),
-                            Id(reader.next_u32()?),
+                            Id(reader.next_word()?),
+                            Id(reader.next_word()?),
                         )
                     },
                 ),
@@ -652,8 +635,8 @@ fn kinds_to_types(grammar: &SpirvGrammar) -> HashMap<&str, (TokenStream, TokenSt
                     quote! { (Id, u32) },
                     quote! {
                         (
-                            Id(reader.next_u32()?),
-                            reader.next_u32()?
+                            Id(reader.next_word()?),
+                            reader.next_word()?
                         )
                     },
                 ),
@@ -661,11 +644,13 @@ fn kinds_to_types(grammar: &SpirvGrammar) -> HashMap<&str, (TokenStream, TokenSt
                     quote! { (u32, Id) },
                     quote! {
                     (
-                        reader.next_u32()?,
-                        Id(reader.next_u32()?)),
+                        reader.next_word()?,
+                        Id(reader.next_word()?)),
                     },
                 ),
-                _ if k.kind.starts_with("Id") => (quote! { Id }, quote! { Id(reader.next_u32()?) }),
+                _ if k.kind.starts_with("Id") => {
+                    (quote! { Id }, quote! { Id(reader.next_word()?) })
+                }
                 ident => {
                     let ident = format_ident!("{}", ident);
                     (quote! { #ident }, quote! { #ident::parse(reader)? })
@@ -678,7 +663,7 @@ fn kinds_to_types(grammar: &SpirvGrammar) -> HashMap<&str, (TokenStream, TokenSt
             "LiteralFloat",
             (
                 quote! { f32 },
-                quote! { f32::from_bits(reader.next_u32()?) },
+                quote! { f32::from_bits(reader.next_word()?) },
             ),
         )])
         .collect()

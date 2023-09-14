@@ -238,7 +238,6 @@ use syn::{
 };
 
 mod codegen;
-mod entry_point;
 mod structs;
 
 #[proc_macro]

@@ -16,11 +16,11 @@ use crate::{
     pipeline::layout::PushConstantRange,
     shader::{
         spirv::{
-            BuiltIn, Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction,
-            Spirv, StorageClass,
+            BuiltIn, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction, Spirv,
+            StorageClass,
         },
         ComputeShaderExecution, DescriptorIdentifier, DescriptorRequirements, EntryPointInfo,
-        GeometryShaderExecution, GeometryShaderInput, LocalSize, NumericType, ShaderExecution,
+        GeometryShaderExecution, GeometryShaderInput, NumericType, ShaderExecution,
         ShaderInterface, ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStage,
         SpecializationConstant,
     },
@@ -30,56 +30,24 @@ use ahash::{HashMap, HashSet};
 use half::f16;
 use std::borrow::Cow;
 
-/// Returns an iterator of the capabilities used by `spirv`.
-#[inline]
-pub fn spirv_capabilities(spirv: &Spirv) -> impl Iterator<Item = &Capability> {
-    spirv
-        .iter_capability()
-        .filter_map(|instruction| match instruction {
-            Instruction::Capability { capability } => Some(capability),
-            _ => None,
-        })
-}
-
-/// Returns an iterator of the extensions used by `spirv`.
-#[inline]
-pub fn spirv_extensions(spirv: &Spirv) -> impl Iterator<Item = &str> {
-    spirv
-        .iter_extension()
-        .filter_map(|instruction| match instruction {
-            Instruction::Extension { name } => Some(name.as_str()),
-            _ => None,
-        })
-}
-
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
 #[inline]
 pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ {
     let interface_variables = interface_variables(spirv);
-    let u32_constants = u32_constants(spirv);
-    let specialization_constant_ids = specialization_constant_ids(spirv);
-    let workgroup_size_decorations = workgroup_size_decorations(spirv);
 
     spirv.iter_entry_point().filter_map(move |instruction| {
-        let (execution_model, function_id, entry_point_name, interface) = match instruction {
+        let (execution_model, function_id, entry_point_name, interface) = match *instruction {
             Instruction::EntryPoint {
                 execution_model,
                 entry_point,
-                name,
-                interface,
+                ref name,
+                ref interface,
                 ..
-            } => (*execution_model, *entry_point, name, interface),
+            } => (execution_model, entry_point, name, interface),
             _ => return None,
         };
 
-        let execution = shader_execution(
-            spirv,
-            execution_model,
-            function_id,
-            &u32_constants,
-            &specialization_constant_ids,
-            &workgroup_size_decorations,
-        );
+        let execution = shader_execution(spirv, execution_model, function_id);
         let stage = ShaderStage::from(&execution);
 
         let descriptor_binding_requirements = inspect_entry_point(
@@ -89,7 +57,6 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
             function_id,
         );
         let push_constant_requirements = push_constant_requirements(spirv, stage);
-        let specialization_constants = specialization_constants(spirv);
         let input_interface = shader_interface(
             spirv,
             interface,
@@ -113,91 +80,10 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
             execution,
             descriptor_binding_requirements,
             push_constant_requirements,
-            specialization_constants,
             input_interface,
             output_interface,
         })
     })
-}
-
-/// Extracts the u32 constants from `spirv`.
-fn u32_constants(spirv: &Spirv) -> HashMap<Id, u32> {
-    let type_u32s: HashSet<Id> = spirv
-        .iter_global()
-        .filter_map(|inst| {
-            if let Instruction::TypeInt {
-                result_id,
-                width,
-                signedness,
-            } = inst
-            {
-                if *width == 0 && *signedness == 0 {
-                    return Some(*result_id);
-                }
-            }
-            None
-        })
-        .collect();
-    spirv
-        .iter_decoration()
-        .filter_map(|inst| {
-            if let Instruction::Constant {
-                result_type_id,
-                result_id,
-                value,
-            } = inst
-            {
-                if type_u32s.contains(result_type_id) {
-                    if let [value] = value.as_slice() {
-                        return Some((*result_id, *value));
-                    }
-                }
-            }
-            None
-        })
-        .collect()
-}
-
-/// Extracts the specialization constant ids from `spirv`.
-fn specialization_constant_ids(spirv: &Spirv) -> HashMap<Id, u32> {
-    spirv
-        .iter_decoration()
-        .filter_map(|inst| {
-            if let Instruction::Decorate {
-                target,
-                decoration:
-                    Decoration::SpecId {
-                        specialization_constant_id,
-                    },
-            } = inst
-            {
-                Some((*target, *specialization_constant_id))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-/// Extracts the `WorkgroupSize` builtin Id's from `spirv`.
-fn workgroup_size_decorations(spirv: &Spirv) -> HashSet<Id> {
-    spirv
-        .iter_decoration()
-        .filter_map(|inst| {
-            if let Instruction::Decorate {
-                target,
-                decoration:
-                    Decoration::BuiltIn {
-                        built_in: BuiltIn::WorkgroupSize,
-                    },
-            } = inst
-            {
-                Some(*target)
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 /// Extracts the `ShaderExecution` for the entry point `function_id` from `spirv`.
@@ -205,9 +91,6 @@ fn shader_execution(
     spirv: &Spirv,
     execution_model: ExecutionModel,
     function_id: Id,
-    u32_constants: &HashMap<Id, u32>,
-    specialization_constant_ids: &HashMap<Id, u32>,
-    workgroup_size_decorations: &HashSet<Id>,
 ) -> ShaderExecution {
     match execution_model {
         ExecutionModel::Vertex => ShaderExecution::Vertex,
@@ -264,14 +147,13 @@ fn shader_execution(
                     _ => continue,
                 };
 
-                #[allow(clippy::single_match)]
                 match mode {
                     ExecutionMode::EarlyFragmentTests => {
                         fragment_tests_stages = FragmentTestsStages::Early;
                     }
-                    /*ExecutionMode::EarlyAndLateFragmentTestsAMD => {
+                    ExecutionMode::EarlyAndLateFragmentTestsAMD => {
                         fragment_tests_stages = FragmentTestsStages::EarlyAndLate;
-                    }*/
+                    }
                     _ => (),
                 }
             }
@@ -282,122 +164,82 @@ fn shader_execution(
         }
 
         ExecutionModel::GLCompute => {
-            let mut execution = ComputeShaderExecution::LocalSize([LocalSize::Literal(0); 3]);
-            for instruction in spirv.iter_execution_mode() {
-                match instruction {
-                    Instruction::ExecutionMode { entry_point, mode }
-                        if *entry_point == function_id =>
-                    {
-                        if let ExecutionMode::LocalSize {
-                            x_size,
-                            y_size,
-                            z_size,
-                        } = mode
-                        {
-                            execution = ComputeShaderExecution::LocalSize([
-                                LocalSize::Literal(*x_size),
-                                LocalSize::Literal(*y_size),
-                                LocalSize::Literal(*z_size),
-                            ]);
-                            break;
-                        }
-                    }
-                    Instruction::ExecutionModeId { entry_point, mode }
-                        if *entry_point == function_id =>
-                    {
-                        if let ExecutionMode::LocalSizeId {
-                            x_size,
-                            y_size,
-                            z_size,
-                        } = mode
-                        {
-                            let mut local_size = [LocalSize::Literal(0); 3];
-                            for (local_size, id) in
-                                local_size.iter_mut().zip([*x_size, *y_size, *z_size])
-                            {
-                                if let Some(constant) = u32_constants.get(&id) {
-                                    *local_size = LocalSize::Literal(*constant);
-                                } else if let Some(spec_id) = specialization_constant_ids.get(&id) {
-                                    *local_size = LocalSize::SpecId(*spec_id);
-                                } else {
-                                    panic!("LocalSizeId {id:?} not defined!");
+            let local_size = (spirv
+                .iter_decoration()
+                .find_map(|instruction| match *instruction {
+                    Instruction::Decorate {
+                        target,
+                        decoration:
+                            Decoration::BuiltIn {
+                                built_in: BuiltIn::WorkgroupSize,
+                            },
+                    } => match *spirv.id(target).instruction() {
+                        Instruction::ConstantComposite {
+                            ref constituents, ..
+                        } => {
+                            match *constituents.as_slice() {
+                                [x_size, y_size, z_size] => {
+                                    Some([x_size, y_size, z_size].map(|id| {
+                                        match *spirv.id(id).instruction() {
+                                            Instruction::Constant { ref value, .. } => {
+                                                assert!(value.len() == 1);
+                                                value[0]
+                                            }
+                                            // VUID-WorkgroupSize-WorkgroupSize-04426
+                                            // VUID-WorkgroupSize-WorkgroupSize-04427
+                                            _ => panic!("WorkgroupSize is not a constant"),
+                                        }
+                                    }))
                                 }
+                                // VUID-WorkgroupSize-WorkgroupSize-04427
+                                _ => panic!("WorkgroupSize must be 3 component vector!"),
                             }
-                            execution = ComputeShaderExecution::LocalSizeId(local_size);
-                            break;
                         }
-                    }
-                    _ => continue,
-                };
-            }
-            if !workgroup_size_decorations.is_empty() {
-                let mut in_function = false;
-                for instruction in spirv.instructions() {
-                    if !in_function {
-                        match *instruction {
-                            Instruction::Function { result_id, .. } if result_id == function_id => {
-                                in_function = true;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        let mut local_size = [LocalSize::Literal(0); 3];
-                        match instruction {
-                            Instruction::ConstantComposite {
-                                result_type_id: _,
-                                result_id,
-                                constituents,
-                            } => {
-                                if workgroup_size_decorations.contains(result_id) {
-                                    if constituents.len() != 3 {
-                                        panic!("WorkgroupSize must be 3 component vector!");
-                                    }
-                                    for (local_size, id) in
-                                        local_size.iter_mut().zip(constituents.iter())
-                                    {
-                                        if let Some(constant) = u32_constants.get(id) {
-                                            *local_size = LocalSize::Literal(*constant);
-                                        } else {
-                                            panic!("WorkgroupSize Constant {id:?} not defined!");
-                                        };
-                                    }
+                        // VUID-WorkgroupSize-WorkgroupSize-04426
+                        _ => panic!("WorkgroupSize is not a constant"),
+                    },
+                    _ => None,
+                }))
+            .or_else(|| {
+                spirv
+                    .iter_execution_mode()
+                    .find_map(|instruction| match *instruction {
+                        Instruction::ExecutionMode {
+                            entry_point,
+                            mode:
+                                ExecutionMode::LocalSize {
+                                    x_size,
+                                    y_size,
+                                    z_size,
+                                },
+                        } if entry_point == function_id => Some([x_size, y_size, z_size]),
+                        Instruction::ExecutionModeId {
+                            entry_point,
+                            mode:
+                                ExecutionMode::LocalSizeId {
+                                    x_size,
+                                    y_size,
+                                    z_size,
+                                },
+                        } if entry_point == function_id => Some([x_size, y_size, z_size].map(
+                            |id| match *spirv.id(id).instruction() {
+                                Instruction::Constant { ref value, .. } => {
+                                    assert!(value.len() == 1);
+                                    value[0]
                                 }
-                            }
-                            Instruction::SpecConstantComposite {
-                                result_type_id: _,
-                                result_id,
-                                constituents,
-                            } => {
-                                if workgroup_size_decorations.contains(result_id) {
-                                    if constituents.len() != 3 {
-                                        panic!("WorkgroupSize must be 3 component vector!");
-                                    }
-                                    for (local_size, id) in
-                                        local_size.iter_mut().zip(constituents.iter())
-                                    {
-                                        if let Some(spec_id) = specialization_constant_ids.get(id) {
-                                            *local_size = LocalSize::SpecId(*spec_id);
-                                        } else {
-                                            panic!("WorkgroupSize SpecializationConstant {id:?} not defined!");
-                                        };
-                                    }
-                                }
-                            }
-                            Instruction::FunctionEnd => break,
-                            _ => continue,
-                        }
-                        match &mut execution {
-                            ComputeShaderExecution::LocalSize(output) => {
-                                *output = local_size;
-                            }
-                            ComputeShaderExecution::LocalSizeId(output) => {
-                                *output = local_size;
-                            }
-                        }
-                    }
-                }
-            }
-            ShaderExecution::Compute(execution)
+                                _ => panic!("LocalSizeId is not a constant"),
+                            },
+                        )),
+                        _ => None,
+                    })
+            });
+
+            ShaderExecution::Compute(ComputeShaderExecution {
+                local_size: local_size.expect(
+                    "Geometry shader does not have a WorkgroupSize builtin, \
+                    or LocalSize or LocalSizeId ExecutionMode",
+                ),
+            })
         }
 
         ExecutionModel::RayGenerationKHR => ShaderExecution::RayGeneration,
@@ -541,414 +383,375 @@ fn inspect_entry_point(
             }
 
             self.inspected_functions.insert(function);
-            let mut in_function = false;
 
-            for instruction in self.spirv.instructions() {
-                if !in_function {
-                    match *instruction {
-                        Instruction::Function { result_id, .. } if result_id == function => {
-                            in_function = true;
+            for instruction in self.spirv.function(function).iter_instructions() {
+                let stage = self.stage;
+
+                match *instruction {
+                    Instruction::AtomicLoad { pointer, .. } => {
+                        // Storage buffer
+                        if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer)) {
+                            desc_reqs.memory_read = stage.into();
                         }
-                        _ => {}
+
+                        // Storage image
+                        if let Some(desc_reqs) =
+                            desc_reqs(self.instruction_chain([inst_image_texel_pointer], pointer))
+                        {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.storage_image_atomic = true;
+                        }
                     }
-                } else {
-                    let stage = self.stage;
 
-                    match *instruction {
-                        Instruction::AtomicLoad { pointer, .. } => {
-                            // Storage buffer
-                            if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                            }
-
-                            // Storage image
-                            if let Some(desc_reqs) = desc_reqs(
-                                self.instruction_chain([inst_image_texel_pointer], pointer),
-                            ) {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.storage_image_atomic = true;
-                            }
+                    Instruction::AtomicStore { pointer, .. } => {
+                        // Storage buffer
+                        if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer)) {
+                            desc_reqs.memory_write = stage.into();
                         }
 
-                        Instruction::AtomicStore { pointer, .. } => {
-                            // Storage buffer
-                            if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer))
-                            {
-                                desc_reqs.memory_write = stage.into();
-                            }
+                        // Storage image
+                        if let Some(desc_reqs) =
+                            desc_reqs(self.instruction_chain([inst_image_texel_pointer], pointer))
+                        {
+                            desc_reqs.memory_write = stage.into();
+                            desc_reqs.storage_image_atomic = true;
+                        }
+                    }
 
-                            // Storage image
-                            if let Some(desc_reqs) = desc_reqs(
-                                self.instruction_chain([inst_image_texel_pointer], pointer),
-                            ) {
-                                desc_reqs.memory_write = stage.into();
-                                desc_reqs.storage_image_atomic = true;
-                            }
+                    Instruction::AtomicExchange { pointer, .. }
+                    | Instruction::AtomicCompareExchange { pointer, .. }
+                    | Instruction::AtomicCompareExchangeWeak { pointer, .. }
+                    | Instruction::AtomicIIncrement { pointer, .. }
+                    | Instruction::AtomicIDecrement { pointer, .. }
+                    | Instruction::AtomicIAdd { pointer, .. }
+                    | Instruction::AtomicISub { pointer, .. }
+                    | Instruction::AtomicSMin { pointer, .. }
+                    | Instruction::AtomicUMin { pointer, .. }
+                    | Instruction::AtomicSMax { pointer, .. }
+                    | Instruction::AtomicUMax { pointer, .. }
+                    | Instruction::AtomicAnd { pointer, .. }
+                    | Instruction::AtomicOr { pointer, .. }
+                    | Instruction::AtomicXor { pointer, .. }
+                    | Instruction::AtomicFlagTestAndSet { pointer, .. }
+                    | Instruction::AtomicFlagClear { pointer, .. }
+                    | Instruction::AtomicFMinEXT { pointer, .. }
+                    | Instruction::AtomicFMaxEXT { pointer, .. }
+                    | Instruction::AtomicFAddEXT { pointer, .. } => {
+                        // Storage buffer
+                        if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer)) {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.memory_write = stage.into();
                         }
 
-                        Instruction::AtomicExchange { pointer, .. }
-                        | Instruction::AtomicCompareExchange { pointer, .. }
-                        | Instruction::AtomicCompareExchangeWeak { pointer, .. }
-                        | Instruction::AtomicIIncrement { pointer, .. }
-                        | Instruction::AtomicIDecrement { pointer, .. }
-                        | Instruction::AtomicIAdd { pointer, .. }
-                        | Instruction::AtomicISub { pointer, .. }
-                        | Instruction::AtomicSMin { pointer, .. }
-                        | Instruction::AtomicUMin { pointer, .. }
-                        | Instruction::AtomicSMax { pointer, .. }
-                        | Instruction::AtomicUMax { pointer, .. }
-                        | Instruction::AtomicAnd { pointer, .. }
-                        | Instruction::AtomicOr { pointer, .. }
-                        | Instruction::AtomicXor { pointer, .. }
-                        | Instruction::AtomicFlagTestAndSet { pointer, .. }
-                        | Instruction::AtomicFlagClear { pointer, .. }
-                        | Instruction::AtomicFMinEXT { pointer, .. }
-                        | Instruction::AtomicFMaxEXT { pointer, .. }
-                        | Instruction::AtomicFAddEXT { pointer, .. } => {
-                            // Storage buffer
-                            if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.memory_write = stage.into();
-                            }
-
-                            // Storage image
-                            if let Some(desc_reqs) = desc_reqs(
-                                self.instruction_chain([inst_image_texel_pointer], pointer),
-                            ) {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.memory_write = stage.into();
-                                desc_reqs.storage_image_atomic = true;
-                            }
+                        // Storage image
+                        if let Some(desc_reqs) =
+                            desc_reqs(self.instruction_chain([inst_image_texel_pointer], pointer))
+                        {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.memory_write = stage.into();
+                            desc_reqs.storage_image_atomic = true;
                         }
+                    }
 
-                        Instruction::CopyMemory { target, source, .. } => {
-                            self.instruction_chain([], target);
-                            self.instruction_chain([], source);
-                        }
+                    Instruction::CopyMemory { target, source, .. } => {
+                        self.instruction_chain([], target);
+                        self.instruction_chain([], source);
+                    }
 
-                        Instruction::CopyObject { operand, .. } => {
+                    Instruction::CopyObject { operand, .. } => {
+                        self.instruction_chain([], operand);
+                    }
+
+                    Instruction::ExtInst { ref operands, .. } => {
+                        // We don't know which extended instructions take pointers,
+                        // so we must interpret every operand as a pointer.
+                        for &operand in operands {
                             self.instruction_chain([], operand);
                         }
+                    }
 
-                        Instruction::ExtInst { ref operands, .. } => {
-                            // We don't know which extended instructions take pointers,
-                            // so we must interpret every operand as a pointer.
-                            for &operand in operands {
-                                self.instruction_chain([], operand);
-                            }
-                        }
-
-                        Instruction::FunctionCall {
-                            function,
-                            ref arguments,
-                            ..
-                        } => {
-                            // Rather than trying to figure out the type of each argument, we just
-                            // try all of them as pointers.
-                            for &argument in arguments {
-                                self.instruction_chain([], argument);
-                            }
-
-                            if !self.inspected_functions.contains(&function) {
-                                self.inspect_entry_point_r(function);
-                            }
+                    Instruction::FunctionCall {
+                        function,
+                        ref arguments,
+                        ..
+                    } => {
+                        // Rather than trying to figure out the type of each argument, we just
+                        // try all of them as pointers.
+                        for &argument in arguments {
+                            self.instruction_chain([], argument);
                         }
 
-                        Instruction::FunctionEnd => return,
+                        if !self.inspected_functions.contains(&function) {
+                            self.inspect_entry_point_r(function);
+                        }
+                    }
 
-                        Instruction::ImageGather {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseGather {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain(
-                                    [inst_sampled_image, inst_load],
-                                    sampled_image,
-                                ))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.sampler_no_ycbcr_conversion = true;
+                    Instruction::ImageGather {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseGather {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    } => {
+                        if let Some(desc_reqs) = desc_reqs(
+                            self.instruction_chain([inst_sampled_image, inst_load], sampled_image),
+                        ) {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.sampler_no_ycbcr_conversion = true;
 
-                                if image_operands.as_ref().map_or(false, |image_operands| {
-                                    image_operands.bias.is_some()
-                                        || image_operands.const_offset.is_some()
-                                        || image_operands.offset.is_some()
-                                }) {
-                                    desc_reqs.sampler_no_unnormalized_coordinates = true;
-                                }
-                            }
-                        }
-
-                        Instruction::ImageDrefGather { sampled_image, .. }
-                        | Instruction::ImageSparseDrefGather { sampled_image, .. } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain(
-                                    [inst_sampled_image, inst_load],
-                                    sampled_image,
-                                ))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.sampler_no_unnormalized_coordinates = true;
-                                desc_reqs.sampler_no_ycbcr_conversion = true;
-                            }
-                        }
-
-                        Instruction::ImageSampleImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSampleProjImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleProjImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain(
-                                    [inst_sampled_image, inst_load],
-                                    sampled_image,
-                                ))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.sampler_no_unnormalized_coordinates = true;
-
-                                if image_operands.as_ref().map_or(false, |image_operands| {
-                                    image_operands.const_offset.is_some()
-                                        || image_operands.offset.is_some()
-                                }) {
-                                    desc_reqs.sampler_no_ycbcr_conversion = true;
-                                }
-                            }
-                        }
-
-                        Instruction::ImageSampleProjExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleProjExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain(
-                                    [inst_sampled_image, inst_load],
-                                    sampled_image,
-                                ))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.sampler_no_unnormalized_coordinates = true;
-
-                                if image_operands.const_offset.is_some()
-                                    || image_operands.offset.is_some()
-                                {
-                                    desc_reqs.sampler_no_ycbcr_conversion = true;
-                                }
-                            }
-                        }
-
-                        Instruction::ImageSampleDrefImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSampleProjDrefImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleDrefImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleProjDrefImplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain(
-                                    [inst_sampled_image, inst_load],
-                                    sampled_image,
-                                ))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.sampler_no_unnormalized_coordinates = true;
-                                desc_reqs.sampler_compare = true;
-
-                                if image_operands.as_ref().map_or(false, |image_operands| {
-                                    image_operands.const_offset.is_some()
-                                        || image_operands.offset.is_some()
-                                }) {
-                                    desc_reqs.sampler_no_ycbcr_conversion = true;
-                                }
-                            }
-                        }
-
-                        Instruction::ImageSampleDrefExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSampleProjDrefExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleDrefExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleProjDrefExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain(
-                                    [inst_sampled_image, inst_load],
-                                    sampled_image,
-                                ))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                                desc_reqs.sampler_no_unnormalized_coordinates = true;
-                                desc_reqs.sampler_compare = true;
-
-                                if image_operands.const_offset.is_some()
-                                    || image_operands.offset.is_some()
-                                {
-                                    desc_reqs.sampler_no_ycbcr_conversion = true;
-                                }
-                            }
-                        }
-
-                        Instruction::ImageSampleExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        }
-                        | Instruction::ImageSparseSampleExplicitLod {
-                            sampled_image,
-                            image_operands,
-                            ..
-                        } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain(
-                                    [inst_sampled_image, inst_load],
-                                    sampled_image,
-                                ))
-                            {
-                                desc_reqs.memory_read = stage.into();
-
-                                if image_operands.bias.is_some()
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.bias.is_some()
                                     || image_operands.const_offset.is_some()
                                     || image_operands.offset.is_some()
-                                {
-                                    desc_reqs.sampler_no_unnormalized_coordinates = true;
-                                }
-
-                                if image_operands.const_offset.is_some()
-                                    || image_operands.offset.is_some()
-                                {
-                                    desc_reqs.sampler_no_ycbcr_conversion = true;
-                                }
+                            }) {
+                                desc_reqs.sampler_no_unnormalized_coordinates = true;
                             }
                         }
-
-                        Instruction::ImageTexelPointer { image, .. } => {
-                            self.instruction_chain([], image);
-                        }
-
-                        Instruction::ImageRead { image, .. } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain([inst_load], image))
-                            {
-                                desc_reqs.memory_read = stage.into();
-                            }
-                        }
-
-                        Instruction::ImageWrite { image, .. } => {
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain([inst_load], image))
-                            {
-                                desc_reqs.memory_write = stage.into();
-                            }
-                        }
-
-                        Instruction::Load { pointer, .. } => {
-                            if let Some((binding_variable, index)) =
-                                self.instruction_chain([], pointer)
-                            {
-                                // Only loads on buffers access memory directly.
-                                // Loads on images load the image object itself, but don't touch
-                                // the texels in memory yet.
-                                if binding_variable.reqs.descriptor_types.iter().any(|ty| {
-                                    matches!(
-                                        ty,
-                                        DescriptorType::UniformBuffer
-                                            | DescriptorType::UniformBufferDynamic
-                                            | DescriptorType::StorageBuffer
-                                            | DescriptorType::StorageBufferDynamic
-                                            | DescriptorType::InlineUniformBlock
-                                    )
-                                }) {
-                                    if let Some(desc_reqs) =
-                                        desc_reqs(Some((binding_variable, index)))
-                                    {
-                                        desc_reqs.memory_read = stage.into();
-                                    }
-                                }
-                            }
-                        }
-
-                        Instruction::SampledImage { image, sampler, .. } => {
-                            let identifier = match self.instruction_chain([inst_load], image) {
-                                Some((variable, Some(index))) => DescriptorIdentifier {
-                                    set: variable.set,
-                                    binding: variable.binding,
-                                    index,
-                                },
-                                _ => continue,
-                            };
-
-                            if let Some(desc_reqs) =
-                                desc_reqs(self.instruction_chain([inst_load], sampler))
-                            {
-                                desc_reqs.sampler_with_images.insert(identifier);
-                            }
-                        }
-
-                        Instruction::Store { pointer, .. } => {
-                            // This can only apply to buffers, right?
-                            if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer))
-                            {
-                                desc_reqs.memory_write = stage.into();
-                            }
-                        }
-
-                        _ => (),
                     }
+
+                    Instruction::ImageDrefGather { sampled_image, .. }
+                    | Instruction::ImageSparseDrefGather { sampled_image, .. } => {
+                        if let Some(desc_reqs) = desc_reqs(
+                            self.instruction_chain([inst_sampled_image, inst_load], sampled_image),
+                        ) {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.sampler_no_unnormalized_coordinates = true;
+                            desc_reqs.sampler_no_ycbcr_conversion = true;
+                        }
+                    }
+
+                    Instruction::ImageSampleImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSampleProjImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleProjImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    } => {
+                        if let Some(desc_reqs) = desc_reqs(
+                            self.instruction_chain([inst_sampled_image, inst_load], sampled_image),
+                        ) {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.sampler_no_unnormalized_coordinates = true;
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                desc_reqs.sampler_no_ycbcr_conversion = true;
+                            }
+                        }
+                    }
+
+                    Instruction::ImageSampleProjExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleProjExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    } => {
+                        if let Some(desc_reqs) = desc_reqs(
+                            self.instruction_chain([inst_sampled_image, inst_load], sampled_image),
+                        ) {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.sampler_no_unnormalized_coordinates = true;
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                desc_reqs.sampler_no_ycbcr_conversion = true;
+                            }
+                        }
+                    }
+
+                    Instruction::ImageSampleDrefImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSampleProjDrefImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleDrefImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleProjDrefImplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    } => {
+                        if let Some(desc_reqs) = desc_reqs(
+                            self.instruction_chain([inst_sampled_image, inst_load], sampled_image),
+                        ) {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.sampler_no_unnormalized_coordinates = true;
+                            desc_reqs.sampler_compare = true;
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                desc_reqs.sampler_no_ycbcr_conversion = true;
+                            }
+                        }
+                    }
+
+                    Instruction::ImageSampleDrefExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSampleProjDrefExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleDrefExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleProjDrefExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    } => {
+                        if let Some(desc_reqs) = desc_reqs(
+                            self.instruction_chain([inst_sampled_image, inst_load], sampled_image),
+                        ) {
+                            desc_reqs.memory_read = stage.into();
+                            desc_reqs.sampler_no_unnormalized_coordinates = true;
+                            desc_reqs.sampler_compare = true;
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                desc_reqs.sampler_no_ycbcr_conversion = true;
+                            }
+                        }
+                    }
+
+                    Instruction::ImageSampleExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    }
+                    | Instruction::ImageSparseSampleExplicitLod {
+                        sampled_image,
+                        image_operands,
+                        ..
+                    } => {
+                        if let Some(desc_reqs) = desc_reqs(
+                            self.instruction_chain([inst_sampled_image, inst_load], sampled_image),
+                        ) {
+                            desc_reqs.memory_read = stage.into();
+
+                            if image_operands.bias.is_some()
+                                || image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                desc_reqs.sampler_no_unnormalized_coordinates = true;
+                            }
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                desc_reqs.sampler_no_ycbcr_conversion = true;
+                            }
+                        }
+                    }
+
+                    Instruction::ImageTexelPointer { image, .. } => {
+                        self.instruction_chain([], image);
+                    }
+
+                    Instruction::ImageRead { image, .. } => {
+                        if let Some(desc_reqs) =
+                            desc_reqs(self.instruction_chain([inst_load], image))
+                        {
+                            desc_reqs.memory_read = stage.into();
+                        }
+                    }
+
+                    Instruction::ImageWrite { image, .. } => {
+                        if let Some(desc_reqs) =
+                            desc_reqs(self.instruction_chain([inst_load], image))
+                        {
+                            desc_reqs.memory_write = stage.into();
+                        }
+                    }
+
+                    Instruction::Load { pointer, .. } => {
+                        if let Some((binding_variable, index)) = self.instruction_chain([], pointer)
+                        {
+                            // Only loads on buffers access memory directly.
+                            // Loads on images load the image object itself, but don't touch
+                            // the texels in memory yet.
+                            if binding_variable.reqs.descriptor_types.iter().any(|ty| {
+                                matches!(
+                                    ty,
+                                    DescriptorType::UniformBuffer
+                                        | DescriptorType::UniformBufferDynamic
+                                        | DescriptorType::StorageBuffer
+                                        | DescriptorType::StorageBufferDynamic
+                                        | DescriptorType::InlineUniformBlock
+                                )
+                            }) {
+                                if let Some(desc_reqs) = desc_reqs(Some((binding_variable, index)))
+                                {
+                                    desc_reqs.memory_read = stage.into();
+                                }
+                            }
+                        }
+                    }
+
+                    Instruction::SampledImage { image, sampler, .. } => {
+                        let identifier = match self.instruction_chain([inst_load], image) {
+                            Some((variable, Some(index))) => DescriptorIdentifier {
+                                set: variable.set,
+                                binding: variable.binding,
+                                index,
+                            },
+                            _ => continue,
+                        };
+
+                        if let Some(desc_reqs) =
+                            desc_reqs(self.instruction_chain([inst_load], sampler))
+                        {
+                            desc_reqs.sampler_with_images.insert(identifier);
+                        }
+                    }
+
+                    Instruction::Store { pointer, .. } => {
+                        // This can only apply to buffers, right?
+                        if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer)) {
+                            desc_reqs.memory_write = stage.into();
+                        }
+                    }
+
+                    _ => (),
                 }
             }
         }
@@ -1252,7 +1055,7 @@ fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushC
 }
 
 /// Extracts the `SpecializationConstant` map from `spirv`.
-fn specialization_constants(spirv: &Spirv) -> HashMap<u32, SpecializationConstant> {
+pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, SpecializationConstant> {
     let get_constant_id = |result_id| {
         spirv
             .id(result_id)
@@ -1618,8 +1421,7 @@ fn shader_interface_type_of(
             } else {
                 let mut ty = shader_interface_type_of(spirv, element_type, false);
                 let num_elements = spirv
-                    .instructions()
-                    .iter()
+                    .iter_global()
                     .find_map(|instruction| match *instruction {
                         Instruction::Constant {
                             result_id,

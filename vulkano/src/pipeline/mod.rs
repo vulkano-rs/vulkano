@@ -21,7 +21,7 @@ pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::Pip
 use crate::{
     device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
-    shader::{DescriptorBindingRequirements, EntryPoint, ShaderStage, SpecializationConstant},
+    shader::{DescriptorBindingRequirements, EntryPoint, ShaderExecution, ShaderStage},
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
@@ -304,20 +304,10 @@ pub struct PipelineShaderStageCreateInfo {
     /// The default value is empty.
     pub flags: PipelineShaderStageCreateFlags,
 
-    /// The shader entry point for the stage.
+    /// The shader entry point for the stage, which includes any specialization constants.
     ///
     /// There is no default value.
     pub entry_point: EntryPoint,
-
-    /// Values for the specialization constants in the shader, indexed by their `constant_id`.
-    ///
-    /// Specialization constants are constants whose value can be overridden when you create
-    /// a pipeline. When provided, they must have the same type as defined in the shader.
-    /// Constants that are not given a value here will have the default value that was specified
-    /// for them in the shader code.
-    ///
-    /// The default value is empty.
-    pub specialization_info: HashMap<u32, SpecializationConstant>,
 
     /// The required subgroup size.
     ///
@@ -344,7 +334,6 @@ impl PipelineShaderStageCreateInfo {
         Self {
             flags: PipelineShaderStageCreateFlags::empty(),
             entry_point,
-            specialization_info: HashMap::default(),
             required_subgroup_size: None,
             _ne: crate::NonExhaustive(()),
         }
@@ -354,7 +343,6 @@ impl PipelineShaderStageCreateInfo {
         let &Self {
             flags,
             ref entry_point,
-            ref specialization_info,
             required_subgroup_size,
             _ne: _,
         } = self;
@@ -463,32 +451,11 @@ impl PipelineShaderStageCreateInfo {
             ShaderStage::SubpassShading => (),
         }
 
-        for (&constant_id, provided_value) in specialization_info {
-            // Per `VkSpecializationMapEntry` spec:
-            // "If a constantID value is not a specialization constant ID used in the shader,
-            // that map entry does not affect the behavior of the pipeline."
-            // We *may* want to be stricter than this for the sake of catching user errors?
-            if let Some(default_value) = entry_point_info.specialization_constants.get(&constant_id)
-            {
-                // Check for equal types rather than only equal size.
-                if !provided_value.eq_type(default_value) {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`specialization_info[{0}]` does not have the same type as \
-                            `entry_point.info().specialization_constants[{0}]`",
-                            constant_id
-                        )
-                        .into(),
-                        vuids: &["VUID-VkSpecializationMapEntry-constantID-00776"],
-                        ..Default::default()
-                    }));
-                }
-            }
-        }
-
-        let workgroup_size = if let Some(local_size) =
-            entry_point_info.local_size(specialization_info)?
+        let workgroup_size = if let ShaderExecution::Compute(execution) =
+            &entry_point_info.execution
         {
+            let local_size = execution.local_size;
+
             match stage_enum {
                 ShaderStage::Compute => {
                     if local_size[0] > properties.max_compute_work_group_size[0] {

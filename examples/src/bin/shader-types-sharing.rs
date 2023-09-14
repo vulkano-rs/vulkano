@@ -257,12 +257,11 @@ fn main() {
     let mult_pipeline = {
         let cs = shaders::load_mult(device.clone())
             .unwrap()
+            .specialize([(0, true.into())].into_iter().collect())
+            .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo {
-            specialization_info: [(0, true.into())].into_iter().collect(),
-            ..PipelineShaderStageCreateInfo::new(cs)
-        };
+        let stage = PipelineShaderStageCreateInfo::new(cs);
         let layout = PipelineLayout::new(
             device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
@@ -282,12 +281,11 @@ fn main() {
     let add_pipeline = {
         let cs = shaders::load_add(device.clone())
             .unwrap()
+            .specialize([(0, true.into())].into_iter().collect())
+            .unwrap()
             .entry_point("main")
             .unwrap();
-        let stage = PipelineShaderStageCreateInfo {
-            specialization_info: [(0, true.into())].into_iter().collect(),
-            ..PipelineShaderStageCreateInfo::new(cs)
-        };
+        let stage = PipelineShaderStageCreateInfo::new(cs);
         let layout = PipelineLayout::new(
             device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
