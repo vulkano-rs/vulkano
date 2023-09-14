@@ -758,7 +758,7 @@ impl AllocationHandle {
     ///
     /// [`from_ptr`]: Self::from_ptr
     #[inline]
-    pub const fn into_ptr(self) -> *mut () {
+    pub const fn as_ptr(self) -> *mut () {
         self.0
     }
 
@@ -770,7 +770,7 @@ impl AllocationHandle {
     /// [`from_index`]: Self::from_index
     #[allow(clippy::transmutes_expressible_as_ptr_casts)]
     #[inline]
-    pub const fn into_index(self) -> usize {
+    pub const fn as_index(self) -> usize {
         // SAFETY: `usize` and `*mut ()` have the same layout.
         unsafe { mem::transmute::<*mut (), usize>(self.0) }
     }

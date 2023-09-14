@@ -498,7 +498,7 @@ unsafe impl Suballocator for FreeListAllocator {
     unsafe fn deallocate(&self, suballocation: Suballocation) {
         // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
         // allocation of `self`.
-        let node_id = SlotId::new(suballocation.handle.into_index());
+        let node_id = SlotId::new(suballocation.handle.as_index());
 
         let state = unsafe { &mut *self.state.get() };
         let node = state.nodes.get_mut(node_id);
@@ -973,7 +973,7 @@ unsafe impl Suballocator for BuddyAllocator {
     #[inline]
     unsafe fn deallocate(&self, suballocation: Suballocation) {
         let mut offset = suballocation.offset;
-        let order = suballocation.handle.into_index();
+        let order = suballocation.handle.as_index();
 
         let min_order = order;
         let state = unsafe { &mut *self.state.get() };
