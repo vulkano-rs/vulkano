@@ -14,21 +14,20 @@ use crate::shader::{
 use ahash::HashMap;
 use half::f16;
 use smallvec::{smallvec, SmallVec};
-use std::sync::Arc;
 
 /// Go through all the specialization constant instructions,
 /// and updates their values and replaces them with regular constants.
 pub(super) fn replace_specialization_instructions(
     specialization_info: &HashMap<u32, SpecializationConstant>,
-    instructions_global: impl IntoIterator<Item = Arc<Instruction>>,
+    instructions_global: impl IntoIterator<Item = Instruction>,
     ids: &HashMap<Id, IdInfo>,
     mut next_new_id: u32,
-) -> Vec<Arc<Instruction>> {
+) -> Vec<Instruction> {
     let get_specialization = |id: Id| -> Option<SpecializationConstant> {
         ids[&id]
             .decorations
             .iter()
-            .find_map(|instruction| match instruction.as_ref() {
+            .find_map(|instruction| match instruction {
                 Instruction::Decorate {
                     decoration:
                         Decoration::SpecId {
@@ -46,8 +45,8 @@ pub(super) fn replace_specialization_instructions(
 
     instructions_global
         .into_iter()
-        .flat_map(|instruction| -> SmallVec<[Arc<Instruction>; 1]> {
-            let new_instructions: SmallVec<[Arc<Instruction>; 1]> = match *instruction.as_ref() {
+        .flat_map(|instruction| -> SmallVec<[Instruction; 1]> {
+            let new_instructions: SmallVec<[Instruction; 1]> = match instruction {
                 Instruction::SpecConstantFalse {
                     result_type_id,
                     result_id,
@@ -57,7 +56,7 @@ pub(super) fn replace_specialization_instructions(
                     result_id,
                 } => {
                     let value = get_specialization(result_id).map_or_else(
-                        || matches!(*instruction.as_ref(), Instruction::SpecConstantTrue { .. }),
+                        || matches!(instruction, Instruction::SpecConstantTrue { .. }),
                         |sc| matches!(sc, SpecializationConstant::Bool(true)),
                     );
                     let new_instruction = if value {
@@ -72,7 +71,7 @@ pub(super) fn replace_specialization_instructions(
                         }
                     };
 
-                    smallvec![Arc::new(new_instruction)]
+                    smallvec![new_instruction]
                 }
                 Instruction::SpecConstant {
                     result_type_id,
@@ -80,7 +79,7 @@ pub(super) fn replace_specialization_instructions(
                     ref value,
                 } => {
                     if let Some(specialization) = get_specialization(result_id) {
-                        smallvec![Arc::new(Instruction::Constant {
+                        smallvec![Instruction::Constant {
                             result_type_id,
                             result_id,
                             value: match specialization {
@@ -102,13 +101,13 @@ pub(super) fn replace_specialization_instructions(
                                     vec![num as u32, (num >> 32) as u32]
                                 }
                             },
-                        })]
+                        }]
                     } else {
-                        smallvec![Arc::new(Instruction::Constant {
+                        smallvec![Instruction::Constant {
                             result_type_id,
                             result_id,
                             value: value.clone(),
-                        })]
+                        }]
                     }
                 }
                 Instruction::SpecConstantComposite {
@@ -116,11 +115,11 @@ pub(super) fn replace_specialization_instructions(
                     result_id,
                     ref constituents,
                 } => {
-                    smallvec![Arc::new(Instruction::ConstantComposite {
+                    smallvec![Instruction::ConstantComposite {
                         result_type_id,
                         result_id,
                         constituents: constituents.clone(),
-                    })]
+                    }]
                 }
                 Instruction::SpecConstantOp {
                     result_type_id,
@@ -138,7 +137,7 @@ pub(super) fn replace_specialization_instructions(
             };
 
             for instruction in &new_instructions {
-                match *instruction.as_ref() {
+                match *instruction {
                     Instruction::ConstantFalse {
                         result_type_id,
                         result_id,
@@ -170,7 +169,7 @@ pub(super) fn replace_specialization_instructions(
                         result_id,
                         ref value,
                     } => {
-                        let constant_value = match *ids[&result_type_id].instruction().as_ref() {
+                        let constant_value = match *ids[&result_type_id].instruction() {
                             Instruction::TypeInt {
                                 width, signedness, ..
                             } => {
@@ -312,10 +311,10 @@ fn evaluate_spec_constant_op(
     result_type_id: Id,
     result_id: Id,
     opcode: &SpecConstantInstruction,
-) -> SmallVec<[Arc<Instruction>; 1]> {
+) -> SmallVec<[Instruction; 1]> {
     let scalar_constant_to_instruction =
         |constant_type_id: Id, constant_id: Id, constant_value: u64| -> Instruction {
-            match *ids[&constant_type_id].instruction().as_ref() {
+            match *ids[&constant_type_id].instruction() {
                 Instruction::TypeBool { .. } => {
                     if constant_value != 0 {
                         Instruction::ConstantTrue {
@@ -340,24 +339,25 @@ fn evaluate_spec_constant_op(
             }
         };
 
-    let constant_to_instruction =
-        |constant_id: Id| -> SmallVec<[Arc<Instruction>; 1]> {
-            let constant = &constants[&constant_id];
-            debug_assert_eq!(constant.type_id, result_type_id);
+    let constant_to_instruction = |constant_id: Id| -> SmallVec<[Instruction; 1]> {
+        let constant = &constants[&constant_id];
+        debug_assert_eq!(constant.type_id, result_type_id);
 
-            match constant.value {
-                ConstantValue::Scalar(value) => smallvec![Arc::new(
-                    scalar_constant_to_instruction(result_type_id, result_id, value)
-                )],
-                ConstantValue::Composite(ref constituents) => {
-                    smallvec![Arc::new(Instruction::ConstantComposite {
-                        result_type_id,
-                        result_id,
-                        constituents: constituents.to_vec(),
-                    })]
-                }
+        match constant.value {
+            ConstantValue::Scalar(value) => smallvec![scalar_constant_to_instruction(
+                result_type_id,
+                result_id,
+                value
+            )],
+            ConstantValue::Composite(ref constituents) => {
+                smallvec![Instruction::ConstantComposite {
+                    result_type_id,
+                    result_id,
+                    constituents: constituents.to_vec(),
+                }]
             }
-        };
+        }
+    };
 
     match *opcode {
         SpecConstantInstruction::VectorShuffle {
@@ -380,11 +380,11 @@ fn evaluate_spec_constant_op(
                 })
                 .collect();
 
-            smallvec![Arc::new(Instruction::ConstantComposite {
+            smallvec![Instruction::ConstantComposite {
                 result_type_id,
                 result_id,
                 constituents: constituents.to_vec(),
-            })]
+            }]
         }
         SpecConstantInstruction::CompositeExtract {
             composite,
@@ -422,11 +422,11 @@ fn evaluate_spec_constant_op(
                     old_constituent_id = constituents[index as usize];
                     constituents[index as usize] = new_constituent_id;
 
-                    Arc::new(Instruction::ConstantComposite {
+                    Instruction::ConstantComposite {
                         result_type_id: constant.type_id,
                         result_id: new_result_id,
                         constituents,
-                    })
+                    }
                 })
                 .collect();
 
@@ -465,11 +465,11 @@ fn evaluate_spec_constant_op(
                         )
                         .collect();
 
-                smallvec![Arc::new(Instruction::ConstantComposite {
+                smallvec![Instruction::ConstantComposite {
                     result_type_id,
                     result_id,
                     constituents: constituents.to_vec(),
-                })]
+                }]
             }
         },
         SpecConstantInstruction::UConvert {
@@ -485,13 +485,13 @@ fn evaluate_spec_constant_op(
             let result = evaluate_spec_constant_calculation_op(opcode, constants);
 
             if let &[result] = result.as_slice() {
-                smallvec![Arc::new(scalar_constant_to_instruction(
+                smallvec![scalar_constant_to_instruction(
                     result_type_id,
                     result_id,
                     result,
-                ))]
+                )]
             } else {
-                let component_type_id = match *ids[&result_type_id].instruction().as_ref() {
+                let component_type_id = match *ids[&result_type_id].instruction() {
                     Instruction::TypeVector { component_type, .. } => component_type,
                     _ => unreachable!(),
                 };
@@ -505,17 +505,17 @@ fn evaluate_spec_constant_op(
                     .into_iter()
                     .enumerate()
                     .map(|(i, result)| {
-                        Arc::new(scalar_constant_to_instruction(
+                        scalar_constant_to_instruction(
                             component_type_id,
                             Id(*next_new_id + i as u32),
                             result,
-                        ))
+                        )
                     })
-                    .chain(std::iter::once(Arc::new(Instruction::ConstantComposite {
+                    .chain(std::iter::once(Instruction::ConstantComposite {
                         result_type_id,
                         result_id,
                         constituents: (0..new_id_count).map(|i| Id(*next_new_id + i)).collect(),
-                    })))
+                    }))
                     .collect();
                 *next_new_id += new_id_count;
                 new_instructions

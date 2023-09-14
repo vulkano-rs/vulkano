@@ -23,7 +23,6 @@ use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     string::FromUtf8Error,
-    sync::Arc,
 };
 
 mod specialization;
@@ -39,15 +38,15 @@ pub struct Spirv {
     ids: HashMap<Id, IdInfo>,
 
     // Items described in the spec section "Logical Layout of a Module"
-    instructions_capability: Vec<Arc<Instruction>>,
-    instructions_extension: Vec<Arc<Instruction>>,
-    instructions_ext_inst_import: Vec<Arc<Instruction>>,
-    instruction_memory_model: Arc<Instruction>,
-    instructions_entry_point: Vec<Arc<Instruction>>,
-    instructions_execution_mode: Vec<Arc<Instruction>>,
-    instructions_name: Vec<Arc<Instruction>>,
-    instructions_decoration: Vec<Arc<Instruction>>,
-    instructions_global: Vec<Arc<Instruction>>,
+    instructions_capability: Vec<Instruction>,
+    instructions_extension: Vec<Instruction>,
+    instructions_ext_inst_import: Vec<Instruction>,
+    instruction_memory_model: Instruction,
+    instructions_entry_point: Vec<Instruction>,
+    instructions_execution_mode: Vec<Instruction>,
+    instructions_name: Vec<Instruction>,
+    instructions_decoration: Vec<Instruction>,
+    instructions_global: Vec<Instruction>,
     functions: HashMap<Id, FunctionInfo>,
 }
 
@@ -83,7 +82,7 @@ impl Spirv {
         let mut instructions_global = Vec::new();
 
         let mut functions = HashMap::default();
-        let mut current_function: Option<&mut Vec<Arc<Instruction>>> = None;
+        let mut current_function: Option<&mut Vec<Instruction>> = None;
 
         for instruction in iter_instructions(&words[5..]) {
             let instruction = instruction?;
@@ -91,15 +90,17 @@ impl Spirv {
             if let Some(id) = instruction.result_id() {
                 bound = bound.max(u32::from(id) + 1);
 
-                let members =
-                    if let Instruction::TypeStruct { member_types, .. } = instruction.as_ref() {
-                        member_types
-                            .iter()
-                            .map(|_| StructMemberInfo::default())
-                            .collect()
-                    } else {
-                        Vec::new()
-                    };
+                let members = if let Instruction::TypeStruct {
+                    ref member_types, ..
+                } = instruction
+                {
+                    member_types
+                        .iter()
+                        .map(|_| StructMemberInfo::default())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
 
                 let data = IdInfo {
                     instruction: instruction.clone(),
@@ -114,21 +115,21 @@ impl Spirv {
             }
 
             if matches!(
-                instruction.as_ref(),
+                instruction,
                 Instruction::Line { .. } | Instruction::NoLine { .. }
             ) {
                 continue;
             }
 
             if current_function.is_some() {
-                match *instruction.as_ref() {
+                match instruction {
                     Instruction::FunctionEnd { .. } => {
                         current_function.take().unwrap().push(instruction);
                     }
                     _ => current_function.as_mut().unwrap().push(instruction),
                 }
             } else {
-                let destination = match *instruction.as_ref() {
+                let destination = match instruction {
                     Instruction::Function { result_id, .. } => {
                         current_function = None;
                         let function = functions.entry(result_id).or_insert(FunctionInfo {
@@ -219,20 +220,17 @@ impl Spirv {
 
         // Add decorations to ids,
         // while also expanding decoration groups into individual decorations.
-        let mut decoration_groups: HashMap<Id, Vec<Arc<Instruction>>> = HashMap::default();
+        let mut decoration_groups: HashMap<Id, Vec<Instruction>> = HashMap::default();
         let instructions_decoration = instructions_decoration
             .into_iter()
-            .flat_map(|instruction| -> SmallVec<[Arc<Instruction>; 1]> {
-                match *instruction.as_ref() {
+            .flat_map(|instruction| -> SmallVec<[Instruction; 1]> {
+                match instruction {
                     Instruction::Decorate { target, .. }
                     | Instruction::DecorateId { target, .. }
                     | Instruction::DecorateString { target, .. } => {
                         let id_info = ids.get_mut(&target).unwrap();
 
-                        if matches!(
-                            id_info.instruction().as_ref(),
-                            Instruction::DecorationGroup { .. }
-                        ) {
+                        if matches!(id_info.instruction(), Instruction::DecorationGroup { .. }) {
                             decoration_groups
                                 .entry(target)
                                 .or_default()
@@ -279,20 +277,20 @@ impl Spirv {
                             .map(|(target, instruction)| {
                                 let id_info = ids.get_mut(&target).unwrap();
 
-                                match *instruction.as_ref() {
+                                match instruction {
                                     Instruction::Decorate { ref decoration, .. } => {
-                                        let instruction = Arc::new(Instruction::Decorate {
+                                        let instruction = Instruction::Decorate {
                                             target,
                                             decoration: decoration.clone(),
-                                        });
+                                        };
                                         id_info.decorations.push(instruction.clone());
                                         instruction
                                     }
                                     Instruction::DecorateId { ref decoration, .. } => {
-                                        let instruction = Arc::new(Instruction::DecorateId {
+                                        let instruction = Instruction::DecorateId {
                                             target,
                                             decoration: decoration.clone(),
-                                        });
+                                        };
                                         id_info.decorations.push(instruction.clone());
                                         instruction
                                     }
@@ -318,13 +316,13 @@ impl Spirv {
                                     &mut ids.get_mut(&structure_type).unwrap().members
                                         [member as usize];
 
-                                match *instruction.as_ref() {
+                                match instruction {
                                     Instruction::Decorate { ref decoration, .. } => {
-                                        let instruction = Arc::new(Instruction::MemberDecorate {
+                                        let instruction = Instruction::MemberDecorate {
                                             structure_type,
                                             member,
                                             decoration: decoration.clone(),
-                                        });
+                                        };
                                         member_info.decorations.push(instruction.clone());
                                         instruction
                                     }
@@ -346,7 +344,7 @@ impl Spirv {
             })
             .collect();
 
-        instructions_name.retain(|instruction| match *instruction.as_ref() {
+        instructions_name.retain(|instruction| match *instruction {
             Instruction::Name { target, .. } => {
                 if let Some(id_info) = ids.get_mut(&target) {
                     id_info.names.push(instruction.clone());
@@ -416,56 +414,56 @@ impl Spirv {
 
     /// Returns an iterator over all `Capability` instructions.
     #[inline]
-    pub fn iter_capability(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_capability(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_capability.iter()
     }
 
     /// Returns an iterator over all `Extension` instructions.
     #[inline]
-    pub fn iter_extension(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_extension(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_extension.iter()
     }
 
     /// Returns an iterator over all `ExtInstImport` instructions.
     #[inline]
-    pub fn iter_ext_inst_import(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_ext_inst_import(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_ext_inst_import.iter()
     }
 
     /// Returns the `MemoryModel` instruction.
     #[inline]
-    pub fn memory_model(&self) -> &Arc<Instruction> {
+    pub fn memory_model(&self) -> &Instruction {
         &self.instruction_memory_model
     }
 
     /// Returns an iterator over all `EntryPoint` instructions.
     #[inline]
-    pub fn iter_entry_point(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_entry_point(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_entry_point.iter()
     }
 
     /// Returns an iterator over all execution mode instructions.
     #[inline]
-    pub fn iter_execution_mode(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_execution_mode(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_execution_mode.iter()
     }
 
     /// Returns an iterator over all name debug instructions.
     #[inline]
-    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_name.iter()
     }
 
     /// Returns an iterator over all decoration instructions.
     #[inline]
-    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_decoration.iter()
     }
 
     /// Returns an iterator over all global declaration instructions: types,
     /// constants and global variables.
     #[inline]
-    pub fn iter_global(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_global(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions_global.iter()
     }
 
@@ -492,7 +490,7 @@ impl Spirv {
                     id_info.instruction = instruction.clone();
                     id_info.decorations.retain(|instruction| {
                         !matches!(
-                            instruction.as_ref(),
+                            instruction,
                             Instruction::Decorate {
                                 decoration: Decoration::SpecId { .. },
                                 ..
@@ -516,7 +514,7 @@ impl Spirv {
 
         self.instructions_decoration.retain(|instruction| {
             !matches!(
-                instruction.as_ref(),
+                instruction,
                 Instruction::Decorate {
                     decoration: Decoration::SpecId { .. },
                     ..
@@ -558,28 +556,28 @@ impl Display for Id {
 /// Information associated with an `Id`.
 #[derive(Clone, Debug)]
 pub struct IdInfo {
-    instruction: Arc<Instruction>,
-    names: Vec<Arc<Instruction>>,
-    decorations: Vec<Arc<Instruction>>,
+    instruction: Instruction,
+    names: Vec<Instruction>,
+    decorations: Vec<Instruction>,
     members: Vec<StructMemberInfo>,
 }
 
 impl IdInfo {
     /// Returns the instruction that defines this `Id` with a `result_id` operand.
     #[inline]
-    pub fn instruction(&self) -> &Arc<Instruction> {
+    pub fn instruction(&self) -> &Instruction {
         &self.instruction
     }
 
     /// Returns an iterator over all name debug instructions that target this `Id`.
     #[inline]
-    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.names.iter()
     }
 
     /// Returns an iterator over all decorate instructions, that target this `Id`.
     #[inline]
-    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.decorations.iter()
     }
 
@@ -594,20 +592,20 @@ impl IdInfo {
 /// Information associated with a member of a `TypeStruct` instruction.
 #[derive(Clone, Debug, Default)]
 pub struct StructMemberInfo {
-    names: Vec<Arc<Instruction>>,
-    decorations: Vec<Arc<Instruction>>,
+    names: Vec<Instruction>,
+    decorations: Vec<Instruction>,
 }
 
 impl StructMemberInfo {
     /// Returns an iterator over all name debug instructions that target this struct member.
     #[inline]
-    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.names.iter()
     }
 
     /// Returns an iterator over all decorate instructions that target this struct member.
     #[inline]
-    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.decorations.iter()
     }
 }
@@ -615,22 +613,22 @@ impl StructMemberInfo {
 /// Information associated with a function.
 #[derive(Clone, Debug, Default)]
 pub struct FunctionInfo {
-    instructions: Vec<Arc<Instruction>>,
+    instructions: Vec<Instruction>,
 }
 
 impl FunctionInfo {
     /// Returns an iterator over all instructions in the function.
     #[inline]
-    pub fn iter_instructions(&self) -> impl ExactSizeIterator<Item = &Arc<Instruction>> {
+    pub fn iter_instructions(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions.iter()
     }
 }
 
 fn iter_instructions(
     mut words: &[u32],
-) -> impl Iterator<Item = Result<Arc<Instruction>, ParseError>> + '_ {
+) -> impl Iterator<Item = Result<Instruction, ParseError>> + '_ {
     let mut index = 0;
-    let next = move || -> Option<Result<Arc<Instruction>, ParseError>> {
+    let next = move || -> Option<Result<Instruction, ParseError>> {
         if words.is_empty() {
             return None;
         }
@@ -659,7 +657,7 @@ fn iter_instructions(
 
         words = &words[word_count..];
         index += 1;
-        Some(Ok(Arc::new(instruction)))
+        Some(Ok(instruction))
     };
 
     std::iter::from_fn(next)

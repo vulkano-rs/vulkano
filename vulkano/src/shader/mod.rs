@@ -536,24 +536,22 @@ impl<'a> ShaderModuleCreateInfo<'a> {
             }))
         })?;
 
-        for &capability in
-            spirv
-                .iter_capability()
-                .filter_map(|instruction| match instruction.as_ref() {
-                    Instruction::Capability { capability } => Some(capability),
-                    _ => None,
-                })
+        for &capability in spirv
+            .iter_capability()
+            .filter_map(|instruction| match instruction {
+                Instruction::Capability { capability } => Some(capability),
+                _ => None,
+            })
         {
             validate_spirv_capability(device, capability).map_err(|err| err.add_context("code"))?;
         }
 
-        for extension in
-            spirv
-                .iter_extension()
-                .filter_map(|instruction| match instruction.as_ref() {
-                    Instruction::Extension { name } => Some(name.as_str()),
-                    _ => None,
-                })
+        for extension in spirv
+            .iter_extension()
+            .filter_map(|instruction| match instruction {
+                Instruction::Extension { name } => Some(name.as_str()),
+                _ => None,
+            })
         {
             validate_spirv_extension(device, extension).map_err(|err| err.add_context("code"))?;
         }

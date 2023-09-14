@@ -36,15 +36,14 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
     let interface_variables = interface_variables(spirv);
 
     spirv.iter_entry_point().filter_map(move |instruction| {
-        let (execution_model, function_id, entry_point_name, interface) = match instruction.as_ref()
-        {
+        let (execution_model, function_id, entry_point_name, interface) = match *instruction {
             Instruction::EntryPoint {
                 execution_model,
                 entry_point,
-                name,
-                interface,
+                ref name,
+                ref interface,
                 ..
-            } => (*execution_model, *entry_point, name, interface),
+            } => (execution_model, entry_point, name, interface),
             _ => return None,
         };
 
@@ -104,7 +103,7 @@ fn shader_execution(
             let mut input = None;
 
             for instruction in spirv.iter_execution_mode() {
-                let mode = match instruction.as_ref() {
+                let mode = match instruction {
                     Instruction::ExecutionMode {
                         entry_point, mode, ..
                     } if *entry_point == function_id => mode,
@@ -141,7 +140,7 @@ fn shader_execution(
             let mut fragment_tests_stages = FragmentTestsStages::Late;
 
             for instruction in spirv.iter_execution_mode() {
-                let mode = match instruction.as_ref() {
+                let mode = match instruction {
                     Instruction::ExecutionMode {
                         entry_point, mode, ..
                     } if *entry_point == function_id => mode,
@@ -165,78 +164,75 @@ fn shader_execution(
         }
 
         ExecutionModel::GLCompute => {
-            let local_size =
-                (spirv
-                    .iter_decoration()
-                    .find_map(|instruction| match *instruction.as_ref() {
-                        Instruction::Decorate {
-                            target,
-                            decoration:
-                                Decoration::BuiltIn {
-                                    built_in: BuiltIn::WorkgroupSize,
-                                },
-                        } => match *spirv.id(target).instruction().as_ref() {
-                            Instruction::ConstantComposite {
-                                ref constituents, ..
-                            } => {
-                                match *constituents.as_slice() {
-                                    [x_size, y_size, z_size] => {
-                                        Some([x_size, y_size, z_size].map(|id| {
-                                            match *spirv.id(id).instruction().as_ref() {
-                                                Instruction::Constant { ref value, .. } => {
-                                                    assert!(value.len() == 1);
-                                                    value[0]
-                                                }
-                                                // VUID-WorkgroupSize-WorkgroupSize-04426
-                                                // VUID-WorkgroupSize-WorkgroupSize-04427
-                                                _ => panic!("WorkgroupSize is not a constant"),
+            let local_size = (spirv
+                .iter_decoration()
+                .find_map(|instruction| match *instruction {
+                    Instruction::Decorate {
+                        target,
+                        decoration:
+                            Decoration::BuiltIn {
+                                built_in: BuiltIn::WorkgroupSize,
+                            },
+                    } => match *spirv.id(target).instruction() {
+                        Instruction::ConstantComposite {
+                            ref constituents, ..
+                        } => {
+                            match *constituents.as_slice() {
+                                [x_size, y_size, z_size] => {
+                                    Some([x_size, y_size, z_size].map(|id| {
+                                        match *spirv.id(id).instruction() {
+                                            Instruction::Constant { ref value, .. } => {
+                                                assert!(value.len() == 1);
+                                                value[0]
                                             }
-                                        }))
-                                    }
-                                    // VUID-WorkgroupSize-WorkgroupSize-04427
-                                    _ => panic!("WorkgroupSize must be 3 component vector!"),
-                                }
-                            }
-                            // VUID-WorkgroupSize-WorkgroupSize-04426
-                            _ => panic!("WorkgroupSize is not a constant"),
-                        },
-                        _ => None,
-                    }))
-                .or_else(|| {
-                    spirv.iter_execution_mode().find_map(|instruction| {
-                        match *instruction.as_ref() {
-                            Instruction::ExecutionMode {
-                                entry_point,
-                                mode:
-                                    ExecutionMode::LocalSize {
-                                        x_size,
-                                        y_size,
-                                        z_size,
-                                    },
-                            } if entry_point == function_id => Some([x_size, y_size, z_size]),
-                            Instruction::ExecutionModeId {
-                                entry_point,
-                                mode:
-                                    ExecutionMode::LocalSizeId {
-                                        x_size,
-                                        y_size,
-                                        z_size,
-                                    },
-                            } if entry_point == function_id => {
-                                Some([x_size, y_size, z_size].map(|id| {
-                                    match *spirv.id(id).instruction().as_ref() {
-                                        Instruction::Constant { ref value, .. } => {
-                                            assert!(value.len() == 1);
-                                            value[0]
+                                            // VUID-WorkgroupSize-WorkgroupSize-04426
+                                            // VUID-WorkgroupSize-WorkgroupSize-04427
+                                            _ => panic!("WorkgroupSize is not a constant"),
                                         }
-                                        _ => panic!("LocalSizeId is not a constant"),
-                                    }
-                                }))
+                                    }))
+                                }
+                                // VUID-WorkgroupSize-WorkgroupSize-04427
+                                _ => panic!("WorkgroupSize must be 3 component vector!"),
                             }
-                            _ => None,
                         }
+                        // VUID-WorkgroupSize-WorkgroupSize-04426
+                        _ => panic!("WorkgroupSize is not a constant"),
+                    },
+                    _ => None,
+                }))
+            .or_else(|| {
+                spirv
+                    .iter_execution_mode()
+                    .find_map(|instruction| match *instruction {
+                        Instruction::ExecutionMode {
+                            entry_point,
+                            mode:
+                                ExecutionMode::LocalSize {
+                                    x_size,
+                                    y_size,
+                                    z_size,
+                                },
+                        } if entry_point == function_id => Some([x_size, y_size, z_size]),
+                        Instruction::ExecutionModeId {
+                            entry_point,
+                            mode:
+                                ExecutionMode::LocalSizeId {
+                                    x_size,
+                                    y_size,
+                                    z_size,
+                                },
+                        } if entry_point == function_id => Some([x_size, y_size, z_size].map(
+                            |id| match *spirv.id(id).instruction() {
+                                Instruction::Constant { ref value, .. } => {
+                                    assert!(value.len() == 1);
+                                    value[0]
+                                }
+                                _ => panic!("LocalSizeId is not a constant"),
+                            },
+                        )),
+                        _ => None,
                     })
-                });
+            });
 
             ShaderExecution::Compute(ComputeShaderExecution {
                 local_size: local_size.expect(
@@ -284,7 +280,7 @@ fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
             result_type_id: _,
             storage_class,
             ..
-        } = instruction.as_ref()
+        } = instruction
         {
             match storage_class {
                 StorageClass::StorageBuffer
@@ -336,7 +332,7 @@ fn inspect_entry_point(
 
             while let Instruction::AccessChain {
                 base, ref indexes, ..
-            } = *self.spirv.id(id).instruction().as_ref()
+            } = *self.spirv.id(id).instruction()
             {
                 id = base;
 
@@ -344,12 +340,7 @@ fn inspect_entry_point(
                     // Variable was accessed with an access chain.
                     // Retrieve index from instruction if it's a constant value.
                     // TODO: handle a `None` index too?
-                    let index = match *self
-                        .spirv
-                        .id(*indexes.first().unwrap())
-                        .instruction()
-                        .as_ref()
-                    {
+                    let index = match *self.spirv.id(*indexes.first().unwrap()).instruction() {
                         Instruction::Constant { ref value, .. } => Some(value[0]),
                         _ => None,
                     };
@@ -371,21 +362,21 @@ fn inspect_entry_point(
             }
 
             fn inst_image_texel_pointer(spirv: &Spirv, id: Id) -> Option<Id> {
-                match *spirv.id(id).instruction().as_ref() {
+                match *spirv.id(id).instruction() {
                     Instruction::ImageTexelPointer { image, .. } => Some(image),
                     _ => None,
                 }
             }
 
             fn inst_load(spirv: &Spirv, id: Id) -> Option<Id> {
-                match *spirv.id(id).instruction().as_ref() {
+                match *spirv.id(id).instruction() {
                     Instruction::Load { pointer, .. } => Some(pointer),
                     _ => None,
                 }
             }
 
             fn inst_sampled_image(spirv: &Spirv, id: Id) -> Option<Id> {
-                match *spirv.id(id).instruction().as_ref() {
+                match *spirv.id(id).instruction() {
                     Instruction::SampledImage { sampler, .. } => Some(sampler),
                     _ => Some(id),
                 }
@@ -396,7 +387,7 @@ fn inspect_entry_point(
             for instruction in self.spirv.function(function).iter_instructions() {
                 let stage = self.stage;
 
-                match *instruction.as_ref() {
+                match *instruction {
                     Instruction::AtomicLoad { pointer, .. } => {
                         // Storage buffer
                         if let Some(desc_reqs) = desc_reqs(self.instruction_chain([], pointer)) {
@@ -794,12 +785,12 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
     };
 
     let (mut next_type_id, is_storage_buffer) = {
-        let variable_type_id = match *variable_id_info.instruction().as_ref() {
+        let variable_type_id = match *variable_id_info.instruction() {
             Instruction::Variable { result_type_id, .. } => result_type_id,
             _ => panic!("Id {} is not a variable", variable_id),
         };
 
-        match *spirv.id(variable_type_id).instruction().as_ref() {
+        match *spirv.id(variable_type_id).instruction() {
             Instruction::TypePointer {
                 ty, storage_class, ..
             } => (Some(ty), storage_class == StorageClass::StorageBuffer),
@@ -813,11 +804,11 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
     while let Some(id) = next_type_id {
         let id_info = spirv.id(id);
 
-        next_type_id = match *id_info.instruction().as_ref() {
+        next_type_id = match *id_info.instruction() {
             Instruction::TypeStruct { .. } => {
                 let decoration_block = id_info.iter_decoration().any(|instruction| {
                     matches!(
-                        instruction.as_ref(),
+                        instruction,
                         Instruction::Decorate {
                             decoration: Decoration::Block,
                             ..
@@ -827,7 +818,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
                 let decoration_buffer_block = id_info.iter_decoration().any(|instruction| {
                     matches!(
-                        instruction.as_ref(),
+                        instruction,
                         Instruction::Decorate {
                             decoration: Decoration::BufferBlock,
                             ..
@@ -873,24 +864,23 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 );
                 reqs.image_format = image_format.into();
                 reqs.image_multisampled = ms != 0;
-                reqs.image_scalar_type =
-                    Some(match *spirv.id(sampled_type).instruction().as_ref() {
-                        Instruction::TypeInt {
-                            width, signedness, ..
-                        } => {
-                            assert!(width == 32); // TODO: 64-bit components
-                            match signedness {
-                                0 => NumericType::Uint,
-                                1 => NumericType::Int,
-                                _ => unreachable!(),
-                            }
+                reqs.image_scalar_type = Some(match *spirv.id(sampled_type).instruction() {
+                    Instruction::TypeInt {
+                        width, signedness, ..
+                    } => {
+                        assert!(width == 32); // TODO: 64-bit components
+                        match signedness {
+                            0 => NumericType::Uint,
+                            1 => NumericType::Int,
+                            _ => unreachable!(),
                         }
-                        Instruction::TypeFloat { width, .. } => {
-                            assert!(width == 32); // TODO: 64-bit components
-                            NumericType::Float
-                        }
-                        _ => unreachable!(),
-                    });
+                    }
+                    Instruction::TypeFloat { width, .. } => {
+                        assert!(width == 32); // TODO: 64-bit components
+                        NumericType::Float
+                    }
+                    _ => unreachable!(),
+                });
 
                 match dim {
                     Dim::SubpassData => {
@@ -968,7 +958,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 reqs.descriptor_types
                     .retain(|&d| d != DescriptorType::InlineUniformBlock);
 
-                let len = match spirv.id(length).instruction().as_ref() {
+                let len = match spirv.id(length).instruction() {
                     Instruction::Constant { value, .. } => {
                         value.iter().rev().fold(0, |a, &b| (a << 32) | b as u64)
                     }
@@ -995,7 +985,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
             _ => {
                 let name = variable_id_info
                     .iter_name()
-                    .find_map(|instruction| match *instruction.as_ref() {
+                    .find_map(|instruction| match *instruction {
                         Instruction::Name { ref name, .. } => Some(name.as_str()),
                         _ => None,
                     })
@@ -1013,7 +1003,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
     DescriptorBindingVariable {
         set: variable_id_info
             .iter_decoration()
-            .find_map(|instruction| match *instruction.as_ref() {
+            .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::DescriptorSet { descriptor_set },
                     ..
@@ -1023,7 +1013,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
             .unwrap(),
         binding: variable_id_info
             .iter_decoration()
-            .find_map(|instruction| match *instruction.as_ref() {
+            .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::Binding { binding_point },
                     ..
@@ -1039,7 +1029,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushConstantRange> {
     spirv
         .iter_global()
-        .find_map(|instruction| match *instruction.as_ref() {
+        .find_map(|instruction| match *instruction {
             Instruction::TypePointer {
                 ty,
                 storage_class: StorageClass::PushConstant,
@@ -1047,7 +1037,7 @@ fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushC
             } => {
                 let id_info = spirv.id(ty);
                 assert!(matches!(
-                    id_info.instruction().as_ref(),
+                    id_info.instruction(),
                     Instruction::TypeStruct { .. }
                 ));
                 let start = offset_of_struct(spirv, ty);
@@ -1070,7 +1060,7 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
         spirv
             .id(result_id)
             .iter_decoration()
-            .find_map(|instruction| match *instruction.as_ref() {
+            .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration:
                         Decoration::SpecId {
@@ -1084,7 +1074,7 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
 
     spirv
         .iter_global()
-        .filter_map(|instruction| match *instruction.as_ref() {
+        .filter_map(|instruction| match *instruction {
             Instruction::SpecConstantFalse { result_id, .. } => get_constant_id(result_id)
                 .map(|constant_id| (constant_id, SpecializationConstant::Bool(false))),
             Instruction::SpecConstantTrue { result_id, .. } => get_constant_id(result_id)
@@ -1094,7 +1084,7 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
                 result_id,
                 ref value,
             } => get_constant_id(result_id).map(|constant_id| {
-                let value = match *spirv.id(result_type_id).instruction().as_ref() {
+                let value = match *spirv.id(result_type_id).instruction() {
                     Instruction::TypeInt {
                         width, signedness, ..
                     } => {
@@ -1159,7 +1149,7 @@ fn shader_interface(
     let elements: Vec<_> = interface
         .iter()
         .filter_map(|&id| {
-            let (result_type_id, result_id) = match *spirv.id(id).instruction().as_ref() {
+            let (result_type_id, result_id) = match *spirv.id(id).instruction() {
                 Instruction::Variable {
                     result_type_id,
                     result_id,
@@ -1177,14 +1167,14 @@ fn shader_interface(
 
             let name = id_info
                 .iter_name()
-                .find_map(|instruction| match *instruction.as_ref() {
+                .find_map(|instruction| match *instruction {
                     Instruction::Name { ref name, .. } => Some(Cow::Owned(name.clone())),
                     _ => None,
                 });
 
             let location = id_info
                 .iter_decoration()
-                .find_map(|instruction| match *instruction.as_ref() {
+                .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::Location { location },
                         ..
@@ -1199,7 +1189,7 @@ fn shader_interface(
                 });
             let component = id_info
                 .iter_decoration()
-                .find_map(|instruction| match *instruction.as_ref() {
+                .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::Component { component },
                         ..
@@ -1249,7 +1239,7 @@ fn shader_interface(
 fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
     let id_info = spirv.id(id);
 
-    match *id_info.instruction().as_ref() {
+    match *id_info.instruction() {
         Instruction::TypeBool { .. } => {
             panic!("Can't put booleans in structs")
         }
@@ -1275,7 +1265,7 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
         Instruction::TypeArray { length, .. } => {
             let stride = id_info
                 .iter_decoration()
-                .find_map(|instruction| match *instruction.as_ref() {
+                .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::ArrayStride { array_stride },
                         ..
@@ -1283,7 +1273,7 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
                     _ => None,
                 })
                 .unwrap();
-            let length = match spirv.id(length).instruction().as_ref() {
+            let length = match spirv.id(length).instruction() {
                 Instruction::Constant { value, .. } => Some(
                     value
                         .iter()
@@ -1306,7 +1296,7 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
                 // Built-ins have an unknown size.
                 if member_info.iter_decoration().any(|instruction| {
                     matches!(
-                        instruction.as_ref(),
+                        instruction,
                         Instruction::MemberDecorate {
                             decoration: Decoration::BuiltIn { .. },
                             ..
@@ -1318,15 +1308,16 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
 
                 // Some structs don't have `Offset` decorations, in the case they are used as local
                 // variables only. Ignoring these.
-                let offset = member_info.iter_decoration().find_map(|instruction| {
-                    match *instruction.as_ref() {
-                        Instruction::MemberDecorate {
-                            decoration: Decoration::Offset { byte_offset },
-                            ..
-                        } => Some(byte_offset),
-                        _ => None,
-                    }
-                })?;
+                let offset =
+                    member_info
+                        .iter_decoration()
+                        .find_map(|instruction| match *instruction {
+                            Instruction::MemberDecorate {
+                                decoration: Decoration::Offset { byte_offset },
+                                ..
+                            } => Some(byte_offset),
+                            _ => None,
+                        })?;
                 let size = size_of_type(spirv, member)?;
                 end_of_struct = end_of_struct.max(offset as DeviceSize + size);
             }
@@ -1345,7 +1336,7 @@ fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
         .filter_map(|member_info| {
             member_info
                 .iter_decoration()
-                .find_map(|instruction| match *instruction.as_ref() {
+                .find_map(|instruction| match *instruction {
                     Instruction::MemberDecorate {
                         decoration: Decoration::Offset { byte_offset },
                         ..
@@ -1365,7 +1356,7 @@ fn shader_interface_type_of(
     id: Id,
     ignore_first_array: bool,
 ) -> ShaderInterfaceEntryType {
-    match *spirv.id(id).instruction().as_ref() {
+    match *spirv.id(id).instruction() {
         Instruction::TypeInt {
             width, signedness, ..
         } => {
@@ -1431,7 +1422,7 @@ fn shader_interface_type_of(
                 let mut ty = shader_interface_type_of(spirv, element_type, false);
                 let num_elements = spirv
                     .iter_global()
-                    .find_map(|instruction| match *instruction.as_ref() {
+                    .find_map(|instruction| match *instruction {
                         Instruction::Constant {
                             result_id,
                             ref value,
@@ -1461,7 +1452,7 @@ fn is_builtin(spirv: &Spirv, id: Id) -> bool {
 
     if id_info.iter_decoration().any(|instruction| {
         matches!(
-            instruction.as_ref(),
+            instruction,
             Instruction::Decorate {
                 decoration: Decoration::BuiltIn { .. },
                 ..
@@ -1476,7 +1467,7 @@ fn is_builtin(spirv: &Spirv, id: Id) -> bool {
         .flat_map(|member_info| member_info.iter_decoration())
         .any(|instruction| {
             matches!(
-                instruction.as_ref(),
+                instruction,
                 Instruction::MemberDecorate {
                     decoration: Decoration::BuiltIn { .. },
                     ..
@@ -1487,7 +1478,7 @@ fn is_builtin(spirv: &Spirv, id: Id) -> bool {
         return true;
     }
 
-    match id_info.instruction().as_ref() {
+    match id_info.instruction() {
         Instruction::Variable {
             result_type_id: ty, ..
         }

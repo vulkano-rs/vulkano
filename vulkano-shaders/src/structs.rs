@@ -104,7 +104,7 @@ pub(super) fn write_structs(
     for (struct_id, member_type_ids) in shader
         .spirv
         .iter_global()
-        .filter_map(|instruction| match *instruction.as_ref() {
+        .filter_map(|instruction| match *instruction {
             Instruction::TypeStruct {
                 result_id,
                 ref member_types,
@@ -143,7 +143,7 @@ fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
         let mut offset_found = false;
 
         for instruction in member_info.iter_decoration() {
-            match instruction.as_ref() {
+            match instruction {
                 Instruction::MemberDecorate {
                     decoration: Decoration::BuiltIn { .. },
                     ..
@@ -230,7 +230,7 @@ impl Type {
     fn new(shader: &Shader, type_id: Id) -> Result<Self> {
         let id_info = shader.spirv.id(type_id);
 
-        let ty = match *id_info.instruction().as_ref() {
+        let ty = match *id_info.instruction() {
             Instruction::TypeBool { .. } => bail!(shader.source, "can't put booleans in structs"),
             Instruction::TypeInt {
                 width, signedness, ..
@@ -449,7 +449,7 @@ impl TypeVector {
     fn new(shader: &Shader, component_type_id: Id, component_count: u32) -> Result<Self> {
         let component_count = ComponentCount::new(shader, component_count)?;
 
-        let component_type = match *shader.spirv.id(component_type_id).instruction().as_ref() {
+        let component_type = match *shader.spirv.id(component_type_id).instruction() {
             Instruction::TypeBool { .. } => bail!(shader.source, "can't put booleans in structs"),
             Instruction::TypeInt {
                 width, signedness, ..
@@ -484,21 +484,20 @@ impl TypeMatrix {
     fn new(shader: &Shader, column_type_id: Id, column_count: u32) -> Result<Self> {
         let column_count = ComponentCount::new(shader, column_count)?;
 
-        let (component_type, row_count) =
-            match *shader.spirv.id(column_type_id).instruction().as_ref() {
-                Instruction::TypeVector {
-                    component_type,
-                    component_count,
-                    ..
-                } => match *shader.spirv.id(component_type).instruction().as_ref() {
-                    Instruction::TypeFloat { width, .. } => (
-                        TypeFloat::new(shader, width)?,
-                        ComponentCount::new(shader, component_count)?,
-                    ),
-                    _ => bail!(shader.source, "matrix components must be floats"),
-                },
-                _ => bail!(shader.source, "matrix columns must be vectors"),
-            };
+        let (component_type, row_count) = match *shader.spirv.id(column_type_id).instruction() {
+            Instruction::TypeVector {
+                component_type,
+                component_count,
+                ..
+            } => match *shader.spirv.id(component_type).instruction() {
+                Instruction::TypeFloat { width, .. } => (
+                    TypeFloat::new(shader, width)?,
+                    ComponentCount::new(shader, component_count)?,
+                ),
+                _ => bail!(shader.source, "matrix components must be floats"),
+            },
+            _ => bail!(shader.source, "matrix columns must be vectors"),
+        };
 
         // We can't know these until we get to the members and their decorations, so just use
         // defaults for now.
@@ -581,7 +580,7 @@ impl TypeArray {
         let element_type = Box::new(Type::new(shader, element_type_id)?);
 
         let length = length_id
-            .map(|id| match shader.spirv.id(id).instruction().as_ref() {
+            .map(|id| match shader.spirv.id(id).instruction() {
                 Instruction::Constant { value, .. } => {
                     assert!(matches!(value.len(), 1 | 2));
                     let len = value.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
@@ -600,7 +599,7 @@ impl TypeArray {
                     .spirv
                     .id(array_id)
                     .iter_decoration()
-                    .filter_map(|instruction| match *instruction.as_ref() {
+                    .filter_map(|instruction| match *instruction {
                         Instruction::Decorate {
                             decoration: Decoration::ArrayStride { array_stride },
                             ..
@@ -664,7 +663,7 @@ impl TypeStruct {
 
         let ident = id_info
             .iter_name()
-            .find_map(|instruction| match instruction.as_ref() {
+            .find_map(|instruction| match instruction {
                 Instruction::Name { name, .. } => Some(Ident::new(name, Span::call_site())),
                 _ => None,
             })
@@ -679,7 +678,7 @@ impl TypeStruct {
         {
             let ident = member_info
                 .iter_name()
-                .find_map(|instruction| match instruction.as_ref() {
+                .find_map(|instruction| match instruction {
                     Instruction::MemberName { name, .. } => {
                         Some(Ident::new(name, Span::call_site()))
                     }
@@ -700,15 +699,15 @@ impl TypeStruct {
 
                 if let Type::Matrix(matrix) = ty {
                     let mut strides =
-                        member_info
-                            .iter_decoration()
-                            .filter_map(|instruction| match *instruction.as_ref() {
+                        member_info.iter_decoration().filter_map(
+                            |instruction| match *instruction {
                                 Instruction::MemberDecorate {
                                     decoration: Decoration::MatrixStride { matrix_stride },
                                     ..
                                 } => Some(matrix_stride as usize),
                                 _ => None,
-                            });
+                            },
+                        );
                     matrix.stride = strides.next().ok_or_else(|| {
                         Error::new_spanned(
                             &shader.source,
@@ -731,20 +730,19 @@ impl TypeStruct {
                         );
                     }
 
-                    let mut majornessess =
-                        member_info
-                            .iter_decoration()
-                            .filter_map(|instruction| match *instruction.as_ref() {
-                                Instruction::MemberDecorate {
-                                    decoration: Decoration::ColMajor,
-                                    ..
-                                } => Some(MatrixMajorness::ColumnMajor),
-                                Instruction::MemberDecorate {
-                                    decoration: Decoration::RowMajor,
-                                    ..
-                                } => Some(MatrixMajorness::RowMajor),
-                                _ => None,
-                            });
+                    let mut majornessess = member_info.iter_decoration().filter_map(
+                        |instruction| match *instruction {
+                            Instruction::MemberDecorate {
+                                decoration: Decoration::ColMajor,
+                                ..
+                            } => Some(MatrixMajorness::ColumnMajor),
+                            Instruction::MemberDecorate {
+                                decoration: Decoration::RowMajor,
+                                ..
+                            } => Some(MatrixMajorness::RowMajor),
+                            _ => None,
+                        },
+                    );
                     matrix.majorness = majornessess.next().ok_or_else(|| {
                         Error::new_spanned(
                             &shader.source,
@@ -770,7 +768,7 @@ impl TypeStruct {
 
             let offset = member_info
                 .iter_decoration()
-                .find_map(|instruction| match *instruction.as_ref() {
+                .find_map(|instruction| match *instruction {
                     Instruction::MemberDecorate {
                         decoration: Decoration::Offset { byte_offset },
                         ..
