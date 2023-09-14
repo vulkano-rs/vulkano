@@ -148,6 +148,12 @@ pub unsafe trait Suballocator {
     fn cleanup(&mut self);
 }
 
+impl Debug for dyn Suballocator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Suballocator").finish_non_exhaustive()
+    }
+}
+
 mod region {
     use super::{DeviceLayout, DeviceSize};
 
@@ -218,12 +224,6 @@ mod region {
         pub const fn size(&self) -> DeviceSize {
             self.size
         }
-    }
-}
-
-impl Debug for dyn Suballocator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Suballocator").finish_non_exhaustive()
     }
 }
 
