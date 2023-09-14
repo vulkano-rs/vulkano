@@ -20,7 +20,8 @@ Changes to pipeline construction:
 - `GraphicsPipelineCreateInfo::vertex_input_state` requires a `VertexInputState` struct directly, instead of a `VertexDefinition`. The `VertexDefinition` trait can be used to create the struct.
 - `GraphicsPipelineCreateInfo` now requires you to provide `input_assembly_state`, `rasterization_state`, `multisample_state` and `color_blend_state` instead of them having default values. You can still call `default()` to generate default values for each of them.
 - Instead of an entry point and specialization constants, pipeline construction now takes a `PipelineShaderStageCreateInfo` structure. `GraphicsPipelineCreateInfo` has a `stages` member that takes all shader stages at once, instead of separate members for each shader type. `EntryPoint` now owns instead of borrows a reference to the `ShaderModule`, so this is easier.
-- Specialization constants are now provided with a `HashMap` containing `SpecializationConstant` enum values. The `SpecializationConstants` trait is removed, and `vulkano_shaders` no longer generates structs for specialization constants.
+- Specialization constants are now provided by calling `ShaderModule::specialize` with a `HashMap` containing `SpecializationConstant` enum values. This produces a `SpecializedShaderModule` value, which you can then create an `EntryPoint` from.
+- The `SpecializationConstants` trait is removed, and `vulkano_shaders` no longer generates structs for specialization constants.
 - `ViewportState` is now a standard struct with two fields, `viewports` and `scissors`.
 - The `origin` and `dimensions` fields of `Viewport` and `Scissors` are renamed to `offset` and `extent` to match Vulkan.
 - `Viewport::depth_range` is now an inclusive range.
@@ -184,6 +185,7 @@ Changes to the `khr_display` extension:
 - vulkano-shaders: Invalid emitted code for shader input/output interfaces if the shader is missing a name decoration.
 - Fixed potential UB when using `MemoryAlloc::try_unwrap`, where the allocation was mapped on contruction of the `MemoryAlloc` but not unmapped on unwrapping, allowing double-mapping.
 - Fixed a bug in `GenericMemoryAllocator::allocate`, where the root allocations weren't created with the configured `AllocationType`.
+- Specialization constants are now applied to the reflected SPIR-V code before any other reflection is performed.
 
 # Version 0.33.0 (2023-04-01)
 
