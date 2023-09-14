@@ -717,15 +717,33 @@ pub struct MemoryAlloc {
 }
 
 /// An opaque handle identifying an allocation inside an allocator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[repr(transparent)]
-pub struct AllocationHandle(pub *mut ());
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(not(doc), repr(transparent))]
+pub struct AllocationHandle(*mut ());
 
 unsafe impl Send for AllocationHandle {}
 unsafe impl Sync for AllocationHandle {}
 
 impl AllocationHandle {
-    /// Stores a index inside an `AllocationHandle`.
+    /// Creates a null `AllocationHandle`.
+    ///
+    /// Use this if you don't have anything that you need to associate with the allocation.
+    #[inline]
+    pub const fn null() -> Self {
+        AllocationHandle(ptr::null_mut())
+    }
+
+    /// Stores a pointer in an `AllocationHandle`.
+    ///
+    /// Use this if you want to associate an allocation with some (host) heap allocation.
+    #[inline]
+    pub const fn from_ptr(ptr: *mut ()) -> Self {
+        AllocationHandle(ptr)
+    }
+
+    /// Stores an index inside an `AllocationHandle`.
+    ///
+    /// Use this if you want to associate an allocation with some index.
     #[allow(clippy::useless_transmute)]
     #[inline]
     pub const fn from_index(index: usize) -> Self {
@@ -733,7 +751,23 @@ impl AllocationHandle {
         AllocationHandle(unsafe { mem::transmute::<usize, *mut ()>(index) })
     }
 
+    /// Retrieves a previously-stored pointer from the `AllocationHandle`.
+    ///
+    /// If this handle hasn't been created using [`from_ptr`] then this will return an invalid
+    /// pointer, dereferencing which is undefined behavior.
+    ///
+    /// [`from_ptr`]: Self::from_ptr
+    #[inline]
+    pub const fn into_ptr(self) -> *mut () {
+        self.0
+    }
+
     /// Retrieves a previously-stored index from the `AllocationHandle`.
+    ///
+    /// If this handle hasn't been created using [`from_index`] then this will return a bogus
+    /// result.
+    ///
+    /// [`from_index`]: Self::from_index
     #[allow(clippy::transmutes_expressible_as_ptr_casts)]
     #[inline]
     pub const fn into_index(self) -> usize {
@@ -1414,7 +1448,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         Ok(MemoryAlloc {
             device_memory,
             suballocation: None,
-            allocation_handle: AllocationHandle(ptr::null_mut()),
+            allocation_handle: AllocationHandle::null(),
         })
     }
 
@@ -1544,7 +1578,7 @@ impl<S: Suballocator> Block<S> {
         Ok(MemoryAlloc {
             device_memory: self.device_memory.clone(),
             suballocation: Some(suballocation),
-            allocation_handle: AllocationHandle(self as *mut Block<S> as _),
+            allocation_handle: AllocationHandle::from_ptr(self as *mut Block<S> as _),
         })
     }
 

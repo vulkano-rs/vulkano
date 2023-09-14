@@ -109,7 +109,7 @@ use std::{
     mem::ManuallyDrop,
     num::NonZeroU64,
     ops::{Bound, Range, RangeBounds, RangeTo},
-    ptr::{self, NonNull},
+    ptr::NonNull,
     sync::Arc,
 };
 
@@ -155,7 +155,7 @@ impl ResourceMemory {
             offset: 0,
             size: device_memory.allocation_size(),
             allocation_type: AllocationType::Unknown,
-            allocation_handle: AllocationHandle(ptr::null_mut()),
+            allocation_handle: AllocationHandle::null(),
             suballocation_handle: None,
             allocator: None,
             device_memory: ManuallyDrop::new(DeviceOwnedDebugWrapper(device_memory)),

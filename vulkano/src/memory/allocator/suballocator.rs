@@ -24,7 +24,6 @@ use std::{
     cmp,
     error::Error,
     fmt::{self, Debug, Display},
-    ptr,
 };
 
 /// Suballocators are used to divide a *region* into smaller *suballocations*.
@@ -1159,7 +1158,7 @@ unsafe impl Suballocator for BumpAllocator {
             offset,
             size,
             allocation_type,
-            handle: AllocationHandle(ptr::null_mut()),
+            handle: AllocationHandle::null(),
         })
     }
 
