@@ -219,7 +219,7 @@
 mod layout;
 pub mod suballocator;
 
-use self::array_vec::ArrayVec;
+use self::{array_vec::ArrayVec, suballocator::Region};
 pub use self::{
     layout::DeviceLayout,
     suballocator::{
@@ -1517,7 +1517,10 @@ struct Block<S> {
 
 impl<S: Suballocator> Block<S> {
     fn new(device_memory: Arc<DeviceMemory>) -> Box<Self> {
-        let suballocator = S::new(0, device_memory.allocation_size());
+        let suballocator = S::new(
+            Region::new(0, device_memory.allocation_size())
+                .expect("we somehow managed to allocate more than `DeviceLayout::MAX_SIZE` bytes"),
+        );
 
         Box::new(Block {
             device_memory,

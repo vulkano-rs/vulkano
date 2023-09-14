@@ -14,6 +14,7 @@
 //! [the parent module]: super
 
 use self::host::SlotId;
+pub use self::region::Region;
 use super::{
     align_down, align_up, array_vec::ArrayVec, AllocationHandle, DeviceAlignment, DeviceLayout,
 };
@@ -88,14 +89,8 @@ use std::{
 pub unsafe trait Suballocator {
     /// Creates a new suballocator for the given [region].
     ///
-    /// # Arguments
-    ///
-    /// - `region_offset` - The offset where the region begins.
-    ///
-    /// - `region_size` - The size of the region.
-    ///
     /// [region]: Self#regions
-    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self
+    fn new(region: Region) -> Self
     where
         Self: Sized;
 
@@ -156,6 +151,79 @@ pub unsafe trait Suballocator {
 impl Debug for dyn Suballocator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Suballocator").finish_non_exhaustive()
+    }
+}
+
+mod region {
+    use super::{DeviceLayout, DeviceSize};
+
+    /// A [region] for a [suballocator] to allocate within. All [suballocations] will be in bounds
+    /// of this region.
+    ///
+    /// In order to prevent arithmetic overflow when allocating, the region's end must not exceed
+    /// [`DeviceLayout::MAX_SIZE`].
+    ///
+    /// The suballocator knowing the offset of the region rather than only the size allows you to
+    /// easily suballocate suballocations. Otherwise, if regions were always relative, you would
+    /// have to pick some maximum alignment for a suballocation before suballocating it further, to
+    /// satisfy alignment requirements. However, you might not even know the maximum alignment
+    /// requirement. Instead you can feed a suballocator a region that is aligned any which way,
+    /// and it makes sure that the *absolute offset* of the suballocation has the requested
+    /// alignment, meaning the offset that's already offset by the region's offset.
+    ///
+    /// There's one important caveat: if suballocating a suballocation, and the suballocation and
+    /// the suballocation's suballocations aren't both only linear or only nonlinear, then the
+    /// region must be aligned to the [buffer-image granularity]. Otherwise, there might be a
+    /// buffer-image granularity conflict between the parent suballocator's allocations and the
+    /// child suballocator's allocations.
+    ///
+    /// [region]: super::Suballocator#regions
+    /// [suballocator]: super::Suballocator
+    /// [suballocations]: super::Suballocation
+    /// [buffer-image granularity]: super::super#buffer-image-granularity
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct Region {
+        offset: DeviceSize,
+        size: DeviceSize,
+    }
+
+    impl Region {
+        /// Creates a new `Region` from the given `offset` and `size`.
+        ///
+        /// Returns [`None`] if the end of the region would exceed [`DeviceLayout::MAX_SIZE`].
+        #[inline]
+        pub const fn new(offset: DeviceSize, size: DeviceSize) -> Option<Self> {
+            if offset.saturating_add(size) <= DeviceLayout::MAX_SIZE {
+                // SAFETY: We checked that the end of the region doesn't exceed
+                // `DeviceLayout::MAX_SIZE`.
+                Some(unsafe { Region::new_unchecked(offset, size) })
+            } else {
+                None
+            }
+        }
+
+        /// Creates a new `Region` from the given `offset` and `size` without doing any checks.
+        ///
+        /// # Safety
+        ///
+        /// - The end of the region must not exceed [`DeviceLayout::MAX_SIZE`], that is the
+        ///   infinite-precision sum of `offset` and `size` must not exceed the bound.
+        #[inline]
+        pub const unsafe fn new_unchecked(offset: DeviceSize, size: DeviceSize) -> Self {
+            Region { offset, size }
+        }
+
+        /// Returns the offset where the region begins.
+        #[inline]
+        pub const fn offset(&self) -> DeviceSize {
+            self.offset
+        }
+
+        /// Returns the size of the region.
+        #[inline]
+        pub const fn size(&self) -> DeviceSize {
+            self.size
+        }
     }
 }
 
@@ -300,27 +368,23 @@ unsafe impl Suballocator for FreeListAllocator {
     /// Creates a new `FreeListAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions
-    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self {
-        // NOTE(Marc): This number was pulled straight out of my a-
-        const AVERAGE_ALLOCATION_SIZE: DeviceSize = 64 * 1024;
+    fn new(region: Region) -> Self {
+        let free_size = Cell::new(region.size());
 
-        let free_size = Cell::new(region_size);
-
-        let capacity = (region_size / AVERAGE_ALLOCATION_SIZE) as usize;
-        let mut nodes = host::PoolAllocator::new(capacity + 64);
-        let mut free_list = Vec::with_capacity(capacity / 16 + 16);
+        let mut nodes = host::PoolAllocator::new(256);
+        let mut free_list = Vec::with_capacity(32);
         let root_id = nodes.allocate(SuballocationListNode {
             prev: None,
             next: None,
-            offset: region_offset,
-            size: region_size,
+            offset: region.offset(),
+            size: region.size(),
             ty: SuballocationType::Free,
         });
         free_list.push(root_id);
         let state = UnsafeCell::new(FreeListAllocatorState { nodes, free_list });
 
         FreeListAllocator {
-            region_offset,
+            region_offset: region.offset(),
             free_size,
             state,
         }
@@ -364,9 +428,8 @@ unsafe impl Suballocator for FreeListAllocator {
                     for (index, &id) in state.free_list.iter().enumerate().skip(index) {
                         let suballoc = state.nodes.get(id);
 
-                        // This can't overflow because suballocation offsets are constrained by
-                        // the size of the root allocation, which can itself not exceed
-                        // `DeviceLayout::MAX_SIZE`.
+                        // This can't overflow because suballocation offsets are bounded by the
+                        // region, whose end can itself not exceed `DeviceLayout::MAX_SIZE`.
                         let mut offset = align_up(suballoc.offset, alignment);
 
                         if buffer_image_granularity != DeviceAlignment::MIN {
@@ -388,6 +451,14 @@ unsafe impl Suballocator for FreeListAllocator {
                             }
                         }
 
+                        // `offset`, no matter the alignment, can't end up as more than
+                        // `DeviceAlignment::MAX` for the same reason as above. `DeviceLayout`
+                        // guarantees that `size` doesn't exceed `DeviceLayout::MAX_SIZE`.
+                        // `DeviceAlignment::MAX.as_devicesize() + DeviceLayout::MAX_SIZE` is equal
+                        // to `DeviceSize::MAX`. Therefore, `offset + size` can't overflow.
+                        //
+                        // `suballoc.offset + suballoc.size` can't overflow for the same reason as
+                        // above.
                         if offset + size <= suballoc.offset + suballoc.size {
                             state.free_list.remove(index);
 
@@ -765,7 +836,7 @@ impl BuddyAllocator {
     const MIN_NODE_SIZE: DeviceSize = 16;
 
     /// Arbitrary maximum number of orders, used to avoid a 2D `Vec`. Together with a minimum node
-    /// size of 16, this is enough for a 64GiB region.
+    /// size of 16, this is enough for a 32GiB region.
     const MAX_ORDERS: usize = 32;
 }
 
@@ -774,30 +845,30 @@ unsafe impl Suballocator for BuddyAllocator {
     ///
     /// # Panics
     ///
-    /// - Panics if `region_size` is not a power of two.
-    /// - Panics if `region_size` is not in the range \[16B,&nbsp;64GiB\].
+    /// - Panics if `region.size` is not a power of two.
+    /// - Panics if `region.size` is not in the range \[16B,&nbsp;32GiB\].
     ///
     /// [region]: Suballocator#regions
-    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self {
+    fn new(region: Region) -> Self {
         const EMPTY_FREE_LIST: Vec<DeviceSize> = Vec::new();
 
-        assert!(region_size.is_power_of_two());
-        assert!(region_size >= BuddyAllocator::MIN_NODE_SIZE);
+        assert!(region.size().is_power_of_two());
+        assert!(region.size() >= BuddyAllocator::MIN_NODE_SIZE);
 
-        let max_order = (region_size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
+        let max_order = (region.size() / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
 
         assert!(max_order < BuddyAllocator::MAX_ORDERS);
 
-        let free_size = Cell::new(region_size);
+        let free_size = Cell::new(region.size());
 
         let mut free_list =
             ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; BuddyAllocator::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
-        free_list[max_order].push(region_offset);
+        free_list[max_order].push(region.offset());
         let state = UnsafeCell::new(BuddyAllocatorState { free_list });
 
         BuddyAllocator {
-            region_offset,
+            region_offset: region.offset(),
             free_size,
             state,
         }
@@ -867,8 +938,8 @@ unsafe impl Suballocator for BuddyAllocator {
                         // [0, log(region.size / BuddyAllocator::MIN_NODE_SIZE)].
                         let size = BuddyAllocator::MIN_NODE_SIZE << order;
 
-                        // This can't overflow because offsets are confined to the size of the root
-                        // allocation, which can itself not exceed `DeviceLayout::MAX_SIZE`.
+                        // This can't overflow because suballocations are bounded by the region,
+                        // whose end can itself not exceed `DeviceLayout::MAX_SIZE`.
                         let right_child = offset + size;
 
                         // Insert the right child in sorted order.
@@ -1018,8 +1089,7 @@ struct BuddyAllocatorState {
 /// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
 pub struct BumpAllocator {
-    region_offset: DeviceSize,
-    region_size: DeviceSize,
+    region: Region,
     free_start: Cell<DeviceSize>,
     prev_allocation_type: Cell<AllocationType>,
 }
@@ -1039,10 +1109,9 @@ unsafe impl Suballocator for BumpAllocator {
     /// Creates a new `BumpAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions
-    fn new(region_offset: DeviceSize, region_size: DeviceSize) -> Self {
+    fn new(region: Region) -> Self {
         BumpAllocator {
-            region_offset,
-            region_size,
+            region,
             free_start: Cell::new(0),
             prev_allocation_type: Cell::new(AllocationType::Unknown),
         }
@@ -1062,9 +1131,9 @@ unsafe impl Suballocator for BumpAllocator {
         let size = layout.size();
         let alignment = layout.alignment();
 
-        // These can't overflow because offsets are constrained by the size of the root
-        // allocation, which can itself not exceed `DeviceLayout::MAX_SIZE`.
-        let prev_end = self.region_offset + self.free_start.get();
+        // These can't overflow because suballocation offsets are bounded by the region, whose end
+        // can itself not exceed `DeviceLayout::MAX_SIZE`.
+        let prev_end = self.region.offset() + self.free_start.get();
         let mut offset = align_up(prev_end, alignment);
 
         if buffer_image_granularity != DeviceAlignment::MIN
@@ -1075,11 +1144,11 @@ unsafe impl Suballocator for BumpAllocator {
             offset = align_up(offset, buffer_image_granularity);
         }
 
-        let relative_offset = offset - self.region_offset;
+        let relative_offset = offset - self.region.offset();
 
         let free_start = relative_offset + size;
 
-        if free_start > self.region_size {
+        if free_start > self.region.size() {
             return Err(SuballocatorError::OutOfRegionMemory);
         }
 
@@ -1101,7 +1170,7 @@ unsafe impl Suballocator for BumpAllocator {
 
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.region_size - self.free_start.get()
+        self.region.size() - self.free_start.get()
     }
 
     #[inline]
@@ -1266,7 +1335,7 @@ mod tests {
         const REGION_SIZE: DeviceSize =
             (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2) * ALLOCATIONS_PER_THREAD;
 
-        let allocator = Mutex::new(FreeListAllocator::new(0, REGION_SIZE));
+        let allocator = Mutex::new(FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap()));
         let allocs = ArrayQueue::new((ALLOCATIONS_PER_THREAD * THREADS) as usize);
 
         // Using threads to randomize allocation order.
@@ -1318,7 +1387,7 @@ mod tests {
         const REGION_SIZE: DeviceSize = 10 * 256;
         const LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 256));
 
-        let allocator = FreeListAllocator::new(0, REGION_SIZE);
+        let allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
         let mut allocs = Vec::with_capacity(10);
 
         for _ in 0..10 {
@@ -1344,7 +1413,7 @@ mod tests {
         const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(16));
         const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
-        let allocator = FreeListAllocator::new(0, REGION_SIZE);
+        let allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
         let mut linear_allocs = Vec::with_capacity(REGION_SIZE as usize / 2);
         let mut nonlinear_allocs = Vec::with_capacity(REGION_SIZE as usize / 2);
 
@@ -1403,7 +1472,7 @@ mod tests {
         const MAX_ORDER: usize = 10;
         const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;
 
-        let allocator = BuddyAllocator::new(0, REGION_SIZE);
+        let allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
         let mut allocs = Vec::with_capacity(1 << MAX_ORDER);
 
         for order in 0..=MAX_ORDER {
@@ -1465,7 +1534,7 @@ mod tests {
     fn buddy_allocator_respects_alignment() {
         const REGION_SIZE: DeviceSize = 4096;
 
-        let allocator = BuddyAllocator::new(0, REGION_SIZE);
+        let allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
 
         {
             let layout = DeviceLayout::from_size_alignment(1, 4096).unwrap();
@@ -1529,7 +1598,7 @@ mod tests {
         const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(256));
         const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
-        let allocator = BuddyAllocator::new(0, REGION_SIZE);
+        let allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
 
         {
             const ALLOCATIONS: DeviceSize = REGION_SIZE / BuddyAllocator::MIN_NODE_SIZE;
@@ -1576,7 +1645,7 @@ mod tests {
         const REGION_SIZE: DeviceSize = 10 * ALIGNMENT;
 
         let layout = DeviceLayout::from_size_alignment(1, ALIGNMENT).unwrap();
-        let mut allocator = BumpAllocator::new(0, REGION_SIZE);
+        let mut allocator = BumpAllocator::new(Region::new(0, REGION_SIZE).unwrap());
 
         for _ in 0..10 {
             allocator
@@ -1609,7 +1678,7 @@ mod tests {
         const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(1024));
         const REGION_SIZE: DeviceSize = ALLOCATIONS * GRANULARITY.as_devicesize();
 
-        let mut allocator = BumpAllocator::new(0, REGION_SIZE);
+        let mut allocator = BumpAllocator::new(Region::new(0, REGION_SIZE).unwrap());
 
         for i in 0..ALLOCATIONS {
             for _ in 0..GRANULARITY.as_devicesize() {
