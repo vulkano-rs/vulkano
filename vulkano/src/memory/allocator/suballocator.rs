@@ -23,7 +23,7 @@ use std::{
     cell::{Cell, UnsafeCell},
     cmp,
     error::Error,
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     ptr,
 };
 
@@ -51,7 +51,7 @@ use std::{
 /// trade-offs and are best suited to specific tasks. To account for all possible use-cases,
 /// Vulkano offers the ability to create *memory hierarchies*. We refer to the `DeviceMemory` as
 /// the root of any such hierarchy, even though technically the driver has levels that are further
-/// up, because those `DeviceMemory` blocks need to be allocated from physical memory [pages]
+/// up, because those `DeviceMemory` blocks need to be allocated from physical memory pages
 /// themselves, but since those levels are not accessible to us we don't need to consider them. You
 /// can create any number of levels/branches from there, bounded only by the amount of available
 /// memory within a `DeviceMemory` block. You can suballocate the root into regions, which are then
@@ -61,22 +61,32 @@ use std::{
 ///
 /// TODO
 ///
-/// # Implementing the trait
+/// # Safety
 ///
-/// TODO
+/// First consider using the provided implementations as there should be no reason to implement
+/// this trait, but if you **must**:
+///
+/// - `allocate` must return a memory block that is in bounds of the region.
+/// - `allocate` must return a memory block that doesn't alias any other currently allocated
+///   memory blocks:
+///   - Two currently allocated memory blocks must not share any memory locations, meaning that the
+///     intersection of the byte ranges of the two memory blocks must be empty.
+///   - Two neighboring currently allocated memory blocks must not share any [page] whose size is
+///     given by the [buffer-image granularity], unless either both were allocated with
+///     [`AllocationType::Linear`] or both were allocated with [`AllocationType::NonLinear`].
+///   - The size does **not** have to be padded to the alignment. That is, as long the offset is
+///     aligned and the memory blocks don't share any memory locations, a memory block is not
+///     considered to alias another even if the padded size shares memory locations with another
+///     memory block.
+/// - A memory block must stay allocated until either `deallocate` is called on it or the allocator
+///   is dropped. If the allocator is cloned, it must produce the same allocator, and memory blocks
+///   must stay allocated until either `deallocate` is called on the memory block using any of the
+///   clones or all of the clones have been dropped.
 ///
 /// [`DeviceMemory`]: crate::memory::DeviceMemory
-/// [pages]: super#pages
+/// [page]: super#pages
+/// [buffer-image granularity]: super#buffer-image-granularity
 pub unsafe trait Suballocator {
-    /// Whether the allocator needs [`cleanup`] to be called before memory can be released.
-    ///
-    /// This is used by the [`GenericMemoryAllocator`] to specialize the allocation strategy to the
-    /// suballocator at compile time.
-    ///
-    /// [`cleanup`]: Self::cleanup
-    /// [`GenericMemoryAllocator`]: super::GenericMemoryAllocator
-    const NEEDS_CLEANUP: bool;
-
     /// Creates a new suballocator for the given [region].
     ///
     /// [region]: Self#regions
@@ -133,6 +143,8 @@ pub unsafe trait Suballocator {
     fn free_size(&self) -> DeviceSize;
 
     /// Tries to free some space, if applicable.
+    ///
+    /// There must be no current allocations as they might get freed.
     fn cleanup(&mut self);
 }
 
@@ -209,6 +221,12 @@ mod region {
     }
 }
 
+impl Debug for dyn Suballocator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Suballocator").finish_non_exhaustive()
+    }
+}
+
 /// Tells the [suballocator] what type of resource will be bound to the allocation, so that it can
 /// optimize memory usage while still respecting the [buffer-image granularity].
 ///
@@ -255,6 +273,10 @@ pub struct Suballocation {
 
     /// The size of the allocation. This will be exactly equal to the requested size.
     pub size: DeviceSize,
+
+    /// The type of resources that can be bound to this memory block. This will be exactly equal to
+    /// the requested allocation type.
+    pub allocation_type: AllocationType,
 
     /// An opaque handle identifying the allocation within the allocator.
     pub handle: AllocationHandle,
@@ -343,8 +365,6 @@ pub struct FreeListAllocator {
 }
 
 unsafe impl Suballocator for FreeListAllocator {
-    const NEEDS_CLEANUP: bool = false;
-
     /// Creates a new `FreeListAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions
@@ -456,7 +476,8 @@ unsafe impl Suballocator for FreeListAllocator {
                             return Ok(Suballocation {
                                 offset,
                                 size,
-                                handle: AllocationHandle(id.get() as _),
+                                allocation_type,
+                                handle: AllocationHandle::from_index(id.get()),
                             });
                         }
                     }
@@ -478,7 +499,7 @@ unsafe impl Suballocator for FreeListAllocator {
     unsafe fn deallocate(&self, suballocation: Suballocation) {
         // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
         // allocation of `self`.
-        let node_id = SlotId::new(suballocation.handle.0 as _);
+        let node_id = SlotId::new(suballocation.handle.into_index());
 
         let state = unsafe { &mut *self.state.get() };
         let node = state.nodes.get_mut(node_id);
@@ -820,8 +841,6 @@ impl BuddyAllocator {
 }
 
 unsafe impl Suballocator for BuddyAllocator {
-    const NEEDS_CLEANUP: bool = false;
-
     /// Creates a new `BuddyAllocator` for the given [region].
     ///
     /// # Panics
@@ -937,7 +956,8 @@ unsafe impl Suballocator for BuddyAllocator {
                     return Ok(Suballocation {
                         offset,
                         size: layout.size(),
-                        handle: AllocationHandle(min_order as _),
+                        allocation_type,
+                        handle: AllocationHandle::from_index(min_order),
                     });
                 }
             }
@@ -954,7 +974,7 @@ unsafe impl Suballocator for BuddyAllocator {
     #[inline]
     unsafe fn deallocate(&self, suballocation: Suballocation) {
         let mut offset = suballocation.offset;
-        let order = suballocation.handle.0 as usize;
+        let order = suballocation.handle.into_index();
 
         let min_order = order;
         let state = unsafe { &mut *self.state.get() };
@@ -1086,8 +1106,6 @@ impl BumpAllocator {
 }
 
 unsafe impl Suballocator for BumpAllocator {
-    const NEEDS_CLEANUP: bool = true;
-
     /// Creates a new `BumpAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions
@@ -1140,6 +1158,7 @@ unsafe impl Suballocator for BumpAllocator {
         Ok(Suballocation {
             offset,
             size,
+            allocation_type,
             handle: AllocationHandle(ptr::null_mut()),
         })
     }

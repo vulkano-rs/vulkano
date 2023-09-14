@@ -115,6 +115,7 @@ Changes to memory allocation:
 - Merged `MemoryAllocator::allocate_from_type_unchecked` into `MemoryAllocator::allocate_from_type` and `MemoryAllocator::allocate_unchecked` into `MemoryAllocator::allocate`.
 - Replaced `MemoryAllocator::allocate_dedicated_unchecked` with `MemoryAllocator::allocate_dedicated`.
 - `FreeListAllocator`, `BuddyAllocator` and `BumpAllocator` are no longer `Sync`.
+- `GenericMemoryAllocatorCreateInfo::block_sizes` now represents a block size per memory type, instead of per memory heap, to allow for a more fine-grained configuration.
 
 Changes to synchronization primitives:
 - `Event::signaled` is renamed to `is_signaled`, to match the method on `Fence`.
