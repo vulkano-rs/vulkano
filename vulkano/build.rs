@@ -26,6 +26,6 @@ fn main() {
 
     // Run autogen
     println!("cargo:rerun-if-changed=vk.xml");
-    println!("cargo:rerun-if-changed=spirv-core.grammar.json");
+    println!("cargo:rerun-if-changed=spirv.core.grammar.json");
     autogen::autogen();
 }
