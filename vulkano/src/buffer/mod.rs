@@ -388,7 +388,11 @@ impl Buffer {
         // TODO: Enable once sparse binding materializes
         // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
 
-        assert_eq!(create_info.size, 0, "`Buffer::new*` functions set the `create_info.size` field themselves, you should not set it yourself");
+        assert_eq!(
+            create_info.size, 0,
+            "`Buffer::new*` functions set the `create_info.size` field themselves, you should not \
+             set it yourself"
+        );
 
         create_info.size = layout.size();
 
