@@ -345,7 +345,7 @@ impl ShaderModule {
     ///
     /// [`specialization_constants`]: Self::specialization_constants
     #[inline]
-    pub fn with_specialization(
+    pub fn specialize(
         self: &Arc<Self>,
         specialization_info: HashMap<u32, SpecializationConstant>,
     ) -> Result<Arc<SpecializedShaderModule>, Box<ValidationError>> {
@@ -361,10 +361,10 @@ impl ShaderModule {
         SpecializedShaderModule::new_unchecked(self.clone(), specialization_info)
     }
 
-    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// Equivalent to calling [`specialize`] with empty specialization info,
     /// and then calling [`SpecializedShaderModule::entry_point`].
     ///
-    /// [`with_specialization`]: Self::with_specialization
+    /// [`specialize`]: Self::specialize
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
         unsafe {
@@ -373,10 +373,10 @@ impl ShaderModule {
         }
     }
 
-    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// Equivalent to calling [`specialize`] with empty specialization info,
     /// and then calling [`SpecializedShaderModule::entry_point_with_execution`].
     ///
-    /// [`with_specialization`]: Self::with_specialization
+    /// [`specialize`]: Self::specialize
     #[inline]
     pub fn entry_point_with_execution(
         self: &Arc<Self>,
@@ -389,10 +389,10 @@ impl ShaderModule {
         }
     }
 
-    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// Equivalent to calling [`specialize`] with empty specialization info,
     /// and then calling [`SpecializedShaderModule::single_entry_point`].
     ///
-    /// [`with_specialization`]: Self::with_specialization
+    /// [`specialize`]: Self::specialize
     #[inline]
     pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
         unsafe {
@@ -401,10 +401,10 @@ impl ShaderModule {
         }
     }
 
-    /// Equivalent to calling [`with_specialization`] with empty specialization info,
+    /// Equivalent to calling [`specialize`] with empty specialization info,
     /// and then calling [`SpecializedShaderModule::single_entry_point_with_execution`].
     ///
-    /// [`with_specialization`]: Self::with_specialization
+    /// [`specialize`]: Self::specialize
     #[inline]
     pub fn single_entry_point_with_execution(
         self: &Arc<Self>,

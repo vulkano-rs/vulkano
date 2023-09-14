@@ -257,7 +257,7 @@ fn main() {
     let mult_pipeline = {
         let cs = shaders::load_mult(device.clone())
             .unwrap()
-            .with_specialization([(0, true.into())].into_iter().collect())
+            .specialize([(0, true.into())].into_iter().collect())
             .unwrap()
             .entry_point("main")
             .unwrap();
@@ -281,7 +281,7 @@ fn main() {
     let add_pipeline = {
         let cs = shaders::load_add(device.clone())
             .unwrap()
-            .with_specialization([(0, true.into())].into_iter().collect())
+            .specialize([(0, true.into())].into_iter().collect())
             .unwrap()
             .entry_point("main")
             .unwrap();

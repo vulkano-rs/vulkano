@@ -180,7 +180,7 @@ fn main() {
     let pipeline = {
         let cs = cs::load(device.clone())
             .unwrap()
-            .with_specialization(
+            .specialize(
                 [
                     (0, 0.2f32.into()),
                     (1, local_size_x.into()),

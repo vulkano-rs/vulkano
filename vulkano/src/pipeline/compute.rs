@@ -510,7 +510,7 @@ mod tests {
             let module =
                 ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
             module
-                .with_specialization([(83, 0x12345678i32.into())].into_iter().collect())
+                .specialize([(83, 0x12345678i32.into())].into_iter().collect())
                 .unwrap()
                 .entry_point("main")
                 .unwrap()

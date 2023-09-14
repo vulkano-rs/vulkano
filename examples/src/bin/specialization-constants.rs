@@ -118,7 +118,7 @@ fn main() {
     let pipeline = {
         let cs = cs::load(device.clone())
             .unwrap()
-            .with_specialization(
+            .specialize(
                 [(0, 1i32.into()), (1, 1.0f32.into()), (2, true.into())]
                     .into_iter()
                     .collect(),

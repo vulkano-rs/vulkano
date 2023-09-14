@@ -484,15 +484,14 @@ impl Display for CommandBufferExecError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             CommandBufferExecError::AccessError {
-                error,
+                error: _,
                 command_name,
                 command_offset,
                 command_param,
             } => write!(
                 f,
-                "access to a resource has been denied on command {} (offset: {}, param: {}): \
-                {}",
-                command_name, command_offset, command_param, error
+                "access to a resource has been denied on command {} (offset: {}, param: {})",
+                command_name, command_offset, command_param,
             ),
             CommandBufferExecError::OneTimeSubmitAlreadySubmitted => write!(
                 f,
