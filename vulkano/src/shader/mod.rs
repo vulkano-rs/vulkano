@@ -354,7 +354,7 @@ impl ShaderModule {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub unsafe fn with_specialization_unchecked(
+    pub unsafe fn specialize_unchecked(
         self: &Arc<Self>,
         specialization_info: HashMap<u32, SpecializationConstant>,
     ) -> Arc<SpecializedShaderModule> {
@@ -368,7 +368,7 @@ impl ShaderModule {
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
         unsafe {
-            self.with_specialization_unchecked(HashMap::default())
+            self.specialize_unchecked(HashMap::default())
                 .entry_point(name)
         }
     }
@@ -384,7 +384,7 @@ impl ShaderModule {
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
         unsafe {
-            self.with_specialization_unchecked(HashMap::default())
+            self.specialize_unchecked(HashMap::default())
                 .entry_point_with_execution(name, execution)
         }
     }
@@ -396,7 +396,7 @@ impl ShaderModule {
     #[inline]
     pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
         unsafe {
-            self.with_specialization_unchecked(HashMap::default())
+            self.specialize_unchecked(HashMap::default())
                 .single_entry_point()
         }
     }
@@ -411,7 +411,7 @@ impl ShaderModule {
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
         unsafe {
-            self.with_specialization_unchecked(HashMap::default())
+            self.specialize_unchecked(HashMap::default())
                 .single_entry_point_with_execution(execution)
         }
     }
