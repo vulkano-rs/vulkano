@@ -186,6 +186,7 @@ Changes to the `khr_display` extension:
 - Fixed potential UB when using `MemoryAlloc::try_unwrap`, where the allocation was mapped on contruction of the `MemoryAlloc` but not unmapped on unwrapping, allowing double-mapping.
 - Fixed a bug in `GenericMemoryAllocator::allocate`, where the root allocations weren't created with the configured `AllocationType`.
 - Specialization constants are now applied to the reflected SPIR-V code before any other reflection is performed.
+- Fragment shaders cannot use `dual_src_blend` device feature due to interface errors.
 
 # Version 0.33.0 (2023-04-01)
 
