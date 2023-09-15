@@ -1314,6 +1314,10 @@ pub struct ShaderInterfaceEntry {
     /// The location slot that the variable starts at.
     pub location: u32,
 
+    /// The index within the location slot that the variable is located.
+    /// Only meaningful for fragment outputs.
+    pub index: u32,
+
     /// The component slot that the variable starts at. Must be in the range 0..=3.
     pub component: u32,
 

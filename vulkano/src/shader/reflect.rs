@@ -1197,12 +1197,23 @@ fn shader_interface(
                     _ => None,
                 })
                 .unwrap_or(0);
+            let index = id_info
+                .iter_decoration()
+                .find_map(|instruction| match *instruction {
+                    Instruction::Decorate {
+                        decoration: Decoration::Index { index },
+                        ..
+                    } => Some(index),
+                    _ => None,
+                })
+                .unwrap_or(0);
 
             let ty = shader_interface_type_of(spirv, result_type_id, ignore_first_array);
             assert!(ty.num_elements >= 1);
 
             Some(ShaderInterfaceEntry {
                 location,
+                index,
                 component,
                 ty,
                 name,
@@ -1213,11 +1224,12 @@ fn shader_interface(
     // Checking for overlapping elements.
     for (offset, element1) in elements.iter().enumerate() {
         for element2 in elements.iter().skip(offset + 1) {
-            if element1.location == element2.location
-                || (element1.location < element2.location
-                    && element1.location + element1.ty.num_locations() > element2.location)
-                || (element2.location < element1.location
-                    && element2.location + element2.ty.num_locations() > element1.location)
+            if element1.index == element2.index
+                && (element1.location == element2.location
+                    || (element1.location < element2.location
+                        && element1.location + element1.ty.num_locations() > element2.location)
+                    || (element2.location < element1.location
+                        && element2.location + element2.ty.num_locations() > element1.location))
             {
                 panic!(
                     "The locations of attributes `{:?}` ({}..{}) and `{:?}` ({}..{}) overlap",
