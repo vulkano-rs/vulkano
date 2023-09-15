@@ -235,8 +235,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
-    VulkanError,
+    DeviceSize, Validated, ValidationError, Version, VulkanError,
 };
 use ash::vk::MAX_MEMORY_TYPES;
 use parking_lot::Mutex;
@@ -1670,31 +1669,11 @@ impl GenericMemoryAllocatorCreateInfo<'_> {
         );
 
         if !export_handle_types.is_empty() {
-            if !(device.api_version() >= Version::V1_1
-                && device.enabled_extensions().khr_external_memory)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "export_handle_types".into(),
-                    problem: "is not empty".into(),
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_1)]),
-                        RequiresAllOf(&[Requires::DeviceExtension("khr_external_memory")]),
-                    ]),
-                    ..Default::default()
-                }));
-            }
-
             assert!(
                 export_handle_types.len() == memory_types.len(),
                 "`create_info.export_handle_types` must contain as many elements as the number of \
                 memory types if not empty",
             );
-
-            for (index, export_handle_types) in export_handle_types.iter().enumerate() {
-                export_handle_types
-                    .validate_device(device)
-                    .map_err(|err| err.add_context(format!("export_handle_types[{}]", index)))?;
-            }
         }
 
         Ok(())
