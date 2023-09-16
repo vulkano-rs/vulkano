@@ -235,7 +235,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    DeviceSize, Validated, ValidationError, Version, VulkanError,
+    DeviceSize, Validated, Version, VulkanError,
 };
 use ash::vk::MAX_MEMORY_TYPES;
 use parking_lot::Mutex;
@@ -853,7 +853,7 @@ impl StandardMemoryAllocator {
             ..Default::default()
         };
 
-        unsafe { Self::new_unchecked(device, create_info) }
+        Self::new(device, create_info)
     }
 }
 
@@ -934,31 +934,7 @@ impl<S> GenericMemoryAllocator<S> {
     ///   memory types.
     /// - Panics if `create_info.export_handle_types` is non-empty and doesn't contain as many
     ///   elements as the number of memory types.
-    pub fn new(
-        device: Arc<Device>,
-        create_info: GenericMemoryAllocatorCreateInfo<'_>,
-    ) -> Result<Self, Box<ValidationError>> {
-        Self::validate_new(&device, &create_info)?;
-
-        Ok(unsafe { Self::new_unchecked(device, create_info) })
-    }
-
-    fn validate_new(
-        device: &Device,
-        create_info: &GenericMemoryAllocatorCreateInfo<'_>,
-    ) -> Result<(), Box<ValidationError>> {
-        create_info
-            .validate(device)
-            .map_err(|err| err.add_context("create_info"))?;
-
-        Ok(())
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn new_unchecked(
-        device: Arc<Device>,
-        create_info: GenericMemoryAllocatorCreateInfo<'_>,
-    ) -> Self {
+    pub fn new(device: Arc<Device>, create_info: GenericMemoryAllocatorCreateInfo<'_>) -> Self {
         let GenericMemoryAllocatorCreateInfo {
             block_sizes,
             memory_type_bits,
@@ -967,6 +943,23 @@ impl<S> GenericMemoryAllocator<S> {
             mut device_address,
             _ne: _,
         } = create_info;
+
+        let memory_types = &device.physical_device().memory_properties().memory_types;
+
+        assert_eq!(
+            block_sizes.len(),
+            memory_types.len(),
+            "`create_info.block_sizes` must contain as many elements as the number of memory types",
+        );
+
+        if !export_handle_types.is_empty() {
+            assert_eq!(
+                export_handle_types.len(),
+                memory_types.len(),
+                "`create_info.export_handle_types` must contain as many elements as the number of \
+                memory types if not empty",
+            );
+        }
 
         let buffer_image_granularity = device
             .physical_device()
@@ -1648,36 +1641,6 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
     pub device_address: bool,
 
     pub _ne: crate::NonExhaustive,
-}
-
-impl GenericMemoryAllocatorCreateInfo<'_> {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            block_sizes,
-            memory_type_bits: _,
-            dedicated_allocation: _,
-            export_handle_types,
-            device_address: _,
-            _ne: _,
-        } = self;
-
-        let memory_types = &device.physical_device().memory_properties().memory_types;
-
-        assert!(
-            block_sizes.len() == memory_types.len(),
-            "`create_info.block_sizes` must contain as many elements as the number of memory types",
-        );
-
-        if !export_handle_types.is_empty() {
-            assert!(
-                export_handle_types.len() == memory_types.len(),
-                "`create_info.export_handle_types` must contain as many elements as the number of \
-                memory types if not empty",
-            );
-        }
-
-        Ok(())
-    }
 }
 
 impl Default for GenericMemoryAllocatorCreateInfo<'_> {
