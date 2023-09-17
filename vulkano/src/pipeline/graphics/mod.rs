@@ -3142,7 +3142,7 @@ impl GraphicsPipelineCreateInfo {
 
 /// The input primitive type that is expected by a geometry shader.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum GeometryShaderInput {
+enum GeometryShaderInput {
     Points,
     Lines,
     LinesWithAdjacency,
@@ -3153,7 +3153,7 @@ pub enum GeometryShaderInput {
 impl GeometryShaderInput {
     /// Returns true if the given primitive topology can be used as input for this geometry shader.
     #[inline]
-    pub fn is_compatible_with(self, topology: PrimitiveTopology) -> bool {
+    fn is_compatible_with(self, topology: PrimitiveTopology) -> bool {
         match self {
             Self::Points => matches!(topology, PrimitiveTopology::PointList),
             Self::Lines => matches!(
