@@ -21,7 +21,10 @@ pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::Pip
 use crate::{
     device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
-    shader::{DescriptorBindingRequirements, EntryPoint, ShaderExecution, ShaderStage},
+    shader::{
+        spirv::{BuiltIn, Decoration, ExecutionMode, Id, Instruction},
+        DescriptorBindingRequirements, EntryPoint, ShaderStage,
+    },
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
@@ -355,7 +358,7 @@ impl PipelineShaderStageCreateInfo {
         })?;
 
         let entry_point_info = entry_point.info();
-        let stage_enum = ShaderStage::from(&entry_point_info.execution);
+        let stage_enum = ShaderStage::from(entry_point_info.execution_model);
 
         stage_enum.validate_device(device).map_err(|err| {
             err.add_context("entry_point.info().execution")
@@ -451,170 +454,383 @@ impl PipelineShaderStageCreateInfo {
             ShaderStage::SubpassShading => (),
         }
 
-        let workgroup_size = if let ShaderExecution::Compute(execution) =
-            &entry_point_info.execution
-        {
-            let local_size = execution.local_size;
+        let spirv = entry_point.module().spirv();
+        let entry_point_function = spirv.function(entry_point.id());
 
-            match stage_enum {
-                ShaderStage::Compute => {
-                    if local_size[0] > properties.max_compute_work_group_size[0] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_x` of `entry_point` is greater than \
-                                `max_compute_work_group_size[0]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-x-06429"],
-                            ..Default::default()
-                        }));
-                    }
+        let mut clip_distance_array_size = 0;
+        let mut cull_distance_array_size = 0;
 
-                    if local_size[1] > properties.max_compute_work_group_size[1] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_y` of `entry_point` is greater than \
-                                `max_compute_work_group_size[1]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-x-06430"],
-                            ..Default::default()
-                        }));
-                    }
+        for instruction in spirv.iter_decoration() {
+            if let Instruction::Decorate {
+                target,
+                decoration: Decoration::BuiltIn { built_in },
+            } = *instruction
+            {
+                let variable_array_size = |variable| {
+                    let result_type_id = match *spirv.id(variable).instruction() {
+                        Instruction::Variable { result_type_id, .. } => result_type_id,
+                        _ => return None,
+                    };
 
-                    if local_size[2] > properties.max_compute_work_group_size[2] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_x` of `entry_point` is greater than \
-                                `max_compute_work_group_size[2]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-x-06431"],
-                            ..Default::default()
-                        }));
-                    }
+                    let length = match *spirv.id(result_type_id).instruction() {
+                        Instruction::TypeArray { length, .. } => length,
+                        _ => return None,
+                    };
 
-                    let workgroup_size = local_size
-                        .into_iter()
-                        .try_fold(1, u32::checked_mul)
-                        .filter(|&x| x <= properties.max_compute_work_group_invocations)
-                        .ok_or_else(|| {
-                            Box::new(ValidationError {
-                                problem: "the product of the `local_size_x`, `local_size_y` and \
-                                    `local_size_z` of `entry_point` is greater than the \
-                                    `max_compute_work_group_invocations` device limit"
+                    let value = match *spirv.id(length).instruction() {
+                        Instruction::Constant { ref value, .. } => {
+                            if value.len() > 1 {
+                                u32::MAX
+                            } else {
+                                value[0]
+                            }
+                        }
+                        _ => return None,
+                    };
+
+                    Some(value)
+                };
+
+                match built_in {
+                    BuiltIn::ClipDistance => {
+                        clip_distance_array_size = variable_array_size(target).unwrap();
+
+                        if clip_distance_array_size > properties.max_clip_distances {
+                            return Err(Box::new(ValidationError {
+                                context: "entry_point".into(),
+                                problem: "the number of elements in the `ClipDistance` built-in \
+                                    variable is greater than the \
+                                    `max_clip_distances` device limit"
                                     .into(),
-                                vuids: &["VUID-RuntimeSpirv-x-06432"],
+                                vuids: &[
+                                    "VUID-VkPipelineShaderStageCreateInfo-maxClipDistances-00708",
+                                ],
                                 ..Default::default()
-                            })
-                        })?;
-
-                    Some(workgroup_size)
-                }
-                ShaderStage::Task => {
-                    if local_size[0] > properties.max_task_work_group_size.unwrap_or_default()[0] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_x` of `entry_point` is greater than \
-                                `max_task_work_group_size[0]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-TaskEXT-07291"],
-                            ..Default::default()
-                        }));
+                            }));
+                        }
                     }
+                    BuiltIn::CullDistance => {
+                        cull_distance_array_size = variable_array_size(target).unwrap();
 
-                    if local_size[1] > properties.max_task_work_group_size.unwrap_or_default()[1] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_y` of `entry_point` is greater than \
-                                `max_task_work_group_size[1]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-TaskEXT-07292"],
-                            ..Default::default()
-                        }));
-                    }
-
-                    if local_size[2] > properties.max_task_work_group_size.unwrap_or_default()[2] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_x` of `entry_point` is greater than \
-                                `max_task_work_group_size[2]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-TaskEXT-07293"],
-                            ..Default::default()
-                        }));
-                    }
-
-                    let workgroup_size = local_size
-                        .into_iter()
-                        .try_fold(1, u32::checked_mul)
-                        .filter(|&x| {
-                            x <= properties
-                                .max_task_work_group_invocations
-                                .unwrap_or_default()
-                        })
-                        .ok_or_else(|| {
-                            Box::new(ValidationError {
-                                problem: "the product of the `local_size_x`, `local_size_y` and \
-                                    `local_size_z` of `entry_point` is greater than the \
-                                    `max_task_work_group_invocations` device limit"
+                        if cull_distance_array_size > properties.max_cull_distances {
+                            return Err(Box::new(ValidationError {
+                                context: "entry_point".into(),
+                                problem: "the number of elements in the `CullDistance` built-in \
+                                    variable is greater than the \
+                                    `max_cull_distances` device limit"
                                     .into(),
-                                vuids: &["VUID-RuntimeSpirv-TaskEXT-07294"],
+                                vuids: &[
+                                    "VUID-VkPipelineShaderStageCreateInfo-maxCullDistances-00709",
+                                ],
                                 ..Default::default()
-                            })
-                        })?;
-
-                    Some(workgroup_size)
-                }
-                ShaderStage::Mesh => {
-                    if local_size[0] > properties.max_mesh_work_group_size.unwrap_or_default()[0] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_x` of `entry_point` is greater than \
-                                `max_mesh_work_group_size[0]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-MeshEXT-07295"],
-                            ..Default::default()
-                        }));
+                            }));
+                        }
                     }
-
-                    if local_size[1] > properties.max_mesh_work_group_size.unwrap_or_default()[1] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_y` of `entry_point` is greater than \
-                                `max_mesh_work_group_size[1]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-MeshEXT-07296"],
-                            ..Default::default()
-                        }));
-                    }
-
-                    if local_size[2] > properties.max_mesh_work_group_size.unwrap_or_default()[2] {
-                        return Err(Box::new(ValidationError {
-                            problem: "the `local_size_x` of `entry_point` is greater than \
-                                `max_mesh_work_group_size[2]`"
-                                .into(),
-                            vuids: &["VUID-RuntimeSpirv-MeshEXT-07297"],
-                            ..Default::default()
-                        }));
-                    }
-
-                    let workgroup_size = local_size
-                        .into_iter()
-                        .try_fold(1, u32::checked_mul)
-                        .filter(|&x| {
-                            x <= properties
-                                .max_mesh_work_group_invocations
-                                .unwrap_or_default()
-                        })
-                        .ok_or_else(|| {
-                            Box::new(ValidationError {
-                                problem: "the product of the `local_size_x`, `local_size_y` and \
-                                    `local_size_z` of `entry_point` is greater than the \
-                                    `max_mesh_work_group_invocations` device limit"
+                    BuiltIn::SampleMask => {
+                        if variable_array_size(target).unwrap() > properties.max_sample_mask_words {
+                            return Err(Box::new(ValidationError {
+                                context: "entry_point".into(),
+                                problem: "the number of elements in the `SampleMask` built-in \
+                                    variable is greater than the \
+                                    `max_sample_mask_words` device limit"
                                     .into(),
-                                vuids: &["VUID-RuntimeSpirv-MeshEXT-07298"],
+                                vuids: &[
+                                    "VUID-VkPipelineShaderStageCreateInfo-maxSampleMaskWords-00711",
+                                ],
                                 ..Default::default()
-                            })
-                        })?;
-
-                    Some(workgroup_size)
+                            }));
+                        }
+                    }
+                    _ => (),
                 }
-                // TODO: Additional stages when `.local_size()` supports them.
-                _ => unreachable!(),
             }
-        } else {
-            None
-        };
+        }
+
+        if clip_distance_array_size
+            .checked_add(cull_distance_array_size)
+            .map_or(true, |sum| {
+                sum > properties.max_combined_clip_and_cull_distances
+            })
+        {
+            return Err(Box::new(ValidationError {
+                context: "entry_point".into(),
+                problem: "the sum of the number of elements in the `ClipDistance` and \
+                    `CullDistance` built-in variables is greater than the \
+                    `max_combined_clip_and_cull_distances` device limit"
+                    .into(),
+                vuids: &[
+                    "VUID-VkPipelineShaderStageCreateInfo-maxCombinedClipAndCullDistances-00710",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        for instruction in entry_point_function.iter_execution_mode() {
+            if let Instruction::ExecutionMode {
+                mode: ExecutionMode::OutputVertices { vertex_count },
+                ..
+            } = *instruction
+            {
+                match stage_enum {
+                    ShaderStage::TessellationControl | ShaderStage::TessellationEvaluation => {
+                        if vertex_count == 0 {
+                            return Err(Box::new(ValidationError {
+                                context: "entry_point".into(),
+                                problem: "the `vertex_count` of the \
+                                    `ExecutionMode::OutputVertices` is zero"
+                                    .into(),
+                                vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00713"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if vertex_count > properties.max_tessellation_patch_size {
+                            return Err(Box::new(ValidationError {
+                                context: "entry_point".into(),
+                                problem: "the `vertex_count` of the \
+                                    `ExecutionMode::OutputVertices` is greater than the \
+                                    `max_tessellation_patch_size` device limit"
+                                    .into(),
+                                vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00713"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    ShaderStage::Geometry => {
+                        if vertex_count == 0 {
+                            return Err(Box::new(ValidationError {
+                                context: "entry_point".into(),
+                                problem: "the `vertex_count` of the \
+                                    `ExecutionMode::OutputVertices` is zero"
+                                    .into(),
+                                vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00714"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if vertex_count > properties.max_geometry_output_vertices {
+                            return Err(Box::new(ValidationError {
+                                context: "entry_point".into(),
+                                problem: "the `vertex_count` of the \
+                                    `ExecutionMode::OutputVertices` is greater than the \
+                                    `max_geometry_output_vertices` device limit"
+                                    .into(),
+                                vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00714"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        let local_size = (spirv
+            .iter_decoration()
+            .find_map(|instruction| match *instruction {
+                Instruction::Decorate {
+                    target,
+                    decoration:
+                        Decoration::BuiltIn {
+                            built_in: BuiltIn::WorkgroupSize,
+                        },
+                } => {
+                    let constituents: &[Id; 3] = match *spirv.id(target).instruction() {
+                        Instruction::ConstantComposite {
+                            ref constituents, ..
+                        } => constituents.as_slice().try_into().unwrap(),
+                        _ => unreachable!(),
+                    };
+
+                    let local_size = constituents.map(|id| match *spirv.id(id).instruction() {
+                        Instruction::Constant { ref value, .. } => {
+                            assert!(value.len() == 1);
+                            value[0]
+                        }
+                        _ => unreachable!(),
+                    });
+
+                    Some(local_size)
+                }
+                _ => None,
+            }))
+        .or_else(|| {
+            entry_point_function
+                .iter_execution_mode()
+                .find_map(|instruction| match *instruction {
+                    Instruction::ExecutionMode {
+                        mode:
+                            ExecutionMode::LocalSize {
+                                x_size,
+                                y_size,
+                                z_size,
+                            },
+                        ..
+                    } => Some([x_size, y_size, z_size]),
+                    Instruction::ExecutionModeId {
+                        mode:
+                            ExecutionMode::LocalSizeId {
+                                x_size,
+                                y_size,
+                                z_size,
+                            },
+                        ..
+                    } => Some([x_size, y_size, z_size].map(
+                        |id| match *spirv.id(id).instruction() {
+                            Instruction::Constant { ref value, .. } => {
+                                assert!(value.len() == 1);
+                                value[0]
+                            }
+                            _ => unreachable!(),
+                        },
+                    )),
+                    _ => None,
+                })
+        })
+        .unwrap_or_default();
+        let workgroup_size = local_size.into_iter().try_fold(1, u32::checked_mul);
+
+        match stage_enum {
+            ShaderStage::Compute => {
+                if local_size[0] > properties.max_compute_work_group_size[0] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_x` of `entry_point` is greater than \
+                            `max_compute_work_group_size[0]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-x-06429"],
+                        ..Default::default()
+                    }));
+                }
+
+                if local_size[1] > properties.max_compute_work_group_size[1] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_y` of `entry_point` is greater than \
+                            `max_compute_work_group_size[1]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-x-06430"],
+                        ..Default::default()
+                    }));
+                }
+
+                if local_size[2] > properties.max_compute_work_group_size[2] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_x` of `entry_point` is greater than \
+                            `max_compute_work_group_size[2]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-x-06431"],
+                        ..Default::default()
+                    }));
+                }
+
+                if workgroup_size.map_or(true, |size| {
+                    size > properties.max_compute_work_group_invocations
+                }) {
+                    return Err(Box::new(ValidationError {
+                        problem: "the product of the `local_size_x`, `local_size_y` and \
+                            `local_size_z` of `entry_point` is greater than the \
+                            `max_compute_work_group_invocations` device limit"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-x-06432"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            ShaderStage::Task => {
+                if local_size[0] > properties.max_task_work_group_size.unwrap_or_default()[0] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_x` of `entry_point` is greater than \
+                            `max_task_work_group_size[0]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-TaskEXT-07291"],
+                        ..Default::default()
+                    }));
+                }
+
+                if local_size[1] > properties.max_task_work_group_size.unwrap_or_default()[1] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_y` of `entry_point` is greater than \
+                            `max_task_work_group_size[1]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-TaskEXT-07292"],
+                        ..Default::default()
+                    }));
+                }
+
+                if local_size[2] > properties.max_task_work_group_size.unwrap_or_default()[2] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_x` of `entry_point` is greater than \
+                            `max_task_work_group_size[2]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-TaskEXT-07293"],
+                        ..Default::default()
+                    }));
+                }
+
+                if workgroup_size.map_or(true, |size| {
+                    size > properties
+                        .max_task_work_group_invocations
+                        .unwrap_or_default()
+                }) {
+                    return Err(Box::new(ValidationError {
+                        problem: "the product of the `local_size_x`, `local_size_y` and \
+                            `local_size_z` of `entry_point` is greater than the \
+                            `max_task_work_group_invocations` device limit"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-TaskEXT-07294"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            ShaderStage::Mesh => {
+                if local_size[0] > properties.max_mesh_work_group_size.unwrap_or_default()[0] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_x` of `entry_point` is greater than \
+                            `max_mesh_work_group_size[0]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-MeshEXT-07295"],
+                        ..Default::default()
+                    }));
+                }
+
+                if local_size[1] > properties.max_mesh_work_group_size.unwrap_or_default()[1] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_y` of `entry_point` is greater than \
+                            `max_mesh_work_group_size[1]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-MeshEXT-07296"],
+                        ..Default::default()
+                    }));
+                }
+
+                if local_size[2] > properties.max_mesh_work_group_size.unwrap_or_default()[2] {
+                    return Err(Box::new(ValidationError {
+                        problem: "the `local_size_x` of `entry_point` is greater than \
+                            `max_mesh_work_group_size[2]`"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-MeshEXT-07297"],
+                        ..Default::default()
+                    }));
+                }
+
+                if workgroup_size.map_or(true, |size| {
+                    size > properties
+                        .max_mesh_work_group_invocations
+                        .unwrap_or_default()
+                }) {
+                    return Err(Box::new(ValidationError {
+                        problem: "the product of the `local_size_x`, `local_size_y` and \
+                            `local_size_z` of `entry_point` is greater than the \
+                            `max_mesh_work_group_invocations` device limit"
+                            .into(),
+                        vuids: &["VUID-RuntimeSpirv-MeshEXT-07298"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            _ => (),
+        }
+
+        let workgroup_size = workgroup_size.unwrap();
 
         if let Some(required_subgroup_size) = required_subgroup_size {
             if !device.enabled_features().subgroup_size_control {
@@ -670,30 +886,32 @@ impl PipelineShaderStageCreateInfo {
                 }));
             }
 
-            if let Some(workgroup_size) = workgroup_size {
-                if stage_enum == ShaderStage::Compute {
-                    if workgroup_size
-                        > required_subgroup_size
-                            .checked_mul(
-                                properties
-                                    .max_compute_workgroup_subgroups
-                                    .unwrap_or_default(),
-                            )
-                            .unwrap_or(u32::MAX)
-                    {
-                        return Err(Box::new(ValidationError {
-                            problem: "the product of the `local_size_x`, `local_size_y` and \
-                                `local_size_z` of `entry_point` is greater than the the product \
-                                of `required_subgroup_size` and the \
-                                `max_compute_workgroup_subgroups` device limit"
-                                .into(),
-                            vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02756"],
-                            ..Default::default()
-                        }));
-                    }
-                }
+            if matches!(
+                stage_enum,
+                ShaderStage::Compute | ShaderStage::Mesh | ShaderStage::Task
+            ) && workgroup_size
+                > required_subgroup_size
+                    .checked_mul(
+                        properties
+                            .max_compute_workgroup_subgroups
+                            .unwrap_or_default(),
+                    )
+                    .unwrap_or(u32::MAX)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "the product of the `local_size_x`, `local_size_y` and \
+                        `local_size_z` of `entry_point` is greater than the the product \
+                        of `required_subgroup_size` and the \
+                        `max_compute_workgroup_subgroups` device limit"
+                        .into(),
+                    vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02756"],
+                    ..Default::default()
+                }));
             }
         }
+
+        // TODO:
+        // VUID-VkPipelineShaderStageCreateInfo-module-08987
 
         Ok(())
     }

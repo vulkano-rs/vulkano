@@ -131,7 +131,7 @@
 //! [`scalar_block_layout`]: crate::device::Features::scalar_block_layout
 //! [`uniform_buffer_standard_layout`]: crate::device::Features::uniform_buffer_standard_layout
 
-use self::spirv::Instruction;
+use self::spirv::{Id, Instruction};
 use crate::{
     descriptor_set::layout::DescriptorType,
     device::{Device, DeviceOwned},
@@ -139,7 +139,7 @@ use crate::{
     image::view::ImageViewType,
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags_enum},
-    pipeline::{graphics::input_assembly::PrimitiveTopology, layout::PushConstantRange},
+    pipeline::layout::PushConstantRange,
     shader::spirv::{Capability, Spirv},
     sync::PipelineStages,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
@@ -699,8 +699,8 @@ impl From<f64> for SpecializationConstant {
 pub struct SpecializedShaderModule {
     base_module: Arc<ShaderModule>,
     specialization_info: HashMap<u32, SpecializationConstant>,
-    _spirv: Option<Spirv>,
-    entry_point_infos: SmallVec<[EntryPointInfo; 1]>,
+    spirv: Option<Spirv>,
+    entry_point_infos: SmallVec<[(Id, EntryPointInfo); 1]>,
 }
 
 impl SpecializedShaderModule {
@@ -760,7 +760,7 @@ impl SpecializedShaderModule {
         Arc::new(Self {
             base_module,
             specialization_info,
-            _spirv: spirv,
+            spirv,
             entry_point_infos,
         })
     }
@@ -775,6 +775,12 @@ impl SpecializedShaderModule {
     #[inline]
     pub fn specialization_info(&self) -> &HashMap<u32, SpecializationConstant> {
         &self.specialization_info
+    }
+
+    /// Returns the SPIR-V code of this module.
+    #[inline]
+    pub(crate) fn spirv(&self) -> &Spirv {
+        self.spirv.as_ref().unwrap_or(&self.base_module.spirv)
     }
 
     /// Returns information about the entry point with the provided name. Returns `None` if no entry
@@ -794,7 +800,7 @@ impl SpecializedShaderModule {
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
         self.single_entry_point_filter(|info| {
-            info.name == name && ExecutionModel::from(&info.execution) == execution
+            info.name == name && info.execution_model == execution
         })
     }
 
@@ -808,11 +814,12 @@ impl SpecializedShaderModule {
             .entry_point_infos
             .iter()
             .enumerate()
-            .filter(|(_, infos)| filter(infos))
+            .filter(|(_, (_, infos))| filter(infos))
             .map(|(x, _)| x);
         let info_index = iter.next()?;
         iter.next().is_none().then(|| EntryPoint {
             module: self.clone(),
+            id: self.entry_point_infos[info_index].0,
             info_index,
         })
     }
@@ -832,7 +839,7 @@ impl SpecializedShaderModule {
         self: &Arc<Self>,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        self.single_entry_point_filter(|info| ExecutionModel::from(&info.execution) == execution)
+        self.single_entry_point_filter(|info| info.execution_model == execution)
     }
 }
 
@@ -856,7 +863,7 @@ unsafe impl DeviceOwned for SpecializedShaderModule {
 #[derive(Clone, Debug)]
 pub struct EntryPointInfo {
     pub name: String,
-    pub execution: ShaderExecution,
+    pub execution_model: ExecutionModel,
     pub descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     pub push_constant_requirements: Option<PushConstantRange>,
     pub input_interface: ShaderInterface,
@@ -869,6 +876,7 @@ pub struct EntryPointInfo {
 #[derive(Clone, Debug)]
 pub struct EntryPoint {
     module: Arc<SpecializedShaderModule>,
+    id: Id,
     info_index: usize,
 }
 
@@ -879,149 +887,16 @@ impl EntryPoint {
         &self.module
     }
 
+    /// Returns the Id of the entry point function.
+    pub(crate) fn id(&self) -> Id {
+        self.id
+    }
+
     /// Returns information about the entry point.
     #[inline]
     pub fn info(&self) -> &EntryPointInfo {
-        &self.module.entry_point_infos[self.info_index]
+        &self.module.entry_point_infos[self.info_index].1
     }
-}
-
-/// The mode in which a shader executes. This includes both information about the shader type/stage,
-/// and additional data relevant to particular shader types.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ShaderExecution {
-    Vertex,
-    TessellationControl,
-    TessellationEvaluation,
-    Geometry(GeometryShaderExecution),
-    Fragment(FragmentShaderExecution),
-    Compute(ComputeShaderExecution),
-    RayGeneration,
-    AnyHit,
-    ClosestHit,
-    Miss,
-    Intersection,
-    Callable,
-    Task, // TODO: like compute?
-    Mesh, // TODO: like compute?
-    SubpassShading,
-}
-
-impl From<&ShaderExecution> for ExecutionModel {
-    fn from(value: &ShaderExecution) -> Self {
-        match value {
-            ShaderExecution::Vertex => Self::Vertex,
-            ShaderExecution::TessellationControl => Self::TessellationControl,
-            ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
-            ShaderExecution::Geometry(_) => Self::Geometry,
-            ShaderExecution::Fragment(_) => Self::Fragment,
-            ShaderExecution::Compute(_) => Self::GLCompute,
-            ShaderExecution::RayGeneration => Self::RayGenerationKHR,
-            ShaderExecution::AnyHit => Self::AnyHitKHR,
-            ShaderExecution::ClosestHit => Self::ClosestHitKHR,
-            ShaderExecution::Miss => Self::MissKHR,
-            ShaderExecution::Intersection => Self::IntersectionKHR,
-            ShaderExecution::Callable => Self::CallableKHR,
-            ShaderExecution::Task => Self::TaskNV,
-            ShaderExecution::Mesh => Self::MeshNV,
-            ShaderExecution::SubpassShading => todo!(),
-        }
-    }
-}
-
-/*#[derive(Clone, Copy, Debug)]
-pub struct TessellationShaderExecution {
-    pub num_output_vertices: u32,
-    pub point_mode: bool,
-    pub subdivision: TessellationShaderSubdivision,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum TessellationShaderSubdivision {
-    Triangles,
-    Quads,
-    Isolines,
-}*/
-
-/// The mode in which a geometry shader executes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct GeometryShaderExecution {
-    pub input: GeometryShaderInput,
-    /*pub max_output_vertices: u32,
-    pub num_invocations: u32,
-    pub output: GeometryShaderOutput,*/
-}
-
-/// The input primitive type that is expected by a geometry shader.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum GeometryShaderInput {
-    Points,
-    Lines,
-    LinesWithAdjacency,
-    Triangles,
-    TrianglesWithAdjacency,
-}
-
-impl GeometryShaderInput {
-    /// Returns true if the given primitive topology can be used as input for this geometry shader.
-    #[inline]
-    pub fn is_compatible_with(self, topology: PrimitiveTopology) -> bool {
-        match self {
-            Self::Points => matches!(topology, PrimitiveTopology::PointList),
-            Self::Lines => matches!(
-                topology,
-                PrimitiveTopology::LineList | PrimitiveTopology::LineStrip
-            ),
-            Self::LinesWithAdjacency => matches!(
-                topology,
-                PrimitiveTopology::LineListWithAdjacency
-                    | PrimitiveTopology::LineStripWithAdjacency
-            ),
-            Self::Triangles => matches!(
-                topology,
-                PrimitiveTopology::TriangleList
-                    | PrimitiveTopology::TriangleStrip
-                    | PrimitiveTopology::TriangleFan,
-            ),
-            Self::TrianglesWithAdjacency => matches!(
-                topology,
-                PrimitiveTopology::TriangleListWithAdjacency
-                    | PrimitiveTopology::TriangleStripWithAdjacency,
-            ),
-        }
-    }
-}
-
-/*#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum GeometryShaderOutput {
-    Points,
-    LineStrip,
-    TriangleStrip,
-}*/
-
-/// The mode in which a fragment shader executes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FragmentShaderExecution {
-    pub fragment_tests_stages: FragmentTestsStages,
-}
-
-/// The fragment tests stages that will be executed in a fragment shader.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum FragmentTestsStages {
-    Early,
-    Late,
-    EarlyAndLate,
-}
-
-/// The mode in which the compute shader executes.
-///
-/// The `WorkgroupSize` builtin overrides the values specified in the
-/// execution mode. It can decorate a 3 component ConstantComposite or
-/// SpecConstantComposite vector.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ComputeShaderExecution {
-    /// Workgroup size in x, y, and z.
-    pub local_size: [u32; 3],
 }
 
 /// The requirements imposed by a shader on a binding within a descriptor set layout, and on any
@@ -1450,25 +1325,27 @@ vulkan_bitflags_enum! {
     ]),
 }
 
-impl From<&ShaderExecution> for ShaderStage {
+impl From<ExecutionModel> for ShaderStage {
     #[inline]
-    fn from(value: &ShaderExecution) -> Self {
+    fn from(value: ExecutionModel) -> Self {
         match value {
-            ShaderExecution::Vertex => Self::Vertex,
-            ShaderExecution::TessellationControl => Self::TessellationControl,
-            ShaderExecution::TessellationEvaluation => Self::TessellationEvaluation,
-            ShaderExecution::Geometry(_) => Self::Geometry,
-            ShaderExecution::Fragment(_) => Self::Fragment,
-            ShaderExecution::Compute(_) => Self::Compute,
-            ShaderExecution::RayGeneration => Self::Raygen,
-            ShaderExecution::AnyHit => Self::AnyHit,
-            ShaderExecution::ClosestHit => Self::ClosestHit,
-            ShaderExecution::Miss => Self::Miss,
-            ShaderExecution::Intersection => Self::Intersection,
-            ShaderExecution::Callable => Self::Callable,
-            ShaderExecution::Task => Self::Task,
-            ShaderExecution::Mesh => Self::Mesh,
-            ShaderExecution::SubpassShading => Self::SubpassShading,
+            ExecutionModel::Vertex => ShaderStage::Vertex,
+            ExecutionModel::TessellationControl => ShaderStage::TessellationControl,
+            ExecutionModel::TessellationEvaluation => ShaderStage::TessellationEvaluation,
+            ExecutionModel::Geometry => ShaderStage::Geometry,
+            ExecutionModel::Fragment => ShaderStage::Fragment,
+            ExecutionModel::GLCompute => ShaderStage::Compute,
+            ExecutionModel::Kernel => {
+                unimplemented!("the `Kernel` execution model is not supported by Vulkan")
+            }
+            ExecutionModel::TaskNV | ExecutionModel::TaskEXT => ShaderStage::Task,
+            ExecutionModel::MeshNV | ExecutionModel::MeshEXT => ShaderStage::Mesh,
+            ExecutionModel::RayGenerationKHR => ShaderStage::Raygen,
+            ExecutionModel::IntersectionKHR => ShaderStage::Intersection,
+            ExecutionModel::AnyHitKHR => ShaderStage::AnyHit,
+            ExecutionModel::ClosestHitKHR => ShaderStage::ClosestHit,
+            ExecutionModel::MissKHR => ShaderStage::Miss,
+            ExecutionModel::CallableKHR => ShaderStage::Callable,
         }
     }
 }

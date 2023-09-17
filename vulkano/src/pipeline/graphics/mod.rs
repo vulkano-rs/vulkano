@@ -90,8 +90,8 @@ use crate::{
         PartialStateMode,
     },
     shader::{
-        DescriptorBindingRequirements, FragmentShaderExecution, FragmentTestsStages,
-        ShaderExecution, ShaderStage, ShaderStages,
+        spirv::{ExecutionMode, ExecutionModel, Instruction},
+        DescriptorBindingRequirements, ShaderStage, ShaderStages,
     },
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
@@ -220,7 +220,7 @@ impl GraphicsPipeline {
                 } = stage;
 
                 let entry_point_info = entry_point.info();
-                let stage = ShaderStage::from(&entry_point_info.execution);
+                let stage = ShaderStage::from(entry_point_info.execution_model);
 
                 let mut specialization_data_vk: Vec<u8> = Vec::new();
                 let specialization_map_entries_vk: Vec<_> = entry_point
@@ -1223,15 +1223,28 @@ impl GraphicsPipeline {
             } = stage;
 
             let entry_point_info = entry_point.info();
-            let stage = ShaderStage::from(&entry_point_info.execution);
+            let stage = ShaderStage::from(entry_point_info.execution_model);
             shaders.insert(stage, ());
 
-            if let ShaderExecution::Fragment(FragmentShaderExecution {
-                fragment_tests_stages: s,
-                ..
-            }) = entry_point_info.execution
-            {
-                fragment_tests_stages = Some(s)
+            let spirv = entry_point.module().spirv();
+            let entry_point_function = spirv.function(entry_point.id());
+
+            if matches!(entry_point_info.execution_model, ExecutionModel::Fragment) {
+                fragment_tests_stages = Some(FragmentTestsStages::Late);
+
+                for instruction in entry_point_function.iter_execution_mode() {
+                    if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                        match mode {
+                            ExecutionMode::EarlyFragmentTests => {
+                                fragment_tests_stages = Some(FragmentTestsStages::Early);
+                            }
+                            ExecutionMode::EarlyAndLateFragmentTestsAMD => {
+                                fragment_tests_stages = Some(FragmentTestsStages::EarlyAndLate);
+                            }
+                            _ => (),
+                        }
+                    }
+                }
             }
 
             for (&loc, reqs) in &entry_point_info.descriptor_binding_requirements {
@@ -1989,7 +2002,7 @@ impl GraphicsPipelineCreateInfo {
 
         for (stage_index, stage) in stages.iter().enumerate() {
             let entry_point_info = stage.entry_point.info();
-            let stage_enum = ShaderStage::from(&entry_point_info.execution);
+            let stage_enum = ShaderStage::from(entry_point_info.execution_model);
             let stage_flag = ShaderStages::from(stage_enum);
 
             if stages_present.intersects(stage_flag) {
@@ -2081,9 +2094,12 @@ impl GraphicsPipelineCreateInfo {
         }
 
         let need_vertex_input_state = need_pre_rasterization_shader_state
-            && stages
-                .iter()
-                .any(|stage| matches!(stage.entry_point.info().execution, ShaderExecution::Vertex));
+            && stages.iter().any(|stage| {
+                matches!(
+                    stage.entry_point.info().execution_model,
+                    ExecutionModel::Vertex
+                )
+            });
         let need_fragment_shader_state = need_pre_rasterization_shader_state
             && rasterization_state
                 .as_ref()
@@ -2535,8 +2551,8 @@ impl GraphicsPipelineCreateInfo {
                     problem: format!(
                         "the output interface of the `ShaderStage::{:?}` stage does not \
                         match the input interface of the `ShaderStage::{:?}` stage: {}",
-                        ShaderStage::from(&output.entry_point.info().execution),
-                        ShaderStage::from(&input.entry_point.info().execution),
+                        ShaderStage::from(output.entry_point.info().execution_model),
+                        ShaderStage::from(input.entry_point.info().execution_model),
                         err
                     )
                     .into(),
@@ -2816,11 +2832,30 @@ impl GraphicsPipelineCreateInfo {
             geometry_stage,
             input_assembly_state,
         ) {
-            let entry_point_info = geometry_stage.entry_point.info();
-            let input = match entry_point_info.execution {
-                ShaderExecution::Geometry(execution) => execution.input,
-                _ => unreachable!(),
-            };
+            let spirv = geometry_stage.entry_point.module().spirv();
+            let entry_point_function = spirv.function(geometry_stage.entry_point.id());
+
+            let input = entry_point_function
+                .iter_execution_mode()
+                .find_map(|instruction| {
+                    if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                        match mode {
+                            ExecutionMode::InputPoints => Some(GeometryShaderInput::Points),
+                            ExecutionMode::InputLines => Some(GeometryShaderInput::Lines),
+                            ExecutionMode::InputLinesAdjacency => {
+                                Some(GeometryShaderInput::LinesWithAdjacency)
+                            }
+                            ExecutionMode::Triangles => Some(GeometryShaderInput::Triangles),
+                            ExecutionMode::InputTrianglesAdjacency => {
+                                Some(GeometryShaderInput::TrianglesWithAdjacency)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
 
             if let PartialStateMode::Fixed(topology) = input_assembly_state.topology {
                 if !input.is_compatible_with(topology) {
@@ -3103,4 +3138,52 @@ impl GraphicsPipelineCreateInfo {
 
         Ok(())
     }
+}
+
+/// The input primitive type that is expected by a geometry shader.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GeometryShaderInput {
+    Points,
+    Lines,
+    LinesWithAdjacency,
+    Triangles,
+    TrianglesWithAdjacency,
+}
+
+impl GeometryShaderInput {
+    /// Returns true if the given primitive topology can be used as input for this geometry shader.
+    #[inline]
+    pub fn is_compatible_with(self, topology: PrimitiveTopology) -> bool {
+        match self {
+            Self::Points => matches!(topology, PrimitiveTopology::PointList),
+            Self::Lines => matches!(
+                topology,
+                PrimitiveTopology::LineList | PrimitiveTopology::LineStrip
+            ),
+            Self::LinesWithAdjacency => matches!(
+                topology,
+                PrimitiveTopology::LineListWithAdjacency
+                    | PrimitiveTopology::LineStripWithAdjacency
+            ),
+            Self::Triangles => matches!(
+                topology,
+                PrimitiveTopology::TriangleList
+                    | PrimitiveTopology::TriangleStrip
+                    | PrimitiveTopology::TriangleFan,
+            ),
+            Self::TrianglesWithAdjacency => matches!(
+                topology,
+                PrimitiveTopology::TriangleListWithAdjacency
+                    | PrimitiveTopology::TriangleStripWithAdjacency,
+            ),
+        }
+    }
+}
+
+/// The fragment tests stages that will be executed in a fragment shader.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FragmentTestsStages {
+    Early,
+    Late,
+    EarlyAndLate,
 }

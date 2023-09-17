@@ -28,7 +28,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
-    shader::{DescriptorBindingRequirements, ShaderExecution, ShaderStage},
+    shader::{spirv::ExecutionModel, DescriptorBindingRequirements, ShaderStage},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
@@ -155,7 +155,7 @@ impl ComputePipeline {
                     },
                 ),
                 flags: flags.into(),
-                stage: ShaderStage::from(&entry_point_info.execution).into(),
+                stage: ShaderStage::from(entry_point_info.execution_model).into(),
                 module: entry_point.module().handle(),
                 p_name: name_vk.as_ptr(),
                 p_specialization_info: if specialization_info_vk.data_size == 0 {
@@ -410,7 +410,7 @@ impl ComputePipelineCreateInfo {
 
         let entry_point_info = entry_point.info();
 
-        if !matches!(entry_point_info.execution, ShaderExecution::Compute(_)) {
+        if !matches!(entry_point_info.execution_model, ExecutionModel::GLCompute) {
             return Err(Box::new(ValidationError {
                 context: "stage.entry_point".into(),
                 problem: "is not a `ShaderStage::Compute` entry point".into(),
