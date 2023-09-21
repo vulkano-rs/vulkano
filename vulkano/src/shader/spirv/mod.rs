@@ -132,8 +132,35 @@ impl Spirv {
                 let destination = match instruction {
                     Instruction::Function { result_id, .. } => {
                         current_function = None;
-                        let function = functions.entry(result_id).or_insert(FunctionInfo {
-                            instructions: Vec::new(),
+                        let function = functions.entry(result_id).or_insert_with(|| {
+                            let entry_point = instructions_entry_point
+                                .iter()
+                                .find(|instruction| {
+                                    matches!(
+                                        **instruction,
+                                        Instruction::EntryPoint { entry_point, .. }
+                                        if entry_point == result_id
+                                    )
+                                })
+                                .cloned();
+                            let execution_modes = instructions_execution_mode
+                                .iter()
+                                .filter(|instruction| {
+                                    matches!(
+                                        **instruction,
+                                        Instruction::ExecutionMode { entry_point, .. }
+                                        | Instruction::ExecutionModeId { entry_point, .. }
+                                        if entry_point == result_id
+                                    )
+                                })
+                                .cloned()
+                                .collect();
+
+                            FunctionInfo {
+                                instructions: Vec::new(),
+                                entry_point,
+                                execution_modes,
+                            }
                         });
                         current_function.insert(&mut function.instructions)
                     }
@@ -611,9 +638,11 @@ impl StructMemberInfo {
 }
 
 /// Information associated with a function.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FunctionInfo {
     instructions: Vec<Instruction>,
+    entry_point: Option<Instruction>,
+    execution_modes: Vec<Instruction>,
 }
 
 impl FunctionInfo {
@@ -621,6 +650,18 @@ impl FunctionInfo {
     #[inline]
     pub fn iter_instructions(&self) -> impl ExactSizeIterator<Item = &Instruction> {
         self.instructions.iter()
+    }
+
+    /// Returns the `EntryPoint` instruction that targets this function, if there is one.
+    #[inline]
+    pub fn entry_point(&self) -> Option<&Instruction> {
+        self.entry_point.as_ref()
+    }
+
+    /// Returns an iterator over all execution mode instructions that target this function.
+    #[inline]
+    pub fn iter_execution_mode(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.execution_modes.iter()
     }
 }
 

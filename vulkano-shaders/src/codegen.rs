@@ -554,7 +554,7 @@ mod tests {
         let spirv = Spirv::new(&instructions).unwrap();
 
         let mut descriptors = Vec::new();
-        for info in reflect::entry_points(&spirv) {
+        for (_, info) in reflect::entry_points(&spirv) {
             descriptors.push(info.descriptor_binding_requirements);
         }
 
@@ -622,7 +622,7 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
 
-        if let Some(info) = reflect::entry_points(&spirv).next() {
+        if let Some((_, info)) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
             for (loc, _reqs) in info.descriptor_binding_requirements {
                 bindings.push(loc);

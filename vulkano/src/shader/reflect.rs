@@ -9,20 +9,15 @@
 
 //! Extraction of information from SPIR-V modules, that is needed by the rest of Vulkano.
 
-use super::{DescriptorBindingRequirements, FragmentShaderExecution, FragmentTestsStages};
+use super::DescriptorBindingRequirements;
 use crate::{
     descriptor_set::layout::DescriptorType,
     image::view::ImageViewType,
     pipeline::layout::PushConstantRange,
     shader::{
-        spirv::{
-            BuiltIn, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction, Spirv,
-            StorageClass,
-        },
-        ComputeShaderExecution, DescriptorIdentifier, DescriptorRequirements, EntryPointInfo,
-        GeometryShaderExecution, GeometryShaderInput, NumericType, ShaderExecution,
-        ShaderInterface, ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStage,
-        SpecializationConstant,
+        spirv::{Decoration, Dim, ExecutionModel, Id, Instruction, Spirv, StorageClass},
+        DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, NumericType, ShaderInterface,
+        ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStage, SpecializationConstant,
     },
     DeviceSize,
 };
@@ -32,7 +27,7 @@ use std::borrow::Cow;
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
 #[inline]
-pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ {
+pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)> + '_ {
     let interface_variables = interface_variables(spirv);
 
     spirv.iter_entry_point().filter_map(move |instruction| {
@@ -47,8 +42,7 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
             _ => return None,
         };
 
-        let execution = shader_execution(spirv, execution_model, function_id);
-        let stage = ShaderStage::from(&execution);
+        let stage = ShaderStage::from(execution_model);
 
         let descriptor_binding_requirements = inspect_entry_point(
             &interface_variables.descriptor_binding,
@@ -75,187 +69,18 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = EntryPointInfo> + '_ 
             matches!(execution_model, ExecutionModel::TessellationControl),
         );
 
-        Some(EntryPointInfo {
-            name: entry_point_name.clone(),
-            execution,
-            descriptor_binding_requirements,
-            push_constant_requirements,
-            input_interface,
-            output_interface,
-        })
+        Some((
+            function_id,
+            EntryPointInfo {
+                name: entry_point_name.clone(),
+                execution_model,
+                descriptor_binding_requirements,
+                push_constant_requirements,
+                input_interface,
+                output_interface,
+            },
+        ))
     })
-}
-
-/// Extracts the `ShaderExecution` for the entry point `function_id` from `spirv`.
-fn shader_execution(
-    spirv: &Spirv,
-    execution_model: ExecutionModel,
-    function_id: Id,
-) -> ShaderExecution {
-    match execution_model {
-        ExecutionModel::Vertex => ShaderExecution::Vertex,
-
-        ExecutionModel::TessellationControl => ShaderExecution::TessellationControl,
-
-        ExecutionModel::TessellationEvaluation => ShaderExecution::TessellationEvaluation,
-
-        ExecutionModel::Geometry => {
-            let mut input = None;
-
-            for instruction in spirv.iter_execution_mode() {
-                let mode = match instruction {
-                    Instruction::ExecutionMode {
-                        entry_point, mode, ..
-                    } if *entry_point == function_id => mode,
-                    _ => continue,
-                };
-
-                match mode {
-                    ExecutionMode::InputPoints => {
-                        input = Some(GeometryShaderInput::Points);
-                    }
-                    ExecutionMode::InputLines => {
-                        input = Some(GeometryShaderInput::Lines);
-                    }
-                    ExecutionMode::InputLinesAdjacency => {
-                        input = Some(GeometryShaderInput::LinesWithAdjacency);
-                    }
-                    ExecutionMode::Triangles => {
-                        input = Some(GeometryShaderInput::Triangles);
-                    }
-                    ExecutionMode::InputTrianglesAdjacency => {
-                        input = Some(GeometryShaderInput::TrianglesWithAdjacency);
-                    }
-                    _ => (),
-                }
-            }
-
-            ShaderExecution::Geometry(GeometryShaderExecution {
-                input: input
-                    .expect("Geometry shader does not have an input primitive ExecutionMode"),
-            })
-        }
-
-        ExecutionModel::Fragment => {
-            let mut fragment_tests_stages = FragmentTestsStages::Late;
-
-            for instruction in spirv.iter_execution_mode() {
-                let mode = match instruction {
-                    Instruction::ExecutionMode {
-                        entry_point, mode, ..
-                    } if *entry_point == function_id => mode,
-                    _ => continue,
-                };
-
-                match mode {
-                    ExecutionMode::EarlyFragmentTests => {
-                        fragment_tests_stages = FragmentTestsStages::Early;
-                    }
-                    ExecutionMode::EarlyAndLateFragmentTestsAMD => {
-                        fragment_tests_stages = FragmentTestsStages::EarlyAndLate;
-                    }
-                    _ => (),
-                }
-            }
-
-            ShaderExecution::Fragment(FragmentShaderExecution {
-                fragment_tests_stages,
-            })
-        }
-
-        ExecutionModel::GLCompute => {
-            let local_size = (spirv
-                .iter_decoration()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        target,
-                        decoration:
-                            Decoration::BuiltIn {
-                                built_in: BuiltIn::WorkgroupSize,
-                            },
-                    } => match *spirv.id(target).instruction() {
-                        Instruction::ConstantComposite {
-                            ref constituents, ..
-                        } => {
-                            match *constituents.as_slice() {
-                                [x_size, y_size, z_size] => {
-                                    Some([x_size, y_size, z_size].map(|id| {
-                                        match *spirv.id(id).instruction() {
-                                            Instruction::Constant { ref value, .. } => {
-                                                assert!(value.len() == 1);
-                                                value[0]
-                                            }
-                                            // VUID-WorkgroupSize-WorkgroupSize-04426
-                                            // VUID-WorkgroupSize-WorkgroupSize-04427
-                                            _ => panic!("WorkgroupSize is not a constant"),
-                                        }
-                                    }))
-                                }
-                                // VUID-WorkgroupSize-WorkgroupSize-04427
-                                _ => panic!("WorkgroupSize must be 3 component vector!"),
-                            }
-                        }
-                        // VUID-WorkgroupSize-WorkgroupSize-04426
-                        _ => panic!("WorkgroupSize is not a constant"),
-                    },
-                    _ => None,
-                }))
-            .or_else(|| {
-                spirv
-                    .iter_execution_mode()
-                    .find_map(|instruction| match *instruction {
-                        Instruction::ExecutionMode {
-                            entry_point,
-                            mode:
-                                ExecutionMode::LocalSize {
-                                    x_size,
-                                    y_size,
-                                    z_size,
-                                },
-                        } if entry_point == function_id => Some([x_size, y_size, z_size]),
-                        Instruction::ExecutionModeId {
-                            entry_point,
-                            mode:
-                                ExecutionMode::LocalSizeId {
-                                    x_size,
-                                    y_size,
-                                    z_size,
-                                },
-                        } if entry_point == function_id => Some([x_size, y_size, z_size].map(
-                            |id| match *spirv.id(id).instruction() {
-                                Instruction::Constant { ref value, .. } => {
-                                    assert!(value.len() == 1);
-                                    value[0]
-                                }
-                                _ => panic!("LocalSizeId is not a constant"),
-                            },
-                        )),
-                        _ => None,
-                    })
-            });
-
-            ShaderExecution::Compute(ComputeShaderExecution {
-                local_size: local_size.expect(
-                    "Geometry shader does not have a WorkgroupSize builtin, \
-                    or LocalSize or LocalSizeId ExecutionMode",
-                ),
-            })
-        }
-
-        ExecutionModel::RayGenerationKHR => ShaderExecution::RayGeneration,
-        ExecutionModel::IntersectionKHR => ShaderExecution::Intersection,
-        ExecutionModel::AnyHitKHR => ShaderExecution::AnyHit,
-        ExecutionModel::ClosestHitKHR => ShaderExecution::ClosestHit,
-        ExecutionModel::MissKHR => ShaderExecution::Miss,
-        ExecutionModel::CallableKHR => ShaderExecution::Callable,
-
-        ExecutionModel::TaskEXT => ShaderExecution::Task,
-        ExecutionModel::TaskNV => todo!(),
-        ExecutionModel::MeshEXT => ShaderExecution::Mesh,
-        ExecutionModel::MeshNV => todo!(),
-
-        ExecutionModel::Kernel => todo!(),
-    }
 }
 
 #[derive(Clone, Debug, Default)]
