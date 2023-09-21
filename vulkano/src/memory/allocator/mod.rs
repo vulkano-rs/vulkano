@@ -820,7 +820,7 @@ impl StandardMemoryAllocator {
             memory_heaps,
         } = device.physical_device().memory_properties();
 
-        let mut block_sizes = [0; MAX_MEMORY_TYPES];
+        let mut block_sizes = vec![0; memory_types.len()];
         let mut memory_type_bits = u32::MAX;
 
         for (index, memory_type) in memory_types.iter().enumerate() {
