@@ -170,6 +170,7 @@ Changes to the `khr_display` extension:
 - Added `ShaderModule::single_entry_point()` which may replace `entry_point("main")` calls in common setups.
 - Added `ShaderModule::single_entry_point_with_execution`.
 - Added `GenericMemoryAllocatorCreateInfo::memory_type_bits` and `AllocationCreateInfo::memory_type_bits`.
+- `IndexBuffer::as_bytes` method.
 
 ### Bugs fixed
 
