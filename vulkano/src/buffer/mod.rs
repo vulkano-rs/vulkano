@@ -995,6 +995,7 @@ pub enum IndexBuffer {
 }
 
 impl IndexBuffer {
+    /// Returns an `IndexType` value corresponding to the type of the buffer.
     #[inline]
     pub fn index_type(&self) -> IndexType {
         match self {
@@ -1004,8 +1005,9 @@ impl IndexBuffer {
         }
     }
 
+    /// Returns the buffer reinterpreted as a buffer of bytes.
     #[inline]
-    pub(crate) fn as_bytes(&self) -> &Subbuffer<[u8]> {
+    pub fn as_bytes(&self) -> &Subbuffer<[u8]> {
         match self {
             IndexBuffer::U8(buffer) => buffer.as_bytes(),
             IndexBuffer::U16(buffer) => buffer.as_bytes(),
