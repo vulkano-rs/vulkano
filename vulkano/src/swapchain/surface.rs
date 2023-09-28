@@ -130,7 +130,10 @@ impl Surface {
             (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => {
                 Self::from_xlib(instance, display.display, window.window, None)
             }
-            _ => unimplemented!(),
+            _ => unimplemented!(
+                "the window was created with a windowing API that is not supported \
+                by Vulkan/Vulkano"
+            ),
         }
     }
 
@@ -1742,6 +1745,29 @@ pub enum SurfaceApi {
     /// The surface was constructed using [`Surface::from_xlib`] or the
     /// `vkCreateXlibSurfaceKHR` Vulkan API function.
     Xlib,
+}
+
+impl TryFrom<RawWindowHandle> for SurfaceApi {
+    type Error = ();
+
+    fn try_from(handle: RawWindowHandle) -> Result<Self, Self::Error> {
+        match handle {
+            RawWindowHandle::UiKit(_) => Ok(SurfaceApi::Ios),
+            RawWindowHandle::AppKit(_) => Ok(SurfaceApi::MacOs),
+            RawWindowHandle::Orbital(_) => Err(()),
+            RawWindowHandle::Xlib(_) => Ok(SurfaceApi::Xlib),
+            RawWindowHandle::Xcb(_) => Ok(SurfaceApi::Xcb),
+            RawWindowHandle::Wayland(_) => Ok(SurfaceApi::Wayland),
+            RawWindowHandle::Drm(_) => Err(()),
+            RawWindowHandle::Gbm(_) => Err(()),
+            RawWindowHandle::Win32(_) => Ok(SurfaceApi::Win32),
+            RawWindowHandle::WinRt(_) => Err(()),
+            RawWindowHandle::Web(_) => Err(()),
+            RawWindowHandle::AndroidNdk(_) => Ok(SurfaceApi::Android),
+            RawWindowHandle::Haiku(_) => Err(()),
+            _ => Err(()),
+        }
+    }
 }
 
 vulkan_enum! {
