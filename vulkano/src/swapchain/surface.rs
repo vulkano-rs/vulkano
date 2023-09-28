@@ -1001,7 +1001,7 @@ impl Surface {
         Ok(Arc::new(Self::from_handle(
             instance,
             handle,
-            SurfaceApi::Qnx,
+            SurfaceApi::QnxScreen,
             object,
         )))
     }
@@ -1724,7 +1724,7 @@ pub enum SurfaceApi {
 
     /// The surface was constructed using [`Surface::from_qnx_screen`] or the
     /// `vkCreateScreenSurfaceQNX` Vulkan API function.
-    Qnx,
+    QnxScreen,
 
     /// The surface was constructed using [`Surface::from_vi`] or the
     /// `vkCreateViSurfaceNN` Vulkan API function.
