@@ -672,7 +672,7 @@ impl BufferState {
                     gpu_reads: 0,
                 } => (),
                 CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
-                    return Err(AccessConflict::HostRead)
+                    return Err(AccessConflict::HostRead);
                 }
                 CurrentAccess::Shared { .. } => return Err(AccessConflict::DeviceRead),
             }
@@ -1012,6 +1012,16 @@ impl IndexBuffer {
             IndexBuffer::U8(buffer) => buffer.as_bytes(),
             IndexBuffer::U16(buffer) => buffer.as_bytes(),
             IndexBuffer::U32(buffer) => buffer.as_bytes(),
+        }
+    }
+
+    /// Returns the number of elements in the buffer.
+    #[inline]
+    pub fn len(&self) -> DeviceSize {
+        match self {
+            IndexBuffer::U8(buffer) => buffer.len(),
+            IndexBuffer::U16(buffer) => buffer.len(),
+            IndexBuffer::U32(buffer) => buffer.len(),
         }
     }
 }
