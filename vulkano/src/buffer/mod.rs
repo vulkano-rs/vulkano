@@ -245,8 +245,8 @@ impl Buffer {
         allocation_info: AllocationCreateInfo,
         data: T,
     ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
-    where
-        T: BufferContents,
+        where
+            T: BufferContents,
     {
         let buffer = Buffer::new_sized(allocator, create_info, allocation_info)?;
 
@@ -276,10 +276,10 @@ impl Buffer {
         allocation_info: AllocationCreateInfo,
         iter: I,
     ) -> Result<Subbuffer<[T]>, Validated<BufferAllocateError>>
-    where
-        T: BufferContents,
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
+        where
+            T: BufferContents,
+            I: IntoIterator<Item=T>,
+            I::IntoIter: ExactSizeIterator,
     {
         let iter = iter.into_iter();
         let buffer = Buffer::new_slice(
@@ -311,8 +311,8 @@ impl Buffer {
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
     ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
-    where
-        T: BufferContents,
+        where
+            T: BufferContents,
     {
         let layout = T::LAYOUT.unwrap_sized();
         let buffer = Subbuffer::new(Buffer::new(
@@ -338,8 +338,8 @@ impl Buffer {
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
     ) -> Result<Subbuffer<[T]>, Validated<BufferAllocateError>>
-    where
-        T: BufferContents,
+        where
+            T: BufferContents,
     {
         Buffer::new_unsized(allocator, create_info, allocation_info, len)
     }
@@ -357,8 +357,8 @@ impl Buffer {
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
     ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
-    where
-        T: BufferContents + ?Sized,
+        where
+            T: BufferContents + ?Sized,
     {
         let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
@@ -619,8 +619,8 @@ impl BufferState {
                     },
                 },
             )]
-            .into_iter()
-            .collect(),
+                .into_iter()
+                .collect(),
         }
     }
 
@@ -672,7 +672,7 @@ impl BufferState {
                     gpu_reads: 0,
                 } => (),
                 CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
-                    return Err(AccessConflict::HostRead)
+                    return Err(AccessConflict::HostRead);
                 }
                 CurrentAccess::Shared { .. } => return Err(AccessConflict::DeviceRead),
             }
@@ -1012,6 +1012,16 @@ impl IndexBuffer {
             IndexBuffer::U8(buffer) => buffer.as_bytes(),
             IndexBuffer::U16(buffer) => buffer.as_bytes(),
             IndexBuffer::U32(buffer) => buffer.as_bytes(),
+        }
+    }
+
+    /// Returns the number of elements in the buffer.
+    #[inline]
+    pub fn len(&self) -> DeviceSize {
+        match self {
+            IndexBuffer::U8(buffer) => buffer.len(),
+            IndexBuffer::U16(buffer) => buffer.len(),
+            IndexBuffer::U32(buffer) => buffer.len(),
         }
     }
 }
