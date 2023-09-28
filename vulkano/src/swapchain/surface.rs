@@ -139,7 +139,7 @@ impl Surface {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `instance`.
-    /// - `handle` must have been created from `api`.
+    /// - `handle` must have been created using the function specified by `api`.
     /// - The window object that `handle` was created from must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
     pub unsafe fn from_handle(
@@ -1676,26 +1676,71 @@ impl DisplaySurfaceCreateInfo {
     }
 }
 
-/// The windowing API that was used to construct a surface.
+/// The windowing API function that was used to construct a surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SurfaceApi {
+    /// The surface was constructed using [`Surface::headless`] or the
+    /// `vkCreateHeadlessSurfaceEXT` Vulkan API function.
     Headless,
+
+    /// The surface was constructed using [`Surface::from_display_plane`] or the
+    /// `vkCreateDisplayPlaneSurfaceKHR` Vulkan API function.
     DisplayPlane,
 
-    // Alphabetical order
+    /*
+        Alphabetical order
+    */
+    /// The surface was constructed using [`Surface::from_android`] or the
+    /// `vkCreateAndroidSurfaceKHR` Vulkan API function.
     Android,
+
+    /// The surface was constructed using [`Surface::from_directfb`] or the
+    /// `vkCreateDirectFBSurfaceEXT` Vulkan API function.
     DirectFB,
+
+    /// The surface was constructed using [`Surface::from_fuchsia_image_pipe`] or the
+    /// `vkCreateImagePipeSurfaceFUCHSIA` Vulkan API function.
     FuchsiaImagePipe,
+
+    /// The surface was constructed using [`Surface::from_ggp_stream_descriptor`] or the
+    /// `vkCreateStreamDescriptorSurfaceGGP` Vulkan API function.
     GgpStreamDescriptor,
+
+    /// The surface was constructed using [`Surface::from_ios`] or the
+    /// `vkCreateIOSSurfaceMVK` Vulkan API function.
     Ios,
+
+    /// The surface was constructed using [`Surface::from_mac_os`] or the
+    /// `vkCreateMacOSSurfaceMVK` Vulkan API function.
     MacOs,
+
+    /// The surface was constructed using [`Surface::from_metal`] or the
+    /// `vkCreateMetalSurfaceEXT` Vulkan API function.
     Metal,
+
+    /// The surface was constructed using [`Surface::from_qnx_screen`] or the
+    /// `vkCreateScreenSurfaceQNX` Vulkan API function.
     Qnx,
+
+    /// The surface was constructed using [`Surface::from_vi`] or the
+    /// `vkCreateViSurfaceNN` Vulkan API function.
     Vi,
+
+    /// The surface was constructed using [`Surface::from_wayland`] or the
+    /// `vkCreateWaylandSurfaceKHR` Vulkan API function.
     Wayland,
+
+    /// The surface was constructed using [`Surface::from_win32`] or the
+    /// `vkCreateWin32SurfaceKHR` Vulkan API function.
     Win32,
+
+    /// The surface was constructed using [`Surface::from_xcb`] or the
+    /// `vkCreateXcbSurfaceKHR` Vulkan API function.
     Xcb,
+
+    /// The surface was constructed using [`Surface::from_xlib`] or the
+    /// `vkCreateXlibSurfaceKHR` Vulkan API function.
     Xlib,
 }
 
