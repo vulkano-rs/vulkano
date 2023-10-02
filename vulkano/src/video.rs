@@ -7,16 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::{
+    mem::MaybeUninit,
+    sync::{Arc, Mutex},
+};
+
 use ash::vk::{
     native::{StdVideoH264LevelIdc, StdVideoH264ProfileIdc},
     DeviceSize,
 };
 
 use crate::{
+    device::Device,
     format::Format,
     image::{sampler::ComponentMapping, ImageCreateFlags, ImageTiling, ImageType, ImageUsage},
+    instance::InstanceOwnedDebugWrapper,
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
-    ExtensionProperties, ValidationError,
+    ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
+    Version, VulkanError, VulkanObject,
 };
 
 vulkan_bitflags_enum! {
@@ -416,4 +424,360 @@ pub struct VideoFormatProperties {
     pub image_type: ImageType,
     pub image_tiling: ImageTiling,
     pub image_usage_flags: ImageUsage,
+}
+
+vulkan_bitflags_enum! {
+    #[non_exhaustive]
+
+    VideoSessionCreateFlags,
+
+    VideoSessionCreateFlag,
+
+    = VideoSessionCreateFlagsKHR(u32);
+
+    PROTECTED_CONTENT, ProtectedContent = PROTECTED_CONTENT,
+}
+
+#[derive(Debug)]
+pub struct VideoSession {
+    handle: ash::vk::VideoSessionKHR,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
+    /// The `VideoSessionCreateInfo` that created `self`.
+    create_info: VideoSessionCreateInfo,
+}
+
+impl VideoSession {
+    pub fn new(
+        device: Arc<Device>,
+        create_info: VideoSessionCreateInfo,
+    ) -> Result<Arc<VideoSession>, Validated<VulkanError>> {
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &VideoSessionCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !device
+            .physical_device()
+            .supported_extensions()
+            .khr_video_queue
+            || device.physical_device().api_version() < Version::V1_3
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                    Requires::DeviceExtension("khr_video_queue"),
+                    // Requires::APIVersion(Version::V1_3), // ?
+                ])]),
+                ..Default::default()
+            }));
+        }
+
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: VideoSessionCreateInfo,
+    ) -> Result<Arc<VideoSession>, VulkanError> {
+        let &VideoSessionCreateInfo {
+            queue_family_index,
+            flags,
+            ref video_profile,
+            picture_format,
+            max_coded_extent,
+            reference_picture_format,
+            max_dpb_slots,
+            max_active_reference_pictures,
+            std_header_version:
+                ExtensionProperties {
+                    ref extension_name,
+                    spec_version,
+                },
+            ..
+        } = &create_info;
+        let mut video_decode_h264_profile_info_vk = None;
+        let video_profile_vk = video_profile
+            .clone()
+            .to_vulkan(&mut video_decode_h264_profile_info_vk);
+
+        let extension_properties_vk = ash::vk::ExtensionProperties {
+            extension_name: {
+                let c_str = std::ffi::CString::new(extension_name.clone()).unwrap();
+                let mut bytes = [0; 256];
+                bytes[0..c_str.as_bytes_with_nul().len()]
+                    .copy_from_slice(c_str.as_bytes_with_nul());
+                bytes.map(|b| b as _)
+            },
+            spec_version,
+        };
+
+        let create_info_vk = ash::vk::VideoSessionCreateInfoKHR {
+            queue_family_index,
+            flags: flags.into(),
+            p_video_profile: &video_profile_vk,
+            picture_format: picture_format.into(),
+            max_coded_extent: ash::vk::Extent2D {
+                width: max_coded_extent[0],
+                height: max_coded_extent[1],
+            },
+            reference_picture_format: reference_picture_format.into(),
+            max_dpb_slots,
+            max_active_reference_pictures,
+            p_std_header_version: &extension_properties_vk,
+            ..Default::default()
+        };
+
+        let handle = unsafe {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.khr_video_queue.create_video_session_khr)(
+                device.handle(),
+                &create_info_vk,
+                std::ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Self::from_handle(handle, create_info, device))
+    }
+
+    /// Creates a new `VideoSession` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        handle: ash::vk::VideoSessionKHR,
+        create_info: VideoSessionCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<Self> {
+        Arc::new(VideoSession {
+            handle,
+            device: InstanceOwnedDebugWrapper(device),
+            create_info,
+        })
+    }
+}
+
+impl Drop for VideoSession {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            (fns.khr_video_queue.destroy_video_session_khr)(
+                self.device.handle(),
+                self.handle,
+                std::ptr::null(),
+            );
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct VideoSessionCreateInfo {
+    pub queue_family_index: u32,
+    pub flags: VideoSessionCreateFlags,
+    pub video_profile: VideoProfileInfo,
+    pub picture_format: Format,
+    pub max_coded_extent: [u32; 2],
+    pub reference_picture_format: Format,
+    pub max_dpb_slots: u32,
+    pub max_active_reference_pictures: u32,
+    pub std_header_version: ExtensionProperties,
+    pub _ne: crate::NonExhaustive,
+}
+
+impl VideoSessionCreateInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            flags,
+            max_coded_extent,
+            reference_picture_format,
+            max_dpb_slots,
+            max_active_reference_pictures,
+            video_profile:
+                VideoProfileInfo {
+                    video_codec_operation,
+                    ..
+                },
+            ..
+        } = self;
+
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkSwapchainCreateInfoKHR-flags-parameter"])
+        })?;
+
+        let video_capabilities = device
+            .physical_device()
+            .video_capabilities(self.video_profile.clone())
+            .map_err(|err| {
+                Box::new(ValidationError::from_error(err))
+                    .add_context("pVideoProfile")
+                    .set_vuids(&["VUID-VkVideoSessionCreateInfoKHR-pVideoProfile-04845"])
+            })?;
+
+        if max_dpb_slots > video_capabilities.max_dpb_slots {
+            return Err(Box::new(ValidationError {
+                context: "max_dpb_slots".into(),
+                problem:
+                    "is greater than the maximum number of DPB slots supported by the video profile"
+                        .into(),
+                vuids: &["VUID-VkVideoSessionCreateInfoKHR-maxDPBSlots-04847"],
+                ..Default::default()
+            }));
+        }
+
+        if max_active_reference_pictures > video_capabilities.max_active_reference_pictures {
+            return Err(Box::new(ValidationError {
+                context: "max_active_reference_pictures".into(),
+                problem: "is greater than the maximum number of active reference pictures supported by the video profile".into(),
+                vuids: &["VUID-VkVideoSessionCreateInfoKHR-maxActiveReferencePictures-04849"],
+                ..Default::default()
+            }));
+        }
+
+        if (max_dpb_slots == 0 && max_active_reference_pictures != 0)
+            || (max_active_reference_pictures == 0 && max_dpb_slots != 0)
+        {
+            return Err(Box::new(ValidationError {
+                context: "max_dpb_slots".into(),
+                problem: "is 0 while max_active_reference_pictures is not 0, or vice versa".into(),
+                vuids: &["VUID-VkVideoSessionCreateInfoKHR-maxDpbSlots-04850"],
+                ..Default::default()
+            }));
+        }
+
+        if max_coded_extent < video_capabilities.min_coded_extent
+            || max_coded_extent > video_capabilities.max_coded_extent
+        {
+            return Err(Box::new(ValidationError {
+                context: "max_coded_extent".into(),
+                problem: "is not within the range of supported coded extents".into(),
+                vuids: &["VUID-VkVideoSessionCreateInfoKHR-maxCodedExtent-04851"],
+                ..Default::default()
+            }));
+        }
+
+        let is_decode_operation = match video_codec_operation {
+            VideoCodecOperation::DecodeH264 | VideoCodecOperation::DecodeH265 => true,
+        };
+
+        if is_decode_operation && max_active_reference_pictures > 0 {
+            let video_format_info = VideoFormatInfo {
+                image_usage: ImageUsage::VIDEO_DECODE_DPB,
+                profile_list_info: VideoProfileListInfo {
+                    profiles: vec![self.video_profile.clone()],
+                    ..Default::default()
+                },
+            };
+
+            let formats = device
+                .physical_device()
+                .video_format_properties(video_format_info)
+                .map_err(|err| {
+                    Box::new(ValidationError::from_error(err)).add_context("pVideoProfile")
+                })?;
+
+            if !formats
+                .into_iter()
+                .any(|f| f.format == reference_picture_format)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "referencePictureFormat".into(),
+                    problem: "must be one of the supported decode DPB formats".into(),
+                    vuids: &["VUID-VkVideoSessionCreateInfoKHR-referencePictureFormat-04852"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        /* encode: */
+        /* VUID-VkVideoSessionCreateInfoKHR-referencePictureFormat-06814 */
+
+        if is_decode_operation {
+            let video_format_info = VideoFormatInfo {
+                image_usage: ImageUsage::VIDEO_DECODE_DST,
+                profile_list_info: VideoProfileListInfo {
+                    profiles: vec![self.video_profile.clone()],
+                    ..Default::default()
+                },
+            };
+
+            let formats = device
+                .physical_device()
+                .video_format_properties(video_format_info)
+                .map_err(|err| {
+                    Box::new(ValidationError::from_error(err)).add_context("pVideoProfile")
+                })?;
+
+            if !formats
+                .into_iter()
+                .any(|f| f.format == reference_picture_format)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "pictureFormat".into(),
+                    problem: "must be one of the supported decode output formats".into(),
+                    vuids: &["VUID-VkVideoSessionCreateInfoKHR-pictureFormat-04853"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        /* encode: */
+        /* VUID-VkVideoSessionCreateInfoKHR-pictureFormat-04854 */
+
+        if self.std_header_version.extension_name
+            != video_capabilities.std_header_version.extension_name
+        {
+            return Err(Box::new(ValidationError {
+                context: "std_header_version.extensionName".into(),
+                problem: "does not match video_capabilities.std_header_version.extension_name"
+                    .into(),
+                vuids: &["VUID-VkVideoSessionCreateInfoKHR-pStdHeaderVersion-07190"],
+                ..Default::default()
+            }));
+        }
+
+        if self.std_header_version.spec_version > video_capabilities.std_header_version.spec_version
+        {
+            return Err(Box::new(ValidationError {
+                context: "std_header_version.specVersion".into(),
+                problem: "is greater than video_capabilities.std_header_version.spec_version"
+                    .into(),
+                vuids: &["VUID-VkVideoSessionCreateInfoKHR-pStdHeaderVersion-07191"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for VideoSessionCreateInfo {
+    fn default() -> Self {
+        Self {
+            queue_family_index: Default::default(),
+            flags: Default::default(),
+            video_profile: Default::default(),
+            picture_format: Default::default(),
+            max_coded_extent: Default::default(),
+            reference_picture_format: Default::default(),
+            max_dpb_slots: Default::default(),
+            max_active_reference_pictures: Default::default(),
+            std_header_version: ExtensionProperties::from(ash::vk::ExtensionProperties::default()),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }

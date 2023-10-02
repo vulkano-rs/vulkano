@@ -3,10 +3,11 @@ use std::sync::Arc;
 use vulkano::{
     device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo, QueueFlags},
     image::ImageUsage,
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     video::{
         CodecCapabilities, VideoDecodeCapabilityFlags, VideoDecodeH264PictureLayoutFlags,
         VideoDecodeH264ProfileInfo, VideoFormatInfo, VideoProfileInfo, VideoProfileListInfo,
+        VideoSession, VideoSessionCreateInfo,
     },
     VulkanLibrary,
 };
@@ -152,9 +153,26 @@ fn main() {
         },
     };
 
-    let formats = physical_device
+    let mut formats = physical_device
         .video_format_properties(video_format_info)
         .unwrap();
 
     println!("video formats: {:#?}", formats);
+
+    let format = formats.pop().unwrap();
+
+    let video_session_create_info = VideoSessionCreateInfo {
+        queue_family_index: video_queue_family_index,
+        video_profile: profile_info,
+        picture_format: format.format,
+        max_coded_extent: video_caps.max_coded_extent,
+        reference_picture_format: format.format,
+        max_dpb_slots: video_caps.max_dpb_slots,
+        max_active_reference_pictures: video_caps.max_active_reference_pictures,
+        std_header_version: video_caps.std_header_version,
+        ..Default::default()
+    };
+
+    let video_session = VideoSession::new(Arc::clone(&device), video_session_create_info).unwrap();
+    println!("video session: {:#?}", video_session);
 }
