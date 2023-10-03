@@ -581,7 +581,7 @@ impl TypeArray {
 
         let length = length_id
             .map(|id| match shader.spirv.id(id).instruction() {
-                Instruction::Constant { value, .. } => {
+                Instruction::Constant { value, .. } | Instruction::SpecConstant { value, .. } => {
                     assert!(matches!(value.len(), 1 | 2));
                     let len = value.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
 
