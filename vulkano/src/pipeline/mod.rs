@@ -945,8 +945,19 @@ vulkan_bitflags! {
 vulkan_enum! {
     #[non_exhaustive]
 
-    /// A particular state value within a graphics pipeline that can be dynamically set by a command
-    /// buffer.
+    /// A particular state value within a pipeline that can be dynamically set by a command buffer.
+    ///
+    /// Whenever a particular state is set to be dynamic while creating the pipeline,
+    /// the corresponding predefined value in the pipeline's create info is ignored, unless
+    /// specified otherwise here.
+    ///
+    /// If the dynamic state is used to enable/disable a certain functionality,
+    /// and the value in the create info is an `Option`
+    /// (for example, [`DynamicState::DepthTestEnable`] and [`DepthStencilState::depth`]),
+    /// then that `Option` must be `Some` when creating the pipeline,
+    /// in order to provide settings to use when the functionality is enabled.
+    ///
+    /// [`DepthStencilState::depth`]: (crate::pipeline::graphics::depth_stencil::DepthStencilState::depth)
     DynamicState = DynamicState(i32);
 
     /// The elements, but not the count, of
