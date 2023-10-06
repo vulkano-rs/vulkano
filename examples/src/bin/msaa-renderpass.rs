@@ -355,6 +355,7 @@ fn main() {
                     subpass.num_color_attachments(),
                     ColorBlendAttachmentState::default(),
                 )),
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },
