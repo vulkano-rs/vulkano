@@ -143,40 +143,6 @@ impl ViewportState {
         }
     }
 
-    /// Creates a `ViewportState` with dynamic viewport, and a single scissor that always covers
-    /// the whole viewport.
-    #[deprecated(since = "0.34.0", note = "Use `ViewportState::default` instead.")]
-    #[inline]
-    pub fn viewport_dynamic_scissor_irrelevant() -> Self {
-        Self {
-            viewports: smallvec![Viewport::default(); 1],
-            scissors: smallvec![Scissor::default(); 1],
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
-    /// Creates a `ViewportState` with dynamic viewports and scissors, but a fixed count.
-    #[deprecated(since = "0.34.0")]
-    #[inline]
-    pub fn viewport_dynamic_scissor_dynamic(count: u32) -> Self {
-        Self {
-            viewports: smallvec![Viewport::default(); count as usize],
-            scissors: smallvec![Scissor::default(); count as usize],
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
-    /// Creates a `ViewportState` with dynamic viewport count and scissor count.
-    #[deprecated(since = "0.34.0")]
-    #[inline]
-    pub fn viewport_count_dynamic_scissor_count_dynamic() -> Self {
-        Self {
-            viewports: SmallVec::new(),
-            scissors: SmallVec::new(),
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self {
             viewports,

@@ -62,14 +62,6 @@ impl TessellationState {
         self
     }
 
-    /// Sets the number of patch control points to dynamic.
-    #[deprecated(since = "0.34.0")]
-    #[inline]
-    pub fn patch_control_points_dynamic(mut self) -> Self {
-        self.patch_control_points = 3;
-        self
-    }
-
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {

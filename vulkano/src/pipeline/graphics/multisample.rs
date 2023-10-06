@@ -36,12 +36,14 @@ pub struct MultisampleState {
     ///
     /// If set to `Some`, the [`sample_rate_shading`](crate::device::Features::sample_rate_shading)
     /// feature must be enabled on the device.
+    ///
+    /// The default value is `None`.
     pub sample_shading: Option<f32>,
 
     /// A mask of bits that is ANDed with the coverage mask of each set of `rasterization_samples`
     /// samples. Only the first `rasterization_samples / 32` bits are used, the rest is ignored.
     ///
-    /// The default value is `[0xFFFFFFFF; 2]`.
+    /// The default value is `[u32::MAX; 2]`.
     pub sample_mask: [u32; 2], // 64 bits for needed for 64 SampleCount
 
     /// Controls whether the alpha value of the fragment will be used in an implementation-defined
@@ -49,6 +51,8 @@ pub struct MultisampleState {
     /// then about half of the samples will be discarded. If you render to a multisample image, this
     /// means that the color will end up being mixed with whatever color was underneath, which gives
     /// the same effect as alpha blending.
+    ///
+    /// The default value is `false`.
     pub alpha_to_coverage_enable: bool,
 
     /// Controls whether the alpha value of all the samples will be forced to 1.0 (or the
@@ -56,23 +60,33 @@ pub struct MultisampleState {
     ///
     /// If set to `true`, the [`alpha_to_one`](crate::device::Features::alpha_to_one)
     /// feature must be enabled on the device.
+    ///
+    /// The default value is `false`.
     pub alpha_to_one_enable: bool,
 
     pub _ne: crate::NonExhaustive,
 }
 
-impl MultisampleState {
-    /// Creates a `MultisampleState` with multisampling disabled.
+impl Default for MultisampleState {
     #[inline]
-    pub fn new() -> MultisampleState {
-        MultisampleState {
+    fn default() -> Self {
+        Self {
             rasterization_samples: SampleCount::Sample1,
             sample_shading: None,
-            sample_mask: [0xFFFFFFFF; 2],
+            sample_mask: [u32::MAX; 2],
             alpha_to_coverage_enable: false,
             alpha_to_one_enable: false,
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+impl MultisampleState {
+    /// Creates a `MultisampleState` with multisampling disabled.
+    #[inline]
+    #[deprecated(since = "0.34.0", note = "Use `MultisampleState::default` instead.")]
+    pub fn new() -> MultisampleState {
+        Self::default()
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -127,13 +141,5 @@ impl MultisampleState {
         }
 
         Ok(())
-    }
-}
-
-impl Default for MultisampleState {
-    /// Returns [`MultisampleState::new()`].
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }

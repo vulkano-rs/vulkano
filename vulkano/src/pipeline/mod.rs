@@ -984,8 +984,8 @@ vulkan_enum! {
     /// [`set_blend_constants`](crate::command_buffer::AutoCommandBufferBuilder::set_blend_constants).
     BlendConstants = BLEND_CONSTANTS,
 
-    /// The value of
-    /// [`DepthBoundsState::bounds`](crate::pipeline::graphics::depth_stencil::DepthBoundsState::bounds).
+    /// The value, but not the `Option` variant, of
+    /// [`DepthStencilState::depth_bounds`](crate::pipeline::graphics::depth_stencil::DepthStencilState::depth_bounds).
     ///
     /// Set with
     /// [`set_depth_bounds`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bounds).

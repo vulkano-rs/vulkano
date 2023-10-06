@@ -134,27 +134,11 @@ impl RasterizationState {
         self
     }
 
-    /// Sets the cull mode to dynamic.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn cull_mode_dynamic(mut self) -> Self {
-        self.cull_mode = Default::default();
-        self
-    }
-
     /// Sets the front face.
     #[inline]
     #[deprecated(since = "0.34.0")]
     pub fn front_face(mut self, front_face: FrontFace) -> Self {
         self.front_face = front_face;
-        self
-    }
-
-    /// Sets the front face to dynamic.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn front_face_dynamic(mut self) -> Self {
-        self.front_face = Default::default();
         self
     }
 

@@ -201,10 +201,6 @@ pub struct DepthState {
     /// Comparison operation to use between the depth value of each incoming fragment and the depth
     /// value currently in the depth buffer.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    ///
     /// The default value is [`CompareOp::Always`].
     pub compare_op: CompareOp,
 }
@@ -293,10 +289,6 @@ impl StencilState {
 #[derive(Clone, Copy, Debug)]
 pub struct StencilOpState {
     /// The stencil operations to perform.
-    ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
     ///
     /// The default value is `StencilOps::default()`.
     pub ops: StencilOps,

@@ -116,14 +116,6 @@ impl ColorBlendState {
         self
     }
 
-    /// Enables logical operations with a dynamic logical operation.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn logic_op_dynamic(mut self) -> Self {
-        self.logic_op = Some(LogicOp::default());
-        self
-    }
-
     /// Enables blending for all attachments, with the given parameters.
     #[inline]
     #[deprecated(since = "0.34.0")]
@@ -169,14 +161,6 @@ impl ColorBlendState {
     #[deprecated(since = "0.34.0")]
     pub fn blend_constants(mut self, constants: [f32; 4]) -> Self {
         self.blend_constants = constants;
-        self
-    }
-
-    /// Sets the blend constants as dynamic.
-    #[inline]
-    #[deprecated(since = "0.34.0")]
-    pub fn blend_constants_dynamic(mut self) -> Self {
-        self.blend_constants = Default::default();
         self
     }
 
