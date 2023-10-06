@@ -226,12 +226,8 @@ where
     ) -> &mut Self {
         // Reset any states that are fixed in the new pipeline. The pipeline bind command will
         // overwrite these states.
-        self.builder_state.reset_dynamic_states(
-            pipeline
-                .dynamic_states()
-                .filter(|(_, d)| !d) // not dynamic
-                .map(|(s, _)| s),
-        );
+        self.builder_state
+            .reset_dynamic_states(pipeline.fixed_state().iter().copied());
         self.builder_state.pipeline_graphics = Some(pipeline.clone());
         self.add_command(
             "bind_pipeline_graphics",

@@ -28,8 +28,8 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
-            depth_stencil::DepthStencilState,
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -38,7 +38,7 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
@@ -332,14 +332,21 @@ fn main() {
                 stages: stages.into_iter().collect(),
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                viewport_state: Some(ViewportState::default()),
                 rasterization_state: Some(RasterizationState::default()),
                 multisample_state: Some(MultisampleState::default()),
                 // Enable depth testing, which is needed for occlusion queries to make sense at all. If you
                 // disable depth testing, every pixel is considered to pass the depth test, so every query
                 // will return a nonzero result.
-                depth_stencil_state: Some(DepthStencilState::simple_depth_test()),
-                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                depth_stencil_state: Some(DepthStencilState {
+                    depth: Some(DepthState::simple()),
+                    ..Default::default()
+                }),
+                color_blend_state: Some(ColorBlendState::default_with(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },

@@ -10,8 +10,8 @@
 //! Subdivides primitives into smaller primitives.
 
 use crate::{
-    device::Device, macros::vulkan_enum, pipeline::StateMode, Requires, RequiresAllOf,
-    RequiresOneOf, ValidationError, Version,
+    device::Device, macros::vulkan_enum, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
+    Version,
 };
 
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics
@@ -20,10 +20,8 @@ use crate::{
 pub struct TessellationState {
     /// The number of patch control points to use.
     ///
-    /// If set to `Dynamic`, the
-    /// [`extended_dynamic_state2_patch_control_points`](crate::device::Features::extended_dynamic_state2_patch_control_points)
-    /// feature must be enabled on the device.
-    pub patch_control_points: StateMode<u32>,
+    /// The default value is 3.
+    pub patch_control_points: u32,
 
     /// The origin to use for the tessellation domain.
     ///
@@ -37,31 +35,42 @@ pub struct TessellationState {
     pub _ne: crate::NonExhaustive,
 }
 
-impl TessellationState {
-    /// Creates a new `TessellationState` with 3 patch control points.
+impl Default for TessellationState {
     #[inline]
-    pub fn new() -> Self {
+    fn default() -> Self {
         Self {
-            patch_control_points: StateMode::Fixed(3),
+            patch_control_points: 3,
             domain_origin: TessellationDomainOrigin::default(),
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+impl TessellationState {
+    /// Creates a new `TessellationState` with 3 patch control points.
+    #[inline]
+    #[deprecated(since = "0.34.0", note = "Use `TessellationState::default` instead.")]
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Sets the number of patch control points.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn patch_control_points(mut self, num: u32) -> Self {
-        self.patch_control_points = StateMode::Fixed(num);
+        self.patch_control_points = num;
         self
     }
 
     /// Sets the number of patch control points to dynamic.
+    #[deprecated(since = "0.34.0")]
     #[inline]
     pub fn patch_control_points_dynamic(mut self) -> Self {
-        self.patch_control_points = StateMode::Dynamic;
+        self.patch_control_points = 3;
         self
     }
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             patch_control_points,
@@ -71,46 +80,23 @@ impl TessellationState {
 
         let properties = device.physical_device().properties();
 
-        match patch_control_points {
-            StateMode::Fixed(patch_control_points) => {
-                if patch_control_points == 0 {
-                    return Err(Box::new(ValidationError {
-                        context: "patch_control_points".into(),
-                        problem: "is zero".into(),
-                        vuids: &[
-                            "VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214",
-                        ],
-                        ..Default::default()
-                    }));
-                }
+        if patch_control_points == 0 {
+            return Err(Box::new(ValidationError {
+                context: "patch_control_points".into(),
+                problem: "is zero".into(),
+                vuids: &["VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214"],
+                ..Default::default()
+            }));
+        }
 
-                if patch_control_points > properties.max_tessellation_patch_size {
-                    return Err(Box::new(ValidationError {
-                        context: "patch_control_points".into(),
-                        problem: "exceeds the `max_tessellation_patch_size` limit".into(),
-                        vuids: &[
-                            "VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214",
-                        ],
-                        ..Default::default()
-                    }));
-                }
-            }
-            StateMode::Dynamic => {
-                if !device
-                    .enabled_features()
-                    .extended_dynamic_state2_patch_control_points
-                {
-                    return Err(Box::new(ValidationError {
-                        context: "patch_control_points".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "extended_dynamic_state2_patch_control_points",
-                        )])]),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04870"],
-                    }));
-                }
-            }
-        };
+        if patch_control_points > properties.max_tessellation_patch_size {
+            return Err(Box::new(ValidationError {
+                context: "patch_control_points".into(),
+                problem: "exceeds the `max_tessellation_patch_size` limit".into(),
+                vuids: &["VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214"],
+                ..Default::default()
+            }));
+        }
 
         domain_origin.validate_device(device).map_err(|err| {
             err.add_context("domain_origin").set_vuids(&[
@@ -134,14 +120,6 @@ impl TessellationState {
         }
 
         Ok(())
-    }
-}
-
-impl Default for TessellationState {
-    /// Returns [`TessellationState::new()`].
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }
 

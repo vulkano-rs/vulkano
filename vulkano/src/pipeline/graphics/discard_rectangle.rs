@@ -12,38 +12,55 @@
 //! The discard rectangle test is similar to, but separate from the scissor test.
 
 use crate::{
-    device::Device,
-    macros::vulkan_enum,
-    pipeline::{graphics::viewport::Scissor, PartialStateMode},
-    ValidationError,
+    device::Device, macros::vulkan_enum, pipeline::graphics::viewport::Scissor, ValidationError,
 };
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
 #[derive(Clone, Debug)]
 pub struct DiscardRectangleState {
     /// Sets whether the discard rectangle test operates inclusively or exclusively.
+    ///
+    /// The default value is [`DiscardRectangleMode::Exclusive`].
     pub mode: DiscardRectangleMode,
 
-    /// Specifies the discard rectangles. If set to `Dynamic`, it specifies only the number of
-    /// rectangles used from the dynamic state.
+    /// Specifies the discard rectangles.
     ///
-    /// If set to `Dynamic` or to `Fixed` with a non-empty list, the
+    /// When [`DynamicState::DiscardRectangle`] is used, the values of each rectangle are ignored
+    /// and must be set dynamically, but the number of discard rectangles is fixed and
+    /// must be matched when setting the dynamic value.
+    ///
+    /// If this not not empty, then the
     /// [`ext_discard_rectangles`](crate::device::DeviceExtensions::ext_discard_rectangles)
     /// extension must be enabled on the device.
-    pub rectangles: PartialStateMode<Vec<Scissor>, u32>,
+    ///
+    /// The default value is empty.
+    ///
+    /// [`DynamicState::DiscardRectangle`]: crate::pipeline::DynamicState::DiscardRectangle
+    pub rectangles: Vec<Scissor>,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for DiscardRectangleState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            mode: DiscardRectangleMode::Exclusive,
+            rectangles: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl DiscardRectangleState {
     /// Creates a `DiscardRectangleState` in exclusive mode with zero rectangles.
     #[inline]
+    #[deprecated(
+        since = "0.34.0",
+        note = "Use `DiscardRectangleState::default` instead."
+    )]
     pub fn new() -> Self {
-        Self {
-            mode: DiscardRectangleMode::Exclusive,
-            rectangles: PartialStateMode::Fixed(Vec::new()),
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::default()
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -61,12 +78,7 @@ impl DiscardRectangleState {
             ])
         })?;
 
-        let discard_rectangle_count = match rectangles {
-            PartialStateMode::Dynamic(count) => *count,
-            PartialStateMode::Fixed(rectangles) => rectangles.len() as u32,
-        };
-
-        if discard_rectangle_count > properties.max_discard_rectangles.unwrap() {
+        if rectangles.len() as u32 > properties.max_discard_rectangles.unwrap() {
             return Err(Box::new(ValidationError {
                 context: "rectangles".into(),
                 problem: "the length exceeds the `max_discard_rectangles` limit".into(),
@@ -78,14 +90,6 @@ impl DiscardRectangleState {
         }
 
         Ok(())
-    }
-}
-
-impl Default for DiscardRectangleState {
-    /// Returns [`DiscardRectangleState::new`].
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }
 

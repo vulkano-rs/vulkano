@@ -58,9 +58,9 @@
 
 use self::{
     color_blend::ColorBlendState,
-    depth_stencil::{DepthBoundsState, DepthState, DepthStencilState},
+    depth_stencil::{DepthState, DepthStencilState},
     discard_rectangle::DiscardRectangleState,
-    input_assembly::{InputAssemblyState, PrimitiveTopology, PrimitiveTopologyClass},
+    input_assembly::{InputAssemblyState, PrimitiveTopology},
     multisample::MultisampleState,
     rasterization::RasterizationState,
     subpass::PipelineSubpassType,
@@ -70,7 +70,7 @@ use self::{
 };
 use super::{
     cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
-    PipelineLayout, PipelineShaderStageCreateInfo, StateMode,
+    PipelineLayout, PipelineShaderStageCreateInfo,
 };
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -78,16 +78,13 @@ use crate::{
     image::{ImageAspect, ImageAspects},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendAttachmentState,
-            depth_stencil::{StencilOpState, StencilState},
-            rasterization::{CullMode, FrontFace},
-            subpass::PipelineRenderingCreateInfo,
-            tessellation::TessellationDomainOrigin,
-            vertex_input::VertexInputRate,
-        },
-        PartialStateMode,
+    pipeline::graphics::{
+        color_blend::ColorBlendAttachmentState,
+        depth_stencil::{StencilOpState, StencilState},
+        rasterization::{CullMode, DepthBiasState},
+        subpass::PipelineRenderingCreateInfo,
+        tessellation::TessellationDomainOrigin,
+        vertex_input::VertexInputRate,
     },
     shader::{
         spirv::{ExecutionMode, ExecutionModel, Instruction},
@@ -95,7 +92,7 @@ use crate::{
     },
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry, ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr,
@@ -140,11 +137,13 @@ pub struct GraphicsPipeline {
     multisample_state: Option<MultisampleState>,
     depth_stencil_state: Option<DepthStencilState>,
     color_blend_state: Option<ColorBlendState>,
+    dynamic_state: HashSet<DynamicState>,
     layout: DeviceOwnedDebugWrapper<Arc<PipelineLayout>>,
     subpass: PipelineSubpassType,
-    dynamic_state: HashMap<DynamicState, bool>,
 
     discard_rectangle_state: Option<DiscardRectangleState>,
+
+    fixed_state: HashSet<DynamicState>,
 }
 
 impl GraphicsPipeline {
@@ -189,6 +188,7 @@ impl GraphicsPipeline {
             ref multisample_state,
             ref depth_stencil_state,
             ref color_blend_state,
+            ref dynamic_state,
 
             ref layout,
             ref subpass,
@@ -197,8 +197,6 @@ impl GraphicsPipeline {
             ref discard_rectangle_state,
             _ne: _,
         } = &create_info;
-
-        let mut dynamic_state: HashMap<DynamicState, bool> = HashMap::default();
 
         struct PerPipelineShaderStageCreateInfo {
             name_vk: CString,
@@ -309,8 +307,6 @@ impl GraphicsPipeline {
         let mut vertex_binding_divisor_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
 
         if let Some(vertex_input_state) = vertex_input_state {
-            dynamic_state.insert(DynamicState::VertexInput, false);
-
             let VertexInputState {
                 bindings,
                 attributes,
@@ -385,32 +381,10 @@ impl GraphicsPipeline {
                 _ne: _,
             } = input_assembly_state;
 
-            let topology = match topology {
-                PartialStateMode::Fixed(topology) => {
-                    dynamic_state.insert(DynamicState::PrimitiveTopology, false);
-                    topology.into()
-                }
-                PartialStateMode::Dynamic(topology_class) => {
-                    dynamic_state.insert(DynamicState::PrimitiveTopology, true);
-                    topology_class.example().into()
-                }
-            };
-
-            let primitive_restart_enable = match primitive_restart_enable {
-                StateMode::Fixed(primitive_restart_enable) => {
-                    dynamic_state.insert(DynamicState::PrimitiveRestartEnable, false);
-                    primitive_restart_enable as ash::vk::Bool32
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::PrimitiveRestartEnable, true);
-                    Default::default()
-                }
-            };
-
             let _ = input_assembly_state_vk.insert(ash::vk::PipelineInputAssemblyStateCreateInfo {
                 flags: ash::vk::PipelineInputAssemblyStateCreateFlags::empty(),
-                topology,
-                primitive_restart_enable,
+                topology: topology.into(),
+                primitive_restart_enable: primitive_restart_enable as ash::vk::Bool32,
                 ..Default::default()
             });
         }
@@ -424,17 +398,6 @@ impl GraphicsPipeline {
                 domain_origin,
                 _ne: _,
             } = tessellation_state;
-
-            let patch_control_points = match patch_control_points {
-                StateMode::Fixed(patch_control_points) => {
-                    dynamic_state.insert(DynamicState::PatchControlPoints, false);
-                    patch_control_points
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::PatchControlPoints, true);
-                    Default::default()
-                }
-            };
 
             let tessellation_state_vk =
                 tessellation_state_vk.insert(ash::vk::PipelineTessellationStateCreateInfo {
@@ -467,53 +430,18 @@ impl GraphicsPipeline {
                 _ne: _,
             } = viewport_state;
 
-            let viewport_count = match viewports {
-                PartialStateMode::Fixed(viewports) => {
-                    dynamic_state.insert(DynamicState::Viewport, false);
-                    dynamic_state.insert(DynamicState::ViewportWithCount, false);
-                    viewports_vk.extend(viewports.iter().map(Into::into));
-                    viewports.len() as u32
-                }
-                PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
-                    dynamic_state.insert(DynamicState::Viewport, true);
-                    dynamic_state.insert(DynamicState::ViewportWithCount, false);
-                    *count
-                }
-                PartialStateMode::Dynamic(StateMode::Dynamic) => {
-                    dynamic_state.insert(DynamicState::Viewport, true);
-                    dynamic_state.insert(DynamicState::ViewportWithCount, true);
-                    0
-                }
-            };
-
-            let scissor_count = match scissors {
-                PartialStateMode::Fixed(scissors) => {
-                    dynamic_state.insert(DynamicState::Scissor, false);
-                    dynamic_state.insert(DynamicState::ScissorWithCount, false);
-                    scissors_vk.extend(scissors.iter().map(Into::into));
-                    scissors.len() as u32
-                }
-                PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
-                    dynamic_state.insert(DynamicState::Scissor, true);
-                    dynamic_state.insert(DynamicState::ScissorWithCount, false);
-                    *count
-                }
-                PartialStateMode::Dynamic(StateMode::Dynamic) => {
-                    dynamic_state.insert(DynamicState::Scissor, true);
-                    dynamic_state.insert(DynamicState::ScissorWithCount, true);
-                    0
-                }
-            };
+            viewports_vk.extend(viewports.iter().map(Into::into));
+            scissors_vk.extend(scissors.iter().map(Into::into));
 
             let _ = viewport_state_vk.insert(ash::vk::PipelineViewportStateCreateInfo {
                 flags: ash::vk::PipelineViewportStateCreateFlags::empty(),
-                viewport_count,
+                viewport_count: viewports_vk.len() as u32,
                 p_viewports: if viewports_vk.is_empty() {
                     ptr::null()
                 } else {
                     viewports_vk.as_ptr()
                 },
-                scissor_count,
+                scissor_count: scissors_vk.len() as u32,
                 p_scissors: if scissors_vk.is_empty() {
                     ptr::null()
                 } else {
@@ -533,45 +461,12 @@ impl GraphicsPipeline {
                 polygon_mode,
                 cull_mode,
                 front_face,
-                depth_bias,
+                ref depth_bias,
                 line_width,
                 line_rasterization_mode,
                 line_stipple,
                 _ne: _,
             } = rasterization_state;
-
-            let rasterizer_discard_enable = match rasterizer_discard_enable {
-                StateMode::Fixed(rasterizer_discard_enable) => {
-                    dynamic_state.insert(DynamicState::RasterizerDiscardEnable, false);
-                    rasterizer_discard_enable as ash::vk::Bool32
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::RasterizerDiscardEnable, true);
-                    ash::vk::FALSE
-                }
-            };
-
-            let cull_mode = match cull_mode {
-                StateMode::Fixed(cull_mode) => {
-                    dynamic_state.insert(DynamicState::CullMode, false);
-                    cull_mode.into()
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::CullMode, true);
-                    CullMode::default().into()
-                }
-            };
-
-            let front_face = match front_face {
-                StateMode::Fixed(front_face) => {
-                    dynamic_state.insert(DynamicState::FrontFace, false);
-                    front_face.into()
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::FrontFace, true);
-                    FrontFace::default().into()
-                }
-            };
 
             let (
                 depth_bias_enable,
@@ -579,47 +474,25 @@ impl GraphicsPipeline {
                 depth_bias_clamp,
                 depth_bias_slope_factor,
             ) = if let Some(depth_bias_state) = depth_bias {
-                if depth_bias_state.enable_dynamic {
-                    dynamic_state.insert(DynamicState::DepthBiasEnable, true);
-                } else {
-                    dynamic_state.insert(DynamicState::DepthBiasEnable, false);
-                }
-
-                let (constant_factor, clamp, slope_factor) = match depth_bias_state.bias {
-                    StateMode::Fixed(bias) => {
-                        dynamic_state.insert(DynamicState::DepthBias, false);
-                        (bias.constant_factor, bias.clamp, bias.slope_factor)
-                    }
-                    StateMode::Dynamic => {
-                        dynamic_state.insert(DynamicState::DepthBias, true);
-                        (0.0, 0.0, 0.0)
-                    }
-                };
+                let &DepthBiasState {
+                    constant_factor,
+                    clamp,
+                    slope_factor,
+                } = depth_bias_state;
 
                 (ash::vk::TRUE, constant_factor, clamp, slope_factor)
             } else {
                 (ash::vk::FALSE, 0.0, 0.0, 0.0)
             };
 
-            let line_width = match line_width {
-                StateMode::Fixed(line_width) => {
-                    dynamic_state.insert(DynamicState::LineWidth, false);
-                    line_width
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::LineWidth, true);
-                    1.0
-                }
-            };
-
             let rasterization_state =
                 rasterization_state_vk.insert(ash::vk::PipelineRasterizationStateCreateInfo {
                     flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
                     depth_clamp_enable: depth_clamp_enable as ash::vk::Bool32,
-                    rasterizer_discard_enable,
+                    rasterizer_discard_enable: rasterizer_discard_enable as ash::vk::Bool32,
                     polygon_mode: polygon_mode.into(),
-                    cull_mode,
-                    front_face,
+                    cull_mode: cull_mode.into(),
+                    front_face: front_face.into(),
                     depth_bias_enable,
                     depth_bias_constant_factor,
                     depth_bias_clamp,
@@ -631,18 +504,7 @@ impl GraphicsPipeline {
             if device.enabled_extensions().ext_line_rasterization {
                 let (stippled_line_enable, line_stipple_factor, line_stipple_pattern) =
                     if let Some(line_stipple) = line_stipple {
-                        let (factor, pattern) = match line_stipple {
-                            StateMode::Fixed(line_stipple) => {
-                                dynamic_state.insert(DynamicState::LineStipple, false);
-                                (line_stipple.factor, line_stipple.pattern)
-                            }
-                            StateMode::Dynamic => {
-                                dynamic_state.insert(DynamicState::LineStipple, true);
-                                (1, 0)
-                            }
-                        };
-
-                        (ash::vk::TRUE, factor, pattern)
+                        (ash::vk::TRUE, line_stipple.factor, line_stipple.pattern)
                     } else {
                         (ash::vk::FALSE, 1, 0)
                     };
@@ -704,125 +566,28 @@ impl GraphicsPipeline {
             let (depth_test_enable, depth_write_enable, depth_compare_op) =
                 if let Some(depth_state) = depth {
                     let &DepthState {
-                        enable_dynamic,
                         write_enable,
                         compare_op,
                     } = depth_state;
 
-                    if enable_dynamic {
-                        dynamic_state.insert(DynamicState::DepthTestEnable, true);
-                    } else {
-                        dynamic_state.insert(DynamicState::DepthTestEnable, false);
-                    }
-
-                    let write_enable = match write_enable {
-                        StateMode::Fixed(write_enable) => {
-                            dynamic_state.insert(DynamicState::DepthWriteEnable, false);
-                            write_enable as ash::vk::Bool32
-                        }
-                        StateMode::Dynamic => {
-                            dynamic_state.insert(DynamicState::DepthWriteEnable, true);
-                            ash::vk::TRUE
-                        }
-                    };
-
-                    let compare_op = match compare_op {
-                        StateMode::Fixed(compare_op) => {
-                            dynamic_state.insert(DynamicState::DepthCompareOp, false);
-                            compare_op.into()
-                        }
-                        StateMode::Dynamic => {
-                            dynamic_state.insert(DynamicState::DepthCompareOp, true);
-                            ash::vk::CompareOp::ALWAYS
-                        }
-                    };
-
-                    (ash::vk::TRUE, write_enable, compare_op)
+                    (
+                        ash::vk::TRUE,
+                        write_enable as ash::vk::Bool32,
+                        compare_op.into(),
+                    )
                 } else {
                     (ash::vk::FALSE, ash::vk::FALSE, ash::vk::CompareOp::ALWAYS)
                 };
 
             let (depth_bounds_test_enable, min_depth_bounds, max_depth_bounds) =
-                if let Some(depth_bounds_state) = depth_bounds {
-                    let depth_stencil::DepthBoundsState {
-                        enable_dynamic,
-                        bounds,
-                    } = depth_bounds_state;
-
-                    if *enable_dynamic {
-                        dynamic_state.insert(DynamicState::DepthBoundsTestEnable, true);
-                    } else {
-                        dynamic_state.insert(DynamicState::DepthBoundsTestEnable, false);
-                    }
-
-                    let (min_bounds, max_bounds) = match bounds.clone() {
-                        StateMode::Fixed(bounds) => {
-                            dynamic_state.insert(DynamicState::DepthBounds, false);
-                            bounds.into_inner()
-                        }
-                        StateMode::Dynamic => {
-                            dynamic_state.insert(DynamicState::DepthBounds, true);
-                            (0.0, 1.0)
-                        }
-                    };
-
-                    (ash::vk::TRUE, min_bounds, max_bounds)
+                if let Some(depth_bounds) = depth_bounds {
+                    (ash::vk::TRUE, *depth_bounds.start(), *depth_bounds.end())
                 } else {
                     (ash::vk::FALSE, 0.0, 1.0)
                 };
 
             let (stencil_test_enable, front, back) = if let Some(stencil_state) = stencil {
-                let StencilState {
-                    enable_dynamic,
-                    front,
-                    back,
-                } = stencil_state;
-
-                if *enable_dynamic {
-                    dynamic_state.insert(DynamicState::StencilTestEnable, true);
-                } else {
-                    dynamic_state.insert(DynamicState::StencilTestEnable, false);
-                }
-
-                match (front.ops, back.ops) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilOp, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilOp, true);
-                    }
-                    _ => unreachable!(),
-                };
-
-                match (front.compare_mask, back.compare_mask) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilCompareMask, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilCompareMask, true);
-                    }
-                    _ => unreachable!(),
-                };
-
-                match (front.write_mask, back.write_mask) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilWriteMask, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilWriteMask, true);
-                    }
-                    _ => unreachable!(),
-                };
-
-                match (front.reference, back.reference) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilReference, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilReference, true);
-                    }
-                    _ => unreachable!(),
-                };
+                let StencilState { front, back } = stencil_state;
 
                 let [front, back] = [front, back].map(|stencil_op_state| {
                     let &StencilOpState {
@@ -831,23 +596,6 @@ impl GraphicsPipeline {
                         write_mask,
                         reference,
                     } = stencil_op_state;
-
-                    let ops = match ops {
-                        StateMode::Fixed(x) => x,
-                        StateMode::Dynamic => Default::default(),
-                    };
-                    let compare_mask = match compare_mask {
-                        StateMode::Fixed(x) => x,
-                        StateMode::Dynamic => Default::default(),
-                    };
-                    let write_mask = match write_mask {
-                        StateMode::Fixed(x) => x,
-                        StateMode::Dynamic => Default::default(),
-                    };
-                    let reference = match reference {
-                        StateMode::Fixed(x) => x,
-                        StateMode::Dynamic => Default::default(),
-                    };
 
                     ash::vk::StencilOpState {
                         fail_op: ops.fail_op.into(),
@@ -916,31 +664,9 @@ impl GraphicsPipeline {
             ));
 
             let (logic_op_enable, logic_op) = if let Some(logic_op) = logic_op {
-                let logic_op = match logic_op {
-                    StateMode::Fixed(logic_op) => {
-                        dynamic_state.insert(DynamicState::LogicOp, false);
-                        logic_op.into()
-                    }
-                    StateMode::Dynamic => {
-                        dynamic_state.insert(DynamicState::LogicOp, true);
-                        Default::default()
-                    }
-                };
-
-                (ash::vk::TRUE, logic_op)
+                (ash::vk::TRUE, logic_op.into())
             } else {
                 (ash::vk::FALSE, Default::default())
-            };
-
-            let blend_constants = match blend_constants {
-                StateMode::Fixed(blend_constants) => {
-                    dynamic_state.insert(DynamicState::BlendConstants, false);
-                    blend_constants
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::BlendConstants, true);
-                    Default::default()
-                }
             };
 
             let color_blend_state_vk =
@@ -963,16 +689,7 @@ impl GraphicsPipeline {
                             color_write_enable,
                         } = color_blend_attachment_state;
 
-                        match color_write_enable {
-                            StateMode::Fixed(enable) => {
-                                dynamic_state.insert(DynamicState::ColorWriteEnable, false);
-                                enable as ash::vk::Bool32
-                            }
-                            StateMode::Dynamic => {
-                                dynamic_state.insert(DynamicState::ColorWriteEnable, true);
-                                ash::vk::TRUE
-                            }
-                        }
+                        color_write_enable as ash::vk::Bool32
                     },
                 ));
 
@@ -985,26 +702,15 @@ impl GraphicsPipeline {
             }
         }
 
-        let mut dynamic_state_list: SmallVec<[_; 4]> = SmallVec::new();
-        let mut dynamic_state_vk = None;
-
-        {
-            dynamic_state_list.extend(
-                dynamic_state
-                    .iter()
-                    .filter(|(_, d)| **d)
-                    .map(|(&state, _)| state.into()),
-            );
-
-            if !dynamic_state_list.is_empty() {
-                let _ = dynamic_state_vk.insert(ash::vk::PipelineDynamicStateCreateInfo {
-                    flags: ash::vk::PipelineDynamicStateCreateFlags::empty(),
-                    dynamic_state_count: dynamic_state_list.len() as u32,
-                    p_dynamic_states: dynamic_state_list.as_ptr(),
-                    ..Default::default()
-                });
-            }
-        }
+        let dynamic_state_list_vk: SmallVec<[_; 4]> =
+            dynamic_state.iter().copied().map(Into::into).collect();
+        let dynamic_state_vk =
+            (!dynamic_state_list_vk.is_empty()).then(|| ash::vk::PipelineDynamicStateCreateInfo {
+                flags: ash::vk::PipelineDynamicStateCreateFlags::empty(),
+                dynamic_state_count: dynamic_state_list_vk.len() as u32,
+                p_dynamic_states: dynamic_state_list_vk.as_ptr(),
+                ..Default::default()
+            });
 
         let render_pass = subpass.as_ref().unwrap();
         let mut render_pass_vk = ash::vk::RenderPass::null();
@@ -1046,7 +752,7 @@ impl GraphicsPipeline {
         }
 
         let mut discard_rectangle_state_vk = None;
-        let mut discard_rectangles: SmallVec<[_; 2]> = SmallVec::new();
+        let mut discard_rectangles_vk: SmallVec<[_; 2]> = SmallVec::new();
 
         if let Some(discard_rectangle_state) = discard_rectangle_state {
             let DiscardRectangleState {
@@ -1055,26 +761,14 @@ impl GraphicsPipeline {
                 _ne: _,
             } = discard_rectangle_state;
 
-            let discard_rectangle_count = match rectangles {
-                PartialStateMode::Fixed(rectangles) => {
-                    dynamic_state.insert(DynamicState::DiscardRectangle, false);
-                    discard_rectangles.extend(rectangles.iter().map(|rect| rect.into()));
-
-                    discard_rectangles.len() as u32
-                }
-                PartialStateMode::Dynamic(count) => {
-                    dynamic_state.insert(DynamicState::DiscardRectangle, true);
-
-                    *count
-                }
-            };
+            discard_rectangles_vk.extend(rectangles.iter().map(|rect| rect.into()));
 
             let _ = discard_rectangle_state_vk.insert(
                 ash::vk::PipelineDiscardRectangleStateCreateInfoEXT {
                     flags: ash::vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty(),
                     discard_rectangle_mode: (*mode).into(),
-                    discard_rectangle_count,
-                    p_discard_rectangles: discard_rectangles.as_ptr(),
+                    discard_rectangle_count: discard_rectangles_vk.len() as u32,
+                    p_discard_rectangles: discard_rectangles_vk.as_ptr(),
                     ..Default::default()
                 },
             );
@@ -1200,6 +894,7 @@ impl GraphicsPipeline {
             multisample_state,
             depth_stencil_state,
             color_blend_state,
+            dynamic_state,
 
             layout,
             subpass,
@@ -1266,350 +961,68 @@ impl GraphicsPipeline {
             .map(|x| x + 1)
             .unwrap_or(0);
 
-        let mut dynamic_state: HashMap<DynamicState, bool> = HashMap::default();
+        let mut fixed_state: HashSet<DynamicState> = Default::default();
 
-        if vertex_input_state.is_some() {
-            dynamic_state.insert(DynamicState::VertexInput, false);
+        if input_assembly_state.is_some() {
+            fixed_state.extend([
+                DynamicState::PrimitiveTopology,
+                DynamicState::PrimitiveRestartEnable,
+            ]);
         }
 
-        if let Some(input_assembly_state) = &input_assembly_state {
-            let &InputAssemblyState {
-                topology,
-                primitive_restart_enable,
-                _ne: _,
-            } = input_assembly_state;
-
-            match topology {
-                PartialStateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::PrimitiveTopology, false);
-                }
-                PartialStateMode::Dynamic(_) => {
-                    dynamic_state.insert(DynamicState::PrimitiveTopology, true);
-                }
-            }
-
-            match primitive_restart_enable {
-                StateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::PrimitiveRestartEnable, false);
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::PrimitiveRestartEnable, true);
-                }
-            }
+        if tessellation_state.is_some() {
+            fixed_state.extend([DynamicState::PatchControlPoints]);
         }
 
-        if let Some(tessellation_state) = &tessellation_state {
-            let &TessellationState {
-                patch_control_points,
-                domain_origin: _,
-                _ne: _,
-            } = tessellation_state;
-
-            match patch_control_points {
-                StateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::PatchControlPoints, false);
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::PatchControlPoints, true);
-                }
-            }
+        if viewport_state.is_some() {
+            fixed_state.extend([
+                DynamicState::Viewport,
+                DynamicState::ViewportWithCount,
+                DynamicState::Scissor,
+                DynamicState::ScissorWithCount,
+            ]);
         }
 
-        if let Some(viewport_state) = &viewport_state {
-            let ViewportState {
-                viewports,
-                scissors,
-                _ne: _,
-            } = viewport_state;
-
-            match viewports {
-                PartialStateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::Viewport, false);
-                    dynamic_state.insert(DynamicState::ViewportWithCount, false);
-                }
-                PartialStateMode::Dynamic(StateMode::Fixed(_)) => {
-                    dynamic_state.insert(DynamicState::Viewport, true);
-                    dynamic_state.insert(DynamicState::ViewportWithCount, false);
-                }
-                PartialStateMode::Dynamic(StateMode::Dynamic) => {
-                    dynamic_state.insert(DynamicState::Viewport, true);
-                    dynamic_state.insert(DynamicState::ViewportWithCount, true);
-                }
-            }
-
-            match scissors {
-                PartialStateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::Scissor, false);
-                    dynamic_state.insert(DynamicState::ScissorWithCount, false);
-                }
-                PartialStateMode::Dynamic(StateMode::Fixed(_)) => {
-                    dynamic_state.insert(DynamicState::Scissor, true);
-                    dynamic_state.insert(DynamicState::ScissorWithCount, false);
-                }
-                PartialStateMode::Dynamic(StateMode::Dynamic) => {
-                    dynamic_state.insert(DynamicState::Scissor, true);
-                    dynamic_state.insert(DynamicState::ScissorWithCount, true);
-                }
-            }
+        if rasterization_state.is_some() {
+            fixed_state.extend([
+                DynamicState::RasterizerDiscardEnable,
+                DynamicState::CullMode,
+                DynamicState::FrontFace,
+                DynamicState::DepthBiasEnable,
+                DynamicState::DepthBias,
+                DynamicState::LineWidth,
+                DynamicState::LineStipple,
+            ]);
         }
 
-        if let Some(rasterization_state) = &rasterization_state {
-            let &RasterizationState {
-                rasterizer_discard_enable,
-                cull_mode,
-                front_face,
-                depth_bias,
-                line_width,
-                line_stipple,
-                ..
-            } = rasterization_state;
-
-            match rasterizer_discard_enable {
-                StateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::RasterizerDiscardEnable, false);
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::RasterizerDiscardEnable, true);
-                }
-            }
-
-            match cull_mode {
-                StateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::CullMode, false);
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::CullMode, true);
-                }
-            }
-
-            match front_face {
-                StateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::FrontFace, false);
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::FrontFace, true);
-                }
-            }
-
-            if let Some(depth_bias_state) = depth_bias {
-                if depth_bias_state.enable_dynamic {
-                    dynamic_state.insert(DynamicState::DepthBiasEnable, true);
-                } else {
-                    dynamic_state.insert(DynamicState::DepthBiasEnable, false);
-                }
-
-                match depth_bias_state.bias {
-                    StateMode::Fixed(_) => {
-                        dynamic_state.insert(DynamicState::DepthBias, false);
-                    }
-                    StateMode::Dynamic => {
-                        dynamic_state.insert(DynamicState::DepthBias, true);
-                    }
-                }
-            }
-
-            match line_width {
-                StateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::LineWidth, false);
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::LineWidth, true);
-                }
-            }
-
-            if device.enabled_extensions().ext_line_rasterization {
-                if let Some(line_stipple) = line_stipple {
-                    match line_stipple {
-                        StateMode::Fixed(_) => {
-                            dynamic_state.insert(DynamicState::LineStipple, false);
-                        }
-                        StateMode::Dynamic => {
-                            dynamic_state.insert(DynamicState::LineStipple, true);
-                        }
-                    }
-                }
-            }
+        if depth_stencil_state.is_some() {
+            fixed_state.extend([
+                DynamicState::DepthTestEnable,
+                DynamicState::DepthWriteEnable,
+                DynamicState::DepthCompareOp,
+                DynamicState::DepthBoundsTestEnable,
+                DynamicState::DepthBounds,
+                DynamicState::StencilTestEnable,
+                DynamicState::StencilOp,
+                DynamicState::StencilCompareMask,
+                DynamicState::StencilWriteMask,
+                DynamicState::StencilReference,
+            ]);
         }
 
-        if let Some(depth_stencil_state) = &depth_stencil_state {
-            let DepthStencilState {
-                flags: _,
-                depth,
-                depth_bounds,
-                stencil,
-                _ne: _,
-            } = depth_stencil_state;
-
-            if let Some(depth_state) = depth {
-                let &DepthState {
-                    enable_dynamic,
-                    write_enable,
-                    compare_op,
-                } = depth_state;
-
-                if enable_dynamic {
-                    dynamic_state.insert(DynamicState::DepthTestEnable, true);
-                } else {
-                    dynamic_state.insert(DynamicState::DepthTestEnable, false);
-                }
-
-                match write_enable {
-                    StateMode::Fixed(_) => {
-                        dynamic_state.insert(DynamicState::DepthWriteEnable, false);
-                    }
-                    StateMode::Dynamic => {
-                        dynamic_state.insert(DynamicState::DepthWriteEnable, true);
-                    }
-                }
-
-                match compare_op {
-                    StateMode::Fixed(_) => {
-                        dynamic_state.insert(DynamicState::DepthCompareOp, false);
-                    }
-                    StateMode::Dynamic => {
-                        dynamic_state.insert(DynamicState::DepthCompareOp, true);
-                    }
-                }
-            }
-
-            if let Some(depth_bounds_state) = depth_bounds {
-                let DepthBoundsState {
-                    enable_dynamic,
-                    bounds,
-                } = depth_bounds_state;
-
-                if *enable_dynamic {
-                    dynamic_state.insert(DynamicState::DepthBoundsTestEnable, true);
-                } else {
-                    dynamic_state.insert(DynamicState::DepthBoundsTestEnable, false);
-                }
-
-                match bounds.clone() {
-                    StateMode::Fixed(_) => {
-                        dynamic_state.insert(DynamicState::DepthBounds, false);
-                    }
-                    StateMode::Dynamic => {
-                        dynamic_state.insert(DynamicState::DepthBounds, true);
-                    }
-                }
-            }
-
-            if let Some(stencil_state) = stencil {
-                let StencilState {
-                    enable_dynamic,
-                    front,
-                    back,
-                } = stencil_state;
-
-                if *enable_dynamic {
-                    dynamic_state.insert(DynamicState::StencilTestEnable, true);
-                } else {
-                    dynamic_state.insert(DynamicState::StencilTestEnable, false);
-                }
-
-                match (front.ops, back.ops) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilOp, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilOp, true);
-                    }
-                    _ => unreachable!(),
-                }
-
-                match (front.compare_mask, back.compare_mask) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilCompareMask, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilCompareMask, true);
-                    }
-                    _ => unreachable!(),
-                }
-
-                match (front.write_mask, back.write_mask) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilWriteMask, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilWriteMask, true);
-                    }
-                    _ => unreachable!(),
-                }
-
-                match (front.reference, back.reference) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
-                        dynamic_state.insert(DynamicState::StencilReference, false);
-                    }
-                    (StateMode::Dynamic, StateMode::Dynamic) => {
-                        dynamic_state.insert(DynamicState::StencilReference, true);
-                    }
-                    _ => unreachable!(),
-                }
-            }
+        if color_blend_state.is_some() {
+            fixed_state.extend([
+                DynamicState::LogicOp,
+                DynamicState::BlendConstants,
+                DynamicState::ColorWriteEnable,
+            ]);
         }
 
-        if let Some(color_blend_state) = &color_blend_state {
-            let &ColorBlendState {
-                flags: _,
-                logic_op,
-                ref attachments,
-                blend_constants,
-                _ne: _,
-            } = color_blend_state;
-
-            if let Some(logic_op) = logic_op {
-                match logic_op {
-                    StateMode::Fixed(_) => {
-                        dynamic_state.insert(DynamicState::LogicOp, false);
-                    }
-                    StateMode::Dynamic => {
-                        dynamic_state.insert(DynamicState::LogicOp, true);
-                    }
-                }
-            }
-
-            match blend_constants {
-                StateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::BlendConstants, false);
-                }
-                StateMode::Dynamic => {
-                    dynamic_state.insert(DynamicState::BlendConstants, true);
-                }
-            }
-
-            if device.enabled_extensions().ext_color_write_enable {
-                for color_blend_attachment_state in attachments {
-                    let &ColorBlendAttachmentState {
-                        blend: _,
-                        color_write_mask: _,
-                        color_write_enable,
-                    } = color_blend_attachment_state;
-
-                    match color_write_enable {
-                        StateMode::Fixed(_) => {
-                            dynamic_state.insert(DynamicState::ColorWriteEnable, false);
-                        }
-                        StateMode::Dynamic => {
-                            dynamic_state.insert(DynamicState::ColorWriteEnable, true);
-                        }
-                    }
-                }
-            }
+        if discard_rectangle_state.is_some() {
+            fixed_state.extend([DynamicState::DiscardRectangle]);
         }
 
-        if let Some(discard_rectangle_state) = &discard_rectangle_state {
-            let DiscardRectangleState { rectangles, .. } = discard_rectangle_state;
-
-            match rectangles {
-                PartialStateMode::Fixed(_) => {
-                    dynamic_state.insert(DynamicState::DiscardRectangle, false);
-                }
-                PartialStateMode::Dynamic(_) => {
-                    dynamic_state.insert(DynamicState::DiscardRectangle, true);
-                }
-            }
-        }
+        fixed_state.retain(|state| !dynamic_state.contains(state));
 
         Arc::new(Self {
             handle,
@@ -1630,11 +1043,13 @@ impl GraphicsPipeline {
             multisample_state,
             depth_stencil_state,
             color_blend_state,
+            dynamic_state,
             layout: DeviceOwnedDebugWrapper(layout),
             subpass: subpass.unwrap(),
-            dynamic_state,
 
             discard_rectangle_state,
+
+            fixed_state,
         })
     }
 
@@ -1716,19 +1131,10 @@ impl GraphicsPipeline {
         &self.subpass
     }
 
-    /// Returns whether a particular state is must be dynamically set.
-    ///
-    /// `None` is returned if the pipeline does not contain this state. Previously set dynamic
-    /// state is not disturbed when binding it.
+    /// Returns the dynamic states of the pipeline.
     #[inline]
-    pub fn dynamic_state(&self, state: DynamicState) -> Option<bool> {
-        self.dynamic_state.get(&state).copied()
-    }
-
-    /// Returns all potentially dynamic states in the pipeline, and whether they are dynamic or not.
-    #[inline]
-    pub fn dynamic_states(&self) -> impl ExactSizeIterator<Item = (DynamicState, bool)> + '_ {
-        self.dynamic_state.iter().map(|(k, v)| (*k, *v))
+    pub fn dynamic_state(&self) -> &HashSet<DynamicState> {
+        &self.dynamic_state
     }
 
     /// Returns the discard rectangle state used to create this pipeline.
@@ -1741,6 +1147,12 @@ impl GraphicsPipeline {
     #[inline]
     pub fn fragment_tests_stages(&self) -> Option<FragmentTestsStages> {
         self.fragment_tests_stages
+    }
+
+    /// Returns the dynamic states that are not dynamic in this pipeline.
+    #[inline]
+    pub(crate) fn fixed_state(&self) -> &HashSet<DynamicState> {
+        &self.fixed_state
     }
 }
 
@@ -1877,6 +1289,11 @@ pub struct GraphicsPipelineCreateInfo {
     /// [rasterizer discarding]: RasterizationState::rasterizer_discard_enable
     pub color_blend_state: Option<ColorBlendState>,
 
+    /// The state(s) that will be set dynamically when recording a command buffer.
+    ///
+    /// The default value is empty.
+    pub dynamic_state: HashSet<DynamicState>,
+
     /// The pipeline layout to use for the pipeline.
     ///
     /// There is no default value.
@@ -1915,6 +1332,7 @@ impl GraphicsPipelineCreateInfo {
         Self {
             flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
+
             vertex_input_state: None,
             input_assembly_state: None,
             tessellation_state: None,
@@ -1923,9 +1341,12 @@ impl GraphicsPipelineCreateInfo {
             multisample_state: None,
             depth_stencil_state: None,
             color_blend_state: None,
+            dynamic_state: Default::default(),
+
             layout,
             subpass: None,
             base_pipeline: None,
+
             discard_rectangle_state: None,
             _ne: crate::NonExhaustive(()),
         }
@@ -1944,6 +1365,7 @@ impl GraphicsPipelineCreateInfo {
             ref multisample_state,
             ref depth_stencil_state,
             ref color_blend_state,
+            ref dynamic_state,
 
             ref layout,
             ref subpass,
@@ -2101,17 +1523,17 @@ impl GraphicsPipelineCreateInfo {
                 )
             });
         let need_fragment_shader_state = need_pre_rasterization_shader_state
-            && rasterization_state
+            && (!rasterization_state
                 .as_ref()
                 .unwrap()
                 .rasterizer_discard_enable
-                != StateMode::Fixed(true);
+                || dynamic_state.contains(&DynamicState::RasterizerDiscardEnable));
         let need_fragment_output_state = need_pre_rasterization_shader_state
-            && rasterization_state
+            && (!rasterization_state
                 .as_ref()
                 .unwrap()
                 .rasterizer_discard_enable
-                != StateMode::Fixed(true);
+                || dynamic_state.contains(&DynamicState::RasterizerDiscardEnable));
 
         match (vertex_stage.is_some(), need_pre_rasterization_shader_state) {
             (true, false) => {
@@ -2310,11 +1732,11 @@ impl GraphicsPipelineCreateInfo {
         match (
             viewport_state.is_some(),
             need_pre_rasterization_shader_state
-                && rasterization_state
+                && (!rasterization_state
                     .as_ref()
                     .unwrap()
                     .rasterizer_discard_enable
-                    != StateMode::Fixed(true),
+                    || dynamic_state.contains(&DynamicState::RasterizerDiscardEnable)),
         ) {
             (true, false) => {
                 return Err(Box::new(ValidationError {
@@ -2598,6 +2020,75 @@ impl GraphicsPipelineCreateInfo {
                 .validate(device)
                 .map_err(|err| err.add_context("viewport_state"))?;
 
+            let ViewportState {
+                ref viewports,
+                ref scissors,
+                _ne: _,
+            } = viewport_state;
+
+            if dynamic_state.contains(&DynamicState::ViewportWithCount) {
+                if !viewports.is_empty() {
+                    return Err(Box::new(ValidationError {
+                        problem: "`dynamic_state` contains \
+                            `DynamicState::ViewportWithCount`, but \
+                            `viewport_state.viewports` is not empty"
+                            .into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
+                        ..Default::default()
+                    }));
+                }
+            } else {
+                if viewports.is_empty() {
+                    return Err(Box::new(ValidationError {
+                        problem: "`dynamic_state` does not contain \
+                            `DynamicState::ViewportWithCount`, but \
+                            `viewport_state.viewports` is empty"
+                            .into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if dynamic_state.contains(&DynamicState::ScissorWithCount) {
+                if !scissors.is_empty() {
+                    return Err(Box::new(ValidationError {
+                        problem: "`dynamic_state` contains \
+                            `DynamicState::ScissorWithCount`, but \
+                            `viewport_state.scissors` is not empty"
+                            .into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
+                        ..Default::default()
+                    }));
+                }
+            } else {
+                if scissors.is_empty() {
+                    return Err(Box::new(ValidationError {
+                        problem: "`dynamic_state` does not contain \
+                            `DynamicState::ScissorWithCount`, but \
+                            `viewport_state.scissors` is empty"
+                            .into(),
+                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if !dynamic_state.contains(&DynamicState::ViewportWithCount)
+                && !dynamic_state.contains(&DynamicState::ScissorWithCount)
+                && viewports.len() != scissors.len()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`dynamic_state` does not contain both \
+                        `DynamicState::ViewportWithCount` and `DynamicState::ScissorWithCount`, \
+                        and the lengths of `viewport_state.viewports` and \
+                        `viewport_state.scissors` are not equal"
+                        .into(),
+                    vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04134"],
+                    ..Default::default()
+                }));
+            }
+
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-primitiveFragmentShadingRateWithMultipleViewports-04503
             // VUID-VkGraphicsPipelineCreateInfo-primitiveFragmentShadingRateWithMultipleViewports-04504
@@ -2607,6 +2098,75 @@ impl GraphicsPipelineCreateInfo {
             rasterization_state
                 .validate(device)
                 .map_err(|err| err.add_context("rasterization_state"))?;
+
+            let &RasterizationState {
+                depth_clamp_enable: _,
+                rasterizer_discard_enable: _,
+                polygon_mode: _,
+                cull_mode: _,
+                front_face: _,
+                ref depth_bias,
+                line_width,
+                line_rasterization_mode: _,
+                line_stipple,
+                _ne: _,
+            } = rasterization_state;
+
+            if !dynamic_state.contains(&DynamicState::LineWidth)
+                && line_width != 1.0
+                && !device.enabled_features().wide_lines
+            {
+                return Err(Box::new(ValidationError {
+                    context: "rasterization_state.line_width".into(),
+                    problem: "is not 1.0".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "wide_lines",
+                    )])]),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00749"],
+                }));
+            }
+
+            if let Some(depth_bias_state) = depth_bias {
+                let &DepthBiasState {
+                    constant_factor: _,
+                    clamp,
+                    slope_factor: _,
+                } = depth_bias_state;
+
+                if !dynamic_state.contains(&DynamicState::DepthBias)
+                    && clamp != 0.0
+                    && !device.enabled_features().depth_bias_clamp
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "rasterization_state.depth_bias.clamp".into(),
+                        problem: "is not 0.0".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "depth_bias_clamp",
+                        )])]),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00754"],
+                    }));
+                }
+            } else if dynamic_state.contains(&DynamicState::DepthBiasEnable) {
+                return Err(Box::new(ValidationError {
+                    problem: "`dynamic_state` contains `DynamicState::DepthBiasEnable`, but \
+                        `rasterization_state.depth_bias` is `None`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+
+            if let Some(line_stipple) = line_stipple {
+                if !dynamic_state.contains(&DynamicState::LineStipple)
+                    && !(1..=256).contains(&line_stipple.factor)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "rasterization_state.line_stipple.factor".into(),
+                        problem: "is not between 1 and 256 inclusive".into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-stippledLineEnable-02767"],
+                        ..Default::default()
+                    }));
+                }
+            }
 
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-pStages-00740
@@ -2628,6 +2188,43 @@ impl GraphicsPipelineCreateInfo {
             depth_stencil_state
                 .validate(device)
                 .map_err(|err| err.add_context("depth_stencil_state"))?;
+
+            let &DepthStencilState {
+                flags: _,
+                ref depth,
+                ref depth_bounds,
+                ref stencil,
+                _ne: _,
+            } = depth_stencil_state;
+
+            if dynamic_state.contains(&DynamicState::DepthTestEnable) && depth.is_none() {
+                return Err(Box::new(ValidationError {
+                    problem: "`dynamic_state` contains `DynamicState::DepthTestEnable`, but \
+                        `depth_stencil_state.depth` is `None`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::DepthBoundsTestEnable)
+                && depth_bounds.is_none()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`dynamic_state` contains `DynamicState::DepthBoundsTestEnable`, but \
+                        `depth_stencil_state.depth_bounds` is `None`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::StencilTestEnable) && stencil.is_none() {
+                return Err(Box::new(ValidationError {
+                    problem: "`dynamic_state` contains `DynamicState::StencilTestEnable`, but \
+                        `depth_stencil_state.stencil` is `None`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
 
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-renderPass-06040
@@ -2757,6 +2354,13 @@ impl GraphicsPipelineCreateInfo {
                 .map_err(|err| err.add_context("discard_rectangle_state"))?;
         }
 
+        for dynamic_state in dynamic_state.iter().copied() {
+            dynamic_state.validate_device(device).map_err(|err| {
+                err.add_context("dynamic_state")
+                    .set_vuids(&["VUID-VkPipelineDynamicStateCreateInfo-pDynamicStates-parameter"])
+            })?;
+        }
+
         /*
             Checks that rely on multiple pieces of state
         */
@@ -2857,16 +2461,14 @@ impl GraphicsPipelineCreateInfo {
                 })
                 .unwrap();
 
-            if let PartialStateMode::Fixed(topology) = input_assembly_state.topology {
-                if !input.is_compatible_with(topology) {
-                    return Err(Box::new(ValidationError {
-                        problem: "`input_assembly_state.topology` is not compatible with the \
-                            input topology of the geometry shader"
-                            .into(),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00738"],
-                        ..Default::default()
-                    }));
-                }
+            if !input.is_compatible_with(input_assembly_state.topology) {
+                return Err(Box::new(ValidationError {
+                    problem: "`input_assembly_state.topology` is not compatible with the \
+                        input topology of the geometry shader"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00738"],
+                    ..Default::default()
+                }));
             }
         }
 
@@ -2898,11 +2500,7 @@ impl GraphicsPipelineCreateInfo {
         }
 
         if let (Some(input_assembly_state), Some(_)) = (input_assembly_state, tessellation_state) {
-            if !matches!(
-                input_assembly_state.topology,
-                PartialStateMode::Dynamic(PrimitiveTopologyClass::Patch)
-                    | PartialStateMode::Fixed(PrimitiveTopology::PatchList)
-            ) {
+            if input_assembly_state.topology != PrimitiveTopology::PatchList {
                 return Err(Box::new(ValidationError {
                     problem: "`stages` contains tessellation shaders, but \
                         `input_assembly_state.topology` is not `PrimitiveTopology::PatchList`"
@@ -2917,18 +2515,13 @@ impl GraphicsPipelineCreateInfo {
             (rasterization_state, depth_stencil_state)
         {
             if let Some(stencil_state) = &depth_stencil_state.stencil {
-                if let (StateMode::Fixed(front_reference), StateMode::Fixed(back_reference)) =
-                    (stencil_state.front.reference, stencil_state.back.reference)
+                if device.enabled_extensions().khr_portability_subset
+                    && !device.enabled_features().separate_stencil_mask_ref
+                    && rasterization_state.cull_mode == CullMode::None
+                    && !dynamic_state.contains(&DynamicState::StencilReference)
+                    && stencil_state.front.reference != stencil_state.back.reference
                 {
-                    if device.enabled_extensions().khr_portability_subset
-                        && !device.enabled_features().separate_stencil_mask_ref
-                        && matches!(
-                            rasterization_state.cull_mode,
-                            StateMode::Fixed(CullMode::None)
-                        )
-                        && front_reference != back_reference
-                    {
-                        return Err(Box::new(ValidationError {
+                    return Err(Box::new(ValidationError {
                             problem: "this device is a portability subset device, \
                                 `rasterization_state.cull_mode` is `CullMode::None`, and \
                                 `depth_stencil_state.stencil.front.reference` does not equal \
@@ -2939,7 +2532,6 @@ impl GraphicsPipelineCreateInfo {
                             vuids: &["VUID-VkPipelineDepthStencilStateCreateInfo-separateStencilMaskRef-04453"],
                             ..Default::default()
                         }));
-                    }
                 }
             }
         }
@@ -3002,7 +2594,9 @@ impl GraphicsPipelineCreateInfo {
                     }));
                 }
 
-                if let StateMode::Fixed(true) = depth_state.write_enable {
+                if !dynamic_state.contains(&DynamicState::DepthWriteEnable)
+                    && depth_state.write_enable
+                {
                     match subpass {
                         PipelineSubpassType::BeginRenderPass(subpass) => {
                             if !subpass

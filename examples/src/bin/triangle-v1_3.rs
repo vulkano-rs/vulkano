@@ -37,7 +37,7 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -47,7 +47,7 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{AttachmentLoadOp, AttachmentStoreOp},
     swapchain::{
@@ -449,7 +449,7 @@ fn main() {
                 input_assembly_state: Some(InputAssemblyState::default()),
                 // How primitives are transformed and clipped to fit the framebuffer.
                 // We use a resizable viewport, set to draw over the entire window.
-                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
+                viewport_state: Some(ViewportState::default()),
                 // How polygons are culled and converted into a raster of pixels.
                 // The default value does not perform any culling.
                 rasterization_state: Some(RasterizationState::default()),
@@ -458,9 +458,14 @@ fn main() {
                 multisample_state: Some(MultisampleState::default()),
                 // How pixel values are combined with the values already present in the framebuffer.
                 // The default value overwrites the old value with the new one, without any blending.
-                color_blend_state: Some(ColorBlendState::new(
+                color_blend_state: Some(ColorBlendState::default_with(
                     subpass.color_attachment_formats.len() as u32,
+                    ColorBlendAttachmentState::default(),
                 )),
+                // Dynamic states allows us to specify parts of the pipeline settings when
+                // recording the command buffer, before we perform drawing.
+                // Here, we specify that the viewport should be dynamic.
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },

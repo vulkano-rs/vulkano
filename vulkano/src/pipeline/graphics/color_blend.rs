@@ -24,9 +24,9 @@
 use crate::{
     device::Device,
     macros::{vulkan_bitflags, vulkan_enum},
-    pipeline::StateMode,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use std::iter;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
@@ -41,62 +41,92 @@ pub struct ColorBlendState {
     /// fragment in the framebuffer attachment.
     ///
     /// If set to `Some`, the [`logic_op`](crate::device::Features::logic_op) feature must be
-    /// enabled on the device. If set to `Some(Dynamic)`, then the
-    /// [`extended_dynamic_state2_logic_op`](crate::device::Features::extended_dynamic_state2_logic_op)
-    /// feature must also be enabled on the device.
-    pub logic_op: Option<StateMode<LogicOp>>,
+    /// enabled on the device.
+    ///
+    /// The default value is `None`.
+    pub logic_op: Option<LogicOp>,
 
     /// Sets the blend and output state for each color attachment. The number of elements must match
-    /// the number of color attachments in the framebuffer.
+    /// the number of color attachments in the subpass.
     ///
     /// If there are multiple elements, and the `blend` and `color_write_mask` members of each
     /// element differ, then the [`independent_blend`](crate::device::Features::independent_blend)
     /// feature must be enabled on the device.
+    ///
+    /// The default value is empty,
+    /// which must be overridden if the subpass has color attachments.
     pub attachments: Vec<ColorBlendAttachmentState>,
 
     /// The constant color to use for some of the `BlendFactor` variants.
-    pub blend_constants: StateMode<[f32; 4]>,
+    ///
+    /// The default value is `[0.0; 4]`.
+    pub blend_constants: [f32; 4],
 
     pub _ne: crate::NonExhaustive,
 }
 
+impl Default for ColorBlendState {
+    /// Returns [`ColorBlendState::new(1)`].
+    #[inline]
+    fn default() -> Self {
+        Self {
+            flags: ColorBlendStateFlags::empty(),
+            logic_op: None,
+            attachments: Vec::new(),
+            blend_constants: [0.0; 4],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 impl ColorBlendState {
+    /// Returns a default `ColorBlendState` with `count` duplicates of `attachment_state`.
+    #[inline]
+    pub fn default_with(count: u32, attachment_state: ColorBlendAttachmentState) -> Self {
+        Self {
+            attachments: iter::repeat(attachment_state)
+                .take(count as usize)
+                .collect(),
+            ..Default::default()
+        }
+    }
+
     /// Creates a `ColorBlendState` with logical operations disabled, blend constants set to zero,
     /// and `num` attachment entries that have blending disabled, and color write and all color
     /// components enabled.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn new(num: u32) -> Self {
         Self {
             flags: ColorBlendStateFlags::empty(),
             logic_op: None,
             attachments: (0..num)
-                .map(|_| ColorBlendAttachmentState {
-                    blend: None,
-                    color_write_mask: ColorComponents::all(),
-                    color_write_enable: StateMode::Fixed(true),
-                })
+                .map(|_| ColorBlendAttachmentState::default())
                 .collect(),
-            blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
+            blend_constants: [0.0; 4],
             _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Enables logical operations with the given logical operation.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn logic_op(mut self, logic_op: LogicOp) -> Self {
-        self.logic_op = Some(StateMode::Fixed(logic_op));
+        self.logic_op = Some(logic_op);
         self
     }
 
     /// Enables logical operations with a dynamic logical operation.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn logic_op_dynamic(mut self) -> Self {
-        self.logic_op = Some(StateMode::Dynamic);
+        self.logic_op = Some(LogicOp::default());
         self
     }
 
     /// Enables blending for all attachments, with the given parameters.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn blend(mut self, blend: AttachmentBlend) -> Self {
         self.attachments
             .iter_mut()
@@ -106,6 +136,7 @@ impl ColorBlendState {
 
     /// Enables blending for all attachments, with alpha blending.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn blend_alpha(mut self) -> Self {
         self.attachments
             .iter_mut()
@@ -115,6 +146,7 @@ impl ColorBlendState {
 
     /// Enables blending for all attachments, with additive blending.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn blend_additive(mut self) -> Self {
         self.attachments.iter_mut().for_each(|attachment_state| {
             attachment_state.blend = Some(AttachmentBlend::additive())
@@ -124,6 +156,7 @@ impl ColorBlendState {
 
     /// Sets the color write mask for all attachments.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn color_write_mask(mut self, color_write_mask: ColorComponents) -> Self {
         self.attachments
             .iter_mut()
@@ -133,15 +166,17 @@ impl ColorBlendState {
 
     /// Sets the blend constants.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn blend_constants(mut self, constants: [f32; 4]) -> Self {
-        self.blend_constants = StateMode::Fixed(constants);
+        self.blend_constants = constants;
         self
     }
 
     /// Sets the blend constants as dynamic.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn blend_constants_dynamic(mut self) -> Self {
-        self.blend_constants = StateMode::Dynamic;
+        self.blend_constants = Default::default();
         self
     }
 
@@ -171,25 +206,10 @@ impl ColorBlendState {
                 }));
             }
 
-            match logic_op {
-                StateMode::Fixed(logic_op) => logic_op.validate_device(device).map_err(|err| {
-                    err.add_context("logic_op").set_vuids(&[
-                        "VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00607",
-                    ])
-                })?,
-                StateMode::Dynamic => {
-                    if !device.enabled_features().extended_dynamic_state2_logic_op {
-                        return Err(Box::new(ValidationError {
-                            context: "logic_op".into(),
-                            problem: "is dynamic".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "extended_dynamic_state2_logic_op",
-                            )])]),
-                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04869"],
-                        }));
-                    }
-                }
-            }
+            logic_op.validate_device(device).map_err(|err| {
+                err.add_context("logic_op")
+                    .set_vuids(&["VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00607"])
+            })?;
         }
 
         if device.enabled_features().independent_blend {
@@ -222,14 +242,6 @@ impl ColorBlendState {
         }
 
         Ok(())
-    }
-}
-
-impl Default for ColorBlendState {
-    /// Returns [`ColorBlendState::new(1)`].
-    #[inline]
-    fn default() -> Self {
-        Self::new(1)
     }
 }
 
@@ -323,9 +335,13 @@ pub struct ColorBlendAttachmentState {
     /// The blend parameters for the attachment.
     ///
     /// If set to `None`, blending is disabled, and all incoming pixels will be used directly.
+    ///
+    /// The default value is `None`.
     pub blend: Option<AttachmentBlend>,
 
     /// Sets which components of the final pixel value are written to the attachment.
+    ///
+    /// The default value is `ColorComponents::all()`.
     pub color_write_mask: ColorComponents,
 
     /// Sets whether anything at all is written to the attachment. If enabled, the pixel data
@@ -335,7 +351,20 @@ pub struct ColorBlendAttachmentState {
     /// If set to anything other than `Fixed(true)`, the
     /// [`color_write_enable`](crate::device::Features::color_write_enable) feature must be enabled
     /// on the device.
-    pub color_write_enable: StateMode<bool>,
+    ///
+    /// The default value is `true`.
+    pub color_write_enable: bool,
+}
+
+impl Default for ColorBlendAttachmentState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            blend: None,
+            color_write_mask: ColorComponents::all(),
+            color_write_enable: true,
+        }
+    }
 }
 
 impl ColorBlendAttachmentState {
@@ -352,31 +381,15 @@ impl ColorBlendAttachmentState {
                 .map_err(|err| err.add_context("blend"))?;
         }
 
-        match color_write_enable {
-            StateMode::Fixed(enable) => {
-                if !enable && !device.enabled_features().color_write_enable {
-                    return Err(Box::new(ValidationError {
-                        context: "color_write_enable".into(),
-                        problem: "is `false`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "color_write_enable",
-                        )])]),
-                        vuids: &["VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801"],
-                    }));
-                }
-            }
-            StateMode::Dynamic => {
-                if !device.enabled_features().color_write_enable {
-                    return Err(Box::new(ValidationError {
-                        context: "color_write_enable".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "color_write_enable",
-                        )])]),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04800"],
-                    }));
-                }
-            }
+        if !color_write_enable && !device.enabled_features().color_write_enable {
+            return Err(Box::new(ValidationError {
+                context: "color_write_enable".into(),
+                problem: "is `false`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "color_write_enable",
+                )])]),
+                vuids: &["VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801"],
+            }));
         }
 
         Ok(())
@@ -387,24 +400,50 @@ impl ColorBlendAttachmentState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AttachmentBlend {
     /// The operation to apply to the source color component before applying `color_op`.
+    ///
+    /// The default value is [`BlendFactor::SrcColor`].
     pub src_color_blend_factor: BlendFactor,
 
     /// The operation to apply to the destination color component before applying `color_op`.
+    ///
+    /// The default value is [`BlendFactor::Zero`].
     pub dst_color_blend_factor: BlendFactor,
 
     /// The operation to apply between the color components of the source and destination pixels,
     /// to produce the final pixel value.
+    ///
+    /// The default value is [`BlendOp::Add`].
     pub color_blend_op: BlendOp,
 
     /// The operation to apply to the source alpha component before applying `alpha_op`.
+    ///
+    /// The default value is [`BlendFactor::SrcColor`].
     pub src_alpha_blend_factor: BlendFactor,
 
     /// The operation to apply to the destination alpha component before applying `alpha_op`.
+    ///
+    /// The default value is [`BlendFactor::Zero`].
     pub dst_alpha_blend_factor: BlendFactor,
 
     /// The operation to apply between the alpha component of the source and destination pixels,
     /// to produce the final pixel value.
+    ///
+    /// The default value is [`BlendOp::Add`].
     pub alpha_blend_op: BlendOp,
+}
+
+impl Default for AttachmentBlend {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            src_color_blend_factor: BlendFactor::SrcColor,
+            dst_color_blend_factor: BlendFactor::Zero,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::SrcColor,
+            dst_alpha_blend_factor: BlendFactor::Zero,
+            alpha_blend_op: BlendOp::Add,
+        }
+    }
 }
 
 impl AttachmentBlend {

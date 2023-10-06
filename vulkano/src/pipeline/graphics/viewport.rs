@@ -48,11 +48,7 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
 
-use crate::{
-    device::Device,
-    pipeline::{PartialStateMode, StateMode},
-    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
-};
+use crate::{device::Device, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version};
 use smallvec::{smallvec, SmallVec};
 use std::ops::RangeInclusive;
 
@@ -63,123 +59,122 @@ use std::ops::RangeInclusive;
 pub struct ViewportState {
     /// Specifies the viewport transforms.
     ///
-    /// If the value is `PartialStateMode::Dynamic`, then the viewports are set dynamically, but
-    /// the number of viewports is still fixed.
-    ///
-    /// If the value is `PartialStateMode::Dynamic(StateMode::Dynamic)`, then the number of
-    /// viewports is also dynamic. The device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
-    /// be enabled on the device.
+    /// When [`DynamicState::Viewport`] is used, the values of each viewport are ignored
+    /// and must be set dynamically, but the number of viewports is fixed and
+    /// must be matched when setting the dynamic value.
+    /// When [`DynamicState::ViewportWithCount`] is used, the number of viewports is also dynamic,
+    /// and `viewports` must be empty.
     ///
     /// If neither the number of viewports nor the number of scissors is dynamic, then the
     /// number of both must be identical.
     ///
-    /// The default value is `PartialStateMode::Fixed` with no viewports.
-    pub viewports: PartialStateMode<SmallVec<[Viewport; 1]>, StateMode<u32>>,
+    /// The default value is a single element of `Viewport::default()`.
+    ///
+    /// [`DynamicState::Viewport`]: crate::pipeline::DynamicState::Viewport
+    /// [`DynamicState::ViewportWithCount`]: crate::pipeline::DynamicState::ViewportWithCount
+    pub viewports: SmallVec<[Viewport; 1]>,
 
     /// Specifies the scissor rectangles.
     ///
-    /// If the value is `PartialStateMode::Dynamic`, then the scissors are set dynamically, but
-    /// the number of scissors is still fixed.
-    ///
-    /// If the value is `PartialStateMode::Dynamic(StateMode::Dynamic)`, then the number of
-    /// scissors is also dynamic. The device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
-    /// be enabled on the device.
+    /// When [`DynamicState::Scissor`] is used, the values of each scissor are ignored
+    /// and must be set dynamically, but the number of scissors is fixed and
+    /// must be matched when setting the dynamic value.
+    /// When [`DynamicState::ScissorWithCount`] is used, the number of scissors is also dynamic,
+    /// and `scissors` must be empty.
     ///
     /// If neither the number of viewports nor the number of scissors is dynamic, then the
     /// number of both must be identical.
     ///
-    /// The default value is `PartialStateMode::Fixed` with no scissors.
-    pub scissors: PartialStateMode<SmallVec<[Scissor; 1]>, StateMode<u32>>,
+    /// The default value is a single element of `Scissor::default()`.
+    ///
+    /// [`DynamicState::Scissor`]: crate::pipeline::DynamicState::Scissor
+    /// [`DynamicState::ScissorWithCount`]: crate::pipeline::DynamicState::ScissorWithCount
+    pub scissors: SmallVec<[Scissor; 1]>,
 
     pub _ne: crate::NonExhaustive,
 }
 
+impl Default for ViewportState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            viewports: smallvec![Viewport::default()],
+            scissors: smallvec![Scissor::default()],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 impl ViewportState {
     /// Creates a `ViewportState` with fixed state and no viewports or scissors.
+    #[deprecated(since = "0.34.0")]
     #[inline]
     pub fn new() -> Self {
         Self {
-            viewports: PartialStateMode::Fixed(SmallVec::new()),
-            scissors: PartialStateMode::Fixed(SmallVec::new()),
+            viewports: SmallVec::new(),
+            scissors: SmallVec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with fixed state from the given viewports and scissors.
+    #[deprecated(since = "0.34.0")]
     pub fn viewport_fixed_scissor_fixed(
         data: impl IntoIterator<Item = (Viewport, Scissor)>,
     ) -> Self {
         let (viewports, scissors) = data.into_iter().unzip();
         Self {
-            viewports: PartialStateMode::Fixed(viewports),
-            scissors: PartialStateMode::Fixed(scissors),
+            viewports,
+            scissors,
             _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with fixed state from the given viewports, and matching scissors
     /// that cover the whole viewport.
+    #[deprecated(since = "0.34.0")]
     pub fn viewport_fixed_scissor_irrelevant(data: impl IntoIterator<Item = Viewport>) -> Self {
         let viewports: SmallVec<_> = data.into_iter().collect();
-        let scissors = smallvec![Scissor::irrelevant(); viewports.len()];
+        let scissors = smallvec![Scissor::default(); viewports.len()];
         Self {
-            viewports: PartialStateMode::Fixed(viewports),
-            scissors: PartialStateMode::Fixed(scissors),
+            viewports,
+            scissors,
             _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with dynamic viewport, and a single scissor that always covers
     /// the whole viewport.
+    #[deprecated(since = "0.34.0", note = "Use `ViewportState::default` instead.")]
     #[inline]
     pub fn viewport_dynamic_scissor_irrelevant() -> Self {
         Self {
-            viewports: PartialStateMode::Dynamic(StateMode::Fixed(1)),
-            scissors: PartialStateMode::Fixed(smallvec![Scissor::irrelevant(); 1]),
+            viewports: smallvec![Viewport::default(); 1],
+            scissors: smallvec![Scissor::default(); 1],
             _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with dynamic viewports and scissors, but a fixed count.
+    #[deprecated(since = "0.34.0")]
     #[inline]
     pub fn viewport_dynamic_scissor_dynamic(count: u32) -> Self {
         Self {
-            viewports: PartialStateMode::Dynamic(StateMode::Fixed(count)),
-            scissors: PartialStateMode::Dynamic(StateMode::Fixed(count)),
+            viewports: smallvec![Viewport::default(); count as usize],
+            scissors: smallvec![Scissor::default(); count as usize],
             _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Creates a `ViewportState` with dynamic viewport count and scissor count.
+    #[deprecated(since = "0.34.0")]
     #[inline]
     pub fn viewport_count_dynamic_scissor_count_dynamic() -> Self {
         Self {
-            viewports: PartialStateMode::Dynamic(StateMode::Dynamic),
-            scissors: PartialStateMode::Dynamic(StateMode::Dynamic),
+            viewports: SmallVec::new(),
+            scissors: SmallVec::new(),
             _ne: crate::NonExhaustive(()),
         }
-    }
-
-    /// Returns the number of viewports and scissors.
-    ///
-    /// `None` is returned if both counts are dynamic.
-    #[inline]
-    pub(crate) fn count(&self) -> Option<u32> {
-        match &self.viewports {
-            PartialStateMode::Fixed(viewports) => return Some(viewports.len() as u32),
-            PartialStateMode::Dynamic(StateMode::Fixed(count)) => return Some(*count),
-            PartialStateMode::Dynamic(StateMode::Dynamic) => (),
-        }
-
-        match &self.scissors {
-            PartialStateMode::Fixed(scissors) => return Some(scissors.len() as u32),
-            PartialStateMode::Dynamic(StateMode::Fixed(count)) => return Some(*count),
-            PartialStateMode::Dynamic(StateMode::Dynamic) => (),
-        }
-
-        None
     }
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
@@ -191,117 +186,46 @@ impl ViewportState {
 
         let properties = device.physical_device().properties();
 
-        let viewport_count = match viewports {
-            PartialStateMode::Fixed(viewports) => {
-                if viewports.is_empty() {
-                    return Err(Box::new(ValidationError {
-                        context: "viewports".into(),
-                        problem: "is empty".into(),
-                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
-                        ..Default::default()
-                    }));
-                }
-
-                for (index, viewport) in viewports.iter().enumerate() {
-                    viewport
-                        .validate(device)
-                        .map_err(|err| err.add_context(format!("viewports[{}].0", index)))?;
-                }
-
-                viewports.len() as u32
-            }
-            PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
-                if *count == 0 {
-                    return Err(Box::new(ValidationError {
-                        context: "viewports".into(),
-                        problem: "is empty".into(),
-                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135"],
-                        ..Default::default()
-                    }));
-                }
-
-                *count
-            }
-            PartialStateMode::Dynamic(StateMode::Dynamic) => {
-                // VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135
-                0
-            }
-        };
-
-        let scissor_count = match scissors {
-            PartialStateMode::Fixed(scissors) => {
-                if scissors.is_empty() {
-                    return Err(Box::new(ValidationError {
-                        context: "scissors".into(),
-                        problem: "is empty".into(),
-                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
-                        ..Default::default()
-                    }));
-                }
-
-                for (index, scissor) in scissors.iter().enumerate() {
-                    let &Scissor { offset, extent } = scissor;
-
-                    // VUID-VkPipelineViewportStateCreateInfo-x-02821
-                    // Ensured by the use of an unsigned integer.
-
-                    if (i32::try_from(offset[0]).ok())
-                        .zip(i32::try_from(extent[0]).ok())
-                        .and_then(|(o, e)| o.checked_add(e))
-                        .is_none()
-                    {
-                        return Err(Box::new(ValidationError {
-                            context: format!("scissors[{}]", index).into(),
-                            problem: "`offset[0] + extent[0]` is greater than `i32::MAX`".into(),
-                            vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02822"],
-                            ..Default::default()
-                        }));
-                    }
-
-                    if (i32::try_from(offset[1]).ok())
-                        .zip(i32::try_from(extent[1]).ok())
-                        .and_then(|(o, e)| o.checked_add(e))
-                        .is_none()
-                    {
-                        return Err(Box::new(ValidationError {
-                            context: format!("scissors[{}]", index).into(),
-                            problem: "`offset[1] + extent[1]` is greater than `i32::MAX`".into(),
-                            vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02823"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-
-                scissors.len() as u32
-            }
-            PartialStateMode::Dynamic(StateMode::Fixed(count)) => {
-                if *count == 0 {
-                    return Err(Box::new(ValidationError {
-                        context: "scissors".into(),
-                        problem: "is empty".into(),
-                        vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136"],
-                        ..Default::default()
-                    }));
-                }
-
-                *count
-            }
-            PartialStateMode::Dynamic(StateMode::Dynamic) => {
-                // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136
-                0
-            }
-        };
-
-        if viewport_count != 0 && scissor_count != 0 && viewport_count != scissor_count {
-            return Err(Box::new(ValidationError {
-                problem: "the length of `viewports` and the length of `scissors` are not equal"
-                    .into(),
-                vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-04134"],
-                ..Default::default()
-            }));
+        for (index, viewport) in viewports.iter().enumerate() {
+            viewport
+                .validate(device)
+                .map_err(|err| err.add_context(format!("viewports[{}].0", index)))?;
         }
 
-        if viewport_count > 1 && !device.enabled_features().multi_viewport {
+        for (index, scissor) in scissors.iter().enumerate() {
+            let &Scissor { offset, extent } = scissor;
+
+            // VUID-VkPipelineViewportStateCreateInfo-x-02821
+            // Ensured by the use of an unsigned integer.
+
+            if (i32::try_from(offset[0]).ok())
+                .zip(i32::try_from(extent[0]).ok())
+                .and_then(|(o, e)| o.checked_add(e))
+                .is_none()
+            {
+                return Err(Box::new(ValidationError {
+                    context: format!("scissors[{}]", index).into(),
+                    problem: "`offset[0] + extent[0]` is greater than `i32::MAX`".into(),
+                    vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02822"],
+                    ..Default::default()
+                }));
+            }
+
+            if (i32::try_from(offset[1]).ok())
+                .zip(i32::try_from(extent[1]).ok())
+                .and_then(|(o, e)| o.checked_add(e))
+                .is_none()
+            {
+                return Err(Box::new(ValidationError {
+                    context: format!("scissors[{}]", index).into(),
+                    problem: "`offset[1] + extent[1]` is greater than `i32::MAX`".into(),
+                    vuids: &["VUID-VkPipelineViewportStateCreateInfo-offset-02823"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if viewports.len() > 1 && !device.enabled_features().multi_viewport {
             return Err(Box::new(ValidationError {
                 context: "viewports".into(),
                 problem: "the length is greater than 1".into(),
@@ -312,7 +236,7 @@ impl ViewportState {
             }));
         }
 
-        if scissor_count > 1 && !device.enabled_features().multi_viewport {
+        if scissors.len() > 1 && !device.enabled_features().multi_viewport {
             return Err(Box::new(ValidationError {
                 context: "scissors".into(),
                 problem: "the length is greater than 1".into(),
@@ -323,7 +247,7 @@ impl ViewportState {
             }));
         }
 
-        if viewport_count > properties.max_viewports {
+        if viewports.len() > properties.max_viewports as usize {
             return Err(Box::new(ValidationError {
                 context: "viewports".into(),
                 problem: "the length exceeds the `max_viewports` limit".into(),
@@ -332,7 +256,7 @@ impl ViewportState {
             }));
         }
 
-        if scissor_count > properties.max_viewports {
+        if scissors.len() > properties.max_viewports as usize {
             return Err(Box::new(ValidationError {
                 context: "scissors".into(),
                 problem: "the length exceeds the `max_viewports` limit".into(),
@@ -345,21 +269,18 @@ impl ViewportState {
     }
 }
 
-impl Default for ViewportState {
-    /// Returns [`ViewportState::new()`].
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// State of a single viewport.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Viewport {
     /// Coordinates in pixels of the top-left hand corner of the viewport.
+    ///
+    /// The default value is `[0.0; 2]`.
     pub offset: [f32; 2],
 
     /// Dimensions in pixels of the viewport.
+    ///
+    /// The default value is `[1.0; 2]`, which you probably want to override if you are not
+    /// using dynamic state.
     pub extent: [f32; 2],
 
     /// Minimum and maximum values of the depth.
@@ -369,7 +290,20 @@ pub struct Viewport {
     ///
     /// This is equivalents to `glDepthRange` in OpenGL, except that OpenGL uses the Z coordinate
     /// range from `-1.0` to `1.0` instead.
+    ///
+    /// The default value is `0.0..=1.0`.
     pub depth_range: RangeInclusive<f32>,
+}
+
+impl Default for Viewport {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            offset: [0.0; 2],
+            extent: [1.0; 2],
+            depth_range: 0.0..=1.0,
+        }
+    }
 }
 
 impl Viewport {
@@ -525,28 +459,33 @@ impl From<&Viewport> for ash::vk::Viewport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Scissor {
     /// Coordinates of the top-left hand corner of the box.
+    ///
+    /// The default value is `[0; 2]`.
     pub offset: [u32; 2],
 
     /// Dimensions of the box.
+    ///
+    /// The default value is `[i32::MAX; 2]`.
     pub extent: [u32; 2],
-}
-
-impl Scissor {
-    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire
-    /// framebuffer no matter its size.
-    #[inline]
-    pub fn irrelevant() -> Scissor {
-        Scissor {
-            offset: [0, 0],
-            extent: [0x7fffffff, 0x7fffffff],
-        }
-    }
 }
 
 impl Default for Scissor {
     #[inline]
     fn default() -> Scissor {
-        Scissor::irrelevant()
+        Self {
+            offset: [0; 2],
+            extent: [i32::MAX as u32; 2],
+        }
+    }
+}
+
+impl Scissor {
+    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire
+    /// framebuffer no matter its size.
+    #[deprecated(since = "0.34.0", note = "Use `Scissor::default` instead.")]
+    #[inline]
+    pub fn irrelevant() -> Scissor {
+        Self::default()
     }
 }
 
