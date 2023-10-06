@@ -620,7 +620,14 @@ impl Swapchain {
         let surface_present_modes: SmallVec<[_; PresentMode::COUNT]> = unsafe {
             device
                 .physical_device()
-                .surface_present_modes_unchecked(surface)
+                .surface_present_modes_unchecked(
+                    surface,
+                    SurfaceInfo {
+                        full_screen_exclusive,
+                        win32_monitor,
+                        ..Default::default()
+                    },
+                )
                 .map_err(|_err| {
                     Box::new(ValidationError {
                         problem: "`PhysicalDevice::surface_present_modes` \
