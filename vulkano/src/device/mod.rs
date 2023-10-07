@@ -140,6 +140,7 @@ use std::{
 };
 
 pub mod physical;
+pub mod private_data;
 pub(crate) mod properties;
 mod queue;
 
@@ -198,6 +199,7 @@ impl Device {
             enabled_extensions: _,
             enabled_features: _,
             ref physical_devices,
+            private_data_slot_request_count: _,
             _ne: _,
         } = create_info;
 
@@ -283,6 +285,7 @@ impl Device {
             ref enabled_extensions,
             ref enabled_features,
             ref physical_devices,
+            private_data_slot_request_count,
             _ne: _,
         } = &create_info;
 
@@ -361,6 +364,18 @@ impl Device {
             create_info_vk.p_next = next as *mut _ as *mut _;
         }
 
+        let mut private_data_create_info_vk = None;
+
+        if private_data_slot_request_count != 0 {
+            let next = private_data_create_info_vk.insert(ash::vk::DevicePrivateDataCreateInfo {
+                private_data_slot_request_count,
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *mut _ as *mut _;
+        }
+
         // VUID-VkDeviceCreateInfo-pNext-00373
         if has_khr_get_physical_device_properties2 {
             create_info_vk.p_next = features_ffi.head_as_ref() as *const _ as _;
@@ -401,6 +416,7 @@ impl Device {
             enabled_features,
             enabled_extensions,
             physical_devices,
+            private_data_slot_request_count: _,
             _ne: _,
         } = create_info;
 
@@ -1208,6 +1224,20 @@ pub struct DeviceCreateInfo {
     /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group
     pub physical_devices: SmallVec<[Arc<PhysicalDevice>; 2]>,
 
+    /// The number of [private data slots] to reserve when creating the device.
+    ///
+    /// This is purely an optimization, and it is not necessary to do this in order to use private
+    /// data slots, but it may improve performance.
+    ///
+    /// If not zero, the physical device API version must be at least 1.3, or `enabled_extensions`
+    /// must contain [`ext_private_data`].
+    ///
+    /// The default value is `0`.
+    ///
+    /// [private data slots]: self::private_data
+    /// [`ext_private_data`]: DeviceExtensions::ext_private_data
+    pub private_data_slot_request_count: u32,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1219,6 +1249,7 @@ impl Default for DeviceCreateInfo {
             enabled_extensions: DeviceExtensions::empty(),
             enabled_features: Features::empty(),
             physical_devices: SmallVec::new(),
+            private_data_slot_request_count: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1234,6 +1265,7 @@ impl DeviceCreateInfo {
             ref enabled_extensions,
             ref enabled_features,
             ref physical_devices,
+            private_data_slot_request_count,
             _ne: _,
         } = self;
 
@@ -1523,6 +1555,21 @@ impl DeviceCreateInfo {
                     ..Default::default()
                 }));
             }
+        }
+
+        if private_data_slot_request_count != 0
+            && !(physical_device.api_version() >= Version::V1_3
+                || enabled_extensions.ext_private_data)
+        {
+            return Err(Box::new(ValidationError {
+                context: "private_data_slot_request_count".into(),
+                problem: "is not zero".into(),
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("ext_private_data")]),
+                ]),
+                ..Default::default()
+            }));
         }
 
         Ok(())
