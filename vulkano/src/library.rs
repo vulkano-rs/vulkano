@@ -211,7 +211,7 @@ impl VulkanLibrary {
     /// Returns the list of layers that are available when creating an instance.
     ///
     /// On success, this function returns an iterator that produces
-    /// [`LayerProperties`](crate::instance::LayerProperties) objects. In order to enable a layer,
+    /// [`LayerProperties`] objects. In order to enable a layer,
     /// you need to pass its name (returned by `LayerProperties::name()`) when creating the
     /// [`Instance`](crate::instance::Instance).
     ///

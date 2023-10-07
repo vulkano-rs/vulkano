@@ -170,18 +170,23 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 Some(quote! { Self::#name => &[#(Self::#planes),*], })
             }
         });
-    let texels_per_block_items = members.iter().filter_map(
-        |FormatMember {
-             name,
-             texels_per_block,
-             ..
-         }| {
-            (*texels_per_block != 1).then(|| {
+    let texels_per_block_items = members
+        .iter()
+        .filter(
+            |&FormatMember {
+                 texels_per_block, ..
+             }| (*texels_per_block != 1),
+        )
+        .map(
+            |FormatMember {
+                 name,
+                 texels_per_block,
+                 ..
+             }| {
                 let texels_per_block = Literal::u8_unsuffixed(*texels_per_block);
                 quote! { Self::#name => #texels_per_block, }
-            })
-        },
-    );
+            },
+        );
     let numeric_format_color_items = members.iter().filter_map(
         |FormatMember {
              name,

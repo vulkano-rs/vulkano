@@ -95,16 +95,26 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
          }| {
             let name_string = name.to_string();
 
-            let dependency_check_items = requires_all_of.iter().filter_map(
-                |RequiresOneOf {
-                     api_version,
-                     device_extensions,
-                     instance_extensions,
-                     features: _,
-                 }| {
-                    (device_extensions.is_empty()
-                        && (api_version.is_some() || !instance_extensions.is_empty()))
-                    .then(|| {
+            let dependency_check_items = requires_all_of
+                .iter()
+                .filter(
+                    |&RequiresOneOf {
+                         api_version,
+                         device_extensions,
+                         instance_extensions,
+                         features: _,
+                     }| {
+                        device_extensions.is_empty()
+                            && (api_version.is_some() || !instance_extensions.is_empty())
+                    },
+                )
+                .map(
+                    |RequiresOneOf {
+                         api_version,
+                         device_extensions: _,
+                         instance_extensions,
+                         features: _,
+                     }| {
                         let condition_items = (api_version.iter().map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
                             quote! { api_version >= crate::Version::#version }
@@ -141,9 +151,8 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                                 }));
                             }
                         }
-                    })
-                },
-            );
+                    },
+                );
             let problem = format!(
                 "contains `{}`, but this extension is not supported by the physical device",
                 name_string,
@@ -164,21 +173,38 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         },
     );
 
-    let enable_dependencies_items = members.iter().filter_map(
-        |ExtensionsMember {
-             name,
-             requires_all_of,
-             ..
-         }| {
-            (!requires_all_of.is_empty()).then(|| {
-                let requires_all_of_items = requires_all_of.iter().filter_map(
-                    |RequiresOneOf {
-                         api_version,
-                         device_extensions,
-                         instance_extensions: _,
-                         features: _,
-                     }| {
-                        (!device_extensions.is_empty()).then(|| {
+    let enable_dependencies_items = members
+        .iter()
+        .filter(
+            |&ExtensionsMember {
+                 name: _,
+                 requires_all_of,
+                 ..
+             }| (!requires_all_of.is_empty()),
+        )
+        .map(
+            |ExtensionsMember {
+                 name,
+                 requires_all_of,
+                 ..
+             }| {
+                let requires_all_of_items = requires_all_of
+                    .iter()
+                    .filter(
+                        |&RequiresOneOf {
+                             api_version: _,
+                             device_extensions,
+                             instance_extensions: _,
+                             features: _,
+                         }| (!device_extensions.is_empty()),
+                    )
+                    .map(
+                        |RequiresOneOf {
+                             api_version,
+                             device_extensions,
+                             instance_extensions: _,
+                             features: _,
+                         }| {
                             let condition_items = api_version
                                 .iter()
                                 .map(|(major, minor)| {
@@ -226,18 +252,16 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                                     }
                                 }
                             }
-                        })
-                    },
-                );
+                        },
+                    );
 
                 quote! {
                     if self.#name {
                         #(#requires_all_of_items)*
                     }
                 }
-            })
-        },
-    );
+            },
+        );
 
     quote! {
         #common
@@ -325,21 +349,38 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         },
     );
 
-    let enable_dependencies_items = members.iter().filter_map(
-        |ExtensionsMember {
-             name,
-             requires_all_of,
-             ..
-         }| {
-            (!requires_all_of.is_empty()).then(|| {
-                let requires_all_of_items = requires_all_of.iter().filter_map(
-                    |RequiresOneOf {
-                         api_version,
-                         device_extensions: _,
-                         instance_extensions,
-                         features: _,
-                     }| {
-                        (!instance_extensions.is_empty()).then(|| {
+    let enable_dependencies_items = members
+        .iter()
+        .filter(
+            |&ExtensionsMember {
+                 name: _,
+                 requires_all_of,
+                 ..
+             }| (!requires_all_of.is_empty()),
+        )
+        .map(
+            |ExtensionsMember {
+                 name,
+                 requires_all_of,
+                 ..
+             }| {
+                let requires_all_of_items = requires_all_of
+                    .iter()
+                    .filter(
+                        |&RequiresOneOf {
+                             api_version: _,
+                             device_extensions: _,
+                             instance_extensions,
+                             features: _,
+                         }| (!instance_extensions.is_empty()),
+                    )
+                    .map(
+                        |RequiresOneOf {
+                             api_version,
+                             device_extensions: _,
+                             instance_extensions,
+                             features: _,
+                         }| {
                             let condition_items = api_version
                                 .iter()
                                 .map(|(major, minor)| {
@@ -387,18 +428,16 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                                     }
                                 }
                             }
-                        })
-                    },
-                );
+                        },
+                    );
 
                 quote! {
                     if self.#name {
                         #(#requires_all_of_items)*
                     }
                 }
-            })
-        },
-    );
+            },
+        );
 
     quote! {
         #common

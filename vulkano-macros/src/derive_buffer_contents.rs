@@ -23,11 +23,8 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
     if !ast
         .attrs
         .iter()
-        .filter_map(|attr| {
-            attr.path
-                .is_ident("repr")
-                .then(|| attr.parse_meta().unwrap())
-        })
+        .filter(|&attr| attr.path.is_ident("repr"))
+        .map(|attr| attr.parse_meta().unwrap())
         .any(|meta| match meta {
             Meta::List(MetaList { nested, .. }) => {
                 nested.iter().any(|nested_meta| match nested_meta {

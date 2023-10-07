@@ -50,7 +50,7 @@ pub struct VulkanoWindowRenderer {
 impl VulkanoWindowRenderer {
     /// Creates a new [`VulkanoWindowRenderer`] which is used to orchestrate your rendering with
     /// Vulkano. Pass [`WindowDescriptor`] and optionally a function modifying the
-    /// [`SwapchainCreateInfo`](vulkano::swapchain::SwapchainCreateInfo) parameters.
+    /// [`SwapchainCreateInfo`] parameters.
     pub fn new(
         vulkano_context: &VulkanoContext,
         window: winit::window::Window,
@@ -254,7 +254,7 @@ impl VulkanoWindowRenderer {
     }
 
     /// Begin your rendering by calling `acquire`.
-    /// Returns a [`GpuFuture`](vulkano::sync::GpuFuture) representing the time after which the
+    /// Returns a [`GpuFuture`] representing the time after which the
     /// swapchain image has been acquired and previous frame ended.
     /// Execute your command buffers after calling this function and finish rendering by calling
     /// [`VulkanoWindowRenderer::present`].
