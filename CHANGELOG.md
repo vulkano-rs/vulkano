@@ -27,6 +27,7 @@ Changes to pipeline construction:
 - `Viewport::depth_range` is now an inclusive range.
 - All fields of `AttachmentBlend` are renamed to match Vulkan.
 - Added a `_ne` field to all pipeline state create info structs, as they should have had all along.
+- Dynamic state is now specified with the `GraphicsPipelineCreateInfo::dynamic_state` field.
 
 Changes to images:
 - There is now only the single type `Image` to represent images. `ImageAccess`, `ImageInner`, `AttachmentImage`, `ImmutableImage`, `StorageImage` and `SwapchainImage` were removed.
