@@ -97,8 +97,8 @@ use crate::{
     format::{Format, FormatFeatures},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    DeviceSize, NonZeroDeviceSize, Packed24_8, Requires, RequiresAllOf, RequiresOneOf, Validated,
-    ValidationError, VulkanError, VulkanObject,
+    DeviceAddress, DeviceSize, NonNullDeviceAddress, Packed24_8, Requires, RequiresAllOf,
+    RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use bytemuck::{Pod, Zeroable};
 use std::{fmt::Debug, hash::Hash, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
@@ -264,7 +264,7 @@ impl AccelerationStructure {
     ///
     /// The device address of the acceleration structure may be different from the device address
     /// of the underlying buffer.
-    pub fn device_address(&self) -> NonZeroDeviceSize {
+    pub fn device_address(&self) -> NonNullDeviceAddress {
         let info_vk = ash::vk::AccelerationStructureDeviceAddressInfoKHR {
             acceleration_structure: self.handle,
             ..Default::default()
@@ -277,7 +277,7 @@ impl AccelerationStructure {
             )
         };
 
-        NonZeroDeviceSize::new(ptr).unwrap()
+        NonNullDeviceAddress::new(ptr).unwrap()
     }
 }
 
@@ -1277,7 +1277,7 @@ pub struct AccelerationStructureInstance {
     /// The device address of the bottom-level acceleration structure in this instance.
     ///
     /// The default value is 0 (null).
-    pub acceleration_structure_reference: DeviceSize,
+    pub acceleration_structure_reference: DeviceAddress,
 }
 
 impl Default for AccelerationStructureInstance {
