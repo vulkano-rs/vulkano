@@ -172,6 +172,7 @@ Changes to the `khr_display` extension:
 - Added `ShaderModule::single_entry_point_with_execution`.
 - Added `GenericMemoryAllocatorCreateInfo::memory_type_bits` and `AllocationCreateInfo::memory_type_bits`.
 - Vulkano-shaders: support for specialization-constant-sized arrays in structs (they are generated with the size specified as fallback in the specialization constant initializer).
+- Added the `DeviceAddress` and `NonNullDeviceAddress` types to the crate root.
 
 ### Bugs fixed
 
@@ -189,6 +190,7 @@ Changes to the `khr_display` extension:
 - Fixed a bug in `GenericMemoryAllocator::allocate`, where the root allocations weren't created with the configured `AllocationType`.
 - Specialization constants are now applied to the reflected SPIR-V code before any other reflection is performed.
 - Fragment shaders cannot use `dual_src_blend` device feature due to interface errors.
+- Vulkano-shaders: handle pointers correctly when they appear in composite types.
 
 # Version 0.33.0 (2023-04-01)
 
