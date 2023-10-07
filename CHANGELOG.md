@@ -171,6 +171,7 @@ Changes to the `khr_display` extension:
 - Added `ShaderModule::single_entry_point()` which may replace `entry_point("main")` calls in common setups.
 - Added `ShaderModule::single_entry_point_with_execution`.
 - Added `GenericMemoryAllocatorCreateInfo::memory_type_bits` and `AllocationCreateInfo::memory_type_bits`.
+- Vulkano-shaders: support for specialization-constant-sized arrays in structs (they are generated with the size specified as fallback in the specialization constant initializer).
 
 ### Bugs fixed
 

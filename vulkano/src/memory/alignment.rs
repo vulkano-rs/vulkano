@@ -156,7 +156,7 @@ impl Hash for DeviceAlignment {
 impl PartialOrd for DeviceAlignment {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.as_nonzero().partial_cmp(&other.as_nonzero())
+        Some(self.cmp(other))
     }
 }
 
