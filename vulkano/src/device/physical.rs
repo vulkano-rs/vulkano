@@ -1973,15 +1973,21 @@ impl PhysicalDevice {
 
         if let Some(present_mode) = present_mode {
             let mut present_modes = unsafe {
-                self.surface_present_modes_unchecked(surface)
-                    .map_err(|_err| {
-                        Box::new(ValidationError {
-                            problem: "`PhysicalDevice::surface_present_modes` \
+                self.surface_present_modes_unchecked(
+                    surface,
+                    SurfaceInfo {
+                        present_mode: None,
+                        ..surface_info.clone()
+                    },
+                )
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        problem: "`PhysicalDevice::surface_present_modes` \
                                 returned an error"
-                                .into(),
-                            ..Default::default()
-                        })
-                    })?
+                            .into(),
+                        ..Default::default()
+                    })
+                })?
             };
 
             if !present_modes.any(|mode| mode == present_mode) {
@@ -2341,15 +2347,21 @@ impl PhysicalDevice {
 
         if let Some(present_mode) = present_mode {
             let mut present_modes = unsafe {
-                self.surface_present_modes_unchecked(surface)
-                    .map_err(|_err| {
-                        Box::new(ValidationError {
-                            problem: "`PhysicalDevice::surface_present_modes` \
+                self.surface_present_modes_unchecked(
+                    surface,
+                    SurfaceInfo {
+                        present_mode: None,
+                        ..surface_info.clone()
+                    },
+                )
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        problem: "`PhysicalDevice::surface_present_modes` \
                                 returned an error"
-                                .into(),
-                            ..Default::default()
-                        })
-                    })?
+                            .into(),
+                        ..Default::default()
+                    })
+                })?
             };
 
             if !present_modes.any(|mode| mode == present_mode) {
@@ -2579,15 +2591,17 @@ impl PhysicalDevice {
     pub fn surface_present_modes(
         &self,
         surface: &Surface,
+        surface_info: SurfaceInfo,
     ) -> Result<impl Iterator<Item = PresentMode>, Validated<VulkanError>> {
-        self.validate_surface_present_modes(surface)?;
+        self.validate_surface_present_modes(surface, &surface_info)?;
 
-        unsafe { Ok(self.surface_present_modes_unchecked(surface)?) }
+        unsafe { Ok(self.surface_present_modes_unchecked(surface, surface_info)?) }
     }
 
     fn validate_surface_present_modes(
         &self,
         surface: &Surface,
+        surface_info: &SurfaceInfo,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_surface {
             return Err(Box::new(ValidationError {
@@ -2608,9 +2622,83 @@ impl PhysicalDevice {
             return Err(Box::new(ValidationError {
                 context: "surface".into(),
                 problem: "is not supported by the physical device".into(),
-                vuids: &["VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-surface-06525"],
+                vuids: &["VUID-vkGetPhysicalDeviceSurfacePresentModes2EXT-pSurfaceInfo-06522"],
                 ..Default::default()
             }));
+        }
+
+        surface_info
+            .validate(self)
+            .map_err(|err| err.add_context("surface_info"))?;
+
+        let &SurfaceInfo {
+            present_mode,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = surface_info;
+
+        // We can't validate supported present modes while querying for supported present modes,
+        // so just demand that it's `None` here.
+        if present_mode.is_some() {
+            return Err(Box::new(ValidationError {
+                context: "surface_info.present_mode".into(),
+                problem: "is `Some`".into(),
+                ..Default::default()
+            }));
+        }
+
+        if !self.supported_extensions().ext_full_screen_exclusive {
+            if full_screen_exclusive != FullScreenExclusive::Default {
+                return Err(Box::new(ValidationError {
+                    context: "surface_info.full_screen_exclusive".into(),
+                    problem: "is not `FullScreenExclusive::Default`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_full_screen_exclusive",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            if win32_monitor.is_some() {
+                return Err(Box::new(ValidationError {
+                    context: "surface_info.win32_monitor".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_full_screen_exclusive",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        match (
+            surface.api() == SurfaceApi::Win32
+                && full_screen_exclusive == FullScreenExclusive::ApplicationControlled,
+            win32_monitor.is_some(),
+        ) {
+            (true, false) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`surface` is a Win32 surface, and \
+                        `surface_info.full_screen_exclusive` is \
+                        `FullScreenExclusive::ApplicationControlled`, but \
+                        `surface_info.win32_monitor` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-02672"],
+                    ..Default::default()
+                }));
+            }
+            (false, true) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`surface` is not a Win32 surface, or \
+                        `surface_info.full_screen_exclusive` is not \
+                        `FullScreenExclusive::ApplicationControlled`, but \
+                        `surface_info.win32_monitor` is `Some`"
+                        .into(),
+                    ..Default::default()
+                }));
+            }
+            (true, true) | (false, false) => (),
         }
 
         Ok(())
@@ -2620,48 +2708,126 @@ impl PhysicalDevice {
     pub unsafe fn surface_present_modes_unchecked(
         &self,
         surface: &Surface,
+        surface_info: SurfaceInfo,
     ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
         surface
             .surface_present_modes
-            .get_or_try_insert(self.handle, |_| {
-                let fns = self.instance.fns();
+            .get_or_try_insert((self.handle, surface_info), |(_, surface_info)| {
+                let &SurfaceInfo {
+                    present_mode: _,
+                    full_screen_exclusive,
+                    win32_monitor,
+                    _ne: _,
+                } = surface_info;
 
-                let modes = loop {
-                    let mut count = 0;
-                    (fns.khr_surface
-                        .get_physical_device_surface_present_modes_khr)(
-                        self.handle(),
-                        surface.handle(),
-                        &mut count,
-                        ptr::null_mut(),
-                    )
-                    .result()
-                    .map_err(VulkanError::from)?;
+                let mut info_vk = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+                    surface: surface.handle(),
+                    ..Default::default()
+                };
+                let mut full_screen_exclusive_info_vk = None;
+                let mut full_screen_exclusive_win32_info_vk = None;
 
-                    let mut modes = Vec::with_capacity(count as usize);
-                    let result = (fns
-                        .khr_surface
-                        .get_physical_device_surface_present_modes_khr)(
-                        self.handle(),
-                        surface.handle(),
-                        &mut count,
-                        modes.as_mut_ptr(),
+                if full_screen_exclusive != FullScreenExclusive::Default {
+                    let next = full_screen_exclusive_info_vk.insert(
+                        ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                            full_screen_exclusive: full_screen_exclusive.into(),
+                            ..Default::default()
+                        },
                     );
 
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            modes.set_len(count as usize);
-                            break modes;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
-                    }
-                };
+                    next.p_next = info_vk.p_next as *mut _;
+                    info_vk.p_next = next as *const _ as *const _;
+                }
 
-                Ok(modes
-                    .into_iter()
-                    .filter_map(|mode_vk| mode_vk.try_into().ok())
-                    .collect())
+                if let Some(win32_monitor) = win32_monitor {
+                    let next = full_screen_exclusive_win32_info_vk.insert(
+                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                            hmonitor: win32_monitor.0,
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = info_vk.p_next as *mut _;
+                    info_vk.p_next = next as *const _ as *const _;
+                }
+
+                let fns = self.instance.fns();
+
+                if self.supported_extensions().ext_full_screen_exclusive {
+                    let modes = loop {
+                        let mut count = 0;
+                        (fns.ext_full_screen_exclusive
+                            .get_physical_device_surface_present_modes2_ext)(
+                            self.handle(),
+                            &info_vk,
+                            &mut count,
+                            ptr::null_mut(),
+                        )
+                        .result()
+                        .map_err(VulkanError::from)?;
+
+                        let mut modes = Vec::with_capacity(count as usize);
+                        let result = (fns
+                            .ext_full_screen_exclusive
+                            .get_physical_device_surface_present_modes2_ext)(
+                            self.handle(),
+                            &info_vk,
+                            &mut count,
+                            modes.as_mut_ptr(),
+                        );
+
+                        match result {
+                            ash::vk::Result::SUCCESS => {
+                                modes.set_len(count as usize);
+                                break modes;
+                            }
+                            ash::vk::Result::INCOMPLETE => (),
+                            err => return Err(VulkanError::from(err)),
+                        }
+                    };
+
+                    Ok(modes
+                        .into_iter()
+                        .filter_map(|mode_vk| mode_vk.try_into().ok())
+                        .collect())
+                } else {
+                    let modes = loop {
+                        let mut count = 0;
+                        (fns.khr_surface
+                            .get_physical_device_surface_present_modes_khr)(
+                            self.handle(),
+                            surface.handle(),
+                            &mut count,
+                            ptr::null_mut(),
+                        )
+                        .result()
+                        .map_err(VulkanError::from)?;
+
+                        let mut modes = Vec::with_capacity(count as usize);
+                        let result = (fns
+                            .khr_surface
+                            .get_physical_device_surface_present_modes_khr)(
+                            self.handle(),
+                            surface.handle(),
+                            &mut count,
+                            modes.as_mut_ptr(),
+                        );
+
+                        match result {
+                            ash::vk::Result::SUCCESS => {
+                                modes.set_len(count as usize);
+                                break modes;
+                            }
+                            ash::vk::Result::INCOMPLETE => (),
+                            err => return Err(VulkanError::from(err)),
+                        }
+                    };
+
+                    Ok(modes
+                        .into_iter()
+                        .filter_map(|mode_vk| mode_vk.try_into().ok())
+                        .collect())
+                }
             })
             .map(IntoIterator::into_iter)
     }

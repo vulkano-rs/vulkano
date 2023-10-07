@@ -52,7 +52,8 @@ pub struct Surface {
     // `Surface` is destroyed.
     pub(crate) surface_formats:
         OnceCache<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>,
-    pub(crate) surface_present_modes: OnceCache<ash::vk::PhysicalDevice, Vec<PresentMode>>,
+    pub(crate) surface_present_modes:
+        OnceCache<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<PresentMode>>,
     pub(crate) surface_support: OnceCache<(ash::vk::PhysicalDevice, u32), bool>,
 }
 
