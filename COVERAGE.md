@@ -164,6 +164,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_EXT_discard_rectangles`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_discard_rectangles.html)
 - [`VK_EXT_external_memory_dma_buf`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_external_memory_dma_buf.html)
 - [`VK_EXT_filter_cubic`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_filter_cubic.html)
+- [`VK_EXT_full_screen_exclusive`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_full_screen_exclusive.html)
 - [`VK_EXT_headless_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_headless_surface.html)
 - [`VK_EXT_image_2d_view_of_3d`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_2d_view_of_3d.html)
 - [`VK_EXT_image_drm_format_modifier`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_drm_format_modifier.html)
@@ -207,8 +208,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 	- `vkSubmitDebugUtilsMessageEXT`
 	- `VkDebugUtilsMessengerCallbackDataEXT` (not all data exposed to callback)
 	- `VkDebugUtilsObjectNameInfoEXT` extending `VkPipelineShaderStageCreateInfo`
-- [`VK_EXT_full_screen_exclusive`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_full_screen_exclusive.html)
-	- `vkGetPhysicalDeviceSurfacePresentModes2EXT`
 - [`VK_EXT_swapchain_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_swapchain_maintenance1.html)
 	- `vkReleaseSwapchainImagesEXT` / `VkReleaseSwapchainImagesInfoEXT`
 	- `VkSwapchainPresentFenceInfoEXT`
