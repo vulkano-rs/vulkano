@@ -206,6 +206,12 @@ pub use ash::vk::DeviceSize;
 /// A [`DeviceSize`] that is known not to equal zero.
 pub type NonZeroDeviceSize = NonZeroU64;
 
+/// Represents an address (pointer) on a Vulkan device.
+pub use ash::vk::DeviceAddress;
+
+/// A [`DeviceAddress`] that is known not to equal zero.
+pub type NonNullDeviceAddress = NonZeroU64;
+
 /// Holds 24 bits in the least significant bits of memory,
 /// and 8 bytes in the most significant bits of that memory,
 /// occupying a single [`u32`] in total.

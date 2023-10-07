@@ -19,7 +19,7 @@ use crate::{
         is_aligned, DeviceAlignment, MappedMemoryRange,
     },
     sync::HostAccessError,
-    DeviceSize, NonZeroDeviceSize, ValidationError,
+    DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, ValidationError,
 };
 use bytemuck::AnyBitPattern;
 use std::{
@@ -138,21 +138,21 @@ impl<T: ?Sized> Subbuffer<T> {
     }
 
     /// Returns the device address for this subbuffer.
-    pub fn device_address(&self) -> Result<NonZeroDeviceSize, Box<ValidationError>> {
+    pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
         self.buffer().device_address().map(|ptr| {
             // SAFETY: The original address came from the Vulkan implementation, and allocation
             // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
             // in range.
-            unsafe { NonZeroDeviceSize::new_unchecked(ptr.get() + self.offset) }
+            unsafe { NonNullDeviceAddress::new_unchecked(ptr.get() + self.offset) }
         })
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn device_address_unchecked(&self) -> NonZeroDeviceSize {
+    pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
         // SAFETY: The original address came from the Vulkan implementation, and allocation
         // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
         // in range.
-        NonZeroDeviceSize::new_unchecked(
+        NonNullDeviceAddress::new_unchecked(
             self.buffer().device_address_unchecked().get() + self.offset,
         )
     }
