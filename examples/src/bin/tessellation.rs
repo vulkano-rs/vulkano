@@ -37,7 +37,7 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
             input_assembly::{InputAssemblyState, PrimitiveTopology},
             multisample::MultisampleState,
             rasterization::{PolygonMode, RasterizationState},
@@ -47,7 +47,7 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
@@ -373,22 +373,28 @@ fn main() {
             GraphicsPipelineCreateInfo {
                 stages: stages.into_iter().collect(),
                 vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(
-                    InputAssemblyState::new().topology(PrimitiveTopology::PatchList),
-                ),
-                tessellation_state: Some(
-                    TessellationState::new()
-                        // Use a patch_control_points of 3, because we want to convert one *triangle*
-                        // into lots of little ones.
-                        // A value of 4 would convert a *rectangle* into lots of little triangles.
-                        .patch_control_points(3),
-                ),
-                viewport_state: Some(ViewportState::viewport_dynamic_scissor_irrelevant()),
-                rasterization_state: Some(
-                    RasterizationState::new().polygon_mode(PolygonMode::Line),
-                ),
+                input_assembly_state: Some(InputAssemblyState {
+                    topology: PrimitiveTopology::PatchList,
+                    ..Default::default()
+                }),
+                tessellation_state: Some(TessellationState {
+                    // Use a patch_control_points of 3, because we want to convert one *triangle*
+                    // into lots of little ones.
+                    // A value of 4 would convert a *rectangle* into lots of little triangles.
+                    patch_control_points: 3,
+                    ..Default::default()
+                }),
+                viewport_state: Some(ViewportState::default()),
+                rasterization_state: Some(RasterizationState {
+                    polygon_mode: PolygonMode::Line,
+                    ..Default::default()
+                }),
                 multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },

@@ -10,8 +10,7 @@
 //! Configures how primitives should be converted into collections of fragments.
 
 use crate::{
-    device::Device, macros::vulkan_enum, pipeline::StateMode, Requires, RequiresAllOf,
-    RequiresOneOf, ValidationError, Version,
+    device::Device, macros::vulkan_enum, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
@@ -22,16 +21,16 @@ pub struct RasterizationState {
     ///
     /// If enabled, the [`depth_clamp`](crate::device::Features::depth_clamp) feature must be
     /// enabled on the device.
+    ///
+    /// The default value is `false`.
     pub depth_clamp_enable: bool,
 
     /// If true, all the fragments will be discarded, and the fragment shader will not be run. This
     /// is usually used when your vertex shader has some side effects and you don't need to run the
     /// fragment shader.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
-    /// be enabled on the device.
-    pub rasterizer_discard_enable: StateMode<bool>,
+    /// The default value is `false`.
+    pub rasterizer_discard_enable: bool,
 
     /// This setting can ask the rasterizer to downgrade triangles into lines or points, or lines
     /// into points.
@@ -39,26 +38,26 @@ pub struct RasterizationState {
     /// If set to a value other than `Fill`, the
     /// [`fill_mode_non_solid`](crate::device::Features::fill_mode_non_solid) feature must be
     /// enabled on the device.
+    ///
+    /// The default value is [`PolygonMode::Fill`].
     pub polygon_mode: PolygonMode,
 
     /// Specifies whether front faces or back faces should be discarded, or none, or both.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub cull_mode: StateMode<CullMode>,
+    /// The default value is [`CullMode::None`].
+    pub cull_mode: CullMode,
 
     /// Specifies which triangle orientation is considered to be the front of the triangle.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub front_face: StateMode<FrontFace>,
+    /// The default value is [`FrontFace::CounterClockwise`].
+    pub front_face: FrontFace,
 
     /// Sets how to modify depth values in the rasterization stage.
     ///
     /// If set to `None`, depth biasing is disabled, the depth values will pass to the fragment
     /// shader unmodified.
+    ///
+    /// The default value is `None`.
     pub depth_bias: Option<DepthBiasState>,
 
     /// Width, in pixels, of lines when drawing lines.
@@ -66,13 +65,17 @@ pub struct RasterizationState {
     /// Setting this to a value other than 1.0 requires the
     /// [`wide_lines`](crate::device::Features::wide_lines) feature to be enabled on
     /// the device.
-    pub line_width: StateMode<f32>,
+    ///
+    /// The default value is `1.0`.
+    pub line_width: f32,
 
     /// The rasterization mode for lines.
     ///
     /// If this is not set to `Default`, the
     /// [`ext_line_rasterization`](crate::device::DeviceExtensions::ext_line_rasterization)
     /// extension and an additional feature must be enabled on the device.
+    ///
+    /// The default value is [`LineRasterizationMode::Default`].
     pub line_rasterization_mode: LineRasterizationMode,
 
     /// Enables and sets the parameters for line stippling.
@@ -80,9 +83,29 @@ pub struct RasterizationState {
     /// If this is set to `Some`, the
     /// [`ext_line_rasterization`](crate::device::DeviceExtensions::ext_line_rasterization)
     /// extension and an additional feature must be enabled on the device.
-    pub line_stipple: Option<StateMode<LineStipple>>,
+    ///
+    /// The default value is `None`.
+    pub line_stipple: Option<LineStipple>,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for RasterizationState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            depth_clamp_enable: false,
+            rasterizer_discard_enable: false,
+            polygon_mode: Default::default(),
+            cull_mode: Default::default(),
+            front_face: Default::default(),
+            depth_bias: None,
+            line_width: 1.0,
+            line_rasterization_mode: Default::default(),
+            line_stipple: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl RasterizationState {
@@ -90,23 +113,14 @@ impl RasterizationState {
     /// stippling disabled, filled polygons, no culling, counterclockwise front face, and the
     /// default line width and line rasterization mode.
     #[inline]
+    #[deprecated(since = "0.34.0", note = "use `RasterizationState::default` instead")]
     pub fn new() -> Self {
-        Self {
-            depth_clamp_enable: false,
-            rasterizer_discard_enable: StateMode::Fixed(false),
-            polygon_mode: Default::default(),
-            cull_mode: StateMode::Fixed(Default::default()),
-            front_face: StateMode::Fixed(Default::default()),
-            depth_bias: None,
-            line_width: StateMode::Fixed(1.0),
-            line_rasterization_mode: Default::default(),
-            line_stipple: None,
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::default()
     }
 
     /// Sets the polygon mode.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn polygon_mode(mut self, polygon_mode: PolygonMode) -> Self {
         self.polygon_mode = polygon_mode;
         self
@@ -114,29 +128,17 @@ impl RasterizationState {
 
     /// Sets the cull mode.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn cull_mode(mut self, cull_mode: CullMode) -> Self {
-        self.cull_mode = StateMode::Fixed(cull_mode);
-        self
-    }
-
-    /// Sets the cull mode to dynamic.
-    #[inline]
-    pub fn cull_mode_dynamic(mut self) -> Self {
-        self.cull_mode = StateMode::Dynamic;
+        self.cull_mode = cull_mode;
         self
     }
 
     /// Sets the front face.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn front_face(mut self, front_face: FrontFace) -> Self {
-        self.front_face = StateMode::Fixed(front_face);
-        self
-    }
-
-    /// Sets the front face to dynamic.
-    #[inline]
-    pub fn front_face_dynamic(mut self) -> Self {
-        self.front_face = StateMode::Dynamic;
+        self.front_face = front_face;
         self
     }
 
@@ -147,8 +149,8 @@ impl RasterizationState {
             polygon_mode,
             cull_mode,
             front_face,
-            ref depth_bias,
-            line_width,
+            depth_bias: _,
+            line_width: _,
             line_rasterization_mode,
             ref line_stipple,
             _ne: _,
@@ -187,144 +189,33 @@ impl RasterizationState {
             }));
         }
 
-        match rasterizer_discard_enable {
-            StateMode::Fixed(false) => {
-                if device.enabled_extensions().khr_portability_subset
-                    && !device.enabled_features().point_polygons
-                    && polygon_mode == PolygonMode::Point
-                {
-                    return Err(Box::new(ValidationError {
-                        problem: "this device is a portability subset device, \
-                            `rasterizer_discard_enable` is `false`, and \
-                            `polygon_mode` is `PolygonMode::Point`"
-                            .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "point_polygons",
-                        )])]),
-                        vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-pointPolygons-04458"],
-                        ..Default::default()
-                    }));
-                }
-            }
-            StateMode::Dynamic => {
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state2)
-                {
-                    return Err(Box::new(ValidationError {
-                        context: "rasterizer_discard_enable".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
-                    }));
-                }
-            }
-            _ => (),
-        }
-
-        match cull_mode {
-            StateMode::Fixed(cull_mode) => {
-                cull_mode.validate_device(device).map_err(|err| {
-                    err.add_context("cull_mode").set_vuids(&[
-                        "VUID-VkPipelineRasterizationStateCreateInfo-cullMode-parameter",
-                    ])
-                })?;
-            }
-            StateMode::Dynamic => {
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(Box::new(ValidationError {
-                        context: "cull_mode".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
-                    }));
-                }
-            }
-        }
-
-        match front_face {
-            StateMode::Fixed(front_face) => {
-                front_face.validate_device(device).map_err(|err| {
-                    err.add_context("front_face").set_vuids(&[
-                        "VUID-VkPipelineRasterizationStateCreateInfo-frontFace-parameter",
-                    ])
-                })?;
-            }
-            StateMode::Dynamic => {
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(Box::new(ValidationError {
-                        context: "front_face".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
-                    }));
-                }
-            }
-        }
-
-        if let Some(depth_bias_state) = depth_bias {
-            let &DepthBiasState {
-                enable_dynamic,
-                bias,
-            } = depth_bias_state;
-
-            if enable_dynamic
-                && !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state2)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "depth_bias.enable_dynamic".into(),
-                    problem: "is `true`".into(),
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                        RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
-                    ]),
-                    // vuids?
-                    ..Default::default()
-                }));
-            }
-
-            if matches!(bias, StateMode::Fixed(bias) if bias.clamp != 0.0)
-                && !device.enabled_features().depth_bias_clamp
-            {
-                return Err(Box::new(ValidationError {
-                    context: "depth_bias.bias.clamp".into(),
-                    problem: "is not 0.0".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "depth_bias_clamp",
-                    )])]),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00754"],
-                }));
-            }
-        }
-
-        if matches!(line_width, StateMode::Fixed(line_width) if line_width != 1.0)
-            && !device.enabled_features().wide_lines
+        if device.enabled_extensions().khr_portability_subset
+            && !device.enabled_features().point_polygons
+            && !rasterizer_discard_enable
+            && polygon_mode == PolygonMode::Point
         {
             return Err(Box::new(ValidationError {
-                context: "line_width".into(),
-                problem: "is not 1.0".into(),
+                problem: "this device is a portability subset device, \
+                    `rasterizer_discard_enable` is `false`, and \
+                    `polygon_mode` is `PolygonMode::Point`"
+                    .into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                    "wide_lines",
+                    "point_polygons",
                 )])]),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00749"],
+                vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-pointPolygons-04458"],
+                ..Default::default()
             }));
         }
+
+        cull_mode.validate_device(device).map_err(|err| {
+            err.add_context("cull_mode")
+                .set_vuids(&["VUID-VkPipelineRasterizationStateCreateInfo-cullMode-parameter"])
+        })?;
+
+        front_face.validate_device(device).map_err(|err| {
+            err.add_context("front_face")
+                .set_vuids(&["VUID-VkPipelineRasterizationStateCreateInfo-frontFace-parameter"])
+        })?;
 
         if line_rasterization_mode != LineRasterizationMode::Default {
             if !device.enabled_extensions().ext_line_rasterization {
@@ -379,7 +270,7 @@ impl RasterizationState {
             }
         }
 
-        if let Some(line_stipple) = line_stipple {
+        if line_stipple.is_some() {
             if !device.enabled_extensions().ext_line_rasterization {
                 return Err(Box::new(ValidationError {
                     context: "line_stipple".into(),
@@ -389,19 +280,6 @@ impl RasterizationState {
                     )])]),
                     ..Default::default()
                 }));
-            }
-
-            if let StateMode::Fixed(line_stipple) = line_stipple {
-                let &LineStipple { factor, pattern: _ } = line_stipple;
-
-                if !(1..=256).contains(&factor) {
-                    return Err(Box::new(ValidationError {
-                        context: "line_stipple.factor".into(),
-                        problem: "is not between 1 and 256 inclusive".into(),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-stippledLineEnable-02767"],
-                        ..Default::default()
-                    }));
-                }
             }
 
             match line_rasterization_mode {
@@ -479,33 +357,12 @@ impl RasterizationState {
     }
 }
 
-impl Default for RasterizationState {
-    /// Returns [`RasterizationState::new()`].
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// The state in a graphics pipeline describing how depth biasing should behave when enabled.
-#[derive(Clone, Copy, Debug)]
-pub struct DepthBiasState {
-    /// Sets whether depth biasing should be enabled and disabled dynamically. If set to `false`,
-    /// depth biasing is always enabled.
-    ///
-    /// If set to `true`, the
-    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
-    /// be enabled on the device.
-    pub enable_dynamic: bool,
-
-    /// The values to use when depth biasing is enabled.
-    pub bias: StateMode<DepthBias>,
-}
-
 /// The values to use for depth biasing.
 #[derive(Clone, Copy, Debug)]
-pub struct DepthBias {
-    /// Specifies a constant factor to be added to every depth value.
+pub struct DepthBiasState {
+    /// Specifies a constant factor to be multiplied to every depth value.
+    ///
+    /// The default value is `1.0`.
     pub constant_factor: f32,
 
     /// The maximum (or minimum) depth bias of a fragment.
@@ -513,10 +370,25 @@ pub struct DepthBias {
     /// Setting this to a value other than 0.0 requires the
     /// [`depth_bias_clamp`](crate::device::Features::depth_bias_clamp) feature to be enabled on
     /// the device.
+    ///
+    /// The default value is `0.0`.
     pub clamp: f32,
 
-    /// A scalar factor applied to a fragment's slope in depth bias calculations.
+    /// A scalar factor to multiply with a fragment's slope in depth bias calculations.
+    ///
+    /// The default value is `1.0`.
     pub slope_factor: f32,
+}
+
+impl Default for DepthBiasState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            constant_factor: 1.0,
+            clamp: 0.0,
+            slope_factor: 1.0,
+        }
+    }
 }
 
 vulkan_enum! {
@@ -559,7 +431,6 @@ vulkan_enum! {
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
     CounterClockwise = COUNTER_CLOCKWISE,
-
 
     /// Triangles whose vertices are oriented clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
@@ -660,6 +531,7 @@ impl Default for LineRasterizationMode {
 pub struct LineStipple {
     /// The repeat factor used in stippled line rasterization. Must be between 1 and 256 inclusive.
     pub factor: u32,
+
     /// The bit pattern used in stippled line rasterization.
     pub pattern: u16,
 }

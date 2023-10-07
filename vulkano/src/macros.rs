@@ -35,7 +35,7 @@ macro_rules! vulkan_bitflags {
                 Self(0)
             }
 
-            #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
+            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
             #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
             #[inline]
             pub const fn none() -> Self {
@@ -263,7 +263,7 @@ macro_rules! vulkan_bitflags {
                 Self(0)
             }
 
-            #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
+            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
             #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
             #[inline]
             pub const fn none() -> Self {

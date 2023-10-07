@@ -18,7 +18,7 @@ use crate::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilFaces, StencilOp, StencilOps},
             input_assembly::PrimitiveTopology,
-            rasterization::{CullMode, DepthBias, FrontFace, LineStipple},
+            rasterization::{CullMode, DepthBiasState, FrontFace, LineStipple},
             viewport::{Scissor, Viewport},
         },
         DynamicState,
@@ -44,9 +44,7 @@ where
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .map_or(false, |pipeline| {
-                matches!(pipeline.dynamic_state(state), Some(false))
-            })
+            .map_or(false, |pipeline| pipeline.fixed_state().contains(&state))
         {
             return Err(Box::new(ValidationError {
                 problem: "the state for this value in the currently bound graphics pipeline \
@@ -217,7 +215,7 @@ where
         clamp: f32,
         slope_factor: f32,
     ) -> &mut Self {
-        self.builder_state.depth_bias = Some(DepthBias {
+        self.builder_state.depth_bias = Some(DepthBiasState {
             constant_factor,
             clamp,
             slope_factor,

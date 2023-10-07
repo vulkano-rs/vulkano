@@ -32,7 +32,7 @@ use vulkano::{
     pipeline::{
         compute::ComputePipelineCreateInfo,
         graphics::{
-            color_blend::ColorBlendState,
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
             input_assembly::{InputAssemblyState, PrimitiveTopology},
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -455,13 +455,6 @@ fn main() {
     )
     .unwrap();
 
-    // Fixed viewport.
-    let viewport = Viewport {
-        offset: [0.0, 0.0],
-        extent: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],
-        depth_range: 0.0..=1.0,
-    };
-
     // Create a basic graphics pipeline for rendering particles.
     let graphics_pipeline = {
         let vs = vs::load(device.clone())
@@ -494,13 +487,26 @@ fn main() {
                 stages: stages.into_iter().collect(),
                 vertex_input_state: Some(vertex_input_state),
                 // Vertices will be rendered as a list of points.
-                input_assembly_state: Some(
-                    InputAssemblyState::new().topology(PrimitiveTopology::PointList),
-                ),
-                viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([viewport])),
+                input_assembly_state: Some(InputAssemblyState {
+                    topology: PrimitiveTopology::PointList,
+                    ..Default::default()
+                }),
+                viewport_state: Some(ViewportState {
+                    viewports: [Viewport {
+                        offset: [0.0, 0.0],
+                        extent: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],
+                        depth_range: 0.0..=1.0,
+                    }]
+                    .into_iter()
+                    .collect(),
+                    ..Default::default()
+                }),
                 rasterization_state: Some(RasterizationState::default()),
                 multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },

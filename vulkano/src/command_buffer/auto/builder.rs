@@ -31,7 +31,7 @@ use crate::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilOps},
             input_assembly::PrimitiveTopology,
-            rasterization::{CullMode, DepthBias, FrontFace, LineStipple},
+            rasterization::{CullMode, DepthBiasState, FrontFace, LineStipple},
             subpass::PipelineRenderingCreateInfo,
             viewport::{Scissor, Viewport},
         },
@@ -1337,7 +1337,7 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) blend_constants: Option<[f32; 4]>,
     pub(in crate::command_buffer) color_write_enable: Option<SmallVec<[bool; 4]>>,
     pub(in crate::command_buffer) cull_mode: Option<CullMode>,
-    pub(in crate::command_buffer) depth_bias: Option<DepthBias>,
+    pub(in crate::command_buffer) depth_bias: Option<DepthBiasState>,
     pub(in crate::command_buffer) depth_bias_enable: Option<bool>,
     pub(in crate::command_buffer) depth_bounds: Option<RangeInclusive<f32>>,
     pub(in crate::command_buffer) depth_bounds_test_enable: Option<bool>,
@@ -1392,8 +1392,8 @@ impl CommandBufferBuilderState {
                 DynamicState::DepthTestEnable => self.depth_test_enable = None,
                 DynamicState::DepthWriteEnable => self.depth_write_enable = None,
                 DynamicState::DiscardRectangle => self.discard_rectangle.clear(),
-                DynamicState::ExclusiveScissor => (), // TODO;
-                DynamicState::FragmentShadingRate => (), // TODO:
+                // DynamicState::ExclusiveScissor => todo!(),
+                // DynamicState::FragmentShadingRate => todo!(),
                 DynamicState::FrontFace => self.front_face = None,
                 DynamicState::LineStipple => self.line_stipple = None,
                 DynamicState::LineWidth => self.line_width = None,
@@ -1402,8 +1402,8 @@ impl CommandBufferBuilderState {
                 DynamicState::PrimitiveRestartEnable => self.primitive_restart_enable = None,
                 DynamicState::PrimitiveTopology => self.primitive_topology = None,
                 DynamicState::RasterizerDiscardEnable => self.rasterizer_discard_enable = None,
-                DynamicState::RayTracingPipelineStackSize => (), // TODO:
-                DynamicState::SampleLocations => (),             // TODO:
+                // DynamicState::RayTracingPipelineStackSize => todo!(),
+                // DynamicState::SampleLocations => todo!(),
                 DynamicState::Scissor => self.scissor.clear(),
                 DynamicState::ScissorWithCount => self.scissor_with_count = None,
                 DynamicState::StencilCompareMask => self.stencil_compare_mask = Default::default(),
@@ -1411,44 +1411,44 @@ impl CommandBufferBuilderState {
                 DynamicState::StencilReference => self.stencil_reference = Default::default(),
                 DynamicState::StencilTestEnable => self.stencil_test_enable = None,
                 DynamicState::StencilWriteMask => self.stencil_write_mask = Default::default(),
-                DynamicState::VertexInput => (), // TODO:
-                DynamicState::VertexInputBindingStride => (), // TODO:
+                // DynamicState::VertexInput => todo!(),
+                // DynamicState::VertexInputBindingStride => todo!(),
                 DynamicState::Viewport => self.viewport.clear(),
-                DynamicState::ViewportCoarseSampleOrder => (), // TODO:
-                DynamicState::ViewportShadingRatePalette => (), // TODO:
-                DynamicState::ViewportWScaling => (),          // TODO:
+                // DynamicState::ViewportCoarseSampleOrder => todo!(),
+                // DynamicState::ViewportShadingRatePalette => todo!(),
+                // DynamicState::ViewportWScaling => todo!(),
                 DynamicState::ViewportWithCount => self.viewport_with_count = None,
-                DynamicState::TessellationDomainOrigin => (), // TODO:
-                DynamicState::DepthClampEnable => (),         // TODO:
-                DynamicState::PolygonMode => (),              // TODO:
-                DynamicState::RasterizationSamples => (),     // TODO:
-                DynamicState::SampleMask => (),               // TODO:
-                DynamicState::AlphaToCoverageEnable => (),    // TODO:
-                DynamicState::AlphaToOneEnable => (),         // TODO:
-                DynamicState::LogicOpEnable => (),            // TODO:
-                DynamicState::ColorBlendEnable => (),         // TODO:
-                DynamicState::ColorBlendEquation => (),       // TODO:
-                DynamicState::ColorWriteMask => (),           // TODO:
-                DynamicState::RasterizationStream => (),      // TODO:
-                DynamicState::ConservativeRasterizationMode => (), // TODO:
-                DynamicState::ExtraPrimitiveOverestimationSize => (), // TODO:
-                DynamicState::DepthClipEnable => (),          // TODO:
-                DynamicState::SampleLocationsEnable => (),    // TODO:
-                DynamicState::ColorBlendAdvanced => (),       // TODO:
-                DynamicState::ProvokingVertexMode => (),      // TODO:
-                DynamicState::LineRasterizationMode => (),    // TODO:
-                DynamicState::LineStippleEnable => (),        // TODO:
-                DynamicState::DepthClipNegativeOneToOne => (), // TODO:
-                DynamicState::ViewportWScalingEnable => (),   // TODO:
-                DynamicState::ViewportSwizzle => (),          // TODO:
-                DynamicState::CoverageToColorEnable => (),    // TODO:
-                DynamicState::CoverageToColorLocation => (),  // TODO:
-                DynamicState::CoverageModulationMode => (),   // TODO:
-                DynamicState::CoverageModulationTableEnable => (), // TODO:
-                DynamicState::CoverageModulationTable => (),  // TODO:
-                DynamicState::ShadingRateImageEnable => (),   // TODO:
-                DynamicState::RepresentativeFragmentTestEnable => (), // TODO:
-                DynamicState::CoverageReductionMode => (),    // TODO:
+                // DynamicState::TessellationDomainOrigin => todo!(),
+                // DynamicState::DepthClampEnable => todo!(),
+                // DynamicState::PolygonMode => todo!(),
+                // DynamicState::RasterizationSamples => todo!(),
+                // DynamicState::SampleMask => todo!(),
+                // DynamicState::AlphaToCoverageEnable => todo!(),
+                // DynamicState::AlphaToOneEnable => todo!(),
+                // DynamicState::LogicOpEnable => todo!(),
+                // DynamicState::ColorBlendEnable => todo!(),
+                // DynamicState::ColorBlendEquation => todo!(),
+                // DynamicState::ColorWriteMask => todo!(),
+                // DynamicState::RasterizationStream => todo!(),
+                // DynamicState::ConservativeRasterizationMode => todo!(),
+                // DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
+                // DynamicState::DepthClipEnable => todo!(),
+                // DynamicState::SampleLocationsEnable => todo!(),
+                // DynamicState::ColorBlendAdvanced => todo!(),
+                // DynamicState::ProvokingVertexMode => todo!(),
+                // DynamicState::LineRasterizationMode => todo!(),
+                // DynamicState::LineStippleEnable => todo!(),
+                // DynamicState::DepthClipNegativeOneToOne => todo!(),
+                // DynamicState::ViewportWScalingEnable => todo!(),
+                // DynamicState::ViewportSwizzle => todo!(),
+                // DynamicState::CoverageToColorEnable => todo!(),
+                // DynamicState::CoverageToColorLocation => todo!(),
+                // DynamicState::CoverageModulationMode => todo!(),
+                // DynamicState::CoverageModulationTableEnable => todo!(),
+                // DynamicState::CoverageModulationTable => todo!(),
+                // DynamicState::ShadingRateImageEnable => todo!(),
+                // DynamicState::RepresentativeFragmentTestEnable => todo!(),
+                // DynamicState::CoverageReductionMode => todo!(),
             }
         }
     }

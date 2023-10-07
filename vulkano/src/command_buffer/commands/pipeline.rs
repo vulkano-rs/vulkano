@@ -29,7 +29,7 @@ use crate::{
             input_assembly::PrimitiveTopology, subpass::PipelineSubpassType,
             vertex_input::VertexInputRate,
         },
-        DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineLayout,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
     },
     shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStage, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
@@ -1519,11 +1519,7 @@ where
     ) -> Result<(), Box<ValidationError>> {
         let device = pipeline.device();
 
-        for dynamic_state in pipeline
-            .dynamic_states()
-            .filter(|(_, d)| *d)
-            .map(|(s, _)| s)
-        {
+        for dynamic_state in pipeline.dynamic_state().iter().copied() {
             match dynamic_state {
                 DynamicState::BlendConstants => {
                     if self.builder_state.blend_constants.is_none() {
@@ -1534,7 +1530,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07835"),
                             ..Default::default()
                         }));
@@ -1551,7 +1548,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07749"),
                             ..Default::default()
                         }));
@@ -1579,7 +1577,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07840"),
                             ..Default::default()
                         }));
@@ -1594,7 +1593,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07834"),
                             ..Default::default()
                         }));
@@ -1609,7 +1609,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-04877"),
                             ..Default::default()
                         }));
@@ -1624,7 +1625,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07836"),
                             ..Default::default()
                         }));
@@ -1639,7 +1641,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07846"),
                             ..Default::default()
                         }));
@@ -1654,7 +1657,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07845"),
                             ..Default::default()
                         }));
@@ -1669,7 +1673,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07843"),
                             ..Default::default()
                         }));
@@ -1684,20 +1689,17 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07844"),
                             ..Default::default()
                         }));
                     }
                 }
                 DynamicState::DiscardRectangle => {
-                    let discard_rectangle_count =
-                        match pipeline.discard_rectangle_state().unwrap().rectangles {
-                            PartialStateMode::Dynamic(count) => count,
-                            _ => unreachable!(),
-                        };
-
-                    for num in 0..discard_rectangle_count {
+                    for num in
+                        0..pipeline.discard_rectangle_state().unwrap().rectangles.len() as u32
+                    {
                         if !self.builder_state.discard_rectangle.contains_key(&num) {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
@@ -1707,15 +1709,16 @@ where
                                     it was overwritten by a more recent \
                                     `bind_pipeline_graphics` command",
                                     dynamic_state, num,
-                                ).into(),
+                                )
+                                .into(),
                                 vuids: vuids!(vuid_type, "None-07751"),
                                 ..Default::default()
                             }));
                         }
                     }
                 }
-                DynamicState::ExclusiveScissor => todo!(),
-                DynamicState::FragmentShadingRate => todo!(),
+                // DynamicState::ExclusiveScissor => todo!(),
+                // DynamicState::FragmentShadingRate => todo!(),
                 DynamicState::FrontFace => {
                     if self.builder_state.front_face.is_none() {
                         return Err(Box::new(ValidationError {
@@ -1725,7 +1728,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-0784"),
                             ..Default::default()
                         }));
@@ -1740,7 +1744,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07849"),
                             ..Default::default()
                         }));
@@ -1755,7 +1760,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07833"),
                             ..Default::default()
                         }));
@@ -1770,7 +1776,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "logicOp-04878"),
                             ..Default::default()
                         }));
@@ -1785,7 +1792,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-04875"),
                             ..Default::default()
                         }));
@@ -1803,31 +1811,34 @@ where
                                     this state was either not set, or it was overwritten by a \
                                     more recent `bind_pipeline_graphics` command",
                                     dynamic_state
-                                ).into(),
+                                )
+                                .into(),
                                 vuids: vuids!(vuid_type, "None-04879"),
                                 ..Default::default()
                             }));
                         };
 
                     if primitive_restart_enable {
-                        let topology = match pipeline.input_assembly_state().topology {
-                            PartialStateMode::Fixed(topology) => topology,
-                            PartialStateMode::Dynamic(_) => {
-                                if let Some(topology) = self.builder_state.primitive_topology {
-                                    topology
-                                } else {
-                                    return Err(Box::new(ValidationError {
-                                        problem: "the currently bound graphics pipeline requires \
-                                            the `DynamicState::PrimitiveTopology` dynamic state, \
-                                            but this state was either not set, or it was \
-                                            overwritten by a more recent `bind_pipeline_graphics` \
-                                            command"
-                                            .into(),
-                                        vuids: vuids!(vuid_type, "None-07842"),
-                                        ..Default::default()
-                                    }));
-                                }
+                        let topology = if pipeline
+                            .dynamic_state()
+                            .contains(&DynamicState::PrimitiveTopology)
+                        {
+                            if let Some(topology) = self.builder_state.primitive_topology {
+                                topology
+                            } else {
+                                return Err(Box::new(ValidationError {
+                                    problem: "the currently bound graphics pipeline requires \
+                                        the `DynamicState::PrimitiveTopology` dynamic state, \
+                                        but this state was either not set, or it was \
+                                        overwritten by a more recent `bind_pipeline_graphics` \
+                                        command"
+                                        .into(),
+                                    vuids: vuids!(vuid_type, "None-07842"),
+                                    ..Default::default()
+                                }));
                             }
+                        } else {
+                            pipeline.input_assembly_state().topology
                         };
 
                         match topology {
@@ -1843,7 +1854,9 @@ where
                                             dynamic primitive topology is \
                                             `PrimitiveTopology::*List`"
                                             .into(),
-                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("primitive_topology_list_restart")])]),
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                            Requires::Feature("primitive_topology_list_restart"),
+                                        ])]),
                                         // vuids?
                                         ..Default::default()
                                     }));
@@ -1860,7 +1873,11 @@ where
                                             dynamic primitive topology is \
                                             `PrimitiveTopology::PatchList`"
                                             .into(),
-                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("primitive_topology_patch_list_restart")])]),
+                                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                            Requires::Feature(
+                                                "primitive_topology_patch_list_restart",
+                                            ),
+                                        ])]),
                                         // vuids?
                                         ..Default::default()
                                     }));
@@ -1881,7 +1898,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07842"),
                             ..Default::default()
                         }));
@@ -1896,7 +1914,8 @@ where
                                     includes tessellation shader stages, but the dynamic \
                                     primitive topology is not `PrimitiveTopology::PatchList`",
                                     dynamic_state
-                                ).into(),
+                                )
+                                .into(),
                                 // vuids?
                                 ..Default::default()
                             }));
@@ -1910,7 +1929,8 @@ where
                                     does not include tessellation shader stages, but the dynamic \
                                     primitive topology is `PrimitiveTopology::PatchList`",
                                     dynamic_state
-                                ).into(),
+                                )
+                                .into(),
                                 // vuids?
                                 ..Default::default()
                             }));
@@ -1919,13 +1939,39 @@ where
 
                     let properties = device.physical_device().properties();
 
-                    if !properties.dynamic_primitive_topology_unrestricted.unwrap_or(false) {
-                        let required_topology_class = match pipeline.input_assembly_state().topology {
-                            PartialStateMode::Dynamic(topology_class) => topology_class,
-                            _ => unreachable!(),
-                        };
+                    if !properties
+                        .dynamic_primitive_topology_unrestricted
+                        .unwrap_or(false)
+                    {
+                        let is_same_topology_class = matches!(
+                            (topology, pipeline.input_assembly_state().topology),
+                            (PrimitiveTopology::PointList, PrimitiveTopology::PointList)
+                                | (
+                                    PrimitiveTopology::LineList
+                                        | PrimitiveTopology::LineStrip
+                                        | PrimitiveTopology::LineListWithAdjacency
+                                        | PrimitiveTopology::LineStripWithAdjacency,
+                                    PrimitiveTopology::LineList
+                                        | PrimitiveTopology::LineStrip
+                                        | PrimitiveTopology::LineListWithAdjacency
+                                        | PrimitiveTopology::LineStripWithAdjacency,
+                                )
+                                | (
+                                    PrimitiveTopology::TriangleList
+                                        | PrimitiveTopology::TriangleStrip
+                                        | PrimitiveTopology::TriangleFan
+                                        | PrimitiveTopology::TriangleListWithAdjacency
+                                        | PrimitiveTopology::TriangleStripWithAdjacency,
+                                    PrimitiveTopology::TriangleList
+                                        | PrimitiveTopology::TriangleStrip
+                                        | PrimitiveTopology::TriangleFan
+                                        | PrimitiveTopology::TriangleListWithAdjacency
+                                        | PrimitiveTopology::TriangleStripWithAdjacency,
+                                )
+                                | (PrimitiveTopology::PatchList, PrimitiveTopology::PatchList)
+                        );
 
-                        if topology.class() != required_topology_class {
+                        if !is_same_topology_class {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "the currently bound graphics pipeline requires the \
@@ -1935,8 +1981,12 @@ where
                                     to the same topology class as the topology that the \
                                     graphics pipeline was created with",
                                     dynamic_state
-                                ).into(),
-                                vuids: vuids!(vuid_type, "dynamicPrimitiveTopologyUnrestricted-07500"),
+                                )
+                                .into(),
+                                vuids: vuids!(
+                                    vuid_type,
+                                    "dynamicPrimitiveTopologyUnrestricted-07500"
+                                ),
                                 ..Default::default()
                             }));
                         }
@@ -1953,41 +2003,48 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-04876"),
                             ..Default::default()
                         }));
                     }
                 }
-                DynamicState::RayTracingPipelineStackSize => unreachable!(
-                    "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
-                ),
-                DynamicState::SampleLocations => todo!(),
+                // DynamicState::RayTracingPipelineStackSize => unreachable!(
+                //     "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
+                // ),
+                // DynamicState::SampleLocations => todo!(),
                 DynamicState::Scissor => {
-                    for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
+                    let viewport_state = pipeline.viewport_state().unwrap();
+
+                    for num in 0..viewport_state.scissors.len() as u32 {
                         if !self.builder_state.scissor.contains_key(&num) {
                             return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "the currently bound graphics pipeline requires the \
-                                `DynamicState::{:?}` dynamic state, but \
-                                this state was either not set, or it was overwritten by a \
-                                more recent `bind_pipeline_graphics` command",
-                                dynamic_state
-                            ).into(),
-                            vuids: vuids!(vuid_type, "None-07832"),
-                            ..Default::default()
-                        }));
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, but \
+                                    this state was either not set, or it was overwritten by a \
+                                    more recent `bind_pipeline_graphics` command",
+                                    dynamic_state
+                                )
+                                .into(),
+                                vuids: vuids!(vuid_type, "None-07832"),
+                                ..Default::default()
+                            }));
                         }
                     }
                 }
                 DynamicState::ScissorWithCount => {
                     if let Some(scissors) = &self.builder_state.scissor_with_count {
-                        if let Some(viewport_count) = pipeline.viewport_state().unwrap().count() {
+                        let viewport_state = pipeline.viewport_state().unwrap();
+                        let viewport_count = viewport_state.viewports.len() as u32;
+                        let scissor_count = scissors.len() as u32;
+
+                        if viewport_count != 0 {
                             // Check if the counts match, but only if the viewport count is fixed.
                             // If the viewport count is also dynamic, then the
                             // DynamicState::ViewportWithCount match arm will handle it.
-
-                            if viewport_count != scissors.len() as u32 {
+                            if viewport_count != scissor_count {
                                 return Err(Box::new(ValidationError {
                                     problem: "the currently bound graphics pipeline requires the \
                                         `DynamicState::ScissorWithCount` dynamic state, and \
@@ -2008,7 +2065,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "scissorCount-03418", "viewportCount-03419"),
                             ..Default::default()
                         }));
@@ -2025,9 +2083,10 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07837"),
-                            ..Default::default()
+                            ..Default::default() //
                         }));
                     }
                 }
@@ -2042,7 +2101,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07848"),
                             ..Default::default()
                         }));
@@ -2059,7 +2119,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07839"),
                             ..Default::default()
                         }));
@@ -2074,7 +2135,8 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07847"),
                             ..Default::default()
                         }));
@@ -2091,36 +2153,90 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "None-07838"),
                             ..Default::default()
                         }));
                     }
                 }
-                DynamicState::VertexInput => todo!(),
-                DynamicState::VertexInputBindingStride => todo!(),
+                // DynamicState::VertexInput => todo!(),
+                // DynamicState::VertexInputBindingStride => todo!(),
                 DynamicState::Viewport => {
-                    for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
+                    let viewport_state = pipeline.viewport_state().unwrap();
+
+                    for num in 0..viewport_state.viewports.len() as u32 {
                         if !self.builder_state.viewport.contains_key(&num) {
                             return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "the currently bound graphics pipeline requires the \
-                                `DynamicState::{:?}` dynamic state, but \
-                                this state was either not set, or it was overwritten by a \
-                                more recent `bind_pipeline_graphics` command",
-                                dynamic_state
-                            ).into(),
-                            vuids: vuids!(vuid_type, "None-07831"),
-                            ..Default::default()
-                        }));
+                                problem: format!(
+                                    "the currently bound graphics pipeline requires the \
+                                    `DynamicState::{:?}` dynamic state, but \
+                                    this state was either not set, or it was overwritten by a \
+                                    more recent `bind_pipeline_graphics` command",
+                                    dynamic_state
+                                )
+                                .into(),
+                                vuids: vuids!(vuid_type, "None-07831"),
+                                ..Default::default()
+                            }));
                         }
                     }
                 }
-                DynamicState::ViewportCoarseSampleOrder => todo!(),
-                DynamicState::ViewportShadingRatePalette => todo!(),
+                // DynamicState::ViewportCoarseSampleOrder => todo!(),
+                // DynamicState::ViewportShadingRatePalette => todo!(),
                 DynamicState::ViewportWithCount => {
-                    let viewport_count = if let Some(viewports) = &self.builder_state.viewport_with_count {
-                        viewports.len() as u32
+                    if let Some(viewports) = &self.builder_state.viewport_with_count {
+                        let viewport_state = pipeline.viewport_state().unwrap();
+                        let scissor_count = viewport_state.scissors.len() as u32;
+                        let viewport_count = viewports.len() as u32;
+
+                        if scissor_count != 0 {
+                            if viewport_count != scissor_count {
+                                return Err(Box::new(ValidationError {
+                                    problem: "the currently bound graphics pipeline requires the \
+                                        `DynamicState::ViewportWithCount` dynamic state, and \
+                                        not the `DynamicState::ScissorWithCount` dynamic state, \
+                                        but the dynamic scissor count is not equal to the scissor \
+                                        count specified when creating the pipeline"
+                                        .into(),
+                                    vuids: vuids!(vuid_type, "viewportCount-03417"),
+                                    ..Default::default()
+                                }));
+                            }
+                        } else {
+                            if let Some(scissors) = &self.builder_state.scissor_with_count {
+                                if viewport_count != scissors.len() as u32 {
+                                    return Err(Box::new(ValidationError {
+                                        problem:
+                                            "the currently bound graphics pipeline requires both \
+                                            the `DynamicState::ViewportWithCount` and the \
+                                            `DynamicState::ScissorWithCount` dynamic states, but \
+                                            the dynamic scissor count is not equal to the \
+                                            dynamic scissor count "
+                                                .into(),
+                                        vuids: vuids!(vuid_type, "viewportCount-03419"),
+                                        ..Default::default()
+                                    }));
+                                }
+                            } else {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the currently bound graphics pipeline requires the \
+                                        `DynamicState::{:?}` dynamic state, but \
+                                        this state was either not set, or it was overwritten by a \
+                                        more recent `bind_pipeline_graphics` command",
+                                        dynamic_state
+                                    )
+                                    .into(),
+                                    vuids: vuids!(
+                                        vuid_type,
+                                        "scissorCount-03418",
+                                        "viewportCount-03419"
+                                    ),
+                                    ..Default::default()
+                                }));
+                            }
+                        }
                     } else {
                         return Err(Box::new(ValidationError {
                             problem: format!(
@@ -2129,54 +2245,11 @@ where
                                 this state was either not set, or it was overwritten by a \
                                 more recent `bind_pipeline_graphics` command",
                                 dynamic_state
-                            ).into(),
+                            )
+                            .into(),
                             vuids: vuids!(vuid_type, "viewportCount-03417", "viewportCount-03419"),
                             ..Default::default()
                         }));
-                    };
-
-                    if let Some(scissor_count) =
-                        pipeline.viewport_state().unwrap().count()
-                    {
-                        if viewport_count != scissor_count {
-                            return Err(Box::new(ValidationError {
-                                problem: "the currently bound graphics pipeline requires the \
-                                    `DynamicState::ViewportWithCount` dynamic state, and \
-                                    not the `DynamicState::ScissorWithCount` dynamic state, but \
-                                    the dynamic scissor count is not equal to the scissor count \
-                                    specified when creating the pipeline"
-                                    .into(),
-                                vuids: vuids!(vuid_type, "viewportCount-03417"),
-                                ..Default::default()
-                            }));
-                        }
-                    } else {
-                        if let Some(scissors) = &self.builder_state.scissor_with_count {
-                            if viewport_count != scissors.len() as u32 {
-                                return Err(Box::new(ValidationError {
-                                    problem: "the currently bound graphics pipeline requires both \
-                                        the `DynamicState::ViewportWithCount` and the \
-                                        `DynamicState::ScissorWithCount` dynamic states, but \
-                                        the dynamic scissor count is not equal to the \
-                                        dynamic scissor count "
-                                        .into(),
-                                    vuids: vuids!(vuid_type, "viewportCount-03419"),
-                                    ..Default::default()
-                                }));
-                            }
-                        } else {
-                            return Err(Box::new(ValidationError {
-                                problem: format!(
-                                    "the currently bound graphics pipeline requires the \
-                                    `DynamicState::{:?}` dynamic state, but \
-                                    this state was either not set, or it was overwritten by a \
-                                    more recent `bind_pipeline_graphics` command",
-                                    dynamic_state
-                                ).into(),
-                                vuids: vuids!(vuid_type, "scissorCount-03418", "viewportCount-03419"),
-                                ..Default::default()
-                            }));
-                        }
                     }
 
                     // TODO: VUID-vkCmdDrawIndexed-primitiveFragmentShadingRateWithMultipleViewports-04552
@@ -2188,38 +2261,6 @@ where
                     // command buffer prior to this drawing command, and the viewportCount parameter of
                     // vkCmdSetViewportWithCountEXT must be 1
                 }
-                DynamicState::ViewportWScaling => todo!(),
-                DynamicState::TessellationDomainOrigin => todo!(),
-                DynamicState::DepthClampEnable => todo!(),
-                DynamicState::PolygonMode => todo!(),
-                DynamicState::RasterizationSamples => todo!(),
-                DynamicState::SampleMask => todo!(),
-                DynamicState::AlphaToCoverageEnable => todo!(),
-                DynamicState::AlphaToOneEnable => todo!(),
-                DynamicState::LogicOpEnable => todo!(),
-                DynamicState::ColorBlendEnable => todo!(),
-                DynamicState::ColorBlendEquation => todo!(),
-                DynamicState::ColorWriteMask => todo!(),
-                DynamicState::RasterizationStream => todo!(),
-                DynamicState::ConservativeRasterizationMode => todo!(),
-                DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
-                DynamicState::DepthClipEnable => todo!(),
-                DynamicState::SampleLocationsEnable => todo!(),
-                DynamicState::ColorBlendAdvanced => todo!(),
-                DynamicState::ProvokingVertexMode => todo!(),
-                DynamicState::LineRasterizationMode => todo!(),
-                DynamicState::LineStippleEnable => todo!(),
-                DynamicState::DepthClipNegativeOneToOne => todo!(),
-                DynamicState::ViewportWScalingEnable => todo!(),
-                DynamicState::ViewportSwizzle => todo!(),
-                DynamicState::CoverageToColorEnable => todo!(),
-                DynamicState::CoverageToColorLocation => todo!(),
-                DynamicState::CoverageModulationMode => todo!(),
-                DynamicState::CoverageModulationTableEnable => todo!(),
-                DynamicState::CoverageModulationTable => todo!(),
-                DynamicState::ShadingRateImageEnable => todo!(),
-                DynamicState::RepresentativeFragmentTestEnable => todo!(),
-                DynamicState::CoverageReductionMode => todo!(),
             }
         }
 

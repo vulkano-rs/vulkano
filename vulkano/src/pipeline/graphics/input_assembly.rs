@@ -10,10 +10,7 @@
 //! Configures how input vertices are assembled into primitives.
 
 use crate::{
-    device::Device,
-    macros::vulkan_enum,
-    pipeline::{PartialStateMode, StateMode},
-    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
+    device::Device, macros::vulkan_enum, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
@@ -21,12 +18,17 @@ use crate::{
 pub struct InputAssemblyState {
     /// The type of primitives.
     ///
-    /// Note that some topologies require a feature to be enabled on the device.
+    /// When [`DynamicState::PrimitiveTopology`] is used, if the
+    /// [`dynamic_primitive_topology_unrestricted`] device property is `false`, then
+    /// the dynamically set primitive topology must belong to the same *topology class* as
+    /// `topology`.
+    /// In practice, this is simply the first word in the name of the topology.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub topology: PartialStateMode<PrimitiveTopology, PrimitiveTopologyClass>,
+    /// The default value is [`PrimitiveTopology::TriangleList`].
+    ///
+    /// [`DynamicState::PrimitiveTopology`]: crate::pipeline::DynamicState::PrimitiveTopology
+    /// [`dynamic_primitive_topology_unrestricted`]: crate::device::Properties::dynamic_primitive_topology_unrestricted
+    pub topology: PrimitiveTopology,
 
     /// If true, then when drawing with an index buffer, the special index value consisting of the
     /// maximum unsigned value (`0xff`, `0xffff` or `0xffffffff`) will tell the GPU that it is the
@@ -36,54 +38,54 @@ pub struct InputAssemblyState {
     /// topologies require a feature to be enabled on the device when combined with primitive
     /// restart.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
-    /// be enabled on the device.
-    pub primitive_restart_enable: StateMode<bool>,
+    /// The default value is `false`.
+    pub primitive_restart_enable: bool,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for InputAssemblyState {
+    /// Returns [`InputAssemblyState::new()`].
+    #[inline]
+    fn default() -> Self {
+        Self {
+            topology: PrimitiveTopology::TriangleList,
+            primitive_restart_enable: false,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl InputAssemblyState {
     /// Creates an `InputAssemblyState` with the `TriangleList` topology and primitive restart
     /// disabled.
     #[inline]
+    #[deprecated(since = "0.34.0", note = "use `InputAssemblyState::default` instead")]
     pub fn new() -> Self {
         Self {
-            topology: PartialStateMode::Fixed(PrimitiveTopology::TriangleList),
-            primitive_restart_enable: StateMode::Fixed(false),
+            topology: PrimitiveTopology::TriangleList,
+            primitive_restart_enable: false,
             _ne: crate::NonExhaustive(()),
         }
     }
 
     /// Sets the primitive topology.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn topology(mut self, topology: PrimitiveTopology) -> Self {
-        self.topology = PartialStateMode::Fixed(topology);
-        self
-    }
-
-    /// Sets the primitive topology to dynamic.
-    #[inline]
-    pub fn topology_dynamic(mut self, topology_class: PrimitiveTopologyClass) -> Self {
-        self.topology = PartialStateMode::Dynamic(topology_class);
+        self.topology = topology;
         self
     }
 
     /// Enables primitive restart.
     #[inline]
+    #[deprecated(since = "0.34.0")]
     pub fn primitive_restart_enable(mut self) -> Self {
-        self.primitive_restart_enable = StateMode::Fixed(true);
+        self.primitive_restart_enable = true;
         self
     }
 
-    /// Sets primitive restart enable to dynmamic.
-    #[inline]
-    pub fn primitive_restart_enable_dynamic(mut self) -> Self {
-        self.primitive_restart_enable = StateMode::Dynamic;
-        self
-    }
-
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             topology,
@@ -91,152 +93,96 @@ impl InputAssemblyState {
             _ne: _,
         } = self;
 
-        match topology {
-            PartialStateMode::Fixed(topology) => {
-                topology.validate_device(device).map_err(|err| {
-                    err.add_context("topology").set_vuids(&[
-                        "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter",
-                    ])
-                })?;
+        topology.validate_device(device).map_err(|err| {
+            err.add_context("topology")
+                .set_vuids(&["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter"])
+        })?;
 
-                match topology {
-                    PrimitiveTopology::TriangleFan => {
-                        if device.enabled_extensions().khr_portability_subset
-                            && !device.enabled_features().triangle_fans
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "this device is a portability subset device, and \
-                                    `topology` is `PrimitiveTopology::TriangleFan`"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("triangle_fans"),
-                                ])]),
-                                vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-triangleFans-04452"],
-                                ..Default::default()
-                            }));
-                        }
-                    }
-                    PrimitiveTopology::LineListWithAdjacency
-                    | PrimitiveTopology::LineStripWithAdjacency
-                    | PrimitiveTopology::TriangleListWithAdjacency
-                    | PrimitiveTopology::TriangleStripWithAdjacency => {
-                        if !device.enabled_features().geometry_shader {
-                            return Err(Box::new(ValidationError {
-                                context: "topology".into(),
-                                problem: "is `PrimitiveTopology::*WithAdjacency`".into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("geometry_shader"),
-                                ])]),
-                                vuids: &[
-                                    "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429",
-                                ],
-                            }));
-                        }
-                    }
-                    PrimitiveTopology::PatchList => {
-                        if !device.enabled_features().tessellation_shader {
-                            return Err(Box::new(ValidationError {
-                                context: "topology".into(),
-                                problem: "is `PrimitiveTopology::PatchList`".into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("tessellation_shader"),
-                                ])]),
-                                vuids: &[
-                                    "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430",
-                                ],
-                            }));
-                        }
-                    }
-                    _ => (),
+        match topology {
+            PrimitiveTopology::TriangleFan => {
+                if device.enabled_extensions().khr_portability_subset
+                    && !device.enabled_features().triangle_fans
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "this device is a portability subset device, and \
+                            `topology` is `PrimitiveTopology::TriangleFan`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "triangle_fans",
+                        )])]),
+                        vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-triangleFans-04452"],
+                        ..Default::default()
+                    }));
                 }
             }
-            PartialStateMode::Dynamic(topology_class) => {
-                topology_class
-                    .example()
-                    .validate_device(device)
-                    .map_err(|err| {
-                        err.add_context("topology").set_vuids(&[
-                            "VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter",
-                        ])
-                    })?;
-
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state)
-                {
+            PrimitiveTopology::LineListWithAdjacency
+            | PrimitiveTopology::LineStripWithAdjacency
+            | PrimitiveTopology::TriangleListWithAdjacency
+            | PrimitiveTopology::TriangleStripWithAdjacency => {
+                if !device.enabled_features().geometry_shader {
                     return Err(Box::new(ValidationError {
                         context: "topology".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
+                        problem: "is `PrimitiveTopology::*WithAdjacency`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "geometry_shader",
+                        )])]),
+                        vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429"],
                     }));
                 }
             }
+            PrimitiveTopology::PatchList => {
+                if !device.enabled_features().tessellation_shader {
+                    return Err(Box::new(ValidationError {
+                        context: "topology".into(),
+                        problem: "is `PrimitiveTopology::PatchList`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "tessellation_shader",
+                        )])]),
+                        vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430"],
+                    }));
+                }
+            }
+            _ => (),
         }
 
-        match primitive_restart_enable {
-            StateMode::Fixed(primitive_restart_enable) => {
-                if primitive_restart_enable {
-                    match topology {
-                        PartialStateMode::Fixed(
-                            PrimitiveTopology::PointList
-                            | PrimitiveTopology::LineList
-                            | PrimitiveTopology::TriangleList
-                            | PrimitiveTopology::LineListWithAdjacency
-                            | PrimitiveTopology::TriangleListWithAdjacency,
-                        ) => {
-                            if !device.enabled_features().primitive_topology_list_restart {
-                                return Err(Box::new(ValidationError {
-                                    problem: "`topology` is `PrimitiveTopology::*List`, and \
-                                        `primitive_restart_enable` is `true`"
-                                        .into(),
-                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                        Requires::Feature("primitive_topology_list_restart"),
-                                    ])]),
-                                    vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252"],
-                                    ..Default::default()
-                                }));
-                            }
-                        }
-                        PartialStateMode::Fixed(PrimitiveTopology::PatchList) => {
-                            if !device
-                                .enabled_features()
-                                .primitive_topology_patch_list_restart
-                            {
-                                return Err(Box::new(ValidationError {
-                                    problem: "`topology` is `PrimitiveTopology::PatchList`, and \
-                                        `primitive_restart_enable` is `true`"
-                                        .into(),
-                                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                        Requires::Feature("primitive_topology_patch_list_restart"),
-                                    ])]),
-                                    vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06253"],
-                                    ..Default::default()
-                                }));
-                            }
-                        }
-                        _ => (),
+        if primitive_restart_enable {
+            match topology {
+                PrimitiveTopology::PointList
+                | PrimitiveTopology::LineList
+                | PrimitiveTopology::TriangleList
+                | PrimitiveTopology::LineListWithAdjacency
+                | PrimitiveTopology::TriangleListWithAdjacency => {
+                    if !device.enabled_features().primitive_topology_list_restart {
+                        return Err(Box::new(ValidationError {
+                            problem: "`topology` is `PrimitiveTopology::*List`, and \
+                                `primitive_restart_enable` is `true`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "primitive_topology_list_restart",
+                            )])]),
+                            vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252"],
+                            ..Default::default()
+                        }));
                     }
                 }
-            }
-            StateMode::Dynamic => {
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state2)
-                {
-                    return Err(Box::new(ValidationError {
-                        context: "primitive_restart_enable".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
-                    }));
+                PrimitiveTopology::PatchList => {
+                    if !device
+                        .enabled_features()
+                        .primitive_topology_patch_list_restart
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`topology` is `PrimitiveTopology::PatchList`, and \
+                                `primitive_restart_enable` is `true`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "primitive_topology_patch_list_restart",
+                            )])]),
+                            vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06253"],
+                            ..Default::default()
+                        }));
+                    }
                 }
+                _ => (),
             }
         }
 
@@ -244,18 +190,16 @@ impl InputAssemblyState {
     }
 }
 
-impl Default for InputAssemblyState {
-    /// Returns [`InputAssemblyState::new()`].
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 vulkan_enum! {
     #[non_exhaustive]
 
     /// Describes how vertices must be grouped together to form primitives.
+    ///
+    /// When [`DynamicState::PrimitiveTopology`] is used, if the
+    /// [`dynamic_primitive_topology_unrestricted`] device property is `false`, then
+    /// the dynamically set primitive topology must belong to the same *topology class* as what
+    /// was set during pipeline creation.
+    /// In practice, this is simply the first word in the name of the topology.
     ///
     /// When enabling primitive restart, "list" topologies require a feature to be enabled on the
     /// device:
@@ -265,40 +209,34 @@ vulkan_enum! {
     /// - All other "list" topologies require the
     ///   [`primitive_topology_list_restart`](crate::device::Features::primitive_topology_list_restart)
     ///   feature.
-    PrimitiveTopology impl {
-        /// Returns the topology class of this topology.
-        #[inline]
-        pub fn class(self) -> PrimitiveTopologyClass {
-            match self {
-                Self::PointList => PrimitiveTopologyClass::Point,
-                Self::LineList
-                | Self::LineStrip
-                | Self::LineListWithAdjacency
-                | Self::LineStripWithAdjacency => PrimitiveTopologyClass::Line,
-                Self::TriangleList
-                | Self::TriangleStrip
-                | Self::TriangleFan
-                | Self::TriangleListWithAdjacency
-                | Self::TriangleStripWithAdjacency => PrimitiveTopologyClass::Triangle,
-                Self::PatchList => PrimitiveTopologyClass::Patch,
-            }
-        }
-    }
-    = PrimitiveTopology(i32);
+    ///
+    /// [`DynamicState::PrimitiveTopology`]: crate::pipeline::DynamicState::PrimitiveTopology
+    /// [`dynamic_primitive_topology_unrestricted`]: crate::device::Properties::dynamic_primitive_topology_unrestricted
+    PrimitiveTopology = PrimitiveTopology(i32);
 
     /// A series of separate point primitives.
+    ///
+    /// Topology class: Point
     PointList = POINT_LIST,
 
     /// A series of separate line primitives.
+    ///
+    /// Topology class: Line
     LineList = LINE_LIST,
 
     /// A series of consecutive line primitives, with consecutive lines sharing a vertex.
+    ///
+    /// Topology class: Line
     LineStrip = LINE_STRIP,
 
     /// A series of separate triangle primitives.
+    ///
+    /// Topology class: Triangle
     TriangleList = TRIANGLE_LIST,
 
     /// A series of consecutive triangle primitives, with consecutive triangles sharing an edge (two vertices).
+    ///
+    /// Topology class: Triangle
     TriangleStrip = TRIANGLE_STRIP,
 
     /// A series of consecutive triangle primitives, with all triangles sharing a common vertex (the first).
@@ -306,26 +244,38 @@ vulkan_enum! {
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, the [`triangle_fans`](crate::device::Features::triangle_fans)
     /// feature must be enabled on the device.
+    ///
+    /// Topology class: Triangle
     TriangleFan = TRIANGLE_FAN,
 
     /// As `LineList, but with adjacency, used in combination with geometry shaders. Requires the
     /// [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    ///
+    /// Topology class: Line
     LineListWithAdjacency = LINE_LIST_WITH_ADJACENCY,
 
     /// As `LineStrip`, but with adjacency, used in combination with geometry shaders. Requires the
     /// [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    ///
+    /// Topology class: Line
     LineStripWithAdjacency = LINE_STRIP_WITH_ADJACENCY,
 
     /// As `TriangleList`, but with adjacency, used in combination with geometry shaders. Requires
     /// the [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    ///
+    /// Topology class: Triangle
     TriangleListWithAdjacency = TRIANGLE_LIST_WITH_ADJACENCY,
 
     /// As `TriangleStrip`, but with adjacency, used in combination with geometry shaders. Requires
     /// the [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    ///
+    /// Topology class: Triangle
     TriangleStripWithAdjacency = TRIANGLE_STRIP_WITH_ADJACENCY,
 
     /// Separate patch primitives, used in combination with tessellation shaders. Requires the
     /// [`tessellation_shader`](crate::device::Features::tessellation_shader) feature.
+    ///
+    /// Topology class: Patch
     PatchList = PATCH_LIST,
 
 }
@@ -336,26 +286,5 @@ impl Default for PrimitiveTopology {
     #[inline]
     fn default() -> Self {
         PrimitiveTopology::TriangleList
-    }
-}
-
-/// Describes the shape of a primitive topology.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum PrimitiveTopologyClass {
-    Point,
-    Line,
-    Triangle,
-    Patch,
-}
-
-impl PrimitiveTopologyClass {
-    /// Returns a representative example of this topology class.
-    pub(crate) fn example(self) -> PrimitiveTopology {
-        match self {
-            Self::Point => PrimitiveTopology::PointList,
-            Self::Line => PrimitiveTopology::LineList,
-            Self::Triangle => PrimitiveTopology::TriangleList,
-            Self::Patch => PrimitiveTopology::PatchList,
-        }
     }
 }

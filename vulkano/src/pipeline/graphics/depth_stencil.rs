@@ -23,8 +23,7 @@
 use crate::{
     device::Device,
     macros::{vulkan_bitflags, vulkan_enum},
-    pipeline::StateMode,
-    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use std::ops::RangeInclusive;
 
@@ -41,26 +40,32 @@ pub struct DepthStencilState {
     ///
     /// If set to `None`, the depth test is disabled, all fragments will pass and no depth writes
     /// are performed.
+    ///
+    /// The default value is `None`.
     pub depth: Option<DepthState>,
 
-    /// The state of the depth bounds test.
+    /// The minimum and maximum depth values to use for the depth bounds test.
+    /// Fragments with values outside this range are discarded.
     ///
     /// If set to `None`, the depth bounds test is disabled, all fragments will pass.
-    pub depth_bounds: Option<DepthBoundsState>,
+    ///
+    /// The default value is `None`.
+    pub depth_bounds: Option<RangeInclusive<f32>>,
 
     /// The state of the stencil test.
     ///
     /// If set to `None`, the stencil test is disabled, all fragments will pass and no stencil
     /// writes are performed.
+    ///
+    /// The default value is `None`.
     pub stencil: Option<StencilState>,
 
     pub _ne: crate::NonExhaustive,
 }
 
-impl DepthStencilState {
-    /// Creates a `DepthStencilState` where all tests are disabled and have no effect.
+impl Default for DepthStencilState {
     #[inline]
-    pub fn disabled() -> Self {
+    fn default() -> Self {
         Self {
             flags: DepthStencilStateFlags::empty(),
             depth: Default::default(),
@@ -69,18 +74,24 @@ impl DepthStencilState {
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+impl DepthStencilState {
+    /// Creates a `DepthStencilState` where all tests are disabled and have no effect.
+    #[inline]
+    #[deprecated(since = "0.34.0", note = "use `DepthStencilState::default` instead")]
+    pub fn disabled() -> Self {
+        Self::default()
+    }
 
     /// Creates a `DepthStencilState` with a `Less` depth test, `depth_write` set to true, and other
     /// tests disabled.
     #[inline]
+    #[deprecated(since = "0.34.0", note = "use `DepthState::simple` instead")]
     pub fn simple_depth_test() -> Self {
         Self {
             flags: DepthStencilStateFlags::empty(),
-            depth: Some(DepthState {
-                enable_dynamic: false,
-                compare_op: StateMode::Fixed(CompareOp::Less),
-                write_enable: StateMode::Fixed(true),
-            }),
+            depth: Some(DepthState::simple()),
             depth_bounds: Default::default(),
             stencil: Default::default(),
             _ne: crate::NonExhaustive(()),
@@ -107,7 +118,7 @@ impl DepthStencilState {
                 .map_err(|err| err.add_context("depth"))?;
         }
 
-        if let Some(depth_bounds_state) = depth_bounds {
+        if let Some(depth_bounds) = depth_bounds {
             if !device.enabled_features().depth_bounds {
                 return Err(Box::new(ValidationError {
                     context: "depth_bounds".into(),
@@ -121,9 +132,29 @@ impl DepthStencilState {
                 }));
             }
 
-            depth_bounds_state
-                .validate(device)
-                .map_err(|err| err.add_context("depth_bounds"))?;
+            if !device.enabled_extensions().ext_depth_range_unrestricted {
+                if !(0.0..1.0).contains(depth_bounds.start()) {
+                    return Err(Box::new(ValidationError {
+                        context: "depth_bounds.start".into(),
+                        problem: "is not between 0.0 and 1.0 inclusive".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("ext_depth_range_unrestricted"),
+                        ])]),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510"],
+                    }));
+                }
+
+                if !(0.0..1.0).contains(depth_bounds.end()) {
+                    return Err(Box::new(ValidationError {
+                        context: "depth_bounds.end".into(),
+                        problem: "is not between 0.0 and 1.0 inclusive".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("ext_depth_range_unrestricted"),
+                        ])]),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510"],
+                    }));
+                }
+            }
         }
 
         if let Some(stencil_state) = stencil {
@@ -133,14 +164,6 @@ impl DepthStencilState {
         }
 
         Ok(())
-    }
-}
-
-impl Default for DepthStencilState {
-    /// Returns [`DepthStencilState::disabled()`].
-    #[inline]
-    fn default() -> Self {
-        DepthStencilState::disabled()
     }
 }
 
@@ -170,322 +193,93 @@ vulkan_bitflags! {
 /// The state in a graphics pipeline describing how the depth test should behave when enabled.
 #[derive(Clone, Copy, Debug)]
 pub struct DepthState {
-    /// Sets whether depth testing should be enabled and disabled dynamically. If set to `false`,
-    /// depth testing is always enabled.
-    ///
-    /// If set to `true`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub enable_dynamic: bool,
-
     /// Sets whether the value in the depth buffer will be updated when the depth test succeeds.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub write_enable: StateMode<bool>,
+    /// The default value is `false`.
+    pub write_enable: bool,
 
     /// Comparison operation to use between the depth value of each incoming fragment and the depth
     /// value currently in the depth buffer.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub compare_op: StateMode<CompareOp>,
-}
-
-impl DepthState {
-    pub(crate) fn validate(self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let Self {
-            enable_dynamic,
-            write_enable,
-            compare_op,
-        } = self;
-
-        if enable_dynamic
-            && !(device.api_version() >= Version::V1_3
-                || device.enabled_features().extended_dynamic_state)
-        {
-            return Err(Box::new(ValidationError {
-                context: "enable_dynamic".into(),
-                problem: "is `true`".into(),
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-                // vuids?
-                ..Default::default()
-            }));
-        }
-
-        match write_enable {
-            StateMode::Fixed(_) => (),
-            StateMode::Dynamic => {
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(Box::new(ValidationError {
-                        context: "write_enable".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
-                    }));
-                }
-            }
-        }
-
-        match compare_op {
-            StateMode::Fixed(compare_op) => {
-                compare_op.validate_device(device).map_err(|err| {
-                    err.add_context("compare_op").set_vuids(&[
-                        "VUID-VkPipelineDepthStencilStateCreateInfo-depthCompareOp-parameter",
-                    ])
-                })?;
-            }
-            StateMode::Dynamic => {
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(Box::new(ValidationError {
-                        context: "compare_op".into(),
-                        problem: "is dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
-                    }));
-                }
-            }
-        }
-
-        Ok(())
-    }
+    /// The default value is [`CompareOp::Always`].
+    pub compare_op: CompareOp,
 }
 
 impl Default for DepthState {
-    /// Creates a `DepthState` with no dynamic state, depth writes disabled and `compare_op` set
-    /// to always pass.
     #[inline]
     fn default() -> Self {
         Self {
-            enable_dynamic: false,
-            write_enable: StateMode::Fixed(false),
-            compare_op: StateMode::Fixed(CompareOp::Always),
+            write_enable: false,
+            compare_op: CompareOp::Always,
         }
     }
 }
 
-/// The state in a graphics pipeline describing how the depth bounds test should behave when
-/// enabled.
-#[derive(Clone, Debug)]
-pub struct DepthBoundsState {
-    /// Sets whether depth bounds testing should be enabled and disabled dynamically. If set to
-    /// `false`, depth bounds testing is always enabled.
-    ///
-    /// If set to `true`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub enable_dynamic: bool,
+impl DepthState {
+    /// Returns a `DepthState` with a `Less` depth test and depth writes enabled.
+    #[inline]
+    pub fn simple() -> Self {
+        Self {
+            compare_op: CompareOp::Less,
+            write_enable: true,
+        }
+    }
 
-    /// The minimum and maximum depth values to use for the test. Fragments with values outside this
-    /// range are discarded.
-    ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub bounds: StateMode<RangeInclusive<f32>>,
-}
-
-impl DepthBoundsState {
-    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
-            enable_dynamic,
-            ref bounds,
+    pub(crate) fn validate(self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let Self {
+            write_enable: _,
+            compare_op,
         } = self;
 
-        if enable_dynamic
-            && !(device.api_version() >= Version::V1_3
-                || device.enabled_features().extended_dynamic_state)
-        {
-            return Err(Box::new(ValidationError {
-                context: "enable_dynamic".into(),
-                problem: "is `true`".into(),
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-                // vuids?
-                ..Default::default()
-            }));
-        }
-
-        if let StateMode::Fixed(bounds) = bounds {
-            if !device.enabled_extensions().ext_depth_range_unrestricted {
-                if !(0.0..1.0).contains(bounds.start()) {
-                    return Err(Box::new(ValidationError {
-                        context: "bounds.start".into(),
-                        problem: "is not between 0.0 and 1.0 inclusive".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                            Requires::DeviceExtension("ext_depth_range_unrestricted"),
-                        ])]),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510"],
-                    }));
-                }
-
-                if !(0.0..1.0).contains(bounds.end()) {
-                    return Err(Box::new(ValidationError {
-                        context: "bounds.end".into(),
-                        problem: "is not between 0.0 and 1.0 inclusive".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                            Requires::DeviceExtension("ext_depth_range_unrestricted"),
-                        ])]),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510"],
-                    }));
-                }
-            }
-        }
+        compare_op.validate_device(device).map_err(|err| {
+            err.add_context("compare_op")
+                .set_vuids(&["VUID-VkPipelineDepthStencilStateCreateInfo-depthCompareOp-parameter"])
+        })?;
 
         Ok(())
-    }
-}
-
-impl Default for DepthBoundsState {
-    /// Creates a `DepthBoundsState` with no dynamic state and the bounds set to `0.0..=1.0`.
-    #[inline]
-    fn default() -> Self {
-        Self {
-            enable_dynamic: false,
-            bounds: StateMode::Fixed(0.0..=1.0),
-        }
     }
 }
 
 /// The state in a graphics pipeline describing how the stencil test should behave when enabled.
-///
-/// Dynamic state can only be enabled or disabled for both faces at once. Therefore, the dynamic
-/// state values in `StencilOpState`, must match: the values for `front` and `back` must either both
-/// be `Fixed` or both be `Dynamic`.
 #[derive(Clone, Debug)]
 pub struct StencilState {
-    /// Sets whether stencil testing should be enabled and disabled dynamically. If set to
-    /// `false`, stencil testing is always enabled.
-    ///
-    /// If set to `true`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub enable_dynamic: bool,
-
     /// The stencil operation state to use for points and lines, and for triangles whose front is
     /// facing the user.
+    ///
+    /// The default value is `StencilOpState::default()`.
     pub front: StencilOpState,
 
     /// The stencil operation state to use for triangles whose back is facing the user.
+    ///
+    /// The default value is `StencilOpState::default()`.
     pub back: StencilOpState,
+}
+
+impl Default for StencilState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            front: Default::default(),
+            back: Default::default(),
+        }
+    }
 }
 
 impl StencilState {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &StencilState {
-            enable_dynamic,
             ref front,
             ref back,
         } = self;
 
-        if enable_dynamic
-            && !(device.api_version() >= Version::V1_3
-                || device.enabled_features().extended_dynamic_state)
-        {
-            return Err(Box::new(ValidationError {
-                context: "enable_dynamic".into(),
-                problem: "is `true`".into(),
-                requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                ]),
-                // vuids?
-                ..Default::default()
-            }));
-        }
+        front
+            .ops
+            .validate(device)
+            .map_err(|err| err.add_context("front.ops"))?;
 
-        match (front.ops, back.ops) {
-            (StateMode::Fixed(front_ops), StateMode::Fixed(back_ops)) => {
-                front_ops
-                    .validate(device)
-                    .map_err(|err| err.add_context("front.ops"))?;
-                back_ops
-                    .validate(device)
-                    .map_err(|err| err.add_context("back.ops"))?;
-            }
-            (StateMode::Dynamic, StateMode::Dynamic) => {
-                if !(device.api_version() >= Version::V1_3
-                    || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(Box::new(ValidationError {
-                        problem: "`front.ops` and `back.ops` are dynamic".into(),
-                        requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                            RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
-                        ]),
-                        // vuids?
-                        ..Default::default()
-                    }));
-                }
-            }
-            _ => {
-                return Err(Box::new(ValidationError {
-                    problem: "`front.ops` and `back.ops` are \
-                        not both fixed or both dynamic"
-                        .into(),
-                    // vuids?
-                    ..Default::default()
-                }));
-            }
-        }
-
-        if !matches!(
-            (front.compare_mask, back.compare_mask),
-            (StateMode::Fixed(_), StateMode::Fixed(_)) | (StateMode::Dynamic, StateMode::Dynamic)
-        ) {
-            return Err(Box::new(ValidationError {
-                problem: "`front.compare_mask` and `back.compare_mask` are \
-                    not both fixed or both dynamic"
-                    .into(),
-                // vuids?
-                ..Default::default()
-            }));
-        }
-
-        if !matches!(
-            (front.write_mask, back.write_mask),
-            (StateMode::Fixed(_), StateMode::Fixed(_)) | (StateMode::Dynamic, StateMode::Dynamic)
-        ) {
-            return Err(Box::new(ValidationError {
-                problem: "`front.write_mask` and `back.write_mask` are \
-                    not both fixed or both dynamic"
-                    .into(),
-                // vuids?
-                ..Default::default()
-            }));
-        }
-
-        if !matches!(
-            (front.reference, back.reference),
-            (StateMode::Fixed(_), StateMode::Fixed(_)) | (StateMode::Dynamic, StateMode::Dynamic)
-        ) {
-            return Err(Box::new(ValidationError {
-                problem: "`front.reference` and `back.reference` are \
-                    not both fixed or both dynamic"
-                    .into(),
-                // vuids?
-                ..Default::default()
-            }));
-        }
+        back.ops
+            .validate(device)
+            .map_err(|err| err.add_context("back.ops"))?;
 
         Ok(())
     }
@@ -496,19 +290,21 @@ impl StencilState {
 pub struct StencilOpState {
     /// The stencil operations to perform.
     ///
-    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
-    pub ops: StateMode<StencilOps>,
+    /// The default value is `StencilOps::default()`.
+    pub ops: StencilOps,
 
     /// A bitmask that selects the bits of the unsigned integer stencil values participating in the
     /// stencil test. Ignored if `compare_op` is `Never` or `Always`.
-    pub compare_mask: StateMode<u32>,
+    ///
+    /// The default value is [`u32::MAX`].
+    pub compare_mask: u32,
 
     /// A bitmask that selects the bits of the unsigned integer stencil values updated by the
     /// stencil test in the stencil framebuffer attachment. Ignored if the relevant operation is
     /// `Keep`.
-    pub write_mask: StateMode<u32>,
+    ///
+    /// The default value is [`u32::MAX`].
+    pub write_mask: u32,
 
     /// Reference value that is used in the unsigned stencil comparison. The stencil test is
     /// considered to pass if the `compare_op` between the stencil buffer value and this reference
@@ -519,19 +315,19 @@ pub struct StencilOpState {
     /// are not equal, then the
     /// [`separate_stencil_mask_ref`](crate::device::Features::separate_stencil_mask_ref)
     /// feature must be enabled on the device.
-    pub reference: StateMode<u32>,
+    ///
+    /// The default value is [`u32::MAX`].
+    pub reference: u32,
 }
 
 impl Default for StencilOpState {
-    /// Creates a `StencilOpState` with no dynamic state, `compare_op` set to `Never`, the stencil
-    /// operations set to `Keep`, and the masks and reference values set to `u32::MAX`.
     #[inline]
     fn default() -> StencilOpState {
         StencilOpState {
-            ops: StateMode::Fixed(Default::default()),
-            compare_mask: StateMode::Fixed(u32::MAX),
-            write_mask: StateMode::Fixed(u32::MAX),
-            reference: StateMode::Fixed(u32::MAX),
+            ops: Default::default(),
+            compare_mask: u32::MAX,
+            write_mask: u32::MAX,
+            reference: u32::MAX,
         }
     }
 }
@@ -539,17 +335,37 @@ impl Default for StencilOpState {
 #[derive(Clone, Copy, Debug)]
 pub struct StencilOps {
     /// The operation to perform when the stencil test failed.
+    ///
+    /// The default value is [`StencilOp::Keep`].
     pub fail_op: StencilOp,
 
     /// The operation to perform when both the depth test and the stencil test passed.
+    ///
+    /// The default value is [`StencilOp::Keep`].
     pub pass_op: StencilOp,
 
     /// The operation to perform when the stencil test passed but the depth test failed.
+    ///
+    /// The default value is [`StencilOp::Keep`].
     pub depth_fail_op: StencilOp,
 
     /// The comparison to perform between the existing stencil value in the stencil buffer, and
     /// the reference value (given by `reference`).
+    ///
+    /// The default value is [`CompareOp::Never`].
     pub compare_op: CompareOp,
+}
+
+impl Default for StencilOps {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            pass_op: StencilOp::Keep,
+            fail_op: StencilOp::Keep,
+            depth_fail_op: StencilOp::Keep,
+            compare_op: CompareOp::Never,
+        }
+    }
 }
 
 impl StencilOps {
@@ -582,20 +398,6 @@ impl StencilOps {
         })?;
 
         Ok(())
-    }
-}
-
-impl Default for StencilOps {
-    /// Creates a `StencilOps` with no dynamic state, `compare_op` set to `Never` and the stencil
-    /// operations set to `Keep`.
-    #[inline]
-    fn default() -> Self {
-        Self {
-            pass_op: StencilOp::Keep,
-            fail_op: StencilOp::Keep,
-            depth_fail_op: StencilOp::Keep,
-            compare_op: CompareOp::Never,
-        }
     }
 }
 

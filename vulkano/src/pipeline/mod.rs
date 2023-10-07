@@ -945,441 +945,571 @@ vulkan_bitflags! {
 vulkan_enum! {
     #[non_exhaustive]
 
-    /// A particular state value within a graphics pipeline that can be dynamically set by a command
-    /// buffer.
+    /// A particular state value within a pipeline that can be dynamically set by a command buffer.
+    ///
+    /// Whenever a particular state is set to be dynamic while creating the pipeline,
+    /// the corresponding predefined value in the pipeline's create info is ignored, unless
+    /// specified otherwise here.
+    ///
+    /// If the dynamic state is used to enable/disable a certain functionality,
+    /// and the value in the create info is an `Option`
+    /// (for example, [`DynamicState::DepthTestEnable`] and [`DepthStencilState::depth`]),
+    /// then that `Option` must be `Some` when creating the pipeline,
+    /// in order to provide settings to use when the functionality is enabled.
+    ///
+    /// [`DepthStencilState::depth`]: (crate::pipeline::graphics::depth_stencil::DepthStencilState::depth)
     DynamicState = DynamicState(i32);
 
-    // TODO: document
+    /// The elements, but not the count, of
+    /// [`ViewportState::viewports`](crate::pipeline::graphics::viewport::ViewportState::viewports).
+    ///
+    /// Set with
+    /// [`set_viewport`](crate::command_buffer::AutoCommandBufferBuilder::set_viewport).
     Viewport = VIEWPORT,
 
-    // TODO: document
+    /// The elements, but not the count, of
+    /// [`ViewportState::scissors`](crate::pipeline::graphics::viewport::ViewportState::scissors).
+    ///
+    /// Set with
+    /// [`set_scissor`](crate::command_buffer::AutoCommandBufferBuilder::set_scissor).
     Scissor = SCISSOR,
 
-    // TODO: document
+    /// The value of
+    /// [`RasterizationState::line_width`](crate::pipeline::graphics::rasterization::RasterizationState::line_width).
+    ///
+    /// Set with
+    /// [`set_line_width`](crate::command_buffer::AutoCommandBufferBuilder::set_line_width).
     LineWidth = LINE_WIDTH,
 
-    // TODO: document
+    /// The value of
+    /// [`RasterizationState::depth_bias`](crate::pipeline::graphics::rasterization::RasterizationState::depth_bias).
+    ///
+    /// Set with
+    /// [`set_depth_bias`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bias).
     DepthBias = DEPTH_BIAS,
 
-    // TODO: document
+    /// The value of
+    /// [`ColorBlendState::blend_constants`](crate::pipeline::graphics::color_blend::ColorBlendState::blend_constants).
+    ///
+    /// Set with
+    /// [`set_blend_constants`](crate::command_buffer::AutoCommandBufferBuilder::set_blend_constants).
     BlendConstants = BLEND_CONSTANTS,
 
-    // TODO: document
+    /// The value, but not the `Option` variant, of
+    /// [`DepthStencilState::depth_bounds`](crate::pipeline::graphics::depth_stencil::DepthStencilState::depth_bounds).
+    ///
+    /// Set with
+    /// [`set_depth_bounds`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bounds).
     DepthBounds = DEPTH_BOUNDS,
 
-    // TODO: document
+    /// The value of
+    /// [`StencilOpState::compare_mask`](crate::pipeline::graphics::depth_stencil::StencilOpState::compare_mask)
+    /// for both the front and back face.
+    ///
+    /// Set with
+    /// [`set_stencil_compare_mask`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_compare_mask).
     StencilCompareMask = STENCIL_COMPARE_MASK,
 
-    // TODO: document
+    /// The value of
+    /// [`StencilOpState::write_mask`](crate::pipeline::graphics::depth_stencil::StencilOpState::write_mask)
+    /// for both the front and back face.
+    ///
+    /// Set with
+    /// [`set_stencil_write_mask`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_write_mask).
     StencilWriteMask = STENCIL_WRITE_MASK,
 
-    // TODO: document
+    /// The value of
+    /// [`StencilOpState::reference`](crate::pipeline::graphics::depth_stencil::StencilOpState::reference)
+    /// for both the front and back face.
+    ///
+    /// Set with
+    /// [`set_stencil_reference`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_reference).
     StencilReference = STENCIL_REFERENCE,
 
-    // TODO: document
+    /// The value of
+    /// [`RasterizationState::cull_mode`](crate::pipeline::graphics::rasterization::RasterizationState::cull_mode).
+    ///
+    /// Set with
+    /// [`set_cull_mode`](crate::command_buffer::AutoCommandBufferBuilder::set_cull_mode).
     CullMode = CULL_MODE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`RasterizationState::front_face`](crate::pipeline::graphics::rasterization::RasterizationState::front_face).
+    ///
+    /// Set with
+    /// [`set_front_face`](crate::command_buffer::AutoCommandBufferBuilder::set_front_face).
     FrontFace = FRONT_FACE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`InputAssemblyState::topology`](crate::pipeline::graphics::input_assembly::InputAssemblyState::topology).
+    ///
+    /// Set with
+    /// [`set_primitive_topology`](crate::command_buffer::AutoCommandBufferBuilder::set_primitive_topology).
     PrimitiveTopology = PRIMITIVE_TOPOLOGY
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// Both the elements and the count of
+    /// [`ViewportState::viewports`](crate::pipeline::graphics::viewport::ViewportState::viewports).
+    ///
+    /// Set with
+    /// [`set_viewport_with_count`](crate::command_buffer::AutoCommandBufferBuilder::set_viewport_with_count).
     ViewportWithCount = VIEWPORT_WITH_COUNT
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// Both the elements and the count of
+    /// [`ViewportState::scissors`](crate::pipeline::graphics::viewport::ViewportState::scissors).
+    ///
+    /// Set with
+    /// [`set_scissor_with_count`](crate::command_buffer::AutoCommandBufferBuilder::set_scissor_with_count).
     ScissorWithCount = SCISSOR_WITH_COUNT
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
+    /* TODO: enable
     // TODO: document
     VertexInputBindingStride = VERTEX_INPUT_BINDING_STRIDE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
-    ]),
+    ]),*/
 
-    // TODO: document
+    /// The `Option` variant of
+    /// [`DepthStencilState::depth`](crate::pipeline::graphics::depth_stencil::DepthStencilState::depth).
+    ///
+    /// Set with
+    /// [`set_depth_test_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_test_enable).
     DepthTestEnable = DEPTH_TEST_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`DepthState::write_enable`](crate::pipeline::graphics::depth_stencil::DepthState::write_enable).
+    ///
+    /// Set with
+    /// [`set_depth_write_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_write_enable).
     DepthWriteEnable = DEPTH_WRITE_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`DepthState::compare_op`](crate::pipeline::graphics::depth_stencil::DepthState::compare_op).
+    ///
+    /// Set with
+    /// [`set_depth_compare_op`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_compare_op).
     DepthCompareOp = DEPTH_COMPARE_OP
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The `Option` variant of
+    /// [`DepthStencilState::depth_bounds`](crate::pipeline::graphics::depth_stencil::DepthStencilState::depth_bounds).
+    ///
+    /// Set with
+    /// [`set_depth_bounds_test_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bounds_test_enable).
     DepthBoundsTestEnable = DEPTH_BOUNDS_TEST_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The `Option` variant of
+    /// [`DepthStencilState::stencil`](crate::pipeline::graphics::depth_stencil::DepthStencilState::stencil).
+    ///
+    /// Set with
+    /// [`set_stencil_test_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_test_enable).
     StencilTestEnable = STENCIL_TEST_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`StencilOpState::ops`](crate::pipeline::graphics::depth_stencil::StencilOpState::ops)
+    /// for both the front and back face.
+    ///
+    /// Set with
+    /// [`set_stencil_op`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_op).
     StencilOp = STENCIL_OP
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`RasterizationState::rasterizer_discard_enable`](crate::pipeline::graphics::rasterization::RasterizationState::rasterizer_discard_enable).
+    ///
+    /// Set with
+    /// [`set_rasterizer_discard_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_rasterizer_discard_enable).
     RasterizerDiscardEnable = RASTERIZER_DISCARD_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
     ]),
 
-    // TODO: document
+    /// The `Option` variant of
+    /// [`RasterizationState::depth_bias`](crate::pipeline::graphics::rasterization::RasterizationState::depth_bias).
+    ///
+    /// Set with
+    /// [`set_depth_bias_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bias_enable).
     DepthBiasEnable = DEPTH_BIAS_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`InputAssemblyState::primitive_restart_enable`](crate::pipeline::graphics::input_assembly::InputAssemblyState::primitive_restart_enable).
+    ///
+    /// Set with
+    /// [`set_primitive_restart_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_primitive_restart_enable).
     PrimitiveRestartEnable = PRIMITIVE_RESTART_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
     ]),
 
+    /* TODO: enable
     // TODO: document
     ViewportWScaling = VIEWPORT_W_SCALING_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(nv_clip_space_w_scaling)]),
-    ]),
+    ]), */
 
-    // TODO: document
+    /// The elements, but not count, of
+    /// [`DiscardRectangleState::rectangles`](crate::pipeline::graphics::discard_rectangle::DiscardRectangleState::rectangles).
+    ///
+    /// Set with
+    /// [`set_discard_rectangle`](crate::command_buffer::AutoCommandBufferBuilder::set_discard_rectangle).
     DiscardRectangle = DISCARD_RECTANGLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_discard_rectangles)]),
     ]),
 
+    /* TODO: enable
     // TODO: document
     SampleLocations = SAMPLE_LOCATIONS_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_sample_locations)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     RayTracingPipelineStackSize = RAY_TRACING_PIPELINE_STACK_SIZE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ViewportShadingRatePalette = VIEWPORT_SHADING_RATE_PALETTE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(nv_shading_rate_image)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ViewportCoarseSampleOrder = VIEWPORT_COARSE_SAMPLE_ORDER_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(nv_shading_rate_image)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ExclusiveScissor = EXCLUSIVE_SCISSOR_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(nv_scissor_exclusive)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     FragmentShadingRate = FRAGMENT_SHADING_RATE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
-    ]),
+    ]), */
 
-    // TODO: document
+    /// The value of
+    /// [`RasterizationState::line_stipple`](crate::pipeline::graphics::rasterization::RasterizationState::line_stipple).
+    ///
+    /// Set with
+    /// [`set_line_stipple`](crate::command_buffer::AutoCommandBufferBuilder::set_line_stipple).
     LineStipple = LINE_STIPPLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_line_rasterization)]),
     ]),
 
+    /* TODO: enable
     // TODO: document
     VertexInput = VERTEX_INPUT_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_vertex_input_dynamic_state)]),
-    ]),
+    ]), */
 
-    // TODO: document
+    /// The value of
+    /// [`TessellationState::patch_control_points`](crate::pipeline::graphics::tessellation::TessellationState::patch_control_points).
+    ///
+    /// Set with
+    /// [`set_patch_control_points`](crate::command_buffer::AutoCommandBufferBuilder::set_patch_control_points).
     PatchControlPoints = PATCH_CONTROL_POINTS_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`ColorBlendState::logic_op`](crate::pipeline::graphics::color_blend::ColorBlendState::logic_op).
+    ///
+    /// Set with
+    /// [`set_logic_op`](crate::command_buffer::AutoCommandBufferBuilder::set_logic_op).
     LogicOp = LOGIC_OP_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
     ]),
 
-    // TODO: document
+    /// The value of
+    /// [`ColorBlendAttachmentState::color_write_enable`](crate::pipeline::graphics::color_blend::ColorBlendAttachmentState::color_write_enable)
+    /// for every attachment.
+    ///
+    /// Set with
+    /// [`set_color_write_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_color_write_enable).
     ColorWriteEnable = COLOR_WRITE_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_color_write_enable)]),
     ]),
 
+    /* TODO: enable
     // TODO: document
     TessellationDomainOrigin = TESSELLATION_DOMAIN_ORIGIN_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     DepthClampEnable = DEPTH_CLAMP_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     PolygonMode = POLYGON_MODE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     RasterizationSamples = RASTERIZATION_SAMPLES_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     SampleMask = SAMPLE_MASK_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     AlphaToCoverageEnable = ALPHA_TO_COVERAGE_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     AlphaToOneEnable = ALPHA_TO_ONE_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     LogicOpEnable = LOGIC_OP_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ColorBlendEnable = COLOR_BLEND_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ColorBlendEquation = COLOR_BLEND_EQUATION_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ColorWriteMask = COLOR_WRITE_MASK_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     RasterizationStream = RASTERIZATION_STREAM_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ConservativeRasterizationMode = CONSERVATIVE_RASTERIZATION_MODE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ExtraPrimitiveOverestimationSize = EXTRA_PRIMITIVE_OVERESTIMATION_SIZE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     DepthClipEnable = DEPTH_CLIP_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     SampleLocationsEnable = SAMPLE_LOCATIONS_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ColorBlendAdvanced = COLOR_BLEND_ADVANCED_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ProvokingVertexMode = PROVOKING_VERTEX_MODE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     LineRasterizationMode = LINE_RASTERIZATION_MODE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     LineStippleEnable = LINE_STIPPLE_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     DepthClipNegativeOneToOne = DEPTH_CLIP_NEGATIVE_ONE_TO_ONE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ViewportWScalingEnable = VIEWPORT_W_SCALING_ENABLE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ViewportSwizzle = VIEWPORT_SWIZZLE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     CoverageToColorEnable = COVERAGE_TO_COLOR_ENABLE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     CoverageToColorLocation = COVERAGE_TO_COLOR_LOCATION_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     CoverageModulationMode = COVERAGE_MODULATION_MODE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     CoverageModulationTableEnable = COVERAGE_MODULATION_TABLE_ENABLE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     CoverageModulationTable = COVERAGE_MODULATION_TABLE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     ShadingRateImageEnable = SHADING_RATE_IMAGE_ENABLE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     RepresentativeFragmentTestEnable = REPRESENTATIVE_FRAGMENT_TEST_ENABLE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
+    ]), */
 
+    /* TODO: enable
     // TODO: document
     CoverageReductionMode = COVERAGE_REDUCTION_MODE_NV
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]),
-}
-
-/// Specifies how a dynamic state is handled by a graphics pipeline.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StateMode<F> {
-    /// The pipeline has a fixed value for this state. Previously set dynamic state will be lost
-    /// when binding it, and will have to be re-set after binding a pipeline that uses it.
-    Fixed(F),
-
-    /// The pipeline expects a dynamic value to be set by a command buffer. Previously set dynamic
-    /// state is not disturbed when binding it.
-    Dynamic,
-}
-
-impl<T> From<Option<T>> for StateMode<T> {
-    fn from(val: Option<T>) -> Self {
-        match val {
-            Some(x) => StateMode::Fixed(x),
-            None => StateMode::Dynamic,
-        }
-    }
-}
-
-impl<T> From<StateMode<T>> for Option<T> {
-    fn from(val: StateMode<T>) -> Self {
-        match val {
-            StateMode::Fixed(x) => Some(x),
-            StateMode::Dynamic => None,
-        }
-    }
-}
-
-/// A variant of `StateMode` that is used for cases where some value is still needed when the state
-/// is dynamic.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PartialStateMode<F, D> {
-    Fixed(F),
-    Dynamic(D),
+    ]), */
 }

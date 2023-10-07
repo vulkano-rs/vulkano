@@ -32,8 +32,8 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
-            depth_stencil::DepthStencilState,
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
@@ -504,17 +504,26 @@ fn window_size_dependent_setup(
                 stages: stages.into_iter().collect(),
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState::viewport_fixed_scissor_irrelevant([
-                    Viewport {
+                viewport_state: Some(ViewportState {
+                    viewports: [Viewport {
                         offset: [0.0, 0.0],
                         extent: [extent[0] as f32, extent[1] as f32],
                         depth_range: 0.0..=1.0,
-                    },
-                ])),
+                    }]
+                    .into_iter()
+                    .collect(),
+                    ..Default::default()
+                }),
                 rasterization_state: Some(RasterizationState::default()),
-                depth_stencil_state: Some(DepthStencilState::simple_depth_test()),
+                depth_stencil_state: Some(DepthStencilState {
+                    depth: Some(DepthState::simple()),
+                    ..Default::default()
+                }),
                 multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::new(subpass.num_color_attachments())),
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },
