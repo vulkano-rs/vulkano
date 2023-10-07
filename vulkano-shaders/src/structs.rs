@@ -220,6 +220,7 @@ fn is_aligned(offset: usize, alignment: Alignment) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
     Scalar(TypeScalar),
+    Pointer(TypePointer),
     Vector(TypeVector),
     Matrix(TypeMatrix),
     Array(TypeArray),
@@ -238,6 +239,7 @@ impl Type {
             Instruction::TypeFloat { width, .. } => {
                 Type::Scalar(TypeScalar::Float(TypeFloat::new(shader, width)?))
             }
+            Instruction::TypePointer { .. } => Type::Pointer(TypePointer::new(shader)?),
             Instruction::TypeVector {
                 component_type,
                 component_count,
@@ -268,6 +270,7 @@ impl Type {
     fn size(&self) -> Option<usize> {
         match self {
             Self::Scalar(ty) => Some(ty.size()),
+            Self::Pointer(ty) => Some(ty.size()),
             Self::Vector(ty) => Some(ty.size()),
             Self::Matrix(ty) => Some(ty.size()),
             Self::Array(ty) => ty.size(),
@@ -278,6 +281,7 @@ impl Type {
     fn scalar_alignment(&self) -> Alignment {
         match self {
             Self::Scalar(ty) => ty.alignment(),
+            Self::Pointer(ty) => ty.alignment(),
             Self::Vector(ty) => ty.component_type.alignment(),
             Self::Matrix(ty) => ty.component_type.alignment(),
             Self::Array(ty) => ty.scalar_alignment(),
@@ -436,6 +440,29 @@ impl ToTokens for TypeFloat {
             tokens.extend(quote! { ::vulkano::half:: });
         }
         tokens.append(self.to_ident());
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TypePointer;
+
+impl TypePointer {
+    fn new(_shader: &Shader) -> Result<Self> {
+        Ok(TypePointer)
+    }
+
+    fn size(&self) -> usize {
+        8
+    }
+
+    fn alignment(&self) -> Alignment {
+        Alignment::A8
+    }
+}
+
+impl ToTokens for TypePointer {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.extend(quote! { ::vulkano::DeviceAddress });
     }
 }
 
@@ -863,6 +890,7 @@ impl ToTokens for Serializer<'_, Type> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match &self.0 {
             Type::Scalar(ty) => ty.to_tokens(tokens),
+            Type::Pointer(ty) => ty.to_tokens(tokens),
             Type::Vector(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Matrix(ty) => Serializer(ty, self.1).to_tokens(tokens),
             Type::Array(ty) => Serializer(ty, self.1).to_tokens(tokens),

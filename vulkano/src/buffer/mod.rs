@@ -93,8 +93,8 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated,
-    ValidationError, Version, VulkanError, VulkanObject,
+    DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf,
+    Validated, ValidationError, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -476,7 +476,7 @@ impl Buffer {
 
     /// Returns the device address for this buffer.
     // TODO: Caching?
-    pub fn device_address(&self) -> Result<NonZeroDeviceSize, Box<ValidationError>> {
+    pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
         self.validate_device_address()?;
 
         unsafe { Ok(self.device_address_unchecked()) }
@@ -508,7 +508,7 @@ impl Buffer {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn device_address_unchecked(&self) -> NonZeroDeviceSize {
+    pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
         let device = self.device();
 
         let info_vk = ash::vk::BufferDeviceAddressInfo {
@@ -528,7 +528,7 @@ impl Buffer {
             f(device.handle(), &info_vk)
         };
 
-        NonZeroDeviceSize::new(ptr).unwrap()
+        NonNullDeviceAddress::new(ptr).unwrap()
     }
 
     pub(crate) fn state(&self) -> MutexGuard<'_, BufferState> {
