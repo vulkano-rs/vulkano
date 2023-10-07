@@ -333,12 +333,11 @@ impl Display for SuballocatorError {
 ///
 /// # Efficiency
 ///
-/// The allocator is synchronized internally with a lock, which is held only for a very short
-/// period each time an allocation is created and freed. The free-list is sorted by size, which
-/// means that when allocating, finding a best-fit is always possible in *O*(log(*n*)) time in the
-/// worst case. When freeing, the coalescing requires us to remove the adjacent free suballocations
-/// from the free-list which is *O*(log(*n*)), and insert the possibly coalesced suballocation into
-/// the free-list which has the same time complexity, so in total freeing is *O*(log(*n*)).
+/// The free-list is sorted by size, which means that when allocating, finding a best-fit is always
+/// possible in *O*(log(*n*)) time in the worst case. When freeing, the coalescing requires us to
+/// remove the adjacent free suballocations from the free-list which is *O*(log(*n*)), and insert
+/// the possibly coalesced suballocation into the free-list which has the same time complexity, so
+/// in total freeing is *O*(log(*n*)).
 ///
 /// There is one notable edge-case: after the allocator finds a best-fit, it is possible that it
 /// needs to align the suballocation's offset to a higher value, after which the requested size
@@ -813,10 +812,8 @@ impl FreeListAllocatorState {
 ///
 /// # Efficiency
 ///
-/// The allocator is synchronized internally with a lock, which is held only for a very short
-/// period each time an allocation is created and freed. The time complexity of both allocation and
-/// freeing is *O*(*m*) in the worst case where *m* is the highest order, which equates to *O*(log
-/// (*n*)) where *n* is the size of the region.
+/// The time complexity of both allocation and freeing is *O*(*m*) in the worst case where *m* is
+/// the highest order, which equates to *O*(log (*n*)) where *n* is the size of the region.
 ///
 /// [suballocator]: Suballocator
 /// [internal fragmentation]: super#internal-fragmentation
@@ -1067,17 +1064,7 @@ struct BuddyAllocatorState {
 ///
 /// # Efficiency
 ///
-/// Allocation is *O*(1), and so is resetting the allocator (freeing all allocations). Allocation
-/// is always lock-free, and most of the time even wait-free. The only case in which it is not
-/// wait-free is if a lot of allocations are made concurrently, which results in CPU-level
-/// contention. Therefore, if you for example need to allocate a lot of buffers each frame from
-/// multiple threads, you might get better performance by using one `BumpAllocator` per thread.
-///
-/// The reason synchronization can be avoided entirely is that the created allocations can be
-/// dropped without needing to talk back to the allocator to free anything. The other allocation
-/// algorithms all have a free-list which needs to be modified once an allocation is dropped. Since
-/// Vulkano's buffers and images are `Sync`, that means that even if the allocator only allocates
-/// from one thread, it can still be used to free from multiple threads.
+/// Allocation is *O*(1), and so is resetting the allocator (freeing all allocations).
 ///
 /// [suballocator]: Suballocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
