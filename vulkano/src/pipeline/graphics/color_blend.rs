@@ -82,7 +82,7 @@ impl Default for ColorBlendState {
 impl ColorBlendState {
     /// Returns a default `ColorBlendState` with `count` duplicates of `attachment_state`.
     #[inline]
-    pub fn default_with(count: u32, attachment_state: ColorBlendAttachmentState) -> Self {
+    pub fn with_attachment_states(count: u32, attachment_state: ColorBlendAttachmentState) -> Self {
         Self {
             attachments: iter::repeat(attachment_state)
                 .take(count as usize)

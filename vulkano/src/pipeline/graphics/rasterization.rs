@@ -113,7 +113,7 @@ impl RasterizationState {
     /// stippling disabled, filled polygons, no culling, counterclockwise front face, and the
     /// default line width and line rasterization mode.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "Use `RasterizationState::default` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `RasterizationState::default` instead")]
     pub fn new() -> Self {
         Self::default()
     }

@@ -17,7 +17,7 @@ use crate::{
 /// A vertex definition for any number of vertex and instance buffers.
 #[deprecated(
     since = "0.33.0",
-    note = "Use `VertexBufferDescription` directly instead as returned by `Vertex::per_vertex` or `Vertex::per_instance`"
+    note = "use `VertexBufferDescription` directly instead as returned by `Vertex::per_vertex` or `Vertex::per_instance`"
 )]
 #[derive(Clone, Debug, Default)]
 pub struct BuffersDefinition(Vec<VertexBufferDescription>);

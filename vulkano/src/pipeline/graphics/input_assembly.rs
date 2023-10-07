@@ -60,7 +60,7 @@ impl InputAssemblyState {
     /// Creates an `InputAssemblyState` with the `TriangleList` topology and primitive restart
     /// disabled.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "Use `InputAssemblyState::default` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `InputAssemblyState::default` instead")]
     pub fn new() -> Self {
         Self {
             topology: PrimitiveTopology::TriangleList,

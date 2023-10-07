@@ -108,7 +108,7 @@ impl Format {
     /// Retrieves the properties of a format when used by a certain device.
     #[deprecated(
         since = "0.28.0",
-        note = "Use PhysicalDevice::format_properties instead"
+        note = "use PhysicalDevice::format_properties instead"
     )]
     #[inline]
     pub fn properties(self, physical_device: PhysicalDevice) -> FormatProperties {

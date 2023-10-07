@@ -84,7 +84,7 @@ impl Default for MultisampleState {
 impl MultisampleState {
     /// Creates a `MultisampleState` with multisampling disabled.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "Use `MultisampleState::default` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `MultisampleState::default` instead")]
     pub fn new() -> MultisampleState {
         Self::default()
     }

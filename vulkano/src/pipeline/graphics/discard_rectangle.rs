@@ -57,7 +57,7 @@ impl DiscardRectangleState {
     #[inline]
     #[deprecated(
         since = "0.34.0",
-        note = "Use `DiscardRectangleState::default` instead."
+        note = "use `DiscardRectangleState::default` instead"
     )]
     pub fn new() -> Self {
         Self::default()

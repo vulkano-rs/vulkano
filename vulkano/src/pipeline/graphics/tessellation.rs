@@ -49,7 +49,7 @@ impl Default for TessellationState {
 impl TessellationState {
     /// Creates a new `TessellationState` with 3 patch control points.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "Use `TessellationState::default` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `TessellationState::default` instead")]
     pub fn new() -> Self {
         Self::default()
     }

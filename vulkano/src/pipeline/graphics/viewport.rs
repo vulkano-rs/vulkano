@@ -448,7 +448,7 @@ impl Default for Scissor {
 impl Scissor {
     /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire
     /// framebuffer no matter its size.
-    #[deprecated(since = "0.34.0", note = "Use `Scissor::default` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `Scissor::default` instead")]
     #[inline]
     pub fn irrelevant() -> Scissor {
         Self::default()

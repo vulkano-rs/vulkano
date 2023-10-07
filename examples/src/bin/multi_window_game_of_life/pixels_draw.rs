@@ -154,7 +154,7 @@ impl PixelsDrawPipeline {
                     viewport_state: Some(ViewportState::default()),
                     rasterization_state: Some(RasterizationState::default()),
                     multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::default_with(
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
                         subpass.num_color_attachments(),
                         ColorBlendAttachmentState::default(),
                     )),

@@ -79,7 +79,7 @@ impl Default for DepthStencilState {
 impl DepthStencilState {
     /// Creates a `DepthStencilState` where all tests are disabled and have no effect.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "Use `DepthStencilState::default` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `DepthStencilState::default` instead")]
     pub fn disabled() -> Self {
         Self::default()
     }
@@ -87,7 +87,7 @@ impl DepthStencilState {
     /// Creates a `DepthStencilState` with a `Less` depth test, `depth_write` set to true, and other
     /// tests disabled.
     #[inline]
-    #[deprecated(since = "0.34.0", note = "Use `DepthState::simple` instead.")]
+    #[deprecated(since = "0.34.0", note = "use `DepthState::simple` instead")]
     pub fn simple_depth_test() -> Self {
         Self {
             flags: DepthStencilStateFlags::empty(),

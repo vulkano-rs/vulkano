@@ -458,7 +458,7 @@ fn main() {
                 multisample_state: Some(MultisampleState::default()),
                 // How pixel values are combined with the values already present in the framebuffer.
                 // The default value overwrites the old value with the new one, without any blending.
-                color_blend_state: Some(ColorBlendState::default_with(
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
                     subpass.color_attachment_formats.len() as u32,
                     ColorBlendAttachmentState::default(),
                 )),
