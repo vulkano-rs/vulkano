@@ -177,6 +177,7 @@ Changes to the physical device:
 - Added `GenericMemoryAllocatorCreateInfo::memory_type_bits` and `AllocationCreateInfo::memory_type_bits`.
 - Vulkano-shaders: support for specialization-constant-sized arrays in structs (they are generated with the size specified as fallback in the specialization constant initializer).
 - Added the `DeviceAddress` and `NonNullDeviceAddress` types to the crate root.
+- Support for the `ext_private_data` extension.
 
 ### Bugs fixed
 
