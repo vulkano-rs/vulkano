@@ -348,7 +348,10 @@ fn main() {
     let set = PersistentDescriptorSet::new(
         &descriptor_set_allocator,
         layout.clone(),
-        [WriteDescriptorSet::image_view_sampler(0, texture, sampler)],
+        [
+            WriteDescriptorSet::sampler(0, sampler),
+            WriteDescriptorSet::image_view(1, texture),
+        ],
         [],
     )
     .unwrap();
@@ -543,10 +546,11 @@ mod fs {
             layout(location = 1) flat in uint layer;
             layout(location = 0) out vec4 f_color;
 
-            layout(set = 0, binding = 0) uniform sampler2DArray tex;
+            layout(set = 0, binding = 0) uniform sampler s;
+            layout(set = 0, binding = 1) uniform texture2DArray tex;
 
             void main() {
-                f_color = texture(tex, vec3(tex_coords, layer));
+                f_color = texture(sampler2DArray(tex, s), vec3(tex_coords, layer));
             }
         ",
     }

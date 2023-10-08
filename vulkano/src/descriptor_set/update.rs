@@ -413,17 +413,6 @@ impl WriteDescriptorSet {
         let array_element_count = elements.len();
         debug_assert!(array_element_count != 0);
 
-        // VUID-VkWriteDescriptorSet-dstArrayElement-00321
-        if first_array_element + array_element_count > max_descriptor_count {
-            return Err(Box::new(ValidationError {
-                problem: "`first_array_element` + the number of provided elements is greater than \
-                    the number of descriptors in the descriptor set binding"
-                    .into(),
-                vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
-                ..Default::default()
-            }));
-        }
-
         let validate_image_view =
             |image_view: &ImageView, index: usize| -> Result<(), Box<ValidationError>> {
                 if image_view.image().image_type() == ImageType::Dim3d {
@@ -530,86 +519,88 @@ impl WriteDescriptorSet {
 
         match layout_binding.descriptor_type {
             DescriptorType::Sampler => {
-                if !layout_binding.immutable_samplers.is_empty() {
-                    if layout
-                        .flags()
-                        .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
-                    {
-                        // For push descriptors, we must write a dummy element.
-                        if let WriteDescriptorSetElements::None(_) = elements {
-                            // Do nothing
-                        } else {
+                if layout_binding.immutable_samplers.is_empty() {
+                    let elements = if let WriteDescriptorSetElements::Sampler(elements) = elements {
+                        elements
+                    } else {
+                        return Err(Box::new(ValidationError {
+                            context: "elements".into(),
+                            problem: format!(
+                                "contains `{}` elements, but descriptor set binding {} \
+                                requires `sampler` elements",
+                                provided_element_type(elements),
+                                binding,
+                            )
+                            .into(),
+                            // vuids?
+                            ..Default::default()
+                        }));
+                    };
+
+                    for (index, sampler) in elements.iter().enumerate() {
+                        assert_eq!(device, sampler.device());
+
+                        if sampler.sampler_ycbcr_conversion().is_some() {
                             return Err(Box::new(ValidationError {
-                                context: "elements".into(),
-                                problem: format!(
-                                    "contains `{}` elements, but the descriptor set \
-                                    binding requires `none` elements",
-                                    provided_element_type(elements)
-                                )
-                                .into(),
+                                context: format!("elements[{}]", index).into(),
+                                problem: "the descriptor type is not \
+                                    `DescriptorType::CombinedImageSampler`, and the sampler has a \
+                                    sampler YCbCr conversion"
+                                    .into(),
                                 // vuids?
                                 ..Default::default()
                             }));
                         }
+
+                        if device.enabled_extensions().khr_portability_subset
+                            && !device.enabled_features().mutable_comparison_samplers
+                            && sampler.compare().is_some()
+                        {
+                            return Err(Box::new(ValidationError {
+                                context: format!("elements[{}]", index).into(),
+                                problem: "this device is a portability subset device, and \
+                                    the sampler has depth comparison enabled"
+                                    .into(),
+                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                    Requires::Feature("mutable_comparison_samplers"),
+                                ])]),
+                                vuids: &[
+                                    "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
+                                ],
+                            }));
+                        }
+                    }
+                } else if layout
+                    .flags()
+                    .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+                {
+                    // For push descriptors, we must write a dummy element.
+                    if let WriteDescriptorSetElements::None(_) = elements {
+                        // Do nothing
                     } else {
-                        // For regular descriptors, no element must be written.
                         return Err(Box::new(ValidationError {
-                            context: "binding".into(),
-                            problem: "no descriptors must be written to this \
-                                descriptor set binding"
-                                .into(),
+                            context: "elements".into(),
+                            problem: format!(
+                                "contains `{}` elements, but descriptor set binding {} \
+                                requires `none` elements",
+                                provided_element_type(elements),
+                                binding,
+                            )
+                            .into(),
                             // vuids?
                             ..Default::default()
                         }));
                     }
-                }
-
-                let elements = if let WriteDescriptorSetElements::Sampler(elements) = elements {
-                    elements
                 } else {
+                    // For regular descriptors, no element must be written.
                     return Err(Box::new(ValidationError {
-                        context: "elements".into(),
-                        problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `sampler` elements",
-                            provided_element_type(elements)
-                        )
-                        .into(),
+                        context: "binding".into(),
+                        problem: "no descriptors must be written to this \
+                            descriptor set binding"
+                            .into(),
                         // vuids?
                         ..Default::default()
                     }));
-                };
-
-                for (index, sampler) in elements.iter().enumerate() {
-                    assert_eq!(device, sampler.device());
-
-                    if sampler.sampler_ycbcr_conversion().is_some() {
-                        return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
-                            problem: "the descriptor type is not \
-                                `DescriptorType::CombinedImageSampler`, and the sampler has a \
-                                sampler YCbCr conversion"
-                                .into(),
-                            // vuids?
-                            ..Default::default()
-                        }));
-                    }
-
-                    if device.enabled_extensions().khr_portability_subset
-                        && !device.enabled_features().mutable_comparison_samplers
-                        && sampler.compare().is_some()
-                    {
-                        return Err(Box::new(ValidationError {
-                            context: format!("elements[{}]", index).into(),
-                            problem: "this device is a portability subset device, and \
-                                the sampler has depth comparison enabled"
-                                .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "mutable_comparison_samplers",
-                            )])]),
-                            vuids: &["VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450"],
-                        }));
-                    }
                 }
             }
 
@@ -622,9 +613,10 @@ impl WriteDescriptorSet {
                             return Err(Box::new(ValidationError {
                                 context: "elements".into(),
                                 problem: format!(
-                                    "contains `{}` elements, but the descriptor set \
-                                    binding requires `image_view_sampler` elements",
-                                    provided_element_type(elements)
+                                    "contains `{}` elements, but descriptor set binding {} \
+                                    requires `image_view_sampler` elements",
+                                    provided_element_type(elements),
+                                    binding,
                                 )
                                 .into(),
                                 // vuids?
@@ -731,9 +723,10 @@ impl WriteDescriptorSet {
                         return Err(Box::new(ValidationError {
                             context: "elements".into(),
                             problem: format!(
-                                "contains `{}` elements, but the descriptor set \
-                                binding requires `image_view` elements",
-                                provided_element_type(elements)
+                                "contains `{}` elements, but descriptor set binding {} \
+                                requires `image_view` elements",
+                                provided_element_type(elements),
+                                binding,
                             )
                             .into(),
                             ..Default::default()
@@ -807,9 +800,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `image_view` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `image_view` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         // vuids?
@@ -885,9 +879,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `image_view` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `image_view` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         // vuids?
@@ -963,9 +958,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `buffer_view` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `buffer_view` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         // vuids?
@@ -1002,9 +998,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `buffer_view` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `buffer_view` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         // vuids?
@@ -1042,9 +1039,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `buffer` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `buffer` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         // vuids?
@@ -1094,9 +1092,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `buffer` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `buffer` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         // vuids?
@@ -1146,9 +1145,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `image_view` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `image_view` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         // vuids?
@@ -1235,9 +1235,10 @@ impl WriteDescriptorSet {
                     return Err(Box::new(ValidationError {
                         context: "elements".into(),
                         problem: format!(
-                            "contains `{}` elements, but the descriptor set \
-                            binding requires `inline_uniform_block` elements",
-                            provided_element_type(elements)
+                            "contains `{}` elements, but descriptor set binding {} \
+                            requires `inline_uniform_block` elements",
+                            provided_element_type(elements),
+                            binding,
                         )
                         .into(),
                         ..Default::default()
@@ -1286,9 +1287,10 @@ impl WriteDescriptorSet {
                         return Err(Box::new(ValidationError {
                             context: "elements".into(),
                             problem: format!(
-                                "contains `{}` elements, but the descriptor set \
-                                binding requires `acceleration_structure` elements",
-                                provided_element_type(elements)
+                                "contains `{}` elements, but descriptor set binding {} \
+                                requires `acceleration_structure` elements",
+                                provided_element_type(elements),
+                                binding,
                             )
                             .into(),
                             ..Default::default()
@@ -1314,6 +1316,17 @@ impl WriteDescriptorSet {
                     }
                 }
             }
+        }
+
+        // VUID-VkWriteDescriptorSet-dstArrayElement-00321
+        if first_array_element + array_element_count > max_descriptor_count {
+            return Err(Box::new(ValidationError {
+                problem: "`first_array_element` + the number of provided elements is greater than \
+                    the number of descriptors in the descriptor set binding"
+                    .into(),
+                vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
+                ..Default::default()
+            }));
         }
 
         Ok(())

@@ -410,10 +410,10 @@ fn main() {
             let mut layout_create_info =
                 PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages);
 
-            // Adjust the info for set 0, binding 0 to make it variable with 2 descriptors.
+            // Adjust the info for set 0, binding 1 to make it variable with 2 descriptors.
             let binding = layout_create_info.set_layouts[0]
                 .bindings
-                .get_mut(&0)
+                .get_mut(&1)
                 .unwrap();
             binding.binding_flags |= DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
             binding.descriptor_count = 2;
@@ -458,14 +458,10 @@ fn main() {
         &descriptor_set_allocator,
         layout.clone(),
         2,
-        [WriteDescriptorSet::image_view_sampler_array(
-            0,
-            0,
-            [
-                (mascot_texture as _, sampler.clone()),
-                (vulkano_texture as _, sampler),
-            ],
-        )],
+        [
+            WriteDescriptorSet::sampler(0, sampler),
+            WriteDescriptorSet::image_view_array(1, 0, [mascot_texture as _, vulkano_texture as _]),
+        ],
         [],
     )
     .unwrap();
@@ -667,10 +663,11 @@ mod fs {
 
             layout(location = 0) out vec4 f_color;
 
-            layout(set = 0, binding = 0) uniform sampler2D tex[];
+            layout(set = 0, binding = 0) uniform sampler s;
+            layout(set = 0, binding = 1) uniform texture2D tex[];
 
             void main() {
-                f_color = texture(nonuniformEXT(tex[tex_i]), coords);
+                f_color = texture(nonuniformEXT(sampler2D(tex[tex_i], s)), coords);
             }
         ",
     }

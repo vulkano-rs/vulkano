@@ -194,7 +194,10 @@ impl PixelsDrawPipeline {
         PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             layout.clone(),
-            [WriteDescriptorSet::image_view_sampler(0, image, sampler)],
+            [
+                WriteDescriptorSet::sampler(0, sampler),
+                WriteDescriptorSet::image_view(1, image),
+            ],
             [],
         )
         .unwrap()
@@ -275,10 +278,11 @@ mod fs {
 
             layout(location = 0) out vec4 f_color;
 
-            layout(set = 0, binding = 0) uniform sampler2D tex;
+            layout(set = 0, binding = 0) uniform sampler s;
+            layout(set = 0, binding = 1) uniform texture2D tex;
 
             void main() {
-                f_color = texture(tex, v_tex_coords);
+                f_color = texture(sampler2D(tex, s), v_tex_coords);
             }
         ",
     }
