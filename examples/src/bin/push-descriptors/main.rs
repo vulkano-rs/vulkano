@@ -428,9 +428,14 @@ fn main() {
                     PipelineBindPoint::Graphics,
                     pipeline.layout().clone(),
                     0,
-                    [WriteDescriptorSet::image_view(0, texture.clone())]
-                        .into_iter()
-                        .collect(),
+                    [
+                        // If the binding is an immutable sampler, using push descriptors
+                        // you must write dummy value to the binding.
+                        WriteDescriptorSet::none(0),
+                        WriteDescriptorSet::image_view(1, texture.clone()),
+                    ]
+                    .into_iter()
+                    .collect(),
                 )
                 .unwrap()
                 .bind_vertex_buffers(0, vertex_buffer.clone())
@@ -522,10 +527,11 @@ mod fs {
             layout(location = 0) in vec2 tex_coords;
             layout(location = 0) out vec4 f_color;
 
-            layout(set = 0, binding = 0) uniform sampler2D tex;
+            layout(set = 0, binding = 0) uniform sampler s;
+            layout(set = 0, binding = 1) uniform texture2D tex;
 
             void main() {
-                f_color = texture(tex, tex_coords);
+                f_color = texture(sampler2D(tex, s), tex_coords);
             }
         ",
     }

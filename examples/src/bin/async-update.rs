@@ -399,10 +399,11 @@ fn main() {
                 layout(location = 0) in vec2 tex_coords;
                 layout(location = 0) out vec4 f_color;
 
-                layout(set = 1, binding = 0) uniform sampler2D tex;
+                layout(set = 1, binding = 0) uniform sampler s;
+                layout(set = 1, binding = 1) uniform texture2D tex;
 
                 void main() {
-                    f_color = texture(tex, tex_coords);
+                    f_color = texture(sampler2D(tex, s), tex_coords);
                 }
             ",
         }
@@ -505,11 +506,10 @@ fn main() {
         PersistentDescriptorSet::new(
             &descriptor_set_allocator,
             pipeline.layout().set_layouts()[1].clone(),
-            [WriteDescriptorSet::image_view_sampler(
-                0,
-                ImageView::new_default(texture).unwrap(),
-                sampler.clone(),
-            )],
+            [
+                WriteDescriptorSet::sampler(0, sampler.clone()),
+                WriteDescriptorSet::image_view(1, ImageView::new_default(texture).unwrap()),
+            ],
             [],
         )
         .unwrap()
