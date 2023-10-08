@@ -430,7 +430,7 @@ fn main() {
                     0,
                     [
                         // If the binding is an immutable sampler, using push descriptors
-                        // you must write dummy value to the binding.
+                        // you must write a dummy value to the binding.
                         WriteDescriptorSet::none(0),
                         WriteDescriptorSet::image_view(1, texture.clone()),
                     ]
