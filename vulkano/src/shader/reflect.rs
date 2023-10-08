@@ -1084,6 +1084,7 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
             assert!(width % 8 == 0);
             Some(width as DeviceSize / 8)
         }
+        Instruction::TypePointer { .. } => Some(8),
         Instruction::TypeVector {
             component_type,
             component_count,
