@@ -53,6 +53,18 @@ impl DescriptorPool {
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
+    fn validate_new(
+        device: &Device,
+        create_info: &DescriptorPoolCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        // VUID-vkCreateDescriptorPool-pCreateInfo-parameter
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
@@ -111,18 +123,6 @@ impl DescriptorPool {
         };
 
         unsafe { Ok(Self::from_handle(device, handle, create_info)) }
-    }
-
-    fn validate_new(
-        device: &Device,
-        create_info: &DescriptorPoolCreateInfo,
-    ) -> Result<(), Box<ValidationError>> {
-        // VUID-vkCreateDescriptorPool-pCreateInfo-parameter
-        create_info
-            .validate(device)
-            .map_err(|err| err.add_context("create_info"))?;
-
-        Ok(())
     }
 
     /// Creates a new `DescriptorPool` from a raw object handle.
@@ -184,7 +184,7 @@ impl DescriptorPool {
         self.max_inline_uniform_block_bindings
     }
 
-    /// Allocates descriptor sets from the pool, one for each element in `create_info`.
+    /// Allocates descriptor sets from the pool, one for each element in `allocate_info`.
     /// Returns an iterator to the allocated sets, or an error.
     ///
     /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
@@ -196,12 +196,8 @@ impl DescriptorPool {
     ///
     /// # Safety
     ///
-    /// See also the `new` function.
-    ///
-    /// - The total descriptors of the layouts must fit in the pool.
-    /// - The total number of descriptor sets allocated from the pool must not overflow the pool.
-    /// - You must ensure that the allocated descriptor sets are no longer in use when the pool
-    ///   is destroyed, as destroying the pool is equivalent to freeing all the sets.
+    /// - When the pool is dropped, the returned descriptor sets must not be in use by either
+    ///   the host or device.
     pub unsafe fn allocate_descriptor_sets<'a>(
         &self,
         allocate_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
@@ -281,11 +277,37 @@ impl DescriptorPool {
     ///
     /// # Safety
     ///
-    /// - The pool must have been created with `free_descriptor_set_bit` set to `true`.
-    /// - The descriptor sets must have been allocated from the pool.
-    /// - The descriptor sets must not be free'd twice.
-    /// - The descriptor sets must not be in use by the GPU.
+    /// - All elements of `descriptor_sets` must have been allocated from `self`,
+    ///   and not freed previously.
+    /// - All elements of `descriptor_sets` must not be in use by the host or device.
+    #[inline]
     pub unsafe fn free_descriptor_sets(
+        &self,
+        descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_free_descriptor_sets()?;
+
+        Ok(self.free_descriptor_sets_unchecked(descriptor_sets)?)
+    }
+
+    fn validate_free_descriptor_sets(&self) -> Result<(), Box<ValidationError>> {
+        if !self
+            .flags
+            .intersects(DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
+        {
+            return Err(Box::new(ValidationError {
+                context: "self.flags()".into(),
+                problem: "does not contain `DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET`".into(),
+                vuids: &["VUID-vkFreeDescriptorSets-descriptorPool-00312"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn free_descriptor_sets_unchecked(
         &self,
         descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
     ) -> Result<(), VulkanError> {
@@ -308,6 +330,11 @@ impl DescriptorPool {
     /// Resets the pool.
     ///
     /// This destroys all descriptor sets and empties the pool.
+    ///
+    /// # Safety
+    ///
+    /// - All descriptor sets that were previously allocated from `self` must not be in use by the
+    ///   host or device.
     #[inline]
     pub unsafe fn reset(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
