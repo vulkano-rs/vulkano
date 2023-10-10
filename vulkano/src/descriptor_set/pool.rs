@@ -190,33 +190,50 @@ impl DescriptorPool {
     /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
     /// you should just create a new pool.
     ///
-    /// # Panics
-    ///
-    /// - Panics if one of the layouts wasn't created with the same device as the pool.
-    ///
     /// # Safety
     ///
     /// - When the pool is dropped, the returned descriptor sets must not be in use by either
     ///   the host or device.
+    /// - If the device API version is less than 1.1, and the [`khr_maintenance1`] extension is not
+    ///   enabled on the device, then
+    ///   the length of `allocate_infos` must not be greater than the number of descriptor sets
+    ///   remaining in the pool, and
+    ///   the total number of descriptors of each type being allocated must not be greater than the
+    ///   number of descriptors of that type remaining in the pool.
+    ///
+    /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
+    #[inline]
     pub unsafe fn allocate_descriptor_sets<'a>(
         &self,
-        allocate_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
-    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, VulkanError> {
-        let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
-            allocate_info
-                .into_iter()
-                .map(|info| {
-                    assert_eq!(self.device.handle(), info.layout.device().handle(),);
-                    debug_assert!(!info
-                        .layout
-                        .flags()
-                        .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR));
-                    debug_assert!(
-                        info.variable_descriptor_count <= info.layout.variable_descriptor_count()
-                    );
+        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
+    ) -> Result<DescriptorSetIter, Validated<VulkanError>> {
+        let allocate_infos: SmallVec<[_; 1]> = allocate_infos.into_iter().collect();
+        self.validate_allocate_descriptor_sets(&allocate_infos)?;
 
-                    (info.layout.handle(), info.variable_descriptor_count)
-                })
+        Ok(self.allocate_descriptor_sets_unchecked(allocate_infos)?)
+    }
+
+    fn validate_allocate_descriptor_sets(
+        &self,
+        allocate_infos: &[DescriptorSetAllocateInfo<'_>],
+    ) -> Result<(), Box<ValidationError>> {
+        for (index, info) in allocate_infos.iter().enumerate() {
+            info.validate(self.device())
+                .map_err(|err| err.add_context(format!("allocate_infos[{}]", index)))?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn allocate_descriptor_sets_unchecked<'a>(
+        &self,
+        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
+    ) -> Result<DescriptorSetIter, VulkanError> {
+        let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
+            allocate_infos
+                .into_iter()
+                .map(|info| (info.layout.handle(), info.variable_descriptor_count))
                 .unzip();
 
         let output = if layouts.is_empty() {
@@ -267,7 +284,9 @@ impl DescriptorPool {
             output
         };
 
-        Ok(output.into_iter().map(UnsafeDescriptorSet::new))
+        Ok(DescriptorSetIter(
+            output.into_iter().map(UnsafeDescriptorSet::new),
+        ))
     }
 
     /// Frees some descriptor sets.
@@ -516,28 +535,107 @@ vulkan_bitflags! {
 
     /* TODO: enable
     // TODO: document
-    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND {
-        api_version: V1_2,
-        device_extensions: [ext_descriptor_indexing],
-    }, */
+    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
+    ]), */
 
     /* TODO: enable
     // TODO: document
-    HOST_ONLY = HOST_ONLY_EXT {
-        device_extensions: [ext_mutable_descriptor_type, valve_mutable_descriptor_type],
-    }, */
+    HOST_ONLY = HOST_ONLY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_mutable_descriptor_type)]),
+        RequiresAllOf([DeviceExtension(valve_mutable_descriptor_type)]),
+    ]), */
 }
 
 /// Parameters to allocate a new `UnsafeDescriptorSet` from an `UnsafeDescriptorPool`.
 #[derive(Clone, Debug)]
 pub struct DescriptorSetAllocateInfo<'a> {
     /// The descriptor set layout to create the set for.
+    ///
+    /// There is no default value.
     pub layout: &'a DescriptorSetLayout,
 
     /// For layouts with a variable-count binding, the number of descriptors to allocate for that
     /// binding. This should be 0 for layouts that don't have a variable-count binding.
+    ///
+    /// The default value is 0.
     pub variable_descriptor_count: u32,
+
+    pub _ne: crate::NonExhaustive,
 }
+
+impl<'a> DescriptorSetAllocateInfo<'a> {
+    /// Returns a `DescriptorSetAllocateInfo` with the specified `layout`.
+    #[inline]
+    pub fn new(layout: &'a DescriptorSetLayout) -> Self {
+        Self {
+            layout,
+            variable_descriptor_count: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            layout,
+            variable_descriptor_count,
+            _ne,
+        } = self;
+
+        // VUID-VkDescriptorSetAllocateInfo-commonparent
+        assert_eq!(device, layout.device().as_ref());
+
+        if layout
+            .flags()
+            .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+        {
+            return Err(Box::new(ValidationError {
+                context: "layout.flags()".into(),
+                problem: "contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`".into(),
+                vuids: &["VUID-VkDescriptorSetAllocateInfo-pSetLayouts-00308"],
+                ..Default::default()
+            }));
+        }
+
+        if variable_descriptor_count >= layout.variable_descriptor_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`variable_descriptor_count` is greater than
+                    `layout.variable_descriptor_count()`"
+                    .into(),
+                // vuids: https://github.com/KhronosGroup/Vulkan-Docs/issues/2244
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
+// TODO: Exists only due to an issue with returning `impl Trait` when the input has a lifetime:
+// https://github.com/rust-lang/rust/issues/42940
+pub struct DescriptorSetIter(
+    std::iter::Map<
+        std::vec::IntoIter<ash::vk::DescriptorSet>,
+        fn(ash::vk::DescriptorSet) -> UnsafeDescriptorSet,
+    >,
+);
+
+impl Iterator for DescriptorSetIter {
+    type Item = UnsafeDescriptorSet;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl ExactSizeIterator for DescriptorSetIter {}
 
 #[cfg(test)]
 mod tests {
@@ -628,10 +726,7 @@ mod tests {
         .unwrap();
         unsafe {
             let sets = pool
-                .allocate_descriptor_sets([DescriptorSetAllocateInfo {
-                    layout: set_layout.as_ref(),
-                    variable_descriptor_count: 0,
-                }])
+                .allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout.as_ref())])
                 .unwrap();
             assert_eq!(sets.count(), 1);
         }
@@ -670,10 +765,9 @@ mod tests {
             .unwrap();
 
             unsafe {
-                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo {
-                    layout: set_layout.as_ref(),
-                    variable_descriptor_count: 0,
-                }]);
+                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(
+                    set_layout.as_ref(),
+                )]);
             }
         });
     }
