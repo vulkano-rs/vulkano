@@ -12,7 +12,7 @@ use crate::{
         layout::{DescriptorSetLayout, DescriptorSetLayoutCreateFlags, DescriptorType},
         sys::UnsafeDescriptorSet,
     },
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
@@ -203,10 +203,10 @@ impl DescriptorPool {
     ///
     /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
     #[inline]
-    pub unsafe fn allocate_descriptor_sets<'a>(
+    pub unsafe fn allocate_descriptor_sets(
         &self,
-        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
-    ) -> Result<DescriptorSetIter, Validated<VulkanError>> {
+        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo>,
+    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, Validated<VulkanError>> {
         let allocate_infos: SmallVec<[_; 1]> = allocate_infos.into_iter().collect();
         self.validate_allocate_descriptor_sets(&allocate_infos)?;
 
@@ -215,7 +215,7 @@ impl DescriptorPool {
 
     fn validate_allocate_descriptor_sets(
         &self,
-        allocate_infos: &[DescriptorSetAllocateInfo<'_>],
+        allocate_infos: &[DescriptorSetAllocateInfo],
     ) -> Result<(), Box<ValidationError>> {
         for (index, info) in allocate_infos.iter().enumerate() {
             info.validate(self.device())
@@ -226,25 +226,38 @@ impl DescriptorPool {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn allocate_descriptor_sets_unchecked<'a>(
+    pub unsafe fn allocate_descriptor_sets_unchecked(
         &self,
-        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
-    ) -> Result<DescriptorSetIter, VulkanError> {
-        let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
-            allocate_infos
-                .into_iter()
-                .map(|info| (info.layout.handle(), info.variable_descriptor_count))
-                .unzip();
+        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo>,
+    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, VulkanError> {
+        let allocate_infos = allocate_infos.into_iter();
 
-        let output = if layouts.is_empty() {
-            vec![]
-        } else {
+        let (lower_size_bound, _) = allocate_infos.size_hint();
+        let mut layouts_vk = Vec::with_capacity(lower_size_bound);
+        let mut variable_descriptor_counts = Vec::with_capacity(lower_size_bound);
+        let mut layouts = Vec::with_capacity(lower_size_bound);
+
+        for info in allocate_infos {
+            let DescriptorSetAllocateInfo {
+                layout,
+                variable_descriptor_count,
+                _ne: _,
+            } = info;
+
+            layouts_vk.push(layout.handle());
+            variable_descriptor_counts.push(variable_descriptor_count);
+            layouts.push(layout);
+        }
+
+        let mut output = vec![];
+
+        if !layouts_vk.is_empty() {
             let variable_desc_count_alloc_info = if (self.device.api_version() >= Version::V1_2
                 || self.device.enabled_extensions().ext_descriptor_indexing)
                 && variable_descriptor_counts.iter().any(|c| *c != 0)
             {
                 Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
-                    descriptor_set_count: layouts.len() as u32,
+                    descriptor_set_count: layouts_vk.len() as u32,
                     p_descriptor_counts: variable_descriptor_counts.as_ptr(),
                     ..Default::default()
                 })
@@ -252,10 +265,10 @@ impl DescriptorPool {
                 None
             };
 
-            let infos = ash::vk::DescriptorSetAllocateInfo {
+            let info_vk = ash::vk::DescriptorSetAllocateInfo {
                 descriptor_pool: self.handle,
-                descriptor_set_count: layouts.len() as u32,
-                p_set_layouts: layouts.as_ptr(),
+                descriptor_set_count: layouts_vk.len() as u32,
+                p_set_layouts: layouts_vk.as_ptr(),
                 p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
                     next as *const _ as *const _
                 } else {
@@ -264,29 +277,41 @@ impl DescriptorPool {
                 ..Default::default()
             };
 
-            let mut output = Vec::with_capacity(layouts.len());
+            output.reserve(layouts_vk.len());
 
             let fns = self.device.fns();
-            (fns.v1_0.allocate_descriptor_sets)(self.device.handle(), &infos, output.as_mut_ptr())
-                .result()
-                .map_err(VulkanError::from)
-                .map_err(|err| match err {
-                    VulkanError::OutOfHostMemory
-                    | VulkanError::OutOfDeviceMemory
-                    | VulkanError::OutOfPoolMemory => err,
-                    // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after
-                    // version 1.0 of Vulkan, any negative return value except out-of-memory errors
-                    // must be considered as a fragmented pool error.
-                    _ => VulkanError::FragmentedPool,
-                })?;
+            (fns.v1_0.allocate_descriptor_sets)(
+                self.device.handle(),
+                &info_vk,
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)
+            .map_err(|err| match err {
+                VulkanError::OutOfHostMemory
+                | VulkanError::OutOfDeviceMemory
+                | VulkanError::OutOfPoolMemory => err,
+                // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after
+                // version 1.0 of Vulkan, any negative return value except out-of-memory errors
+                // must be considered as a fragmented pool error.
+                _ => VulkanError::FragmentedPool,
+            })?;
 
-            output.set_len(layouts.len());
-            output
-        };
+            output.set_len(layouts_vk.len());
+        }
 
-        Ok(DescriptorSetIter(
-            output.into_iter().map(UnsafeDescriptorSet::new),
-        ))
+        Ok(output
+            .into_iter()
+            .zip(layouts)
+            .zip(variable_descriptor_counts)
+            .map(
+                move |((handle, layout), variable_descriptor_count)| DescriptorPoolAlloc {
+                    handle,
+                    id: DescriptorPoolAlloc::next_id(),
+                    layout: DeviceOwnedDebugWrapper(layout),
+                    variable_descriptor_count,
+                },
+            ))
     }
 
     /// Frees some descriptor sets.
@@ -552,11 +577,11 @@ vulkan_bitflags! {
 
 /// Parameters to allocate a new `UnsafeDescriptorSet` from an `UnsafeDescriptorPool`.
 #[derive(Clone, Debug)]
-pub struct DescriptorSetAllocateInfo<'a> {
+pub struct DescriptorSetAllocateInfo {
     /// The descriptor set layout to create the set for.
     ///
     /// There is no default value.
-    pub layout: &'a DescriptorSetLayout,
+    pub layout: Arc<DescriptorSetLayout>,
 
     /// For layouts with a variable-count binding, the number of descriptors to allocate for that
     /// binding. This should be 0 for layouts that don't have a variable-count binding.
@@ -567,10 +592,10 @@ pub struct DescriptorSetAllocateInfo<'a> {
     pub _ne: crate::NonExhaustive,
 }
 
-impl<'a> DescriptorSetAllocateInfo<'a> {
+impl DescriptorSetAllocateInfo {
     /// Returns a `DescriptorSetAllocateInfo` with the specified `layout`.
     #[inline]
-    pub fn new(layout: &'a DescriptorSetLayout) -> Self {
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         Self {
             layout,
             variable_descriptor_count: 0,
@@ -580,7 +605,7 @@ impl<'a> DescriptorSetAllocateInfo<'a> {
 
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
-            layout,
+            ref layout,
             variable_descriptor_count,
             _ne,
         } = self;
@@ -600,7 +625,7 @@ impl<'a> DescriptorSetAllocateInfo<'a> {
             }));
         }
 
-        if variable_descriptor_count >= layout.variable_descriptor_count() {
+        if variable_descriptor_count > layout.variable_descriptor_count() {
             return Err(Box::new(ValidationError {
                 problem: "`variable_descriptor_count` is greater than
                     `layout.variable_descriptor_count()`"
@@ -614,28 +639,46 @@ impl<'a> DescriptorSetAllocateInfo<'a> {
     }
 }
 
-// TODO: Exists only due to an issue with returning `impl Trait` when the input has a lifetime:
-// https://github.com/rust-lang/rust/issues/42940
-pub struct DescriptorSetIter(
-    std::iter::Map<
-        std::vec::IntoIter<ash::vk::DescriptorSet>,
-        fn(ash::vk::DescriptorSet) -> UnsafeDescriptorSet,
-    >,
-);
+/// Opaque type that represents a descriptor set allocated from a pool.
+#[derive(Debug)]
+pub struct DescriptorPoolAlloc {
+    handle: ash::vk::DescriptorSet,
+    id: NonZeroU64,
+    layout: DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>,
+    variable_descriptor_count: u32,
+}
 
-impl Iterator for DescriptorSetIter {
-    type Item = UnsafeDescriptorSet;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+impl DescriptorPoolAlloc {
+    /// Returns the descriptor set layout of the descriptor set.
+    #[inline]
+    pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        &self.layout
     }
 
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
+    /// Returns the variable descriptor count that this descriptor set was allocated with.
+    #[inline]
+    pub fn variable_descriptor_count(&self) -> u32 {
+        self.variable_descriptor_count
     }
 }
 
-impl ExactSizeIterator for DescriptorSetIter {}
+unsafe impl VulkanObject for DescriptorPoolAlloc {
+    type Handle = ash::vk::DescriptorSet;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for DescriptorPoolAlloc {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.layout.device()
+    }
+}
+
+impl_id_counter!(DescriptorPoolAlloc);
 
 #[cfg(test)]
 mod tests {
@@ -726,7 +769,7 @@ mod tests {
         .unwrap();
         unsafe {
             let sets = pool
-                .allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout.as_ref())])
+                .allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)])
                 .unwrap();
             assert_eq!(sets.count(), 1);
         }
@@ -765,9 +808,7 @@ mod tests {
             .unwrap();
 
             unsafe {
-                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(
-                    set_layout.as_ref(),
-                )]);
+                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)]);
             }
         });
     }

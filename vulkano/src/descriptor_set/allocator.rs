@@ -19,8 +19,9 @@
 use self::sorted_map::SortedMap;
 use super::{
     layout::DescriptorSetLayout,
-    pool::{DescriptorPool, DescriptorPoolCreateInfo, DescriptorSetAllocateInfo},
-    sys::UnsafeDescriptorSet,
+    pool::{
+        DescriptorPool, DescriptorPoolAlloc, DescriptorPoolCreateInfo, DescriptorSetAllocateInfo,
+    },
 };
 use crate::{
     descriptor_set::layout::DescriptorType,
@@ -65,11 +66,8 @@ pub unsafe trait DescriptorSetAllocator: DeviceOwned {
 
 /// An allocated descriptor set.
 pub trait DescriptorSetAlloc: Send + Sync {
-    /// Returns the inner unsafe descriptor set object.
-    fn inner(&self) -> &UnsafeDescriptorSet;
-
-    /// Returns the inner unsafe descriptor set object.
-    fn inner_mut(&mut self) -> &mut UnsafeDescriptorSet;
+    /// Returns the internal object that contains the descriptor set.
+    fn inner(&self) -> &DescriptorPoolAlloc;
 
     /// Returns the descriptor pool that the descriptor set was allocated from.
     fn pool(&self) -> &DescriptorPool;
@@ -233,7 +231,7 @@ struct FixedPool {
     inner: DescriptorPool,
     // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
     // list. When a `SingleLayoutPoolAlloc` is dropped, its descriptor set is put back in this list.
-    reserve: ArrayQueue<UnsafeDescriptorSet>,
+    reserve: ArrayQueue<DescriptorPoolAlloc>,
 }
 
 impl FixedPool {
@@ -258,7 +256,7 @@ impl FixedPool {
         )
         .map_err(Validated::unwrap)?;
 
-        let allocate_infos = (0..set_count).map(|_| DescriptorSetAllocateInfo::new(layout));
+        let allocate_infos = (0..set_count).map(|_| DescriptorSetAllocateInfo::new(layout.clone()));
 
         let allocs = unsafe {
             inner
@@ -335,7 +333,7 @@ impl VariableEntry {
 
         let allocate_info = DescriptorSetAllocateInfo {
             variable_descriptor_count,
-            ..DescriptorSetAllocateInfo::new(&self.layout)
+            ..DescriptorSetAllocateInfo::new(self.layout.clone())
         };
 
         let mut sets = unsafe {
@@ -429,7 +427,7 @@ impl Drop for VariablePool {
 #[derive(Debug)]
 pub struct StandardDescriptorSetAlloc {
     // The actual descriptor set.
-    inner: ManuallyDrop<UnsafeDescriptorSet>,
+    inner: ManuallyDrop<DescriptorPoolAlloc>,
     // The pool where we allocated from. Needed for our `Drop` impl.
     parent: AllocParent,
 }
@@ -458,13 +456,8 @@ unsafe impl Sync for StandardDescriptorSetAlloc {}
 
 impl DescriptorSetAlloc for StandardDescriptorSetAlloc {
     #[inline]
-    fn inner(&self) -> &UnsafeDescriptorSet {
+    fn inner(&self) -> &DescriptorPoolAlloc {
         &self.inner
-    }
-
-    #[inline]
-    fn inner_mut(&mut self) -> &mut UnsafeDescriptorSet {
-        &mut self.inner
     }
 
     #[inline]
