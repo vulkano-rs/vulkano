@@ -21,7 +21,11 @@
 //! # Examples
 //! TODO:
 
-use super::{pool::DescriptorPoolAlloc, sys::UnsafeDescriptorSet, CopyDescriptorSet};
+use super::{
+    pool::{DescriptorPool, DescriptorPoolAlloc},
+    sys::UnsafeDescriptorSet,
+    CopyDescriptorSet,
+};
 use crate::{
     descriptor_set::{
         allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
@@ -124,6 +128,10 @@ where
 {
     fn alloc(&self) -> &DescriptorPoolAlloc {
         self.inner.alloc().inner()
+    }
+
+    fn pool(&self) -> &DescriptorPool {
+        self.inner.alloc().pool()
     }
 
     fn resources(&self) -> &DescriptorSetResources {

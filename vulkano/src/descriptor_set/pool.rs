@@ -220,6 +220,33 @@ impl DescriptorPool {
         for (index, info) in allocate_infos.iter().enumerate() {
             info.validate(self.device())
                 .map_err(|err| err.add_context(format!("allocate_infos[{}]", index)))?;
+
+            let &DescriptorSetAllocateInfo {
+                ref layout,
+                variable_descriptor_count: _,
+                _ne: _,
+            } = info;
+
+            if layout
+                .flags()
+                .intersects(DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                && !self
+                    .flags
+                    .intersects(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`allocate_infos[{}].layout.flags()` contains \
+                        `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`, but \
+                        `self.flags` does not contain \
+                        `DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkDescriptorSetAllocateInfo-pSetLayouts-03044"],
+                    ..Default::default()
+                }));
+            }
         }
 
         Ok(())
@@ -558,13 +585,18 @@ vulkan_bitflags! {
     /// destroy the whole pool at once.
     FREE_DESCRIPTOR_SET = FREE_DESCRIPTOR_SET,
 
-    /* TODO: enable
-    // TODO: document
+    /// The pool can allocate descriptor sets with a layout whose flags include
+    /// [`DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`].
+    ///
+    /// A pool created with this flag can still allocate descriptor sets without the flag.
+    /// However, descriptor copy operations are only allowed between pools of the same type;
+    /// it is not possible to copy between a descriptor set whose pool has `UPDATE_AFTER_BIND`,
+    /// and a descriptor set whose pool does not have this flag.
     UPDATE_AFTER_BIND = UPDATE_AFTER_BIND
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
         RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]), */
+    ]),
 
     /* TODO: enable
     // TODO: document

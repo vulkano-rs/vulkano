@@ -473,9 +473,12 @@ impl PipelineLayoutCreateInfo {
 
         struct DescriptorLimit {
             descriptor_types: &'static [DescriptorType],
-            get_limit: fn(&Properties) -> u32,
-            limit_name: &'static str,
-            vuids: &'static [&'static str],
+            get_limit_all: fn(&Properties) -> Option<u32>,
+            limit_name_all: &'static str,
+            vuids_all: &'static [&'static str],
+            get_limit_not_uab: fn(&Properties) -> u32,
+            limit_name_not_uab: &'static str,
+            vuids_not_uab: &'static [&'static str],
         }
 
         const PER_STAGE_DESCRIPTOR_LIMITS: [DescriptorLimit; 8] = [
@@ -484,27 +487,36 @@ impl PipelineLayoutCreateInfo {
                     DescriptorType::Sampler,
                     DescriptorType::CombinedImageSampler,
                 ],
-                get_limit: |p| p.max_per_stage_descriptor_samplers,
-                limit_name: "max_per_stage_descriptor_samplers",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03016"],
+                get_limit_all: |p| p.max_per_stage_descriptor_update_after_bind_samplers,
+                limit_name_all: "max_per_stage_descriptor_update_after_bind_samplers",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03022"],
+                get_limit_not_uab: |p| p.max_per_stage_descriptor_samplers,
+                limit_name_not_uab: "max_per_stage_descriptor_samplers",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03016"],
             },
             DescriptorLimit {
                 descriptor_types: &[
                     DescriptorType::UniformBuffer,
                     DescriptorType::UniformBufferDynamic,
                 ],
-                get_limit: |p| p.max_per_stage_descriptor_uniform_buffers,
-                limit_name: "max_per_stage_descriptor_uniform_buffers",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03017"],
+                get_limit_all: |p| p.max_per_stage_descriptor_update_after_bind_uniform_buffers,
+                limit_name_all: "max_per_stage_descriptor_update_after_bind_uniform_buffers",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03023"],
+                get_limit_not_uab: |p| p.max_per_stage_descriptor_uniform_buffers,
+                limit_name_not_uab: "max_per_stage_descriptor_uniform_buffers",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03017"],
             },
             DescriptorLimit {
                 descriptor_types: &[
                     DescriptorType::StorageBuffer,
                     DescriptorType::StorageBufferDynamic,
                 ],
-                get_limit: |p| p.max_per_stage_descriptor_storage_buffers,
-                limit_name: "max_per_stage_descriptor_storage_buffers",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03018"],
+                get_limit_all: |p| p.max_per_stage_descriptor_update_after_bind_storage_buffers,
+                limit_name_all: "max_per_stage_descriptor_update_after_bind_storage_buffers",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03024"],
+                get_limit_not_uab: |p| p.max_per_stage_descriptor_storage_buffers,
+                limit_name_not_uab: "max_per_stage_descriptor_storage_buffers",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03018"],
             },
             DescriptorLimit {
                 descriptor_types: &[
@@ -512,42 +524,62 @@ impl PipelineLayoutCreateInfo {
                     DescriptorType::SampledImage,
                     DescriptorType::UniformTexelBuffer,
                 ],
-                get_limit: |p| p.max_per_stage_descriptor_sampled_images,
-                limit_name: "max_per_stage_descriptor_sampled_images",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-06939"],
+                get_limit_all: |p| p.max_per_stage_descriptor_update_after_bind_sampled_images,
+                limit_name_all: "max_per_stage_descriptor_update_after_bind_sampled_images",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03025"],
+                get_limit_not_uab: |p| p.max_per_stage_descriptor_sampled_images,
+                limit_name_not_uab: "max_per_stage_descriptor_sampled_images",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-06939"],
             },
             DescriptorLimit {
                 descriptor_types: &[
                     DescriptorType::StorageImage,
                     DescriptorType::StorageTexelBuffer,
                 ],
-                get_limit: |p| p.max_per_stage_descriptor_storage_images,
-                limit_name: "max_per_stage_descriptor_storage_images",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03020"],
+                get_limit_all: |p| p.max_per_stage_descriptor_update_after_bind_storage_images,
+                limit_name_all: "max_per_stage_descriptor_update_after_bind_storage_images",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03026"],
+                get_limit_not_uab: |p| p.max_per_stage_descriptor_storage_images,
+                limit_name_not_uab: "max_per_stage_descriptor_storage_images",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03020"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::InputAttachment],
-                get_limit: |p| p.max_per_stage_descriptor_input_attachments,
-                limit_name: "max_per_stage_descriptor_input_attachments",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03021"],
+                get_limit_all: |p| p.max_per_stage_descriptor_update_after_bind_input_attachments,
+                limit_name_all: "max_per_stage_descriptor_update_after_bind_input_attachments",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03027"],
+                get_limit_not_uab: |p| p.max_per_stage_descriptor_input_attachments,
+                limit_name_not_uab: "max_per_stage_descriptor_input_attachments",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03021"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::InlineUniformBlock],
-                get_limit: |p| {
+                get_limit_all: |p| {
+                    p.max_per_stage_descriptor_update_after_bind_inline_uniform_blocks
+                },
+                limit_name_all: "max_per_stage_descriptor_update_after_bind_inline_uniform_blocks",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02215"],
+                get_limit_not_uab: |p| {
                     p.max_per_stage_descriptor_inline_uniform_blocks
                         .unwrap_or(0)
                 },
-                limit_name: "max_per_stage_descriptor_inline_uniform_blocks",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02214"],
+                limit_name_not_uab: "max_per_stage_descriptor_inline_uniform_blocks",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02214"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::AccelerationStructure],
-                get_limit: |p| {
+                get_limit_all: |p| {
+                    p.max_per_stage_descriptor_update_after_bind_acceleration_structures
+                },
+                limit_name_all:
+                    "max_per_stage_descriptor_update_after_bind_acceleration_structures",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03572"],
+                get_limit_not_uab: |p| {
                     p.max_per_stage_descriptor_acceleration_structures
                         .unwrap_or(0)
                 },
-                limit_name: "max_per_stage_descriptor_acceleration_structures",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03571"],
+                limit_name_not_uab: "max_per_stage_descriptor_acceleration_structures",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03571"],
             },
         ];
 
@@ -557,33 +589,48 @@ impl PipelineLayoutCreateInfo {
                     DescriptorType::Sampler,
                     DescriptorType::CombinedImageSampler,
                 ],
-                get_limit: |p| p.max_descriptor_set_samplers,
-                limit_name: "max_descriptor_set_samplers",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03028"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_samplers,
+                limit_name_all: "max_descriptor_set_update_after_bind_samplers",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03036"],
+                get_limit_not_uab: |p| p.max_descriptor_set_samplers,
+                limit_name_not_uab: "max_descriptor_set_samplers",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03028"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::UniformBuffer],
-                get_limit: |p| p.max_descriptor_set_uniform_buffers,
-                limit_name: "max_descriptor_set_uniform_buffers",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03029"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_uniform_buffers,
+                limit_name_all: "max_descriptor_set_update_after_bind_uniform_buffers",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03037"],
+                get_limit_not_uab: |p| p.max_descriptor_set_uniform_buffers,
+                limit_name_not_uab: "max_descriptor_set_uniform_buffers",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03029"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::UniformBufferDynamic],
-                get_limit: |p| p.max_descriptor_set_uniform_buffers_dynamic,
-                limit_name: "max_descriptor_set_uniform_buffers_dynamic",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03030"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_uniform_buffers_dynamic,
+                limit_name_all: "max_descriptor_set_update_after_bind_uniform_buffers_dynamic",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03038"],
+                get_limit_not_uab: |p| p.max_descriptor_set_uniform_buffers_dynamic,
+                limit_name_not_uab: "max_descriptor_set_uniform_buffers_dynamic",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03030"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::StorageBuffer],
-                get_limit: |p| p.max_descriptor_set_storage_buffers,
-                limit_name: "max_descriptor_set_storage_buffers",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03031"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_storage_buffers,
+                limit_name_all: "max_descriptor_set_update_after_bind_storage_buffers",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03039"],
+                get_limit_not_uab: |p| p.max_descriptor_set_storage_buffers,
+                limit_name_not_uab: "max_descriptor_set_storage_buffers",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03031"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::StorageBufferDynamic],
-                get_limit: |p| p.max_descriptor_set_storage_buffers_dynamic,
-                limit_name: "max_descriptor_set_storage_buffers_dynamic",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03032"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_storage_buffers_dynamic,
+                limit_name_all: "max_descriptor_set_update_after_bind_storage_buffers_dynamic",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03040"],
+                get_limit_not_uab: |p| p.max_descriptor_set_storage_buffers_dynamic,
+                limit_name_not_uab: "max_descriptor_set_storage_buffers_dynamic",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03032"],
             },
             DescriptorLimit {
                 descriptor_types: &[
@@ -591,42 +638,60 @@ impl PipelineLayoutCreateInfo {
                     DescriptorType::SampledImage,
                     DescriptorType::UniformTexelBuffer,
                 ],
-                get_limit: |p| p.max_descriptor_set_sampled_images,
-                limit_name: "max_descriptor_set_sampled_images",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03033"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_sampled_images,
+                limit_name_all: "max_descriptor_set_update_after_bind_sampled_images",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03041"],
+                get_limit_not_uab: |p| p.max_descriptor_set_sampled_images,
+                limit_name_not_uab: "max_descriptor_set_sampled_images",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03033"],
             },
             DescriptorLimit {
                 descriptor_types: &[
                     DescriptorType::StorageImage,
                     DescriptorType::StorageTexelBuffer,
                 ],
-                get_limit: |p| p.max_descriptor_set_storage_images,
-                limit_name: "max_descriptor_set_storage_images",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03034"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_storage_images,
+                limit_name_all: "max_descriptor_set_update_after_bind_storage_images",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03042"],
+                get_limit_not_uab: |p| p.max_descriptor_set_storage_images,
+                limit_name_not_uab: "max_descriptor_set_storage_images",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03034"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::InputAttachment],
-                get_limit: |p| p.max_descriptor_set_input_attachments,
-                limit_name: "max_descriptor_set_input_attachments",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03035"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_input_attachments,
+                limit_name_all: "max_descriptor_set_update_after_bind_input_attachments",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-pSetLayouts-03043"],
+                get_limit_not_uab: |p| p.max_descriptor_set_input_attachments,
+                limit_name_not_uab: "max_descriptor_set_input_attachments",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03035"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::InlineUniformBlock],
-                get_limit: |p| p.max_descriptor_set_inline_uniform_blocks.unwrap_or(0),
-                limit_name: "max_descriptor_set_inline_uniform_blocks",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02216"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_inline_uniform_blocks,
+                limit_name_all: "max_descriptor_set_update_after_bind_inline_uniform_blocks",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02217"],
+                get_limit_not_uab: |p| p.max_descriptor_set_inline_uniform_blocks.unwrap_or(0),
+                limit_name_not_uab: "max_descriptor_set_inline_uniform_blocks",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-02216"],
             },
             DescriptorLimit {
                 descriptor_types: &[DescriptorType::AccelerationStructure],
-                get_limit: |p| p.max_descriptor_set_acceleration_structures.unwrap_or(0),
-                limit_name: "max_descriptor_set_acceleration_structures",
-                vuids: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03573"],
+                get_limit_all: |p| p.max_descriptor_set_update_after_bind_acceleration_structures,
+                limit_name_all: "max_descriptor_set_update_after_bind_acceleration_structures",
+                vuids_all: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03574"],
+                get_limit_not_uab: |p| p.max_descriptor_set_acceleration_structures.unwrap_or(0),
+                limit_name_not_uab: "max_descriptor_set_acceleration_structures",
+                vuids_not_uab: &["VUID-VkPipelineLayoutCreateInfo-descriptorType-03573"],
             },
         ];
 
-        let mut per_stage_descriptors: [HashMap<ShaderStage, u32>;
+        let mut per_stage_descriptors_all: [HashMap<ShaderStage, u32>;
             PER_STAGE_DESCRIPTOR_LIMITS.len()] = array::from_fn(|_| HashMap::default());
-        let mut total_descriptors = [0; TOTAL_DESCRIPTOR_LIMITS.len()];
+        let mut per_stage_descriptors_not_uab: [HashMap<ShaderStage, u32>;
+            PER_STAGE_DESCRIPTOR_LIMITS.len()] = array::from_fn(|_| HashMap::default());
+        let mut total_descriptors_all = [0; TOTAL_DESCRIPTOR_LIMITS.len()];
+        let mut total_descriptors_not_uab = [0; TOTAL_DESCRIPTOR_LIMITS.len()];
         let mut has_push_descriptor_set = false;
 
         for (_set_num, set_layout) in set_layouts.iter().enumerate() {
@@ -650,6 +715,10 @@ impl PipelineLayoutCreateInfo {
                 has_push_descriptor_set = true;
             }
 
+            let is_not_uab = !set_layout
+                .flags()
+                .intersects(DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL);
+
             for layout_binding in set_layout.bindings().values() {
                 let &DescriptorSetLayoutBinding {
                     binding_flags: _,
@@ -660,36 +729,56 @@ impl PipelineLayoutCreateInfo {
                     _ne: _,
                 } = layout_binding;
 
-                for (limit, count) in PER_STAGE_DESCRIPTOR_LIMITS
+                for ((limit, count_all), count_not_uab) in PER_STAGE_DESCRIPTOR_LIMITS
                     .iter()
-                    .zip(&mut per_stage_descriptors)
+                    .zip(&mut per_stage_descriptors_all)
+                    .zip(&mut per_stage_descriptors_not_uab)
                 {
                     if limit.descriptor_types.contains(&descriptor_type) {
                         for stage in stages {
-                            *count.entry(stage).or_default() += descriptor_count;
+                            *count_all.entry(stage).or_default() += descriptor_count;
+
+                            if is_not_uab {
+                                *count_not_uab.entry(stage).or_default() += descriptor_count;
+                            }
                         }
                     }
                 }
 
-                for (limit, count) in TOTAL_DESCRIPTOR_LIMITS.iter().zip(&mut total_descriptors) {
+                for ((limit, count_all), count_not_uab) in TOTAL_DESCRIPTOR_LIMITS
+                    .iter()
+                    .zip(&mut total_descriptors_all)
+                    .zip(&mut total_descriptors_not_uab)
+                {
                     if limit.descriptor_types.contains(&descriptor_type) {
-                        *count += descriptor_count;
+                        *count_all += descriptor_count;
+
+                        if is_not_uab {
+                            *count_not_uab += descriptor_count;
+                        }
                     }
                 }
             }
         }
 
-        for (limit, count) in PER_STAGE_DESCRIPTOR_LIMITS
+        for ((limit, count_all), count_not_uab) in PER_STAGE_DESCRIPTOR_LIMITS
             .iter()
-            .zip(per_stage_descriptors)
+            .zip(per_stage_descriptors_all)
+            .zip(per_stage_descriptors_not_uab)
         {
-            if let Some((max_stage, max_count)) = count.into_iter().max_by_key(|(_, c)| *c) {
-                if max_count > (limit.get_limit)(properties) {
+            let limit_not_uab = (limit.get_limit_not_uab)(properties);
+
+            if let Some((max_stage, max_count)) = count_not_uab.into_iter().max_by_key(|(_, c)| *c)
+            {
+                if max_count > limit_not_uab {
                     return Err(Box::new(ValidationError {
                         context: "set_layouts".into(),
                         problem: format!(
-                            "the combined number of {} descriptors accessible to the \
-                            `ShaderStage::{:?}` stage exceeds the `{}` limit",
+                            "the combined number of {} descriptors, \
+                            belonging to descriptor set layouts without the \
+                            `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL` flag, \
+                            accessible to the `ShaderStage::{:?}` stage, \
+                            exceeds the `{}` limit",
                             limit.descriptor_types[1..].iter().fold(
                                 format!("`DescriptorType::{:?}`", limit.descriptor_types[0]),
                                 |mut s, dt| {
@@ -698,23 +787,62 @@ impl PipelineLayoutCreateInfo {
                                 }
                             ),
                             max_stage,
-                            limit.limit_name,
+                            limit.limit_name_not_uab,
                         )
                         .into(),
-                        vuids: limit.vuids,
+                        vuids: limit.vuids_not_uab,
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            let limit_all = match (limit.get_limit_all)(properties) {
+                Some(x) => x,
+                None => continue,
+            };
+
+            if let Some((max_stage, max_count)) = count_all.into_iter().max_by_key(|(_, c)| *c) {
+                if max_count > limit_all {
+                    return Err(Box::new(ValidationError {
+                        context: "set_layouts".into(),
+                        problem: format!(
+                            "the combined number of {} descriptors, \
+                            accessible to the `ShaderStage::{:?}` stage, \
+                            exceeds the `{}` limit",
+                            limit.descriptor_types[1..].iter().fold(
+                                format!("`DescriptorType::{:?}`", limit.descriptor_types[0]),
+                                |mut s, dt| {
+                                    write!(s, " + `DescriptorType::{:?}`", dt).unwrap();
+                                    s
+                                }
+                            ),
+                            max_stage,
+                            limit.limit_name_all,
+                        )
+                        .into(),
+                        vuids: limit.vuids_all,
                         ..Default::default()
                     }));
                 }
             }
         }
 
-        for (limit, count) in TOTAL_DESCRIPTOR_LIMITS.iter().zip(total_descriptors) {
-            if count > (limit.get_limit)(properties) {
+        for ((limit, count_all), count_not_uab) in TOTAL_DESCRIPTOR_LIMITS
+            .iter()
+            .zip(total_descriptors_all)
+            .zip(total_descriptors_not_uab)
+        {
+            let limit_not_uab = (limit.get_limit_not_uab)(properties);
+
+            if count_not_uab > limit_not_uab {
                 return Err(Box::new(ValidationError {
                     context: "set_layouts".into(),
                     problem: format!(
-                        "the combined number of {} descriptors accessible across all \
-                        shader stages exceeds the `{}` limit",
+                        "the combined number of {} descriptors, \
+                        belonging to descriptor set layouts without the \
+                        `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL` flag, \
+                        accessible across all shader stages, \
+                        exceeds the `{}` limit",
                         limit.descriptor_types[1..].iter().fold(
                             format!("`DescriptorType::{:?}`", limit.descriptor_types[0]),
                             |mut s, dt| {
@@ -722,10 +850,37 @@ impl PipelineLayoutCreateInfo {
                                 s
                             }
                         ),
-                        limit.limit_name,
+                        limit.limit_name_not_uab,
                     )
                     .into(),
-                    vuids: limit.vuids,
+                    vuids: limit.vuids_not_uab,
+                    ..Default::default()
+                }));
+            }
+
+            let limit_all = match (limit.get_limit_all)(properties) {
+                Some(x) => x,
+                None => continue,
+            };
+
+            if count_all > limit_all {
+                return Err(Box::new(ValidationError {
+                    context: "set_layouts".into(),
+                    problem: format!(
+                        "the combined number of {} descriptors, \
+                        accessible across all shader stages, \
+                        exceeds the `{}` limit",
+                        limit.descriptor_types[1..].iter().fold(
+                            format!("`DescriptorType::{:?}`", limit.descriptor_types[0]),
+                            |mut s, dt| {
+                                write!(s, " + `DescriptorType::{:?}`", dt).unwrap();
+                                s
+                            }
+                        ),
+                        limit.limit_name_all,
+                    )
+                    .into(),
+                    vuids: limit.vuids_all,
                     ..Default::default()
                 }));
             }
