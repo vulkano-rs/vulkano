@@ -65,6 +65,10 @@ Changes to descriptor sets and descriptor set layouts:
 - `PersistentDescriptorSet::new` now takes an additional parameter, specifying descriptor set copy operations.
 - `DescriptorSetLayoutCreateInfo::push_descriptor` has been replaced with a more generic `flags` field.
 - `DescriptorSetLayoutBinding::variable_descriptor_count` has been replaced with a more generic `binding_flags` field.
+- `DescriptorPool::allocate_descriptor_sets` is now validated, and returns `DescriptorPoolAlloc` objects.
+- `DescriptorSetAllocator::allocate` returns `Validated<VulkanError>` as its error type.
+- `UnsafeDescriptorSet::update` is now partially validated, and takes slices instead of iterators.
+- `UnsafeDescriptorSet` now owns its allocation.
 
 Changes to render pass objects:
 - `AttachmentDescription::stencil_load_op` and `stencil_store_op` are now wrapped in an `Option`. If it is `None`, the value is taken from `load_op` and `store_op` instead.
