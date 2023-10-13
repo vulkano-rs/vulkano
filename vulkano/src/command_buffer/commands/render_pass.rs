@@ -2838,7 +2838,7 @@ pub struct RenderingAttachmentInfo {
     /// There is no default value.
     pub image_view: Arc<ImageView>,
 
-    /// The image layout that `image_view` should be in during the resolve operation.
+    /// The image layout that `image_view` should be in during rendering.
     ///
     /// The default value is [`ImageLayout::ColorAttachmentOptimal`] if `image_view` has a color
     /// format, [`ImageLayout::DepthStencilAttachmentOptimal`] if `image_view` has a depth/stencil
