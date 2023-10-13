@@ -9,56 +9,113 @@
 
 //! Low-level descriptor set.
 
-use super::CopyDescriptorSet;
+use super::{
+    allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
+    CopyDescriptorSet,
+};
 use crate::{
     descriptor_set::{
         layout::DescriptorSetLayout,
         update::{DescriptorWriteInfo, WriteDescriptorSet},
     },
-    device::DeviceOwned,
-    macros::impl_id_counter,
-    VulkanObject,
+    device::{Device, DeviceOwned},
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{fmt::Debug, num::NonZeroU64};
+use std::{fmt::Debug, hash::Hash, sync::Arc};
 
 /// Low-level descriptor set.
 ///
-/// Contrary to most other objects in this library, this one doesn't free itself automatically and
-/// doesn't hold the pool or the device it is associated to.
-/// Instead it is an object meant to be used with the [`DescriptorPool`].
-///
-/// [`DescriptorPool`]: super::pool::DescriptorPool
+/// This descriptor set does not keep track of synchronization,
+/// nor does it store any information on what resources have been written to each descriptor.
 #[derive(Debug)]
-pub struct UnsafeDescriptorSet {
-    handle: ash::vk::DescriptorSet,
-    id: NonZeroU64,
+pub struct UnsafeDescriptorSet<P = StandardDescriptorSetAlloc> {
+    alloc: P,
 }
 
 impl UnsafeDescriptorSet {
-    pub(crate) fn new(handle: ash::vk::DescriptorSet) -> Self {
-        Self {
-            handle,
-            id: Self::next_id(),
-        }
+    /// Allocates a new descriptor set and returns it.
+    #[inline]
+    pub fn new<A>(
+        allocator: &A,
+        layout: &Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+    ) -> Result<UnsafeDescriptorSet<A::Alloc>, Validated<VulkanError>>
+    where
+        A: DescriptorSetAllocator + ?Sized,
+    {
+        Ok(UnsafeDescriptorSet {
+            alloc: allocator.allocate(layout, variable_descriptor_count)?,
+        })
+    }
+}
+
+impl<P> UnsafeDescriptorSet<P>
+where
+    P: DescriptorSetAlloc,
+{
+    /// Returns the allocation of this descriptor set.
+    #[inline]
+    pub fn alloc(&self) -> &P {
+        &self.alloc
     }
 
-    /// Modifies a descriptor set. Doesn't check that the writes or copies are correct, and
-    /// doesn't check whether the descriptor set is in use.
+    /// Returns the layout of this descriptor set.
+    #[inline]
+    pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        self.alloc.inner().layout()
+    }
+
+    /// Returns the variable descriptor count that this descriptor set was allocated with.
+    #[inline]
+    pub fn variable_descriptor_count(&self) -> u32 {
+        self.alloc.inner().variable_descriptor_count()
+    }
+
+    /// Updates the descriptor set with new values.
     ///
     /// # Safety
     ///
-    /// - The `Device` must be the device the pool of this set was created with.
-    /// - Doesn't verify that the things you write in the descriptor set match its layout.
-    /// - Doesn't keep the resources alive. You have to do that yourself.
-    /// - Updating a descriptor set obeys synchronization rules that aren't checked here. Once a
-    ///   command buffer contains a pointer/reference to a descriptor set, it is illegal to write
-    ///   to it.
-    pub unsafe fn update<'a>(
+    /// - The resources in `descriptor_writes` and `descriptor_copies` must be kept alive for as
+    ///   long as `self` is in use.
+    /// - The descriptor set must not be in use by the device,
+    ///   or be recorded to a command buffer as part of a bind command.
+    #[inline]
+    pub unsafe fn update(
         &mut self,
-        layout: &DescriptorSetLayout,
-        descriptor_writes: impl IntoIterator<Item = &'a WriteDescriptorSet>,
-        descriptor_copies: impl IntoIterator<Item = &'a CopyDescriptorSet>,
+        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_copies: &[CopyDescriptorSet],
+    ) -> Result<(), Box<ValidationError>> {
+        self.validate_update(descriptor_writes, descriptor_copies)?;
+
+        self.update_unchecked(descriptor_writes, descriptor_copies);
+        Ok(())
+    }
+
+    fn validate_update(
+        &self,
+        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_copies: &[CopyDescriptorSet],
+    ) -> Result<(), Box<ValidationError>> {
+        for (index, write) in descriptor_writes.iter().enumerate() {
+            write
+                .validate(self.layout(), self.variable_descriptor_count())
+                .map_err(|err| err.add_context(format!("descriptor_writes[{}]", index)))?;
+        }
+
+        for (index, copy) in descriptor_copies.iter().enumerate() {
+            copy.validate(self.layout(), self.variable_descriptor_count())
+                .map_err(|err| err.add_context(format!("descriptor_copies[{}]", index)))?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn update_unchecked(
+        &mut self,
+        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_copies: &[CopyDescriptorSet],
     ) {
         struct PerDescriptorWrite {
             write_info: DescriptorWriteInfo,
@@ -66,25 +123,17 @@ impl UnsafeDescriptorSet {
             inline_uniform_block: ash::vk::WriteDescriptorSetInlineUniformBlock,
         }
 
-        let writes_iter = descriptor_writes.into_iter();
-        let (lower_size_bound, _) = writes_iter.size_hint();
-        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
-        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
+        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
 
-        for write in writes_iter {
-            let layout_binding = &layout.bindings()[&write.binding()];
-            writes_vk.push(write.to_vulkan(self.handle, layout_binding.descriptor_type));
+        for write in descriptor_writes {
+            let layout_binding = &self.layout().bindings()[&write.binding()];
+            writes_vk.push(write.to_vulkan(self.handle(), layout_binding.descriptor_type));
             per_writes_vk.push(PerDescriptorWrite {
                 write_info: write.to_vulkan_info(layout_binding.descriptor_type),
                 acceleration_structures: Default::default(),
                 inline_uniform_block: Default::default(),
             });
-        }
-
-        // It is forbidden to call `vkUpdateDescriptorSets` with 0 writes, so we need to perform
-        // this emptiness check.
-        if writes_vk.is_empty() {
-            return;
         }
 
         for (write_vk, per_write_vk) in writes_vk.iter_mut().zip(per_writes_vk.iter_mut()) {
@@ -122,11 +171,9 @@ impl UnsafeDescriptorSet {
             debug_assert!(write_vk.descriptor_count != 0);
         }
 
-        let copies_iter = descriptor_copies.into_iter();
-        let (lower_size_bound, _) = copies_iter.size_hint();
-        let mut copies_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut copies_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_copies.len());
 
-        for copy in copies_iter {
+        for copy in descriptor_copies {
             let &CopyDescriptorSet {
                 ref src_set,
                 src_binding,
@@ -138,10 +185,10 @@ impl UnsafeDescriptorSet {
             } = copy;
 
             copies_vk.push(ash::vk::CopyDescriptorSet {
-                src_set: src_set.inner().handle(),
+                src_set: src_set.handle(),
                 src_binding,
                 src_array_element: src_first_array_element,
-                dst_set: self.handle,
+                dst_set: self.handle(),
                 dst_binding,
                 dst_array_element: dst_first_array_element,
                 descriptor_count,
@@ -149,9 +196,9 @@ impl UnsafeDescriptorSet {
             });
         }
 
-        let fns = layout.device().fns();
+        let fns = self.device().fns();
         (fns.v1_0.update_descriptor_sets)(
-            layout.device().handle(),
+            self.device().handle(),
             writes_vk.len() as u32,
             writes_vk.as_ptr(),
             copies_vk.len() as u32,
@@ -160,13 +207,46 @@ impl UnsafeDescriptorSet {
     }
 }
 
-unsafe impl VulkanObject for UnsafeDescriptorSet {
+unsafe impl<P> VulkanObject for UnsafeDescriptorSet<P>
+where
+    P: DescriptorSetAlloc,
+{
     type Handle = ash::vk::DescriptorSet;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
-        self.handle
+        self.alloc.inner().handle()
     }
 }
 
-impl_id_counter!(UnsafeDescriptorSet);
+unsafe impl<P> DeviceOwned for UnsafeDescriptorSet<P>
+where
+    P: DescriptorSetAlloc,
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.alloc.inner().device()
+    }
+}
+
+impl<P> PartialEq for UnsafeDescriptorSet<P>
+where
+    P: DescriptorSetAlloc,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.alloc.inner() == other.alloc.inner()
+    }
+}
+
+impl<P> Eq for UnsafeDescriptorSet<P> where P: DescriptorSetAlloc {}
+
+impl<P> Hash for UnsafeDescriptorSet<P>
+where
+    P: DescriptorSetAlloc,
+{
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.alloc.inner().hash(state);
+    }
+}
