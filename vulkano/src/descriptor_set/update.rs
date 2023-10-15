@@ -8,13 +8,18 @@
 // according to those terms.
 
 use super::{
+    allocator::DescriptorSetAlloc,
     layout::{DescriptorSetLayout, DescriptorType},
+    sys::UnsafeDescriptorSet,
     DescriptorSet,
 };
 use crate::{
     acceleration_structure::{AccelerationStructure, AccelerationStructureType},
     buffer::{view::BufferView, BufferUsage, Subbuffer},
-    descriptor_set::layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags},
+    descriptor_set::{
+        layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags},
+        pool::DescriptorPoolCreateFlags,
+    },
     device::DeviceOwned,
     image::{
         sampler::Sampler,
@@ -1629,11 +1634,13 @@ impl CopyDescriptorSet {
         }
     }
 
-    pub(crate) fn validate(
+    pub(crate) fn validate<P>(
         &self,
-        dst_set_layout: &DescriptorSetLayout,
-        dst_set_variable_descriptor_count: u32,
-    ) -> Result<(), Box<ValidationError>> {
+        dst_set: &UnsafeDescriptorSet<P>,
+    ) -> Result<(), Box<ValidationError>>
+    where
+        P: DescriptorSetAlloc,
+    {
         let &Self {
             ref src_set,
             src_binding,
@@ -1645,7 +1652,73 @@ impl CopyDescriptorSet {
         } = self;
 
         // VUID-VkCopyDescriptorSet-commonparent
-        assert_eq!(src_set.device(), dst_set_layout.device());
+        assert_eq!(src_set.device(), dst_set.device());
+
+        match (
+            src_set
+                .layout()
+                .flags()
+                .intersects(DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL),
+            dst_set
+                .layout()
+                .flags()
+                .intersects(DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL),
+        ) {
+            (true, false) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_set.layout().flags()` contains \
+                        `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`, but \
+                        `dst_set.layout().flags()` does not also contain it"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-srcSet-01918"],
+                    ..Default::default()
+                }));
+            }
+            (false, true) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_set.layout().flags()` does not contain \
+                        `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`, but \
+                        `dst_set.layout().flags()` does contain it"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-srcSet-04885"],
+                    ..Default::default()
+                }));
+            }
+            _ => (),
+        }
+
+        match (
+            src_set
+                .pool()
+                .flags()
+                .intersects(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND),
+            dst_set
+                .pool()
+                .flags()
+                .intersects(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND),
+        ) {
+            (true, false) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_set.pool().flags()` contains \
+                        `DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`, but \
+                        `dst_set.pool().flags()` does not also contain it"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-srcSet-01920"],
+                    ..Default::default()
+                }));
+            }
+            (false, true) => {
+                return Err(Box::new(ValidationError {
+                    problem: "`src_set.pool().flags()` does not contain \
+                        `DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`, but \
+                        `dst_set.pool().flags()` does contain it"
+                        .into(),
+                    vuids: &["VUID-VkCopyDescriptorSet-srcSet-04887"],
+                    ..Default::default()
+                }));
+            }
+            _ => (),
+        }
 
         let src_layout_binding = match src_set.layout().bindings().get(&src_binding) {
             Some(layout_binding) => layout_binding,
@@ -1679,7 +1752,7 @@ impl CopyDescriptorSet {
             }));
         }
 
-        let dst_layout_binding = match dst_set_layout.bindings().get(&dst_binding) {
+        let dst_layout_binding = match dst_set.layout().bindings().get(&dst_binding) {
             Some(layout_binding) => layout_binding,
             None => {
                 return Err(Box::new(ValidationError {
@@ -1696,7 +1769,7 @@ impl CopyDescriptorSet {
             .binding_flags
             .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
         {
-            dst_set_variable_descriptor_count
+            dst_set.variable_descriptor_count()
         } else {
             dst_layout_binding.descriptor_count
         };

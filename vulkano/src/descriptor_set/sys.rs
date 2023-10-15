@@ -11,6 +11,7 @@
 
 use super::{
     allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
+    pool::DescriptorPool,
     CopyDescriptorSet,
 };
 use crate::{
@@ -60,6 +61,12 @@ where
         &self.alloc
     }
 
+    /// Returns the descriptor pool that the descriptor set was allocated from.
+    #[inline]
+    pub fn pool(&self) -> &DescriptorPool {
+        self.alloc.pool()
+    }
+
     /// Returns the layout of this descriptor set.
     #[inline]
     pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
@@ -104,7 +111,7 @@ where
         }
 
         for (index, copy) in descriptor_copies.iter().enumerate() {
-            copy.validate(self.layout(), self.variable_descriptor_count())
+            copy.validate(self)
                 .map_err(|err| err.add_context(format!("descriptor_copies[{}]", index)))?;
         }
 

@@ -87,7 +87,10 @@ pub use self::{
         WriteDescriptorSetElements,
     },
 };
-use self::{layout::DescriptorSetLayout, pool::DescriptorPoolAlloc};
+use self::{
+    layout::DescriptorSetLayout,
+    pool::{DescriptorPool, DescriptorPoolAlloc},
+};
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::view::BufferView,
@@ -121,6 +124,9 @@ pub unsafe trait DescriptorSet:
 {
     /// Returns the allocation of the descriptor set.
     fn alloc(&self) -> &DescriptorPoolAlloc;
+
+    /// Returns the descriptor pool that the descriptor set was allocated from.
+    fn pool(&self) -> &DescriptorPool;
 
     /// Returns the layout of this descriptor set.
     #[inline]
