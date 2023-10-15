@@ -182,6 +182,7 @@ Changes to the physical device:
 - Vulkano-shaders: support for specialization-constant-sized arrays in structs (they are generated with the size specified as fallback in the specialization constant initializer).
 - Added the `DeviceAddress` and `NonNullDeviceAddress` types to the crate root.
 - Support for the `ext_private_data` extension.
+- Added the `UPDATE_AFTER_BIND`, `UPDATE_UNUSED_WHILE_PENDING` and `PARTIALLY_BOUND` flags to `DescriptorBindingFlags`, as well as `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL` and `DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`.
 
 ### Bugs fixed
 
