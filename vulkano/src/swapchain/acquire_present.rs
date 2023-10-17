@@ -14,7 +14,7 @@ use crate::{
     image::{Image, ImageLayout},
     sync::{
         fence::Fence,
-        future::{AccessCheckError, AccessError, GpuFuture, SubmitAnyBuilder},
+        future::{queue_present, AccessCheckError, AccessError, GpuFuture, SubmitAnyBuilder},
         semaphore::Semaphore,
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
@@ -682,9 +682,7 @@ where
                         }
                     }
 
-                    Ok(self
-                        .queue
-                        .with(|mut q| q.present_unchecked(present_info))?
+                    Ok(queue_present(&self.queue, present_info)?
                         .map(|r| r.map(|_| ()))
                         .fold(Ok(()), Result::and)?)
                 }

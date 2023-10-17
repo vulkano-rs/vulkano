@@ -9,36 +9,24 @@
 
 use super::{Device, DeviceOwned, QueueCreateFlags};
 use crate::{
-    buffer::BufferState,
-    command_buffer::{
-        CommandBufferResourcesUsage, CommandBufferState, CommandBufferUsage, SemaphoreSubmitInfo,
-        SubmitInfo,
-    },
-    image::ImageState,
+    command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     instance::{debug::DebugUtilsLabel, InstanceOwnedDebugWrapper},
     macros::vulkan_bitflags,
     memory::{
         BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
     },
     swapchain::{PresentInfo, SwapchainPresentInfo},
-    sync::{
-        fence::{Fence, FenceState},
-        future::{AccessCheckError, GpuFuture},
-        semaphore::SemaphoreState,
-    },
-    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
-    VulkanObject,
+    sync::fence::Fence,
+    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanError, VulkanObject,
 };
-use ahash::HashMap;
 use parking_lot::{Mutex, MutexGuard};
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 use std::{
-    collections::VecDeque,
     ffi::CString,
     hash::{Hash, Hasher},
-    mem::{take, MaybeUninit},
+    mem::MaybeUninit,
     ptr,
-    sync::{atomic::Ordering, Arc},
+    sync::Arc,
 };
 
 /// Represents a queue where commands can be submitted.
@@ -126,7 +114,7 @@ impl Queue {
     pub fn with<'a, R>(self: &'a Arc<Self>, func: impl FnOnce(QueueGuard<'a>) -> R) -> R {
         func(QueueGuard {
             queue: self,
-            state: self.state.lock(),
+            _state: self.state.lock(),
         })
     }
 }
@@ -134,8 +122,10 @@ impl Queue {
 impl Drop for Queue {
     #[inline]
     fn drop(&mut self) {
-        let state = self.state.get_mut();
-        let _ = state.wait_idle(&self.device, self.handle);
+        unsafe {
+            let fns = self.device.fns();
+            let _ = (fns.v1_0.queue_wait_idle)(self.handle);
+        }
     }
 }
 
@@ -176,14 +166,10 @@ impl Hash for Queue {
 
 pub struct QueueGuard<'a> {
     queue: &'a Arc<Queue>,
-    state: MutexGuard<'a, QueueState>,
+    _state: MutexGuard<'a, QueueState>,
 }
 
 impl<'a> QueueGuard<'a> {
-    pub(crate) unsafe fn fence_signaled(&mut self, fence: &Fence) {
-        self.state.fence_signaled(fence)
-    }
-
     /// Waits until all work on this queue has finished, then releases ownership of all resources
     /// that were in use by the queue.
     ///
@@ -194,33 +180,19 @@ impl<'a> QueueGuard<'a> {
     /// program.
     #[inline]
     pub fn wait_idle(&mut self) -> Result<(), VulkanError> {
-        self.state.wait_idle(&self.queue.device, self.queue.handle)
+        unsafe {
+            let fns = self.queue.device.fns();
+            (fns.v1_0.queue_wait_idle)(self.queue.handle)
+                .result()
+                .map_err(VulkanError::from)
+        }
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub(crate) unsafe fn bind_sparse_unchecked(
+    pub unsafe fn bind_sparse_unchecked(
         &mut self,
-        bind_infos: impl IntoIterator<Item = BindSparseInfo>,
-        fence: Option<Arc<Fence>>,
-    ) -> Result<(), VulkanError> {
-        let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
-        let mut states = States::from_bind_infos(&bind_infos);
-
-        self.bind_sparse_unchecked_locked(
-            &bind_infos,
-            fence.as_ref().map(|fence| {
-                let state = fence.state();
-                (fence, state)
-            }),
-            &mut states,
-        )
-    }
-
-    unsafe fn bind_sparse_unchecked_locked(
-        &mut self,
-        bind_infos: &SmallVec<[BindSparseInfo; 4]>,
-        fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
-        states: &mut States<'_>,
+        bind_infos: &[BindSparseInfo],
+        fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
         struct PerBindSparseInfo {
             wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
@@ -475,58 +447,16 @@ impl<'a> QueueGuard<'a> {
             bind_infos_vk.as_ptr(),
             fence
                 .as_ref()
-                .map_or_else(Default::default, |(fence, _)| fence.handle()),
+                .map_or_else(Default::default, VulkanObject::handle),
         )
         .result()
-        .map_err(VulkanError::from)?;
-
-        for bind_info in bind_infos {
-            let BindSparseInfo {
-                wait_semaphores,
-                buffer_binds: _,
-                image_opaque_binds: _,
-                image_binds: _,
-                signal_semaphores,
-                _ne: _,
-            } = bind_info;
-
-            for semaphore in wait_semaphores {
-                let state = states.semaphores.get_mut(&semaphore.handle()).unwrap();
-                state.add_queue_wait(self.queue);
-            }
-
-            for semaphore in signal_semaphores {
-                let state = states.semaphores.get_mut(&semaphore.handle()).unwrap();
-                state.add_queue_wait(self.queue);
-            }
-        }
-
-        let fence = fence.map(|(fence, mut state)| {
-            state.add_queue_signal(self.queue);
-            fence.clone()
-        });
-
-        self.state
-            .operations
-            .push_back((bind_infos.clone().into(), fence));
-
-        Ok(())
+        .map_err(VulkanError::from)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn present_unchecked(
         &mut self,
-        present_info: PresentInfo,
-    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
-        let mut states = States::from_present_info(&present_info);
-        self.present_unchecked_locked(&present_info, &mut states)
-    }
-
-    unsafe fn present_unchecked_locked(
-        &mut self,
         present_info: &PresentInfo,
-        states: &mut States<'_>,
     ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
         let PresentInfo {
             wait_semaphores,
@@ -660,26 +590,6 @@ impl<'a> QueueGuard<'a> {
             return Err(VulkanError::from(result));
         }
 
-        for semaphore in wait_semaphores {
-            let state = states.semaphores.get_mut(&semaphore.handle()).unwrap();
-            state.add_queue_wait(self.queue);
-        }
-
-        self.state
-            .operations
-            .push_back((present_info.clone().into(), None));
-
-        // If a presentation results in a loss of full-screen exclusive mode,
-        // signal that to the relevant swapchain.
-        for (&result, swapchain_info) in results.iter().zip(&present_info.swapchain_infos) {
-            if result == ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT {
-                swapchain_info
-                    .swapchain
-                    .full_screen_exclusive_held()
-                    .store(false, Ordering::SeqCst);
-            }
-        }
-
         Ok(results.into_iter().map(|result| match result {
             ash::vk::Result::SUCCESS => Ok(false),
             ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
@@ -687,195 +597,11 @@ impl<'a> QueueGuard<'a> {
         }))
     }
 
-    // Temporary function to keep futures working.
-    pub(crate) unsafe fn submit_with_future(
-        &mut self,
-        submit_info: SubmitInfo,
-        fence: Option<Arc<Fence>>,
-        future: &dyn GpuFuture,
-        queue: &Queue,
-    ) -> Result<(), Validated<VulkanError>> {
-        let submit_infos: SmallVec<[_; 4]> = smallvec![submit_info];
-        let mut states = States::from_submit_infos(&submit_infos);
-
-        for submit_info in &submit_infos {
-            for command_buffer in &submit_info.command_buffers {
-                let state = states
-                    .command_buffers
-                    .get(&command_buffer.handle())
-                    .unwrap();
-
-                match command_buffer.usage() {
-                    CommandBufferUsage::OneTimeSubmit => {
-                        if state.has_been_submitted() {
-                            return Err(Box::new(ValidationError {
-                                problem: "a command buffer, or one of the secondary \
-                                    command buffers it executes, was created with the \
-                                    `CommandBufferUsage::OneTimeSubmit` usage, but \
-                                    it has already been submitted in the past"
-                                    .into(),
-                                vuids: &["VUID-vkQueueSubmit2-commandBuffer-03874"],
-                                ..Default::default()
-                            })
-                            .into());
-                        }
-                    }
-                    CommandBufferUsage::MultipleSubmit => {
-                        if state.is_submit_pending() {
-                            return Err(Box::new(ValidationError {
-                                problem: "a command buffer, or one of the secondary \
-                                    command buffers it executes, was not created with the \
-                                    `CommandBufferUsage::SimultaneousUse` usage, but \
-                                    it is already in use by the device"
-                                    .into(),
-                                vuids: &["VUID-vkQueueSubmit2-commandBuffer-03875"],
-                                ..Default::default()
-                            })
-                            .into());
-                        }
-                    }
-                    CommandBufferUsage::SimultaneousUse => (),
-                }
-
-                let CommandBufferResourcesUsage {
-                    buffers,
-                    images,
-                    buffer_indices: _,
-                    image_indices: _,
-                } = command_buffer.resources_usage();
-
-                for usage in buffers {
-                    let state = states.buffers.get_mut(&usage.buffer.handle()).unwrap();
-
-                    for (range, range_usage) in usage.ranges.iter() {
-                        match future.check_buffer_access(
-                            &usage.buffer,
-                            range.clone(),
-                            range_usage.mutable,
-                            queue,
-                        ) {
-                            Err(AccessCheckError::Denied(error)) => {
-                                return Err(Box::new(ValidationError {
-                                    problem: format!(
-                                        "access to a resource has been denied \
-                                        (resource use: {:?}, error: {})",
-                                        range_usage.first_use, error
-                                    )
-                                    .into(),
-                                    ..Default::default()
-                                })
-                                .into());
-                            }
-                            Err(AccessCheckError::Unknown) => {
-                                let result = if range_usage.mutable {
-                                    state.check_gpu_write(range.clone())
-                                } else {
-                                    state.check_gpu_read(range.clone())
-                                };
-
-                                if let Err(error) = result {
-                                    return Err(Box::new(ValidationError {
-                                        problem: format!(
-                                            "access to a resource has been denied \
-                                            (resource use: {:?}, error: {})",
-                                            range_usage.first_use, error
-                                        )
-                                        .into(),
-                                        ..Default::default()
-                                    })
-                                    .into());
-                                }
-                            }
-                            _ => (),
-                        }
-                    }
-                }
-
-                for usage in images {
-                    let state = states.images.get_mut(&usage.image.handle()).unwrap();
-
-                    for (range, range_usage) in usage.ranges.iter() {
-                        match future.check_image_access(
-                            &usage.image,
-                            range.clone(),
-                            range_usage.mutable,
-                            range_usage.expected_layout,
-                            queue,
-                        ) {
-                            Err(AccessCheckError::Denied(error)) => {
-                                return Err(Box::new(ValidationError {
-                                    problem: format!(
-                                        "access to a resource has been denied \
-                                        (resource use: {:?}, error: {})",
-                                        range_usage.first_use, error
-                                    )
-                                    .into(),
-                                    ..Default::default()
-                                })
-                                .into());
-                            }
-                            Err(AccessCheckError::Unknown) => {
-                                let result = if range_usage.mutable {
-                                    state
-                                        .check_gpu_write(range.clone(), range_usage.expected_layout)
-                                } else {
-                                    state.check_gpu_read(range.clone(), range_usage.expected_layout)
-                                };
-
-                                if let Err(error) = result {
-                                    return Err(Box::new(ValidationError {
-                                        problem: format!(
-                                            "access to a resource has been denied \
-                                            (resource use: {:?}, error: {})",
-                                            range_usage.first_use, error
-                                        )
-                                        .into(),
-                                        ..Default::default()
-                                    })
-                                    .into());
-                                }
-                            }
-                            _ => (),
-                        };
-                    }
-                }
-            }
-        }
-
-        Ok(self.submit_unchecked_locked(
-            &submit_infos,
-            fence.as_ref().map(|fence| {
-                let state = fence.state();
-                (fence, state)
-            }),
-            &mut states,
-        )?)
-    }
-
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn submit_unchecked(
         &mut self,
-        submit_infos: impl IntoIterator<Item = SubmitInfo>,
-        fence: Option<Arc<Fence>>,
-    ) -> Result<(), VulkanError> {
-        let submit_infos: SmallVec<[_; 4]> = submit_infos.into_iter().collect();
-        let mut states = States::from_submit_infos(&submit_infos);
-
-        self.submit_unchecked_locked(
-            &submit_infos,
-            fence.as_ref().map(|fence| {
-                let state = fence.state();
-                (fence, state)
-            }),
-            &mut states,
-        )
-    }
-
-    unsafe fn submit_unchecked_locked(
-        &mut self,
-        submit_infos: &SmallVec<[SubmitInfo; 4]>,
-        fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
-        states: &mut States<'_>,
+        submit_infos: &[SubmitInfo],
+        fence: Option<&Arc<Fence>>,
     ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
             struct PerSubmitInfo {
@@ -991,7 +717,7 @@ impl<'a> QueueGuard<'a> {
                     submit_info_vk.as_ptr(),
                     fence
                         .as_ref()
-                        .map_or_else(Default::default, |(fence, _)| fence.handle()),
+                        .map_or_else(Default::default, VulkanObject::handle),
                 )
             } else {
                 debug_assert!(self.queue.device.enabled_extensions().khr_synchronization2);
@@ -1001,11 +727,11 @@ impl<'a> QueueGuard<'a> {
                     submit_info_vk.as_ptr(),
                     fence
                         .as_ref()
-                        .map_or_else(Default::default, |(fence, _)| fence.handle()),
+                        .map_or_else(Default::default, VulkanObject::handle),
                 )
             }
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(VulkanError::from)
         } else {
             struct PerSubmitInfo {
                 wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
@@ -1104,86 +830,11 @@ impl<'a> QueueGuard<'a> {
                 submit_info_vk.as_ptr(),
                 fence
                     .as_ref()
-                    .map_or_else(Default::default, |(fence, _)| fence.handle()),
+                    .map_or_else(Default::default, VulkanObject::handle),
             )
             .result()
-            .map_err(VulkanError::from)?;
+            .map_err(VulkanError::from)
         }
-
-        for submit_info in submit_infos {
-            let SubmitInfo {
-                wait_semaphores,
-                command_buffers,
-                signal_semaphores,
-                _ne: _,
-            } = submit_info;
-
-            for semaphore_submit_info in wait_semaphores {
-                let state = states
-                    .semaphores
-                    .get_mut(&semaphore_submit_info.semaphore.handle())
-                    .unwrap();
-                state.add_queue_wait(self.queue);
-            }
-
-            for command_buffer in command_buffers {
-                let state = states
-                    .command_buffers
-                    .get_mut(&command_buffer.handle())
-                    .unwrap();
-                state.add_queue_submit();
-
-                let CommandBufferResourcesUsage {
-                    buffers,
-                    images,
-                    buffer_indices: _,
-                    image_indices: _,
-                } = command_buffer.resources_usage();
-
-                for usage in buffers {
-                    let state = states.buffers.get_mut(&usage.buffer.handle()).unwrap();
-
-                    for (range, range_usage) in usage.ranges.iter() {
-                        if range_usage.mutable {
-                            state.gpu_write_lock(range.clone());
-                        } else {
-                            state.gpu_read_lock(range.clone());
-                        }
-                    }
-                }
-
-                for usage in images {
-                    let state = states.images.get_mut(&usage.image.handle()).unwrap();
-
-                    for (range, range_usage) in usage.ranges.iter() {
-                        if range_usage.mutable {
-                            state.gpu_write_lock(range.clone(), range_usage.final_layout);
-                        } else {
-                            state.gpu_read_lock(range.clone());
-                        }
-                    }
-                }
-            }
-
-            for semaphore_submit_info in signal_semaphores {
-                let state = states
-                    .semaphores
-                    .get_mut(&semaphore_submit_info.semaphore.handle())
-                    .unwrap();
-                state.add_queue_signal(self.queue);
-            }
-        }
-
-        let fence = fence.map(|(fence, mut state)| {
-            state.add_queue_signal(self.queue);
-            fence.clone()
-        });
-
-        self.state
-            .operations
-            .push_back((submit_infos.clone().into(), fence));
-
-        Ok(())
     }
 
     /// Opens a queue debug label region.
@@ -1353,305 +1004,7 @@ impl<'a> QueueGuard<'a> {
 }
 
 #[derive(Debug, Default)]
-struct QueueState {
-    operations: VecDeque<(QueueOperation, Option<Arc<Fence>>)>,
-}
-
-impl QueueState {
-    fn wait_idle(&mut self, device: &Device, handle: ash::vk::Queue) -> Result<(), VulkanError> {
-        unsafe {
-            let fns = device.fns();
-            (fns.v1_0.queue_wait_idle)(handle)
-                .result()
-                .map_err(VulkanError::from)?;
-
-            // Since we now know that the queue is finished with all work,
-            // we can safely release all resources.
-            for (operation, _) in take(&mut self.operations) {
-                operation.set_finished();
-            }
-
-            Ok(())
-        }
-    }
-
-    /// Called by `fence` when it finds that it is signaled.
-    fn fence_signaled(&mut self, fence: &Fence) {
-        // Find the most recent operation that uses `fence`.
-        let fence_index = self
-            .operations
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(index, (_, f))| {
-                f.as_ref().map_or(false, |f| **f == *fence).then_some(index)
-            });
-
-        if let Some(index) = fence_index {
-            // Remove all operations up to this index, and perform cleanup if needed.
-            for (operation, fence) in self.operations.drain(..index + 1) {
-                unsafe {
-                    operation.set_finished();
-
-                    if let Some(fence) = fence {
-                        fence.state().set_signal_finished();
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-enum QueueOperation {
-    BindSparse(SmallVec<[BindSparseInfo; 4]>),
-    Present(PresentInfo),
-    Submit(SmallVec<[SubmitInfo; 4]>),
-}
-
-impl QueueOperation {
-    unsafe fn set_finished(self) {
-        match self {
-            QueueOperation::BindSparse(bind_infos) => {
-                for bind_info in bind_infos {
-                    for semaphore in bind_info.wait_semaphores {
-                        semaphore.state().set_wait_finished();
-                    }
-
-                    for semaphore in bind_info.signal_semaphores {
-                        semaphore.state().set_signal_finished();
-                    }
-                }
-
-                // TODO: Do we need to unlock buffers and images here?
-            }
-            QueueOperation::Present(present_info) => {
-                for semaphore in present_info.wait_semaphores {
-                    semaphore.state().set_wait_finished();
-                }
-            }
-            QueueOperation::Submit(submit_infos) => {
-                for submit_info in submit_infos {
-                    for semaphore_submit_info in submit_info.wait_semaphores {
-                        semaphore_submit_info.semaphore.state().set_wait_finished();
-                    }
-
-                    for semaphore_submit_info in submit_info.signal_semaphores {
-                        semaphore_submit_info
-                            .semaphore
-                            .state()
-                            .set_signal_finished();
-                    }
-
-                    for command_buffer in submit_info.command_buffers {
-                        let resource_usage = command_buffer.resources_usage();
-
-                        for usage in &resource_usage.buffers {
-                            let mut state = usage.buffer.state();
-
-                            for (range, range_usage) in usage.ranges.iter() {
-                                if range_usage.mutable {
-                                    state.gpu_write_unlock(range.clone());
-                                } else {
-                                    state.gpu_read_unlock(range.clone());
-                                }
-                            }
-                        }
-
-                        for usage in &resource_usage.images {
-                            let mut state = usage.image.state();
-
-                            for (range, range_usage) in usage.ranges.iter() {
-                                if range_usage.mutable {
-                                    state.gpu_write_unlock(range.clone());
-                                } else {
-                                    state.gpu_read_unlock(range.clone());
-                                }
-                            }
-                        }
-
-                        command_buffer.state().set_submit_finished();
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl From<SmallVec<[BindSparseInfo; 4]>> for QueueOperation {
-    #[inline]
-    fn from(val: SmallVec<[BindSparseInfo; 4]>) -> Self {
-        Self::BindSparse(val)
-    }
-}
-
-impl From<PresentInfo> for QueueOperation {
-    #[inline]
-    fn from(val: PresentInfo) -> Self {
-        Self::Present(val)
-    }
-}
-
-impl From<SmallVec<[SubmitInfo; 4]>> for QueueOperation {
-    #[inline]
-    fn from(val: SmallVec<[SubmitInfo; 4]>) -> Self {
-        Self::Submit(val)
-    }
-}
-
-// This struct exists to ensure that every object gets locked exactly once.
-// Otherwise we get deadlocks.
-#[derive(Debug)]
-struct States<'a> {
-    buffers: HashMap<ash::vk::Buffer, MutexGuard<'a, BufferState>>,
-    command_buffers: HashMap<ash::vk::CommandBuffer, MutexGuard<'a, CommandBufferState>>,
-    images: HashMap<ash::vk::Image, MutexGuard<'a, ImageState>>,
-    semaphores: HashMap<ash::vk::Semaphore, MutexGuard<'a, SemaphoreState>>,
-}
-
-impl<'a> States<'a> {
-    fn from_bind_infos(bind_infos: &'a [BindSparseInfo]) -> Self {
-        let mut buffers = HashMap::default();
-        let mut images = HashMap::default();
-        let mut semaphores = HashMap::default();
-
-        for bind_info in bind_infos {
-            let BindSparseInfo {
-                wait_semaphores,
-                buffer_binds,
-                image_opaque_binds,
-                image_binds,
-                signal_semaphores,
-                _ne: _,
-            } = bind_info;
-
-            for semaphore in wait_semaphores {
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
-
-            for (buffer, _) in buffer_binds {
-                let buffer = buffer.buffer();
-                buffers
-                    .entry(buffer.handle())
-                    .or_insert_with(|| buffer.state());
-            }
-
-            for (image, _) in image_opaque_binds {
-                images
-                    .entry(image.handle())
-                    .or_insert_with(|| image.state());
-            }
-
-            for (image, _) in image_binds {
-                images
-                    .entry(image.handle())
-                    .or_insert_with(|| image.state());
-            }
-
-            for semaphore in signal_semaphores {
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
-        }
-
-        Self {
-            buffers,
-            command_buffers: HashMap::default(),
-            images,
-            semaphores,
-        }
-    }
-
-    fn from_present_info(present_info: &'a PresentInfo) -> Self {
-        let mut semaphores = HashMap::default();
-
-        let PresentInfo {
-            wait_semaphores,
-            swapchain_infos: _,
-            _ne: _,
-        } = present_info;
-
-        for semaphore in wait_semaphores {
-            semaphores
-                .entry(semaphore.handle())
-                .or_insert_with(|| semaphore.state());
-        }
-
-        Self {
-            buffers: HashMap::default(),
-            command_buffers: HashMap::default(),
-            images: HashMap::default(),
-            semaphores,
-        }
-    }
-
-    fn from_submit_infos(submit_infos: &'a [SubmitInfo]) -> Self {
-        let mut buffers = HashMap::default();
-        let mut command_buffers = HashMap::default();
-        let mut images = HashMap::default();
-        let mut semaphores = HashMap::default();
-
-        for submit_info in submit_infos {
-            let SubmitInfo {
-                wait_semaphores,
-                command_buffers: info_command_buffers,
-                signal_semaphores,
-                _ne: _,
-            } = submit_info;
-
-            for semaphore_submit_info in wait_semaphores {
-                let semaphore = &semaphore_submit_info.semaphore;
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
-
-            for command_buffer in info_command_buffers {
-                command_buffers
-                    .entry(command_buffer.handle())
-                    .or_insert_with(|| command_buffer.state());
-
-                let CommandBufferResourcesUsage {
-                    buffers: buffers_usage,
-                    images: images_usage,
-                    buffer_indices: _,
-                    image_indices: _,
-                } = command_buffer.resources_usage();
-
-                for usage in buffers_usage {
-                    let buffer = &usage.buffer;
-                    buffers
-                        .entry(buffer.handle())
-                        .or_insert_with(|| buffer.state());
-                }
-
-                for usage in images_usage {
-                    let image = &usage.image;
-                    images
-                        .entry(image.handle())
-                        .or_insert_with(|| image.state());
-                }
-            }
-
-            for semaphore_submit_info in signal_semaphores {
-                let semaphore = &semaphore_submit_info.semaphore;
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
-        }
-
-        Self {
-            buffers,
-            command_buffers,
-            images,
-            semaphores,
-        }
-    }
-}
+struct QueueState {}
 
 /// Properties of a queue family in a physical device.
 #[derive(Clone, Debug)]
@@ -1745,7 +1098,7 @@ mod tests {
         let (_device, queue) = gfx_dev_and_queue!();
 
         queue
-            .with(|mut q| unsafe { q.submit_unchecked([Default::default()], None) })
+            .with(|mut q| unsafe { q.submit_unchecked(&[Default::default()], None) })
             .unwrap();
     }
 
@@ -1758,7 +1111,7 @@ mod tests {
             assert!(!fence.is_signaled().unwrap());
 
             queue
-                .with(|mut q| q.submit_unchecked([Default::default()], Some(fence.clone())))
+                .with(|mut q| q.submit_unchecked(&[Default::default()], Some(&fence)))
                 .unwrap();
 
             fence.wait(Some(Duration::from_secs(5))).unwrap();

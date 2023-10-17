@@ -300,7 +300,7 @@ mod linux {
                     queue
                         .with(|mut q| unsafe {
                             q.submit_unchecked(
-                                [SubmitInfo {
+                                &[SubmitInfo {
                                     signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
                                         acquire_sem.clone(),
                                     )],
@@ -317,7 +317,7 @@ mod linux {
                     queue
                         .with(|mut q| unsafe {
                             q.submit_unchecked(
-                                [SubmitInfo {
+                                &[SubmitInfo {
                                     wait_semaphores: vec![SemaphoreSubmitInfo::semaphore(
                                         release_sem.clone(),
                                     )],

@@ -11,7 +11,7 @@
 //! and the host.
 
 use crate::{
-    device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
+    device::{physical::PhysicalDevice, Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
@@ -27,7 +27,7 @@ use std::{
     num::NonZeroU64,
     pin::Pin,
     ptr,
-    sync::{Arc, Weak},
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
@@ -235,34 +235,24 @@ impl Fence {
     /// Returns true if the fence is signaled.
     #[inline]
     pub fn is_signaled(&self) -> Result<bool, VulkanError> {
-        let queue_to_signal = {
-            let mut state = self.state();
+        let mut state = self.state();
 
-            // If the fence is already signaled, or it's unsignaled but there's no queue that
-            // could signal it, return the currently known value.
-            if let Some(is_signaled) = state.is_signaled() {
-                return Ok(is_signaled);
-            }
+        // If the fence is already signaled, or it's unsignaled but there's no queue that
+        // could signal it, return the currently known value.
+        if let Some(is_signaled) = state.is_signaled() {
+            return Ok(is_signaled);
+        }
 
-            // We must ask Vulkan for the state.
-            let result = unsafe {
-                let fns = self.device.fns();
-                (fns.v1_0.get_fence_status)(self.device.handle(), self.handle)
-            };
-
-            match result {
-                ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
-                ash::vk::Result::NOT_READY => return Ok(false),
-                err => return Err(VulkanError::from(err)),
-            }
+        // We must ask Vulkan for the state.
+        let result = unsafe {
+            let fns = self.device.fns();
+            (fns.v1_0.get_fence_status)(self.device.handle(), self.handle)
         };
 
-        // If we have a queue that we need to signal our status to,
-        // do so now after the state lock is dropped, to avoid deadlocks.
-        if let Some(queue) = queue_to_signal {
-            unsafe {
-                queue.with(|mut q| q.fence_signaled(self));
-            }
+        match result {
+            ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
+            ash::vk::Result::NOT_READY => return Ok(false),
+            err => return Err(VulkanError::from(err)),
         }
 
         Ok(true)
@@ -272,44 +262,34 @@ impl Fence {
     ///
     /// If you pass a duration of 0, then the function will return without blocking.
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), VulkanError> {
-        let queue_to_signal = {
-            let mut state = self.state.lock();
+        let mut state = self.state.lock();
 
-            // If the fence is already signaled, we don't need to wait.
-            if state.is_signaled().unwrap_or(false) {
-                return Ok(());
-            }
+        // If the fence is already signaled, we don't need to wait.
+        if state.is_signaled().unwrap_or(false) {
+            return Ok(());
+        }
 
-            let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
-                timeout
-                    .as_secs()
-                    .saturating_mul(1_000_000_000)
-                    .saturating_add(timeout.subsec_nanos() as u64)
-            });
+        let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
+            timeout
+                .as_secs()
+                .saturating_mul(1_000_000_000)
+                .saturating_add(timeout.subsec_nanos() as u64)
+        });
 
-            let result = unsafe {
-                let fns = self.device.fns();
-                (fns.v1_0.wait_for_fences)(
-                    self.device.handle(),
-                    1,
-                    &self.handle,
-                    ash::vk::TRUE,
-                    timeout_ns,
-                )
-            };
-
-            match result {
-                ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
-                err => return Err(VulkanError::from(err)),
-            }
+        let result = unsafe {
+            let fns = self.device.fns();
+            (fns.v1_0.wait_for_fences)(
+                self.device.handle(),
+                1,
+                &self.handle,
+                ash::vk::TRUE,
+                timeout_ns,
+            )
         };
 
-        // If we have a queue that we need to signal our status to,
-        // do so now after the state lock is dropped, to avoid deadlocks.
-        if let Some(queue) = queue_to_signal {
-            unsafe {
-                queue.with(|mut q| q.fence_signaled(self));
-            }
+        match result {
+            ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
+            err => return Err(VulkanError::from(err)),
         }
 
         Ok(())
@@ -353,62 +333,54 @@ impl Fence {
         fences: impl IntoIterator<Item = &'a Fence>,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
-        let queues_to_signal: SmallVec<[_; 8]> = {
-            let iter = fences.into_iter();
-            let mut fences_vk: SmallVec<[_; 8]> = SmallVec::new();
-            let mut fences: SmallVec<[_; 8]> = SmallVec::new();
-            let mut states: SmallVec<[_; 8]> = SmallVec::new();
+        let iter = fences.into_iter();
+        let mut fences_vk: SmallVec<[_; 8]> = SmallVec::new();
+        let mut fences: SmallVec<[_; 8]> = SmallVec::new();
+        let mut states: SmallVec<[_; 8]> = SmallVec::new();
 
-            for fence in iter {
-                let state = fence.state.lock();
+        for fence in iter {
+            let state = fence.state.lock();
 
-                // Skip the fences that are already signaled.
-                if !state.is_signaled().unwrap_or(false) {
-                    fences_vk.push(fence.handle);
-                    fences.push(fence);
-                    states.push(state);
-                }
+            // Skip the fences that are already signaled.
+            if !state.is_signaled().unwrap_or(false) {
+                fences_vk.push(fence.handle);
+                fences.push(fence);
+                states.push(state);
             }
+        }
 
-            // VUID-vkWaitForFences-fenceCount-arraylength
-            // If there are no fences, or all the fences are signaled, we don't need to wait.
-            if fences_vk.is_empty() {
-                return Ok(());
-            }
+        // VUID-vkWaitForFences-fenceCount-arraylength
+        // If there are no fences, or all the fences are signaled, we don't need to wait.
+        if fences_vk.is_empty() {
+            return Ok(());
+        }
 
-            let device = &fences[0].device;
-            let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
-                timeout
-                    .as_secs()
-                    .saturating_mul(1_000_000_000)
-                    .saturating_add(timeout.subsec_nanos() as u64)
-            });
+        let device = &fences[0].device;
+        let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
+            timeout
+                .as_secs()
+                .saturating_mul(1_000_000_000)
+                .saturating_add(timeout.subsec_nanos() as u64)
+        });
 
-            let result = {
-                let fns = device.fns();
-                (fns.v1_0.wait_for_fences)(
-                    device.handle(),
-                    fences_vk.len() as u32,
-                    fences_vk.as_ptr(),
-                    ash::vk::TRUE, // TODO: let the user choose false here?
-                    timeout_ns,
-                )
-            };
-
-            match result {
-                ash::vk::Result::SUCCESS => fences
-                    .into_iter()
-                    .zip(&mut states)
-                    .filter_map(|(fence, state)| state.set_signaled().map(|state| (state, fence)))
-                    .collect(),
-                err => return Err(VulkanError::from(err)),
-            }
+        let result = {
+            let fns = device.fns();
+            (fns.v1_0.wait_for_fences)(
+                device.handle(),
+                fences_vk.len() as u32,
+                fences_vk.as_ptr(),
+                ash::vk::TRUE, // TODO: let the user choose false here?
+                timeout_ns,
+            )
         };
 
-        // If we have queues that we need to signal our status to,
-        // do so now after the state locks are dropped, to avoid deadlocks.
-        for (queue, fence) in queues_to_signal {
-            queue.with(|mut q| q.fence_signaled(fence));
+        match result {
+            ash::vk::Result::SUCCESS => {
+                for state in &mut states {
+                    state.set_signaled();
+                }
+            }
+            err => return Err(VulkanError::from(err)),
         }
 
         Ok(())
@@ -1523,7 +1495,7 @@ pub struct ExternalFenceProperties {
 #[derive(Debug, Default)]
 pub(crate) struct FenceState {
     is_signaled: bool,
-    pending_signal: Option<Weak<Queue>>,
+    pending_signal: bool,
 
     reference_exported: bool,
     exported_handle_types: ExternalFenceHandleTypes,
@@ -1545,7 +1517,7 @@ impl FenceState {
 
     #[inline]
     fn is_in_queue(&self) -> bool {
-        self.pending_signal.is_some()
+        self.pending_signal
     }
 
     /// Returns whether there are any potential external references to the fence payload.
@@ -1562,30 +1534,15 @@ impl FenceState {
     }
 
     #[inline]
-    pub(crate) unsafe fn add_queue_signal(&mut self, queue: &Arc<Queue>) {
-        self.pending_signal = Some(Arc::downgrade(queue));
+    pub(crate) unsafe fn add_queue_signal(&mut self) {
+        self.pending_signal = true;
     }
 
     /// Called when a fence first discovers that it is signaled.
-    /// Returns the queue that should be informed about it.
     #[inline]
-    unsafe fn set_signaled(&mut self) -> Option<Arc<Queue>> {
+    unsafe fn set_signaled(&mut self) {
         self.is_signaled = true;
-
-        // Fences with external references can't be used to determine queue completion.
-        if self.has_external_reference() {
-            self.pending_signal = None;
-            None
-        } else {
-            self.pending_signal.take().and_then(|queue| queue.upgrade())
-        }
-    }
-
-    /// Called when a queue is unlocking resources.
-    #[inline]
-    pub(crate) unsafe fn set_signal_finished(&mut self) {
-        self.is_signaled = true;
-        self.pending_signal = None;
+        self.pending_signal = false;
     }
 
     #[inline]

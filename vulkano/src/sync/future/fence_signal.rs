@@ -16,7 +16,7 @@ use crate::{
     swapchain::Swapchain,
     sync::{
         fence::Fence,
-        future::{AccessError, SubmitAnyBuilder},
+        future::{queue_bind_sparse, queue_present, queue_submit, AccessError, SubmitAnyBuilder},
         PipelineStages,
     },
     DeviceSize, Validated, ValidationError, VulkanError,
@@ -243,35 +243,36 @@ where
                 SubmitAnyBuilder::Empty => {
                     debug_assert!(!partially_flushed);
 
-                    queue
-                        .with(|mut q| {
-                            q.submit_unchecked([Default::default()], Some(new_fence.clone()))
-                        })
-                        .map_err(|err| OutcomeErr::Full(err.into()))
+                    queue_submit(
+                        &queue,
+                        Default::default(),
+                        Some(new_fence.clone()),
+                        &previous,
+                    )
+                    .map_err(OutcomeErr::Full)
                 }
                 SubmitAnyBuilder::SemaphoresWait(semaphores) => {
                     debug_assert!(!partially_flushed);
 
-                    queue
-                        .with(|mut q| {
-                            q.submit_unchecked(
-                                [SubmitInfo {
-                                    wait_semaphores: semaphores
-                                        .into_iter()
-                                        .map(|semaphore| {
-                                            SemaphoreSubmitInfo {
-                                                // TODO: correct stages ; hard
-                                                stages: PipelineStages::ALL_COMMANDS,
-                                                ..SemaphoreSubmitInfo::semaphore(semaphore)
-                                            }
-                                        })
-                                        .collect(),
-                                    ..Default::default()
-                                }],
-                                None,
-                            )
-                        })
-                        .map_err(|err| OutcomeErr::Full(err.into()))
+                    queue_submit(
+                        &queue,
+                        SubmitInfo {
+                            wait_semaphores: semaphores
+                                .into_iter()
+                                .map(|semaphore| {
+                                    SemaphoreSubmitInfo {
+                                        // TODO: correct stages ; hard
+                                        stages: PipelineStages::ALL_COMMANDS,
+                                        ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                    }
+                                })
+                                .collect(),
+                            ..Default::default()
+                        },
+                        None,
+                        &previous,
+                    )
+                    .map_err(OutcomeErr::Full)
                 }
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
                     debug_assert!(!partially_flushed);
@@ -282,15 +283,7 @@ where
                     // assertion.
                     assert!(fence.is_none());
 
-                    queue
-                        .with(|mut q| {
-                            q.submit_with_future(
-                                submit_info,
-                                Some(new_fence.clone()),
-                                &previous,
-                                &queue,
-                            )
-                        })
+                    queue_submit(&queue, submit_info, Some(new_fence.clone()), &previous)
                         .map_err(OutcomeErr::Full)
                 }
                 SubmitAnyBuilder::BindSparse(bind_infos, fence) => {
@@ -302,17 +295,18 @@ where
                         .queue_flags
                         .intersects(QueueFlags::SPARSE_BINDING));
 
-                    queue
-                        .with(|mut q| q.bind_sparse_unchecked(bind_infos, Some(new_fence.clone())))
-                        .map_err(|err| OutcomeErr::Full(err.into()))
+                    queue_bind_sparse(&queue, bind_infos, Some(new_fence.clone()))
+                        .map_err(OutcomeErr::Full)
                 }
                 SubmitAnyBuilder::QueuePresent(present_info) => {
                     if partially_flushed {
-                        queue
-                            .with(|mut q| {
-                                q.submit_unchecked([Default::default()], Some(new_fence.clone()))
-                            })
-                            .map_err(|err| OutcomeErr::Partial(err.into()))
+                        queue_submit(
+                            &queue,
+                            Default::default(),
+                            Some(new_fence.clone()),
+                            &previous,
+                        )
+                        .map_err(OutcomeErr::Partial)
                     } else {
                         for swapchain_info in &present_info.swapchain_infos {
                             if swapchain_info.present_id.map_or(false, |present_id| {
@@ -346,20 +340,18 @@ where
                             }
                         }
 
-                        let intermediary_result = queue
-                            .with(|mut q| q.present_unchecked(present_info))?
+                        let intermediary_result = queue_present(&queue, present_info)?
                             .map(|r| r.map(|_| ()))
                             .fold(Ok(()), Result::and);
 
                         match intermediary_result {
-                            Ok(()) => queue
-                                .with(|mut q| {
-                                    q.submit_unchecked(
-                                        [Default::default()],
-                                        Some(new_fence.clone()),
-                                    )
-                                })
-                                .map_err(|err| OutcomeErr::Partial(err.into())),
+                            Ok(()) => queue_submit(
+                                &queue,
+                                Default::default(),
+                                Some(new_fence.clone()),
+                                &previous,
+                            )
+                            .map_err(OutcomeErr::Partial),
                             Err(err) => Err(OutcomeErr::Full(err.into())),
                         }
                     }

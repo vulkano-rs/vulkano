@@ -17,7 +17,10 @@ use crate::{
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
-        future::{now, AccessCheckError, AccessError, GpuFuture, NowFuture, SubmitAnyBuilder},
+        future::{
+            now, queue_submit, AccessCheckError, AccessError, GpuFuture, NowFuture,
+            SubmitAnyBuilder,
+        },
         PipelineStages,
     },
     DeviceSize, SafeDeref, Validated, ValidationError, VulkanError, VulkanObject,
@@ -305,9 +308,7 @@ where
             match self.build_submission_impl()? {
                 SubmitAnyBuilder::Empty => {}
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
-                    self.queue.with(|mut q| {
-                        q.submit_with_future(submit_info, fence, &self.previous, &self.queue)
-                    })?;
+                    queue_submit(&self.queue, submit_info, fence, &self.previous).unwrap();
                 }
                 _ => unreachable!(),
             };
@@ -319,7 +320,36 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        self.finished.store(true, Ordering::SeqCst);
+        if !self.finished.swap(true, Ordering::SeqCst) {
+            let resource_usage = self.command_buffer.resources_usage();
+
+            for usage in &resource_usage.buffers {
+                let mut state = usage.buffer.state();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    if range_usage.mutable {
+                        state.gpu_write_unlock(range.clone());
+                    } else {
+                        state.gpu_read_unlock(range.clone());
+                    }
+                }
+            }
+
+            for usage in &resource_usage.images {
+                let mut state = usage.image.state();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    if range_usage.mutable {
+                        state.gpu_write_unlock(range.clone());
+                    } else {
+                        state.gpu_read_unlock(range.clone());
+                    }
+                }
+            }
+
+            self.command_buffer.state().set_submit_finished();
+        }
+
         self.previous.signal_finished();
     }
 
@@ -445,7 +475,10 @@ where
             self.flush().unwrap();
             // Block until the queue finished.
             self.queue.with(|mut q| q.wait_idle()).unwrap();
-            unsafe { self.previous.signal_finished() };
+
+            unsafe {
+                self.signal_finished();
+            }
         }
     }
 }

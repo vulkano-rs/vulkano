@@ -11,7 +11,7 @@
 //! commands on the same queue, or between the device and an external source.
 
 use crate::{
-    device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
+    device::{physical::PhysicalDevice, Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
@@ -20,12 +20,7 @@ use crate::{
 use parking_lot::{Mutex, MutexGuard};
 #[cfg(unix)]
 use std::fs::File;
-use std::{
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
-    sync::{Arc, Weak},
-};
+use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -1005,7 +1000,7 @@ impl_id_counter!(Semaphore);
 pub(crate) struct SemaphoreState {
     is_signaled: bool,
     pending_signal: Option<SignalType>,
-    pending_wait: Option<Weak<Queue>>,
+    pending_wait: bool,
 
     reference_exported: bool,
     exported_handle_types: ExternalSemaphoreHandleTypes,
@@ -1019,10 +1014,7 @@ impl SemaphoreState {
     #[inline]
     fn is_signaled(&self) -> Option<bool> {
         // If any of these is true, we can't be certain of the status.
-        if self.pending_signal.is_some()
-            || self.pending_wait.is_some()
-            || self.has_external_reference()
-        {
+        if self.pending_signal.is_some() || self.pending_wait || self.has_external_reference() {
             None
         } else {
             Some(self.is_signaled)
@@ -1036,12 +1028,12 @@ impl SemaphoreState {
 
     #[inline]
     fn is_wait_pending(&self) -> bool {
-        self.pending_wait.is_some()
+        self.pending_wait
     }
 
     #[inline]
     fn is_in_queue(&self) -> bool {
-        matches!(self.pending_signal, Some(SignalType::Queue(_))) || self.pending_wait.is_some()
+        matches!(self.pending_signal, Some(SignalType::Queue)) || self.pending_wait
     }
 
     /// Returns whether there are any potential external references to the semaphore payload.
@@ -1058,13 +1050,13 @@ impl SemaphoreState {
     }
 
     #[inline]
-    pub(crate) unsafe fn add_queue_signal(&mut self, queue: &Arc<Queue>) {
-        self.pending_signal = Some(SignalType::Queue(Arc::downgrade(queue)));
+    pub(crate) unsafe fn add_queue_signal(&mut self) {
+        self.pending_signal = Some(SignalType::Queue);
     }
 
     #[inline]
-    pub(crate) unsafe fn add_queue_wait(&mut self, queue: &Arc<Queue>) {
-        self.pending_wait = Some(Arc::downgrade(queue));
+    pub(crate) unsafe fn add_queue_wait(&mut self) {
+        self.pending_wait = true;
     }
 
     /// Called when a queue is unlocking resources.
@@ -1077,7 +1069,7 @@ impl SemaphoreState {
     /// Called when a queue is unlocking resources.
     #[inline]
     pub(crate) unsafe fn set_wait_finished(&mut self) {
-        self.pending_wait = None;
+        self.pending_wait = false;
         self.current_import = self.permanent_import.map(Into::into);
         self.is_signaled = false;
     }
@@ -1114,7 +1106,7 @@ impl SemaphoreState {
 
 #[derive(Clone, Debug)]
 enum SignalType {
-    Queue(Weak<Queue>),
+    Queue,
     SwapchainAcquire,
 }
 
