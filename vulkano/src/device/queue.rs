@@ -454,6 +454,91 @@ impl<'a> QueueGuard<'a> {
         .map_err(VulkanError::from)
     }
 
+    /// Queues swapchain images for presentation to the surface.
+    ///
+    /// # Safety
+    ///
+    /// For every semaphore in the `wait_semaphores` elements of `present_info`:
+    /// - The semaphore must be already in the signaled state, or there must be a previously
+    ///   submitted operation that will signal it.
+    /// - When the wait operation is executed, no other queue must be waiting on the same semaphore.
+    ///
+    /// For every element of `present_info.swapchain_infos`:
+    /// - `image_index` must be an index previously acquired from the swapchain, and the present
+    ///   operation must happen-after the acquire operation.
+    /// - If `present_id` is `Some`, then it must be greater than any present ID previously used
+    ///   for the same swapchain.
+    #[inline]
+    pub unsafe fn present(
+        &mut self,
+        present_info: &PresentInfo,
+    ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, Validated<VulkanError>>
+    {
+        self.validate_present(present_info)?;
+
+        Ok(self.present_unchecked(present_info)?)
+    }
+
+    fn validate_present(&self, present_info: &PresentInfo) -> Result<(), Box<ValidationError>> {
+        let device = self.queue.device();
+
+        if !device.enabled_extensions().khr_swapchain {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_swapchain",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        present_info
+            .validate(device)
+            .map_err(|err| err.add_context("present_info"))?;
+
+        let &PresentInfo {
+            wait_semaphores: _,
+            ref swapchain_infos,
+            _ne: _,
+        } = present_info;
+
+        for (index, swapchain_info) in swapchain_infos.iter().enumerate() {
+            let &SwapchainPresentInfo {
+                ref swapchain,
+                image_index: _,
+                present_id: _,
+                present_mode: _,
+                present_regions: _,
+                _ne: _,
+            } = swapchain_info;
+
+            if unsafe {
+                !device
+                    .physical_device
+                    .surface_support_unchecked(self.queue.queue_family_index, swapchain.surface())
+                    .unwrap_or_default()
+            } {
+                return Err(Box::new(ValidationError {
+                    context: format!(
+                        "present_info.swapchain_infos[{}].swapchain.surface()",
+                        index
+                    )
+                    .into(),
+                    problem: "the queue family of this queue does not support presenting to \
+                        the surface"
+                        .into(),
+                    vuids: &["VUID-vkQueuePresentKHR-pSwapchains-01292"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        // unsafe
+        // VUID-vkQueuePresentKHR-pWaitSemaphores-01294
+        // VUID-vkQueuePresentKHR-pWaitSemaphores-03268
+
+        Ok(())
+    }
+
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn present_unchecked(
         &mut self,

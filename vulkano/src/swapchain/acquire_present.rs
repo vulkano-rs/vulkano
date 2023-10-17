@@ -365,6 +365,72 @@ impl Default for PresentInfo {
     }
 }
 
+impl PresentInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref wait_semaphores,
+            ref swapchain_infos,
+            _ne: _,
+        } = self;
+
+        for semaphore in wait_semaphores {
+            // VUID-VkPresentInfoKHR-commonparent
+            assert_eq!(device, semaphore.device().as_ref());
+        }
+
+        assert!(!swapchain_infos.is_empty());
+
+        let has_present_mode = swapchain_infos
+            .first()
+            .map_or(false, |first| first.present_mode.is_some());
+
+        for (index, swapchain_info) in swapchain_infos.iter().enumerate() {
+            swapchain_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("swapchain_infos[{}]", index)))?;
+
+            let &SwapchainPresentInfo {
+                swapchain: _,
+                image_index: _,
+                present_id: _,
+                present_mode,
+                present_regions: _,
+                _ne: _,
+            } = swapchain_info;
+
+            if has_present_mode {
+                if present_mode.is_none() {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`swapchain_infos[0].present_mode` is `Some`, but \
+                            `swapchain_infos[{}].present_mode` is not also `Some`",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkPresentInfoKHR-pSwapchains-09199"],
+                        ..Default::default()
+                    }));
+                }
+            } else {
+                if present_mode.is_some() {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`swapchain_infos[0].present_mode` is `None`, but \
+                            `swapchain_infos[{}].present_mode` is not also `None`",
+                            index
+                        )
+                        .into(),
+                        vuids: &["VUID-VkPresentInfoKHR-pSwapchains-09199"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Parameters for a single present operation on a swapchain.
 #[derive(Clone, Debug)]
 pub struct SwapchainPresentInfo {
@@ -442,6 +508,113 @@ impl SwapchainPresentInfo {
             present_regions: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref swapchain,
+            image_index,
+            present_id,
+            present_mode,
+            ref present_regions,
+            _ne: _,
+        } = self;
+
+        // VUID-VkPresentInfoKHR-commonparent
+        assert_eq!(device, swapchain.device().as_ref());
+
+        if image_index >= swapchain.image_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`image_index` is not less than `swapchain.image_count()`".into(),
+                vuids: &["VUID-VkPresentInfoKHR-pImageIndices-01430"],
+                ..Default::default()
+            }));
+        }
+
+        if present_id.is_some() && !device.enabled_features().present_id {
+            return Err(Box::new(ValidationError {
+                context: "present_id".into(),
+                problem: "is `Some`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "present_id",
+                )])]),
+                vuids: &["VUID-VkPresentInfoKHR-pNext-06235"],
+            }));
+        }
+
+        if let Some(present_mode) = present_mode {
+            if !swapchain.present_modes().contains(&present_mode) {
+                return Err(Box::new(ValidationError {
+                    problem: "`swapchain.present_modes()` does not contain `present_mode`".into(),
+                    vuids: &["VUID-VkSwapchainPresentModeInfoEXT-pPresentModes-07761"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !present_regions.is_empty() && !device.enabled_extensions().khr_incremental_present {
+            return Err(Box::new(ValidationError {
+                context: "present_regions".into(),
+                problem: "is not empty".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "khr_incremental_present",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        for (index, rectangle_layer) in present_regions.iter().enumerate() {
+            let &RectangleLayer {
+                offset,
+                extent,
+                layer,
+            } = rectangle_layer;
+
+            if offset[0] + extent[0] > swapchain.image_extent()[0] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`present_regions[{0}].offset[0]` + `present_regions[{0}].extent[0]` is \
+                        greater than `swapchain.image_extent()[0]`",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkRectLayerKHR-offset-04864"],
+                    ..Default::default()
+                }));
+            }
+
+            if offset[1] + extent[1] > swapchain.image_extent()[1] {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`present_regions[{0}].offset[1]` + `present_regions[{0}].extent[1]` is \
+                        greater than `swapchain.image_extent()[1]`",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkRectLayerKHR-offset-04864"],
+                    ..Default::default()
+                }));
+            }
+
+            if layer >= swapchain.image_array_layers() {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`present_regions[{0}].layer` is greater than \
+                        `swapchain.image_array_layers()`",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkRectLayerKHR-layer-01262"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        // unsafe
+        // VUID-VkPresentInfoKHR-pImageIndices-01430
+        // VUID-VkPresentIdKHR-presentIds-04999
+
+        Ok(())
     }
 }
 
@@ -618,17 +791,13 @@ where
                         _ne: _,
                     } = &present_info;
 
-                    let has_present_mode = swapchain_infos
-                        .first()
-                        .map_or(false, |first| first.present_mode.is_some());
-
                     for swapchain_info in swapchain_infos {
                         let &SwapchainPresentInfo {
                             ref swapchain,
                             image_index: _,
                             present_id,
                             present_regions: _,
-                            present_mode,
+                            present_mode: _,
                             _ne: _,
                         } = swapchain_info;
 
@@ -643,25 +812,6 @@ where
                                 ..Default::default()
                             })
                             .into());
-                        }
-
-                        if let Some(present_mode) = present_mode {
-                            assert!(has_present_mode);
-
-                            if !swapchain.present_modes().contains(&present_mode) {
-                                return Err(Box::new(ValidationError {
-                                    problem: "the requested present mode is not one of the modes \
-                                        in `swapchain.present_modes()`"
-                                        .into(),
-                                    vuids: &[
-                                        "VUID-VkSwapchainPresentModeInfoEXT-pPresentModes-07761",
-                                    ],
-                                    ..Default::default()
-                                })
-                                .into());
-                            }
-                        } else {
-                            assert!(!has_present_mode);
                         }
                     }
 
