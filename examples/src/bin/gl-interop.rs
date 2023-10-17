@@ -299,9 +299,9 @@ mod linux {
                 Event::RedrawEventsCleared => {
                     queue
                         .with(|mut q| unsafe {
-                            q.submit_unchecked(
+                            q.submit(
                                 &[SubmitInfo {
-                                    signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    signal_semaphores: vec![SemaphoreSubmitInfo::new(
                                         acquire_sem.clone(),
                                     )],
                                     ..Default::default()
@@ -316,9 +316,9 @@ mod linux {
 
                     queue
                         .with(|mut q| unsafe {
-                            q.submit_unchecked(
+                            q.submit(
                                 &[SubmitInfo {
-                                    wait_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    wait_semaphores: vec![SemaphoreSubmitInfo::new(
                                         release_sem.clone(),
                                     )],
                                     ..Default::default()

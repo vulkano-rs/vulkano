@@ -9,15 +9,16 @@
 
 use super::{Device, DeviceOwned, QueueCreateFlags};
 use crate::{
-    command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
+    command_buffer::{CommandBufferSubmitInfo, SemaphoreSubmitInfo, SubmitInfo},
     instance::{debug::DebugUtilsLabel, InstanceOwnedDebugWrapper},
     macros::vulkan_bitflags,
     memory::{
         BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
     },
     swapchain::{PresentInfo, SwapchainPresentInfo},
-    sync::fence::Fence,
-    Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanError, VulkanObject,
+    sync::{fence::Fence, PipelineStages},
+    Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
+    VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -597,6 +598,158 @@ impl<'a> QueueGuard<'a> {
         }))
     }
 
+    /// Submits command buffers to a queue to be executed.
+    ///
+    /// # Safety
+    ///
+    /// - If `fence` is `Some`, it must be unsignaled and must not be associated with any
+    ///   other command that is still executing.
+    ///
+    /// For every semaphore in the `wait_semaphores` elements of every `submit_infos` element:
+    /// - The semaphore must be already in the signaled state, or there must be a previously
+    ///   submitted operation that will signal it.
+    /// - When the wait operation is executed, no other queue must be waiting on the same semaphore.
+    ///
+    /// For every command buffer in the `command_buffers` elements of every `submit_infos` element,
+    /// as well as any secondary command buffers recorded within it:
+    /// - If the command buffer's `usage` is [`CommandBufferUsage::OneTimeSubmit`], then it must
+    ///   not have been previously submitted.
+    /// - If the command buffer's `usage` is [`CommandBufferUsage::MultipleSubmit`], then it must
+    ///   not be currently submitted and not yet completed.
+    /// - If a recorded command performs a queue family transfer acquire operation, then a
+    ///   corresponding queue family transfer release operation with matching parameters must
+    ///   have been previously submitted, and must happen-before it.
+    /// - If a recorded command references an [`Event`], then that `Event` must not be referenced
+    ///   by a command that is currently executing on another queue.
+    ///
+    /// For every semaphore in the `signal_semaphores` elements of every `submit_infos` element:
+    /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    #[inline]
+    pub unsafe fn submit(
+        &mut self,
+        submit_infos: &[SubmitInfo],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_submit(submit_infos, fence)?;
+
+        Ok(self.submit_unchecked(submit_infos, fence)?)
+    }
+
+    fn validate_submit(
+        &self,
+        submit_infos: &[SubmitInfo],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), Box<ValidationError>> {
+        let device = self.queue.device();
+        let queue_family_properties = &device.physical_device().queue_family_properties()
+            [self.queue.queue_family_index as usize];
+
+        if let Some(fence) = fence {
+            // VUID-vkQueueSubmit2-commonparent
+            assert_eq!(device, fence.device());
+        }
+
+        let supported_stages = PipelineStages::from(queue_family_properties.queue_flags);
+
+        for (index, submit_info) in submit_infos.iter().enumerate() {
+            submit_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("submit_infos[{}]", index)))?;
+
+            let &SubmitInfo {
+                ref wait_semaphores,
+                ref command_buffers,
+                ref signal_semaphores,
+                _ne: _,
+            } = submit_info;
+
+            for (semaphore_index, semaphore_submit_info) in wait_semaphores.iter().enumerate() {
+                let &SemaphoreSubmitInfo {
+                    semaphore: _,
+                    stages,
+                    _ne: _,
+                } = semaphore_submit_info;
+
+                if !supported_stages.contains(stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "submit_infos[{}].wait_semaphores[{}].stages",
+                            index, semaphore_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the queue"
+                            .into(),
+                        vuids: &["VUID-vkQueueSubmit2-stageMask-03870"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            for (command_buffer_index, command_buffer_submit_info) in
+                command_buffers.iter().enumerate()
+            {
+                let &CommandBufferSubmitInfo {
+                    ref command_buffer,
+                    _ne: _,
+                } = command_buffer_submit_info;
+
+                if command_buffer.queue_family_index() != self.queue.queue_family_index {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "submit_infos[{}].command_buffers[{}]\
+                            .command_buffer.queue_family_index()",
+                            index, command_buffer_index
+                        )
+                        .into(),
+                        problem: "does not equal the queue family index of this queue".into(),
+                        vuids: &["VUID-vkQueueSubmit2-commandBuffer-03878"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            for (semaphore_index, semaphore_submit_info) in signal_semaphores.iter().enumerate() {
+                let &SemaphoreSubmitInfo {
+                    semaphore: _,
+                    stages,
+                    _ne: _,
+                } = semaphore_submit_info;
+
+                if !supported_stages.contains(stages) {
+                    return Err(Box::new(ValidationError {
+                        context: format!(
+                            "submit_infos[{}].signal_semaphores[{}].stages",
+                            index, semaphore_index
+                        )
+                        .into(),
+                        problem: "contains stages that are not supported by the queue family of \
+                            the queue"
+                            .into(),
+                        vuids: &["VUID-vkQueueSubmit2-stageMask-03870"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        // unsafe
+        // VUID-vkQueueSubmit2-fence-04894
+        // VUID-vkQueueSubmit2-fence-04895
+        // VUID-vkQueueSubmit2-commandBuffer-03867
+        // VUID-vkQueueSubmit2-semaphore-03868
+        // VUID-vkQueueSubmit2-semaphore-03871
+        // VUID-vkQueueSubmit2-semaphore-03872
+        // VUID-vkQueueSubmit2-semaphore-03873
+        // VUID-vkQueueSubmit2-commandBuffer-03874
+        // VUID-vkQueueSubmit2-commandBuffer-03875
+        // VUID-vkQueueSubmit2-commandBuffer-03876
+        // VUID-vkQueueSubmit2-commandBuffer-03877
+        // VUID-vkQueueSubmit2-commandBuffer-03879
+
+        Ok(())
+    }
+
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn submit_unchecked(
         &mut self,
@@ -642,10 +795,17 @@ impl<'a> QueueGuard<'a> {
 
                         let command_buffer_infos_vk = command_buffers
                             .iter()
-                            .map(|cb| ash::vk::CommandBufferSubmitInfo {
-                                command_buffer: cb.handle(),
-                                device_mask: 0, // TODO:
-                                ..Default::default()
+                            .map(|command_buffer_submit_info| {
+                                let &CommandBufferSubmitInfo {
+                                    ref command_buffer,
+                                    _ne: _,
+                                } = command_buffer_submit_info;
+
+                                ash::vk::CommandBufferSubmitInfo {
+                                    command_buffer: command_buffer.handle(),
+                                    device_mask: 0, // TODO:
+                                    ..Default::default()
+                                }
                             })
                             .collect();
 
@@ -764,8 +924,17 @@ impl<'a> QueueGuard<'a> {
                             })
                             .unzip();
 
-                        let command_buffers_vk =
-                            command_buffers.iter().map(|cb| cb.handle()).collect();
+                        let command_buffers_vk = command_buffers
+                            .iter()
+                            .map(|command_buffer_submit_info| {
+                                let &CommandBufferSubmitInfo {
+                                    ref command_buffer,
+                                    _ne: _,
+                                } = command_buffer_submit_info;
+
+                                command_buffer.handle()
+                            })
+                            .collect();
 
                         let signal_semaphores_vk = signal_semaphores
                             .iter()
@@ -1098,7 +1267,7 @@ mod tests {
         let (_device, queue) = gfx_dev_and_queue!();
 
         queue
-            .with(|mut q| unsafe { q.submit_unchecked(&[Default::default()], None) })
+            .with(|mut q| unsafe { q.submit(&[Default::default()], None) })
             .unwrap();
     }
 
@@ -1111,7 +1280,7 @@ mod tests {
             assert!(!fence.is_signaled().unwrap());
 
             queue
-                .with(|mut q| q.submit_unchecked(&[Default::default()], Some(&fence)))
+                .with(|mut q| q.submit(&[Default::default()], Some(&fence)))
                 .unwrap();
 
             fence.wait(Some(Duration::from_secs(5))).unwrap();

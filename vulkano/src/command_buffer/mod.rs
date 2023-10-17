@@ -723,7 +723,7 @@ pub struct SubmitInfo {
     /// The command buffers to execute.
     ///
     /// The default value is empty.
-    pub command_buffers: Vec<Arc<dyn PrimaryCommandBufferAbstract>>,
+    pub command_buffers: Vec<CommandBufferSubmitInfo>,
 
     /// The semaphores to signal after the execution of this batch of command buffer operations
     /// has completed.
@@ -746,10 +746,95 @@ impl Default for SubmitInfo {
     }
 }
 
-/// Parameters for a semaphore signal or wait operation in a command buffer submission.
+impl SubmitInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref wait_semaphores,
+            ref command_buffers,
+            ref signal_semaphores,
+            _ne: _,
+        } = self;
+
+        for (index, semaphore_submit_info) in wait_semaphores.iter().enumerate() {
+            semaphore_submit_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("wait_semaphores[{}]", index)))?;
+        }
+
+        for (index, command_buffer_submit_info) in command_buffers.iter().enumerate() {
+            command_buffer_submit_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("command_buffers[{}]", index)))?;
+        }
+
+        for (index, semaphore_submit_info) in signal_semaphores.iter().enumerate() {
+            semaphore_submit_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("signal_semaphores[{}]", index)))?;
+
+            let &SemaphoreSubmitInfo {
+                semaphore: _,
+                stages,
+                _ne: _,
+            } = semaphore_submit_info;
+
+            if stages != PipelineStages::ALL_COMMANDS && !device.enabled_features().synchronization2
+            {
+                return Err(Box::new(ValidationError {
+                    context: format!("signal_semaphores[{}].stages", index).into(),
+                    problem: "is not `PipelineStages::ALL_COMMANDS`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "synchronization2",
+                    )])]),
+                    vuids: &["VUID-vkQueueSubmit2-synchronization2-03866"],
+                }));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Parameters for a command buffer in a queue submit operation.
+#[derive(Clone, Debug)]
+pub struct CommandBufferSubmitInfo {
+    /// The command buffer to execute.
+    ///
+    /// There is no default value.
+    pub command_buffer: Arc<dyn PrimaryCommandBufferAbstract>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl CommandBufferSubmitInfo {
+    /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
+    #[inline]
+    pub fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
+        Self {
+            command_buffer,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref command_buffer,
+            _ne: _,
+        } = self;
+
+        // VUID?
+        assert_eq!(device, command_buffer.device().as_ref());
+
+        Ok(())
+    }
+}
+
+/// Parameters for a semaphore signal or wait operation in a queue submit operation.
 #[derive(Clone, Debug)]
 pub struct SemaphoreSubmitInfo {
     /// The semaphore to signal or wait for.
+    ///
+    /// There is no default value.
     pub semaphore: Arc<Semaphore>,
 
     /// For a semaphore wait operation, specifies the pipeline stages in the second synchronization
@@ -774,12 +859,190 @@ pub struct SemaphoreSubmitInfo {
 impl SemaphoreSubmitInfo {
     /// Returns a `SemaphoreSubmitInfo` with the specified `semaphore`.
     #[inline]
-    pub fn semaphore(semaphore: Arc<Semaphore>) -> Self {
+    pub fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
             stages: PipelineStages::ALL_COMMANDS,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref semaphore,
+            stages,
+            _ne: _,
+        } = self;
+
+        // VUID?
+        assert_eq!(device, semaphore.device().as_ref());
+
+        stages.validate_device(device).map_err(|err| {
+            err.add_context("stages")
+                .set_vuids(&["VUID-VkSemaphoreSubmitInfo-stageMask-parameter"])
+        })?;
+
+        if !device.enabled_features().synchronization2 && stages.contains_flags2() {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "synchronization2",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if !device.enabled_features().geometry_shader
+            && stages.intersects(PipelineStages::GEOMETRY_SHADER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "geometry_shader",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03929"],
+            }));
+        }
+
+        if !device.enabled_features().tessellation_shader
+            && stages.intersects(
+                PipelineStages::TESSELLATION_CONTROL_SHADER
+                    | PipelineStages::TESSELLATION_EVALUATION_SHADER,
+            )
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
+                    `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
+                    .into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "tessellation_shader",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03930"],
+            }));
+        }
+
+        if !device.enabled_features().conditional_rendering
+            && stages.intersects(PipelineStages::CONDITIONAL_RENDERING)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "conditional_rendering",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03931"],
+            }));
+        }
+
+        if !device.enabled_features().fragment_density_map
+            && stages.intersects(PipelineStages::FRAGMENT_DENSITY_PROCESS)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "fragment_density_map",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03932"],
+            }));
+        }
+
+        if !device.enabled_features().transform_feedback
+            && stages.intersects(PipelineStages::TRANSFORM_FEEDBACK)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "transform_feedback",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03933"],
+            }));
+        }
+
+        if !device.enabled_features().mesh_shader && stages.intersects(PipelineStages::MESH_SHADER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::MESH_SHADER`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "mesh_shader",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03934"],
+            }));
+        }
+
+        if !device.enabled_features().task_shader && stages.intersects(PipelineStages::TASK_SHADER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::TASK_SHADER`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "task_shader",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03935"],
+            }));
+        }
+
+        if !(device.enabled_features().attachment_fragment_shading_rate
+            || device.enabled_features().shading_rate_image)
+            && stages.intersects(PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
+                    RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                ]),
+                vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
+            }));
+        }
+
+        if !device.enabled_features().subpass_shading
+            && stages.intersects(PipelineStages::SUBPASS_SHADING)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "subpass_shading",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-04957"],
+            }));
+        }
+
+        if !device.enabled_features().invocation_mask
+            && stages.intersects(PipelineStages::INVOCATION_MASK)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "invocation_mask",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-04995"],
+            }));
+        }
+
+        if !(device.enabled_extensions().nv_ray_tracing
+            || device.enabled_features().ray_tracing_pipeline)
+            && stages.intersects(PipelineStages::RAY_TRACING_SHADER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "ray_tracing_pipeline",
+                )])]),
+                vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-07946"],
+            }));
+        }
+
+        Ok(())
     }
 }
 

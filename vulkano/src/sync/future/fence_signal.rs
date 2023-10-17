@@ -263,7 +263,7 @@ where
                                     SemaphoreSubmitInfo {
                                         // TODO: correct stages ; hard
                                         stages: PipelineStages::ALL_COMMANDS,
-                                        ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                        ..SemaphoreSubmitInfo::new(semaphore)
                                     }
                                 })
                                 .collect(),

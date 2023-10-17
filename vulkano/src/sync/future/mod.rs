@@ -104,7 +104,8 @@ use crate::{
     buffer::{Buffer, BufferState},
     command_buffer::{
         CommandBufferExecError, CommandBufferExecFuture, CommandBufferResourcesUsage,
-        CommandBufferState, CommandBufferUsage, PrimaryCommandBufferAbstract, SubmitInfo,
+        CommandBufferState, CommandBufferSubmitInfo, CommandBufferUsage,
+        PrimaryCommandBufferAbstract, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{Image, ImageLayout, ImageState},
@@ -646,7 +647,12 @@ pub(crate) unsafe fn queue_submit(
     let fence_state = fence.as_ref().map(|fence| fence.state());
 
     for submit_info in &submit_infos {
-        for command_buffer in &submit_info.command_buffers {
+        for command_buffer_submit_info in &submit_info.command_buffers {
+            let &CommandBufferSubmitInfo {
+                ref command_buffer,
+                _ne: _,
+            } = command_buffer_submit_info;
+
             let state = states
                 .command_buffers
                 .get(&command_buffer.handle())
@@ -788,7 +794,7 @@ pub(crate) unsafe fn queue_submit(
         }
     }
 
-    queue.with(|mut queue_guard| queue_guard.submit_unchecked(&submit_infos, fence.as_ref()))?;
+    queue.with(|mut queue_guard| queue_guard.submit(&submit_infos, fence.as_ref()))?;
 
     for submit_info in &submit_infos {
         let SubmitInfo {
@@ -806,7 +812,12 @@ pub(crate) unsafe fn queue_submit(
             state.add_queue_wait();
         }
 
-        for command_buffer in command_buffers {
+        for command_buffer_submit_info in command_buffers {
+            let CommandBufferSubmitInfo {
+                command_buffer,
+                _ne: _,
+            } = command_buffer_submit_info;
+
             let state = states
                 .command_buffers
                 .get_mut(&command_buffer.handle())
@@ -971,7 +982,12 @@ impl<'a> States<'a> {
                     .or_insert_with(|| semaphore.state());
             }
 
-            for command_buffer in info_command_buffers {
+            for command_buffer_submit_info in info_command_buffers {
+                let &CommandBufferSubmitInfo {
+                    ref command_buffer,
+                    _ne: _,
+                } = command_buffer_submit_info;
+
                 command_buffers
                     .entry(command_buffer.handle())
                     .or_insert_with(|| command_buffer.state());

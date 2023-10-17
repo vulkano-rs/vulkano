@@ -96,7 +96,7 @@ where
                     queue_submit(
                         &queue,
                         SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                            signal_semaphores: vec![SemaphoreSubmitInfo::new(
                                 self.semaphore.clone(),
                             )],
                             ..Default::default()
@@ -115,11 +115,11 @@ where
                                     SemaphoreSubmitInfo {
                                         // TODO: correct stages ; hard
                                         stages: PipelineStages::ALL_COMMANDS,
-                                        ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                        ..SemaphoreSubmitInfo::new(semaphore)
                                     }
                                 })
                                 .collect(),
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                            signal_semaphores: vec![SemaphoreSubmitInfo::new(
                                 self.semaphore.clone(),
                             )],
                             ..Default::default()
@@ -133,7 +133,7 @@ where
 
                     submit_info
                         .signal_semaphores
-                        .push(SemaphoreSubmitInfo::semaphore(self.semaphore.clone()));
+                        .push(SemaphoreSubmitInfo::new(self.semaphore.clone()));
 
                     queue_submit(&queue, submit_info, fence, &self.previous)?;
                 }
@@ -184,7 +184,7 @@ where
                     queue_submit(
                         &queue,
                         SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                            signal_semaphores: vec![SemaphoreSubmitInfo::new(
                                 self.semaphore.clone(),
                             )],
                             ..Default::default()

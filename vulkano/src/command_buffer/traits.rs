@@ -9,7 +9,8 @@
 
 use super::{
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, SecondaryCommandBufferResourcesUsage, SemaphoreSubmitInfo, SubmitInfo,
+    CommandBufferSubmitInfo, CommandBufferUsage, SecondaryCommandBufferResourcesUsage,
+    SemaphoreSubmitInfo, SubmitInfo,
 };
 use crate::{
     buffer::Buffer,
@@ -41,6 +42,9 @@ use std::{
 pub unsafe trait PrimaryCommandBufferAbstract:
     VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
 {
+    /// Returns the queue family index of this command buffer.
+    fn queue_family_index(&self) -> u32;
+
     /// Returns the usage of this command buffer.
     fn usage(&self) -> CommandBufferUsage;
 
@@ -146,6 +150,10 @@ where
     T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
     T::Target: PrimaryCommandBufferAbstract,
 {
+    fn queue_family_index(&self) -> u32 {
+        (**self).queue_family_index()
+    }
+
     fn usage(&self) -> CommandBufferUsage {
         (**self).usage()
     }
@@ -240,7 +248,9 @@ where
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
                 SubmitInfo {
-                    command_buffers: vec![self.command_buffer.clone()],
+                    command_buffers: vec![CommandBufferSubmitInfo::new(
+                        self.command_buffer.clone(),
+                    )],
                     ..Default::default()
                 },
                 None,
@@ -254,11 +264,13 @@ where
                                 SemaphoreSubmitInfo {
                                     // TODO: correct stages ; hard
                                     stages: PipelineStages::ALL_COMMANDS,
-                                    ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                    ..SemaphoreSubmitInfo::new(semaphore)
                                 }
                             })
                             .collect(),
-                        command_buffers: vec![self.command_buffer.clone()],
+                        command_buffers: vec![CommandBufferSubmitInfo::new(
+                            self.command_buffer.clone(),
+                        )],
                         ..Default::default()
                     },
                     None,
@@ -268,7 +280,7 @@ where
                 // FIXME: add pipeline barrier
                 submit_info
                     .command_buffers
-                    .push(self.command_buffer.clone());
+                    .push(CommandBufferSubmitInfo::new(self.command_buffer.clone()));
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence)
             }
             SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_, _) => {
