@@ -459,15 +459,23 @@ impl<'a> QueueGuard<'a> {
     /// # Safety
     ///
     /// For every semaphore in the `wait_semaphores` elements of `present_info`:
+    /// - The semaphore must be kept alive while the command is being executed.
     /// - The semaphore must be already in the signaled state, or there must be a previously
     ///   submitted operation that will signal it.
     /// - When the wait operation is executed, no other queue must be waiting on the same semaphore.
     ///
     /// For every element of `present_info.swapchain_infos`:
+    /// - `swapchain` must be kept alive while the command is being executed.
     /// - `image_index` must be an index previously acquired from the swapchain, and the present
     ///   operation must happen-after the acquire operation.
+    /// - The swapchain image indicated by `swapchain` and `image_index` must be in the
+    ///   [`ImageLayout::PresentSrc`] layout when the presentation operation is executed.
+    /// - The swapchain image indicated by `swapchain` and `image_index` must not be accessed
+    ///   after this function is called, until it is acquired again.
     /// - If `present_id` is `Some`, then it must be greater than any present ID previously used
     ///   for the same swapchain.
+    ///
+    /// [`ImageLayout::PresentSrc`]: crate::image::ImageLayout::PresentSrc
     #[inline]
     pub unsafe fn present(
         &mut self,
@@ -687,16 +695,24 @@ impl<'a> QueueGuard<'a> {
     ///
     /// # Safety
     ///
-    /// - If `fence` is `Some`, it must be unsignaled and must not be associated with any
-    ///   other command that is still executing.
+    /// If `fence` is `Some`:
+    /// - The fence must be kept alive while the command is being executed.
+    /// - The fence must be unsignaled and must not be associated with any other command that is
+    ///   still executing.
     ///
     /// For every semaphore in the `wait_semaphores` elements of every `submit_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
     /// - The semaphore must be already in the signaled state, or there must be a previously
     ///   submitted operation that will signal it.
     /// - When the wait operation is executed, no other queue must be waiting on the same semaphore.
     ///
     /// For every command buffer in the `command_buffers` elements of every `submit_infos` element,
     /// as well as any secondary command buffers recorded within it:
+    /// - The command buffer, and any resources it uses, must be kept alive while the command is
+    ///   being executed.
+    /// - Any mutable resources used by the command buffer must be in the state (image layout,
+    ///   query reset, event signal etc.) expected by the command buffer at the time it begins
+    ///   executing, and must be synchronized appropriately.
     /// - If the command buffer's `usage` is [`CommandBufferUsage::OneTimeSubmit`], then it must
     ///   not have been previously submitted.
     /// - If the command buffer's `usage` is [`CommandBufferUsage::MultipleSubmit`], then it must
@@ -708,6 +724,7 @@ impl<'a> QueueGuard<'a> {
     ///   by a command that is currently executing on another queue.
     ///
     /// For every semaphore in the `signal_semaphores` elements of every `submit_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
     /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
     #[inline]
     pub unsafe fn submit(
