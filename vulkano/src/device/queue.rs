@@ -695,11 +695,6 @@ impl<'a> QueueGuard<'a> {
     ///
     /// # Safety
     ///
-    /// If `fence` is `Some`:
-    /// - The fence must be kept alive while the command is being executed.
-    /// - The fence must be unsignaled and must not be associated with any other command that is
-    ///   still executing.
-    ///
     /// For every semaphore in the `wait_semaphores` elements of every `submit_infos` element:
     /// - The semaphore must be kept alive while the command is being executed.
     /// - The semaphore must be already in the signaled state, or there must be a previously
@@ -726,6 +721,11 @@ impl<'a> QueueGuard<'a> {
     /// For every semaphore in the `signal_semaphores` elements of every `submit_infos` element:
     /// - The semaphore must be kept alive while the command is being executed.
     /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    ///
+    /// If `fence` is `Some`:
+    /// - The fence must be kept alive while the command is being executed.
+    /// - The fence must be unsignaled and must not be associated with any other command that is
+    ///   still executing.
     #[inline]
     pub unsafe fn submit(
         &mut self,
