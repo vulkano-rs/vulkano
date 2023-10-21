@@ -15,7 +15,7 @@ use crate::{
     memory::{
         BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
     },
-    swapchain::{PresentInfo, SwapchainPresentInfo},
+    swapchain::{PresentInfo, SemaphorePresentInfo, SwapchainPresentInfo},
     sync::{fence::Fence, PipelineStages},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
@@ -505,11 +505,11 @@ impl<'a> QueueGuard<'a> {
 
         let &PresentInfo {
             wait_semaphores: _,
-            ref swapchain_infos,
+            ref swapchains,
             _ne: _,
         } = present_info;
 
-        for (index, swapchain_info) in swapchain_infos.iter().enumerate() {
+        for (index, swapchain_info) in swapchains.iter().enumerate() {
             let &SwapchainPresentInfo {
                 ref swapchain,
                 image_index: _,
@@ -554,28 +554,34 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, VulkanError> {
         let PresentInfo {
             wait_semaphores,
-            swapchain_infos,
+            swapchains,
             _ne: _,
         } = present_info;
 
         let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
             .iter()
-            .map(|semaphore| semaphore.handle())
+            .map(|semaphore_present_info| {
+                let &SemaphorePresentInfo {
+                    ref semaphore,
+                    _ne: _,
+                } = semaphore_present_info;
+
+                semaphore.handle()
+            })
             .collect();
 
-        let mut swapchains_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
-        let mut image_indices_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
-        let mut present_ids_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
-        let mut present_modes_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
-        let mut present_regions_vk: SmallVec<[_; 4]> =
-            SmallVec::with_capacity(swapchain_infos.len());
-        let mut rectangles_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
+        let mut swapchains_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
+        let mut image_indices_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
+        let mut present_ids_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
+        let mut present_modes_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
+        let mut present_regions_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
+        let mut rectangles_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
 
         let mut has_present_ids = false;
         let mut has_present_modes = false;
         let mut has_present_regions = false;
 
-        for swapchain_info in swapchain_infos {
+        for swapchain_info in swapchains {
             let &SwapchainPresentInfo {
                 ref swapchain,
                 image_index,
@@ -610,7 +616,7 @@ impl<'a> QueueGuard<'a> {
             }
         }
 
-        let mut results = vec![ash::vk::Result::SUCCESS; swapchain_infos.len()];
+        let mut results = vec![ash::vk::Result::SUCCESS; swapchains.len()];
         let mut info_vk = ash::vk::PresentInfoKHR {
             wait_semaphore_count: wait_semaphores_vk.len() as u32,
             p_wait_semaphores: wait_semaphores_vk.as_ptr(),

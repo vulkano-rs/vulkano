@@ -613,18 +613,21 @@ pub(crate) unsafe fn queue_present(
 
     let PresentInfo {
         wait_semaphores,
-        swapchain_infos,
+        swapchains,
         _ne: _,
     } = &present_info;
 
-    for semaphore in wait_semaphores {
-        let state = states.semaphores.get_mut(&semaphore.handle()).unwrap();
+    for semaphore_info in wait_semaphores {
+        let state = states
+            .semaphores
+            .get_mut(&semaphore_info.semaphore.handle())
+            .unwrap();
         state.add_queue_wait();
     }
 
     // If a presentation results in a loss of full-screen exclusive mode,
     // signal that to the relevant swapchain.
-    for (&result, swapchain_info) in results.iter().zip(swapchain_infos) {
+    for (&result, swapchain_info) in results.iter().zip(swapchains) {
         if result == Err(VulkanError::FullScreenExclusiveModeLost) {
             swapchain_info
                 .swapchain
@@ -943,14 +946,14 @@ impl<'a> States<'a> {
 
         let PresentInfo {
             wait_semaphores,
-            swapchain_infos: _,
+            swapchains: _,
             _ne: _,
         } = present_info;
 
-        for semaphore in wait_semaphores {
+        for semaphore_info in wait_semaphores {
             semaphores
-                .entry(semaphore.handle())
-                .or_insert_with(|| semaphore.state());
+                .entry(semaphore_info.semaphore.handle())
+                .or_insert_with(|| semaphore_info.semaphore.state());
         }
 
         Self {

@@ -344,12 +344,12 @@ pub struct PresentInfo {
     /// The semaphores to wait for before beginning the execution of the present operations.
     ///
     /// The default value is empty.
-    pub wait_semaphores: Vec<Arc<Semaphore>>,
+    pub wait_semaphores: Vec<SemaphorePresentInfo>,
 
     /// The present operations to perform.
     ///
     /// The default value is empty.
-    pub swapchain_infos: Vec<SwapchainPresentInfo>,
+    pub swapchains: Vec<SwapchainPresentInfo>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -359,7 +359,7 @@ impl Default for PresentInfo {
     fn default() -> Self {
         Self {
             wait_semaphores: Vec::new(),
-            swapchain_infos: Vec::new(),
+            swapchains: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -369,13 +369,14 @@ impl PresentInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref wait_semaphores,
-            ref swapchain_infos,
+            swapchains: ref swapchain_infos,
             _ne: _,
         } = self;
 
-        for semaphore in wait_semaphores {
-            // VUID-VkPresentInfoKHR-commonparent
-            assert_eq!(device, semaphore.device().as_ref());
+        for (index, semaphore_present_info) in wait_semaphores.iter().enumerate() {
+            semaphore_present_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("wait_semaphores[{}]", index)))?;
         }
 
         assert!(!swapchain_infos.is_empty());
@@ -658,6 +659,40 @@ impl From<&RectangleLayer> for ash::vk::RectLayerKHR {
     }
 }
 
+/// Parameters for a semaphore wait operation in a queue present operation.
+#[derive(Clone, Debug)]
+pub struct SemaphorePresentInfo {
+    /// The semaphore to wait for.
+    ///
+    /// There is no default value.
+    pub semaphore: Arc<Semaphore>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl SemaphorePresentInfo {
+    /// Returns a `SemaphorePresentInfo` with the specified `semaphore`.
+    #[inline]
+    pub fn new(semaphore: Arc<Semaphore>) -> Self {
+        Self {
+            semaphore,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref semaphore,
+            _ne: _,
+        } = self;
+
+        // VUID-VkPresentInfoKHR-commonparent
+        assert_eq!(device, semaphore.device().as_ref());
+
+        Ok(())
+    }
+}
+
 /// Represents a swapchain image being presented on the screen.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
 pub struct PresentFuture<P>
@@ -726,13 +761,16 @@ where
 
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::QueuePresent(PresentInfo {
-                swapchain_infos: vec![self.swapchain_info.clone()],
+                swapchains: vec![self.swapchain_info.clone()],
                 ..Default::default()
             }),
             SubmitAnyBuilder::SemaphoresWait(semaphores) => {
                 SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    wait_semaphores: semaphores.into_iter().collect(),
-                    swapchain_infos: vec![self.swapchain_info.clone()],
+                    wait_semaphores: semaphores
+                        .into_iter()
+                        .map(SemaphorePresentInfo::new)
+                        .collect(),
+                    swapchains: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
@@ -740,7 +778,7 @@ where
                 self.previous.flush()?;
 
                 SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    swapchain_infos: vec![self.swapchain_info.clone()],
+                    swapchains: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
@@ -748,26 +786,24 @@ where
                 self.previous.flush()?;
 
                 SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    swapchain_infos: vec![self.swapchain_info.clone()],
+                    swapchains: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
             SubmitAnyBuilder::QueuePresent(mut present_info) => {
-                if present_info.swapchain_infos.first().map_or(false, |prev| {
+                if present_info.swapchains.first().map_or(false, |prev| {
                     prev.present_mode.is_some() != self.swapchain_info.present_mode.is_some()
                 }) {
                     // If the present mode Option variants don't match, create a new command.
                     self.previous.flush()?;
 
                     SubmitAnyBuilder::QueuePresent(PresentInfo {
-                        swapchain_infos: vec![self.swapchain_info.clone()],
+                        swapchains: vec![self.swapchain_info.clone()],
                         ..Default::default()
                     })
                 } else {
                     // Otherwise, add our swapchain to the previous.
-                    present_info
-                        .swapchain_infos
-                        .push(self.swapchain_info.clone());
+                    present_info.swapchains.push(self.swapchain_info.clone());
 
                     SubmitAnyBuilder::QueuePresent(present_info)
                 }
@@ -787,11 +823,11 @@ where
                 SubmitAnyBuilder::QueuePresent(present_info) => {
                     let PresentInfo {
                         wait_semaphores: _,
-                        swapchain_infos,
+                        swapchains,
                         _ne: _,
                     } = &present_info;
 
-                    for swapchain_info in swapchain_infos {
+                    for swapchain_info in swapchains {
                         let &SwapchainPresentInfo {
                             ref swapchain,
                             image_index: _,

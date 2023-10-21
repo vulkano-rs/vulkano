@@ -308,7 +308,7 @@ where
                         )
                         .map_err(OutcomeErr::Partial)
                     } else {
-                        for swapchain_info in &present_info.swapchain_infos {
+                        for swapchain_info in &present_info.swapchains {
                             if swapchain_info.present_id.map_or(false, |present_id| {
                                 !swapchain_info.swapchain.try_claim_present_id(present_id)
                             }) {
