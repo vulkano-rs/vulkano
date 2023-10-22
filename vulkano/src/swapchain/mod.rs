@@ -1466,7 +1466,6 @@ impl Swapchain {
         // unsafe
         // VUID-vkAcquireNextImage2KHR-surface-07784
         // VUID-VkAcquireNextImageInfoKHR-semaphore-01288
-        // VUID-VkAcquireNextImageInfoKHR-swapchain-01675
         // VUID-VkAcquireNextImageInfoKHR-semaphore-01781
         // VUID-VkAcquireNextImageInfoKHR-fence-01289
 
