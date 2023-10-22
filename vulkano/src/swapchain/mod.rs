@@ -1440,7 +1440,8 @@ impl Swapchain {
         &self,
         acquire_info: &AcquireNextImageInfo,
     ) -> Result<AcquiredImage, Validated<VulkanError>> {
-        self.validate_acquire_next_image(acquire_info)?;
+        let is_retired_lock = self.is_retired.lock();
+        self.validate_acquire_next_image(acquire_info, *is_retired_lock)?;
 
         Ok(self.acquire_next_image_unchecked(acquire_info)?)
     }
@@ -1448,12 +1449,13 @@ impl Swapchain {
     fn validate_acquire_next_image(
         &self,
         acquire_info: &AcquireNextImageInfo,
+        is_retired: bool,
     ) -> Result<(), Box<ValidationError>> {
         acquire_info
             .validate(&self.device)
             .map_err(|err| err.add_context("acquire_info"))?;
 
-        if *self.is_retired.lock() {
+        if is_retired {
             return Err(Box::new(ValidationError {
                 problem: "this swapchain is retired".into(),
                 vuids: &["VUID-VkAcquireNextImageInfoKHR-swapchain-01675"],
@@ -1464,6 +1466,7 @@ impl Swapchain {
         // unsafe
         // VUID-vkAcquireNextImage2KHR-surface-07784
         // VUID-VkAcquireNextImageInfoKHR-semaphore-01288
+        // VUID-VkAcquireNextImageInfoKHR-swapchain-01675
         // VUID-VkAcquireNextImageInfoKHR-semaphore-01781
         // VUID-VkAcquireNextImageInfoKHR-fence-01289
 
@@ -1556,7 +1559,8 @@ impl Swapchain {
         present_id: NonZeroU64,
         timeout: Option<Duration>,
     ) -> Result<bool, Validated<VulkanError>> {
-        self.validate_wait_for_present(present_id, timeout)?;
+        let is_retired_lock = self.is_retired.lock();
+        self.validate_wait_for_present(present_id, timeout, *is_retired_lock)?;
 
         unsafe { Ok(self.wait_for_present_unchecked(present_id, timeout)?) }
     }
@@ -1565,6 +1569,7 @@ impl Swapchain {
         &self,
         _present_id: NonZeroU64,
         timeout: Option<Duration>,
+        is_retired: bool,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_features().present_wait {
             return Err(Box::new(ValidationError {
@@ -1576,7 +1581,7 @@ impl Swapchain {
             }));
         }
 
-        if *self.is_retired.lock() {
+        if is_retired {
             return Err(Box::new(ValidationError {
                 problem: "this swapchain is retired".into(),
                 vuids: &["VUID-vkWaitForPresentKHR-swapchain-04997"],
