@@ -17,8 +17,7 @@ use crate::{
         future::{AccessCheckError, AccessError, GpuFuture, SubmitAnyBuilder},
         semaphore::Semaphore,
     },
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
-    VulkanObject,
+    DeviceSize, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::smallvec;
 use std::{
@@ -33,6 +32,87 @@ use std::{
     thread,
     time::Duration,
 };
+
+/// Parameters to acquire the next image from a swapchain.
+#[derive(Clone, Debug)]
+pub struct AcquireNextImageInfo {
+    /// If no image is immediately available, how long to wait for one to become available.
+    ///
+    /// Specify `None` to wait forever. This is only allowed if at least one image in the swapchain
+    /// has not been acquired yet.
+    ///
+    /// The default value is `None`.
+    pub timeout: Option<Duration>,
+
+    /// The semaphore to signal when an image has become available.
+    ///
+    /// `semaphore` and `fence` must not both be `None`.
+    ///
+    /// The default value is `None`.
+    pub semaphore: Option<Arc<Semaphore>>,
+
+    /// The fence to signal when an image has become available.
+    ///
+    /// `semaphore` and `fence` must not both be `None`.
+    ///
+    /// The default value is `None`.
+    pub fence: Option<Arc<Fence>>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for AcquireNextImageInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            timeout: None,
+            semaphore: None,
+            fence: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl AcquireNextImageInfo {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            timeout,
+            ref semaphore,
+            ref fence,
+            _ne: _,
+        } = self;
+
+        if let Some(timeout) = timeout {
+            if timeout.as_nanos() >= u64::MAX as u128 {
+                return Err(Box::new(ValidationError {
+                    context: "timeout".into(),
+                    problem: "is not less than `u64::MAX` nanoseconds".into(),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if semaphore.is_none() && fence.is_none() {
+            return Err(Box::new(ValidationError {
+                problem: "`semaphore` and `fence` are both `None`".into(),
+                vuids: &["VUID-VkAcquireNextImageInfoKHR-semaphore-01782"],
+                ..Default::default()
+            }));
+        }
+
+        if let Some(semaphore) = semaphore {
+            // VUID-VkAcquireNextImageInfoKHR-commonparent
+            assert_eq!(device, semaphore.device().as_ref());
+        }
+
+        if let Some(fence) = fence {
+            // VUID-VkAcquireNextImageInfoKHR-commonparent
+            assert_eq!(device, fence.device().as_ref());
+        }
+
+        Ok(())
+    }
+}
 
 /// Tries to take ownership of an image in order to draw on it.
 ///
@@ -51,38 +131,33 @@ pub fn acquire_next_image(
     timeout: Option<Duration>,
 ) -> Result<(u32, bool, SwapchainAcquireFuture), Validated<VulkanError>> {
     let semaphore = Arc::new(Semaphore::from_pool(swapchain.device.clone())?);
-    let fence = Fence::from_pool(swapchain.device.clone())?;
+    let fence = Arc::new(Fence::from_pool(swapchain.device.clone())?);
 
     let AcquiredImage {
         image_index,
-        suboptimal,
-    } = {
-        // Check that this is not an old swapchain. From specs:
-        // > swapchain must not have been replaced by being passed as the
-        // > VkSwapchainCreateInfoKHR::oldSwapchain value to vkCreateSwapchainKHR
-        let retired = swapchain.is_retired.lock();
-        if *retired {
-            return Err(VulkanError::OutOfDate.into());
-        }
-
-        let acquire_result =
-            unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
-
-        if matches!(
-            acquire_result,
-            Err(Validated::Error(VulkanError::FullScreenExclusiveModeLost))
-        ) {
-            swapchain
-                .full_screen_exclusive_held
-                .store(false, Ordering::SeqCst);
-        }
-
-        acquire_result?
+        is_suboptimal,
+    } = unsafe {
+        swapchain.acquire_next_image(&AcquireNextImageInfo {
+            timeout,
+            semaphore: Some(semaphore.clone()),
+            fence: Some(fence.clone()),
+            ..Default::default()
+        })?
     };
+
+    unsafe {
+        let mut state = semaphore.state();
+        state.swapchain_acquire();
+    }
+
+    unsafe {
+        let mut state = fence.state();
+        state.import_swapchain_acquire();
+    }
 
     Ok((
         image_index,
-        suboptimal,
+        is_suboptimal,
         SwapchainAcquireFuture {
             swapchain,
             semaphore: Some(semaphore),
@@ -100,6 +175,10 @@ pub fn acquire_next_image(
 /// - The semaphore and/or the fence must be kept alive until it is signaled.
 /// - The swapchain must not have been replaced by being passed as the old swapchain when creating
 ///   a new one.
+#[deprecated(
+    since = "0.34.0",
+    note = "use `Swapchain::acquire_next_image_unchecked` instead"
+)]
 pub unsafe fn acquire_next_image_raw(
     swapchain: &Swapchain,
     timeout: Option<Duration>,
@@ -129,7 +208,7 @@ pub unsafe fn acquire_next_image_raw(
         out.as_mut_ptr(),
     );
 
-    let suboptimal = match result {
+    let is_suboptimal = match result {
         ash::vk::Result::SUCCESS => false,
         ash::vk::Result::SUBOPTIMAL_KHR => true,
         ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
@@ -149,13 +228,21 @@ pub unsafe fn acquire_next_image_raw(
 
     Ok(AcquiredImage {
         image_index: out.assume_init(),
-        suboptimal,
+        is_suboptimal,
     })
 }
 
+/// An image that will be acquired from a swapchain.
+#[derive(Clone, Copy, Debug)]
 pub struct AcquiredImage {
+    /// The index of the swapchain image that will be acquired.
     pub image_index: u32,
-    pub suboptimal: bool,
+
+    /// Whether the swapchain is no longer optimally configured to present to its surface.
+    ///
+    /// If this is `true`, then the acquired image will still be usable, but the swapchain should
+    /// be recreated soon to ensure an optimal configuration.
+    pub is_suboptimal: bool,
 }
 
 /// Represents the moment when the GPU will have access to a swapchain image.
@@ -168,7 +255,7 @@ pub struct SwapchainAcquireFuture {
     semaphore: Option<Arc<Semaphore>>,
     // Fence that is signalled when the acquire is complete. Empty if the acquire has already
     // happened.
-    fence: Option<Fence>,
+    fence: Option<Arc<Fence>>,
     finished: AtomicBool,
 }
 
@@ -806,61 +893,11 @@ where
 /// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is
 /// still usable, but the swapchain should be recreated as the Surface's properties no longer match
 /// the swapchain.
+#[deprecated(since = "0.34.0", note = "use `Swapchain::wait_for_present` instead")]
 pub fn wait_for_present(
     swapchain: Arc<Swapchain>,
     present_id: u64,
     timeout: Option<Duration>,
 ) -> Result<bool, Validated<VulkanError>> {
-    if !swapchain.device.enabled_features().present_wait {
-        return Err(Box::new(ValidationError {
-            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("present_wait")])]),
-            vuids: &["VUID-vkWaitForPresentKHR-presentWait-06234"],
-            ..Default::default()
-        })
-        .into());
-    }
-
-    if present_id == 0 {
-        return Err(Box::new(ValidationError {
-            context: "present_id".into(),
-            problem: "is 0".into(),
-            ..Default::default()
-        })
-        .into());
-    }
-
-    let retired = swapchain.is_retired.lock();
-
-    // VUID-vkWaitForPresentKHR-swapchain-04997
-    if *retired {
-        return Err(VulkanError::OutOfDate.into());
-    }
-
-    let timeout_ns = timeout.map(|dur| dur.as_nanos() as u64).unwrap_or(0);
-
-    let result = unsafe {
-        (swapchain.device.fns().khr_present_wait.wait_for_present_khr)(
-            swapchain.device.handle(),
-            swapchain.handle,
-            present_id,
-            timeout_ns,
-        )
-    };
-
-    match result {
-        ash::vk::Result::SUCCESS => Ok(false),
-        ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
-        ash::vk::Result::TIMEOUT => Err(VulkanError::Timeout.into()),
-        err => {
-            let err = VulkanError::from(err);
-
-            if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
-                swapchain
-                    .full_screen_exclusive_held
-                    .store(false, Ordering::SeqCst);
-            }
-
-            Err(err.into())
-        }
-    }
+    swapchain.wait_for_present(present_id.try_into().unwrap(), timeout)
 }
