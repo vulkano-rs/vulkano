@@ -226,7 +226,7 @@ impl DeviceMemory {
                     let fd = {
                         let _ = file;
                         unreachable!(
-                            "`khr_external_fence_fd` was somehow enabled on a non-Unix system"
+                            "`khr_external_memory_fd` was somehow enabled on a non-Unix system"
                         );
                     };
 
