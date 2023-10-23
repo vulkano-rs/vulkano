@@ -169,13 +169,21 @@ impl DeviceMemory {
             _ne: _,
         } = allocate_info;
 
-        let mut allocate_info = ash::vk::MemoryAllocateInfo::builder()
-            .allocation_size(allocation_size)
-            .memory_type_index(memory_type_index);
+        let mut allocate_info_vk = ash::vk::MemoryAllocateInfo {
+            allocation_size,
+            memory_type_index,
+            ..Default::default()
+        };
+
+        let mut dedicated_allocate_info_vk = None;
+        let mut export_allocate_info_vk = None;
+        let mut import_fd_info_vk = None;
+        let mut import_win32_handle_info_vk = None;
+        let mut flags_info_vk = None;
 
         // VUID-VkMemoryDedicatedAllocateInfo-image-01432
-        let mut dedicated_allocate_info =
-            dedicated_allocation.map(|dedicated_allocation| match dedicated_allocation {
+        if let Some(dedicated_allocation) = dedicated_allocation {
+            let next = dedicated_allocate_info_vk.insert(match dedicated_allocation {
                 DedicatedAllocation::Buffer(buffer) => ash::vk::MemoryDedicatedAllocateInfo {
                     buffer: buffer.handle(),
                     ..Default::default()
@@ -186,21 +194,18 @@ impl DeviceMemory {
                 },
             });
 
-        if let Some(info) = dedicated_allocate_info.as_mut() {
-            allocate_info = allocate_info.push_next(info);
+            next.p_next = allocate_info_vk.p_next;
+            allocate_info_vk.p_next = next as *const _ as *const _;
         }
 
-        let mut export_allocate_info = if !export_handle_types.is_empty() {
-            Some(ash::vk::ExportMemoryAllocateInfo {
+        if !export_handle_types.is_empty() {
+            let next = export_allocate_info_vk.insert(ash::vk::ExportMemoryAllocateInfo {
                 handle_types: export_handle_types.into(),
                 ..Default::default()
-            })
-        } else {
-            None
-        };
+            });
 
-        if let Some(info) = export_allocate_info.as_mut() {
-            allocate_info = allocate_info.push_next(info);
+            next.p_next = allocate_info_vk.p_next;
+            allocate_info_vk.p_next = next as *const _ as *const _;
         }
 
         let imported_handle_type = import_info.as_ref().map(|import_info| match import_info {
@@ -208,50 +213,58 @@ impl DeviceMemory {
             MemoryImportInfo::Win32 { handle_type, .. } => *handle_type,
         });
 
-        #[cfg(unix)]
-        let mut import_fd_info = match import_info {
-            Some(MemoryImportInfo::Fd { handle_type, file }) => {
-                use std::os::unix::io::IntoRawFd;
+        if let Some(import_info) = import_info {
+            match import_info {
+                MemoryImportInfo::Fd { handle_type, file } => {
+                    #[cfg(unix)]
+                    let fd = {
+                        use std::os::fd::IntoRawFd;
+                        file.into_raw_fd()
+                    };
 
-                Some(ash::vk::ImportMemoryFdInfoKHR {
-                    handle_type: handle_type.into(),
-                    fd: file.into_raw_fd(),
-                    ..Default::default()
-                })
+                    #[cfg(not(unix))]
+                    let fd = {
+                        let _ = file;
+                        unreachable!(
+                            "`khr_external_fence_fd` was somehow enabled on a non-Unix system"
+                        );
+                    };
+
+                    let next = import_fd_info_vk.insert(ash::vk::ImportMemoryFdInfoKHR {
+                        handle_type: handle_type.into(),
+                        fd,
+                        ..Default::default()
+                    });
+
+                    next.p_next = allocate_info_vk.p_next;
+                    allocate_info_vk.p_next = next as *const _ as *const _;
+                }
+                MemoryImportInfo::Win32 {
+                    handle_type,
+                    handle,
+                } => {
+                    let next = import_win32_handle_info_vk.insert(
+                        ash::vk::ImportMemoryWin32HandleInfoKHR {
+                            handle_type: handle_type.into(),
+                            handle,
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = allocate_info_vk.p_next;
+                    allocate_info_vk.p_next = next as *const _ as *const _;
+                }
             }
-            _ => None,
-        };
-
-        #[cfg(unix)]
-        if let Some(info) = import_fd_info.as_mut() {
-            allocate_info = allocate_info.push_next(info);
         }
-
-        #[cfg(windows)]
-        let mut import_win32_handle_info = match import_info {
-            Some(MemoryImportInfo::Win32 {
-                handle_type,
-                handle,
-            }) => Some(ash::vk::ImportMemoryWin32HandleInfoKHR {
-                handle_type: handle_type.into(),
-                handle,
-                ..Default::default()
-            }),
-            _ => None,
-        };
-
-        #[cfg(windows)]
-        if let Some(info) = import_win32_handle_info.as_mut() {
-            allocate_info = allocate_info.push_next(info);
-        }
-
-        let mut flags_info = ash::vk::MemoryAllocateFlagsInfo {
-            flags: flags.into(),
-            ..Default::default()
-        };
 
         if !flags.is_empty() {
-            allocate_info = allocate_info.push_next(&mut flags_info);
+            let next = flags_info_vk.insert(ash::vk::MemoryAllocateFlagsInfo {
+                flags: flags.into(),
+                ..Default::default()
+            });
+
+            next.p_next = allocate_info_vk.p_next;
+            allocate_info_vk.p_next = next as *const _ as *const _;
         }
 
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
@@ -271,7 +284,7 @@ impl DeviceMemory {
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.allocate_memory)(
                 device.handle(),
-                &allocate_info.build(),
+                &allocate_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
