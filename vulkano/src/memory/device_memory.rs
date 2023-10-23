@@ -806,38 +806,35 @@ impl DeviceMemory {
         &self,
         handle_type: ExternalMemoryHandleType,
     ) -> Result<File, VulkanError> {
-        debug_assert!(self.device().enabled_extensions().khr_external_memory_fd);
+        let info_vk = ash::vk::MemoryGetFdInfoKHR {
+            memory: self.handle,
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
 
-        #[cfg(not(unix))]
-        unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
+        let fns = self.device.fns();
+        let mut output = MaybeUninit::uninit();
+        (fns.khr_external_memory_fd.get_memory_fd_khr)(
+            self.device.handle(),
+            &info_vk,
+            output.as_mut_ptr(),
+        )
+        .result()
+        .map_err(VulkanError::from)?;
 
         #[cfg(unix)]
-        {
+        let file = {
             use std::os::unix::io::FromRawFd;
+            File::from_raw_fd(output.assume_init())
+        };
 
-            let fd = unsafe {
-                let fns = self.device.fns();
-                let info = ash::vk::MemoryGetFdInfoKHR {
-                    memory: self.handle,
-                    handle_type: handle_type.into(),
-                    ..Default::default()
-                };
+        #[cfg(not(unix))]
+        let file = {
+            let _ = output;
+            unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
+        };
 
-                let mut output = MaybeUninit::uninit();
-                (fns.khr_external_memory_fd.get_memory_fd_khr)(
-                    self.device.handle(),
-                    &info,
-                    output.as_mut_ptr(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-                output.assume_init()
-            };
-
-            let file = unsafe { std::fs::File::from_raw_fd(fd) };
-
-            Ok(file)
-        }
+        Ok(file)
     }
 }
 
@@ -1174,10 +1171,7 @@ impl MemoryImportInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         match self {
             MemoryImportInfo::Fd {
-                #[cfg(unix)]
                 handle_type,
-                #[cfg(not(unix))]
-                    handle_type: _,
                 file: _,
             } => {
                 if !device.enabled_extensions().khr_external_memory_fd {
@@ -1190,49 +1184,40 @@ impl MemoryImportInfo {
                     }));
                 }
 
-                #[cfg(not(unix))]
-                unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
+                handle_type.validate_device(device).map_err(|err| {
+                    err.add_context("handle_type")
+                        .set_vuids(&["VUID-VkImportMemoryFdInfoKHR-handleType-parameter"])
+                })?;
 
-                #[cfg(unix)]
-                {
-                    handle_type.validate_device(device).map_err(|err| {
-                        err.add_context("handle_type")
-                            .set_vuids(&["VUID-VkImportMemoryFdInfoKHR-handleType-parameter"])
-                    })?;
+                match handle_type {
+                    ExternalMemoryHandleType::OpaqueFd => {
+                        // VUID-VkMemoryAllocateInfo-allocationSize-01742
+                        // Can't validate, must be ensured by user
 
-                    match handle_type {
-                        ExternalMemoryHandleType::OpaqueFd => {
-                            // VUID-VkMemoryAllocateInfo-allocationSize-01742
-                            // Can't validate, must be ensured by user
+                        // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+                        // Can't validate, must be ensured by user
 
-                            // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
-                            // Can't validate, must be ensured by user
-
-                            // VUID-VkMemoryDedicatedAllocateInfo-image-01878
-                            // Can't validate, must be ensured by user
-                        }
-                        ExternalMemoryHandleType::DmaBuf => {}
-                        _ => {
-                            return Err(Box::new(ValidationError {
-                                context: "handle_type".into(),
-                                problem: "is not `ExternalMemoryHandleType::OpaqueFd` or \
-                                    `ExternalMemoryHandleType::DmaBuf`"
-                                    .into(),
-                                vuids: &["VUID-VkImportMemoryFdInfoKHR-handleType-00669"],
-                                ..Default::default()
-                            }));
-                        }
+                        // VUID-VkMemoryDedicatedAllocateInfo-image-01878
+                        // Can't validate, must be ensured by user
                     }
-
-                    // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648
-                    // Can't validate, must be ensured by user
+                    ExternalMemoryHandleType::DmaBuf => {}
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            context: "handle_type".into(),
+                            problem: "is not `ExternalMemoryHandleType::OpaqueFd` or \
+                                `ExternalMemoryHandleType::DmaBuf`"
+                                .into(),
+                            vuids: &["VUID-VkImportMemoryFdInfoKHR-handleType-00669"],
+                            ..Default::default()
+                        }));
+                    }
                 }
+
+                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648
+                // Can't validate, must be ensured by user
             }
             MemoryImportInfo::Win32 {
-                #[cfg(windows)]
                 handle_type,
-                #[cfg(not(windows))]
-                    handle_type: _,
                 handle: _,
             } => {
                 if !device.enabled_extensions().khr_external_memory_win32 {
@@ -1245,46 +1230,37 @@ impl MemoryImportInfo {
                     }));
                 }
 
-                #[cfg(not(windows))]
-                unreachable!(
-                    "`khr_external_memory_win32` was somehow enabled on a non-Windows system"
-                );
+                handle_type.validate_device(device).map_err(|err| {
+                    err.add_context("handle_type")
+                        .set_vuids(&["VUID-VkImportMemoryWin32HandleInfoKHR-handleType-parameter"])
+                })?;
 
-                #[cfg(windows)]
-                {
-                    handle_type.validate_device(device).map_err(|err| {
-                        err.add_context("handle_type").set_vuids(&[
-                            "VUID-VkImportMemoryWin32HandleInfoKHR-handleType-parameter",
-                        ])
-                    })?;
+                match handle_type {
+                    ExternalMemoryHandleType::OpaqueWin32
+                    | ExternalMemoryHandleType::OpaqueWin32Kmt => {
+                        // VUID-VkMemoryAllocateInfo-allocationSize-01742
+                        // Can't validate, must be ensured by user
 
-                    match handle_type {
-                        ExternalMemoryHandleType::OpaqueWin32
-                        | ExternalMemoryHandleType::OpaqueWin32Kmt => {
-                            // VUID-VkMemoryAllocateInfo-allocationSize-01742
-                            // Can't validate, must be ensured by user
+                        // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+                        // Can't validate, must be ensured by user
 
-                            // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
-                            // Can't validate, must be ensured by user
-
-                            // VUID-VkMemoryDedicatedAllocateInfo-image-01878
-                            // Can't validate, must be ensured by user
-                        }
-                        _ => {
-                            return Err(Box::new(ValidationError {
-                                context: "handle_type".into(),
-                                problem: "is not `ExternalMemoryHandleType::OpaqueWin32` or \
-                                    `ExternalMemoryHandleType::OpaqueWin32Kmt`"
-                                    .into(),
-                                vuids: &["VUID-VkImportMemoryWin32HandleInfoKHR-handleType-00660"],
-                                ..Default::default()
-                            }));
-                        }
+                        // VUID-VkMemoryDedicatedAllocateInfo-image-01878
+                        // Can't validate, must be ensured by user
                     }
-
-                    // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
-                    // Can't validate, must be ensured by user
+                    _ => {
+                        return Err(Box::new(ValidationError {
+                            context: "handle_type".into(),
+                            problem: "is not `ExternalMemoryHandleType::OpaqueWin32` or \
+                                `ExternalMemoryHandleType::OpaqueWin32Kmt`"
+                                .into(),
+                            vuids: &["VUID-VkImportMemoryWin32HandleInfoKHR-handleType-00660"],
+                            ..Default::default()
+                        }));
+                    }
                 }
+
+                // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
+                // Can't validate, must be ensured by user
             }
         }
 

@@ -19,7 +19,6 @@ use crate::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
-#[cfg(unix)]
 use std::fs::File;
 use std::{
     future::Future,
@@ -58,11 +57,11 @@ pub struct Fence {
     handle: ash::vk::Fence,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
-    must_put_in_pool: bool,
 
     flags: FenceCreateFlags,
     export_handle_types: ExternalFenceHandleTypes,
 
+    must_put_in_pool: bool,
     state: Mutex<FenceState>,
 }
 
@@ -137,11 +136,11 @@ impl Fence {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
-            must_put_in_pool: false,
 
             flags,
             export_handle_types,
 
+            must_put_in_pool: false,
             state: Mutex::new(FenceState {
                 is_signaled: flags.intersects(FenceCreateFlags::SIGNALED),
                 ..Default::default()
@@ -172,11 +171,11 @@ impl Fence {
                     handle,
                     device: InstanceOwnedDebugWrapper(device),
                     id: Self::next_id(),
-                    must_put_in_pool: true,
 
                     flags: FenceCreateFlags::empty(),
                     export_handle_types: ExternalFenceHandleTypes::empty(),
 
+                    must_put_in_pool: true,
                     state: Mutex::new(Default::default()),
                 }
             }
@@ -214,11 +213,11 @@ impl Fence {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             id: Self::next_id(),
-            must_put_in_pool: false,
 
             flags,
             export_handle_types,
 
+            must_put_in_pool: false,
             state: Mutex::new(FenceState {
                 is_signaled: flags.intersects(FenceCreateFlags::SIGNALED),
                 ..Default::default()
@@ -230,6 +229,12 @@ impl Fence {
     #[inline]
     pub fn flags(&self) -> FenceCreateFlags {
         self.flags
+    }
+
+    /// Returns the handle types that can be exported from the fence.
+    #[inline]
+    pub fn export_handle_types(&self) -> ExternalFenceHandleTypes {
+        self.export_handle_types
     }
 
     /// Returns true if the fence is signaled.
@@ -547,7 +552,6 @@ impl Fence {
     ///
     /// The [`khr_external_fence_fd`](crate::device::DeviceExtensions::khr_external_fence_fd)
     /// extension must be enabled on the device.
-    #[cfg(unix)]
     #[inline]
     pub fn export_fd(
         &self,
@@ -559,7 +563,6 @@ impl Fence {
         unsafe { Ok(self.export_fd_unchecked_locked(handle_type, &mut state)?) }
     }
 
-    #[cfg(unix)]
     fn validate_export_fd(
         &self,
         handle_type: ExternalFenceHandleType,
@@ -654,7 +657,6 @@ impl Fence {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn export_fd_unchecked(
@@ -665,14 +667,11 @@ impl Fence {
         self.export_fd_unchecked_locked(handle_type, &mut state)
     }
 
-    #[cfg(unix)]
     unsafe fn export_fd_unchecked_locked(
         &self,
         handle_type: ExternalFenceHandleType,
         state: &mut FenceState,
     ) -> Result<File, VulkanError> {
-        use std::os::unix::io::FromRawFd;
-
         let info_vk = ash::vk::FenceGetFdInfoKHR {
             fence: self.handle,
             handle_type: handle_type.into(),
@@ -691,14 +690,25 @@ impl Fence {
 
         state.export(handle_type);
 
-        Ok(File::from_raw_fd(output.assume_init()))
+        #[cfg(unix)]
+        let file = {
+            use std::os::unix::io::FromRawFd;
+            File::from_raw_fd(output.assume_init())
+        };
+
+        #[cfg(not(unix))]
+        let file = {
+            let _ = output;
+            unreachable!("`khr_external_fence_fd` was somehow enabled on a non-Unix system");
+        };
+
+        Ok(file)
     }
 
     /// Exports the fence into a Win32 handle.
     ///
     /// The [`khr_external_fence_win32`](crate::device::DeviceExtensions::khr_external_fence_win32)
     /// extension must be enabled on the device.
-    #[cfg(windows)]
     #[inline]
     pub fn export_win32_handle(
         &self,
@@ -710,7 +720,6 @@ impl Fence {
         unsafe { Ok(self.export_win32_handle_unchecked_locked(handle_type, &mut state)?) }
     }
 
-    #[cfg(windows)]
     fn validate_export_win32_handle(
         &self,
         handle_type: ExternalFenceHandleType,
@@ -817,7 +826,6 @@ impl Fence {
         Ok(())
     }
 
-    #[cfg(windows)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn export_win32_handle_unchecked(
@@ -828,7 +836,6 @@ impl Fence {
         self.export_win32_handle_unchecked_locked(handle_type, &mut state)
     }
 
-    #[cfg(windows)]
     unsafe fn export_win32_handle_unchecked_locked(
         &self,
         handle_type: ExternalFenceHandleType,
@@ -865,7 +872,6 @@ impl Fence {
     /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`,
     ///   then `file` must represent a fence that was exported from Vulkan or a compatible API,
     ///   with a driver and device UUID equal to those of the device that owns `self`.
-    #[cfg(unix)]
     #[inline]
     pub unsafe fn import_fd(
         &self,
@@ -877,7 +883,6 @@ impl Fence {
         Ok(self.import_fd_unchecked_locked(import_fence_fd_info, &mut state)?)
     }
 
-    #[cfg(unix)]
     fn validate_import_fd(
         &self,
         import_fence_fd_info: &ImportFenceFdInfo,
@@ -907,7 +912,6 @@ impl Fence {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn import_fd_unchecked(
@@ -918,14 +922,11 @@ impl Fence {
         self.import_fd_unchecked_locked(import_fence_fd_info, &mut state)
     }
 
-    #[cfg(unix)]
     unsafe fn import_fd_unchecked_locked(
         &self,
         import_fence_fd_info: ImportFenceFdInfo,
         state: &mut FenceState,
     ) -> Result<(), VulkanError> {
-        use std::os::unix::io::IntoRawFd;
-
         let ImportFenceFdInfo {
             flags,
             handle_type,
@@ -933,11 +934,23 @@ impl Fence {
             _ne: _,
         } = import_fence_fd_info;
 
+        #[cfg(unix)]
+        let fd = {
+            use std::os::fd::IntoRawFd;
+            file.map_or(-1, |file| file.into_raw_fd())
+        };
+
+        #[cfg(not(unix))]
+        let fd = {
+            let _ = file;
+            unreachable!("`khr_external_fence_fd` was somehow enabled on a non-Unix system");
+        };
+
         let info_vk = ash::vk::ImportFenceFdInfoKHR {
             fence: self.handle,
             flags: flags.into(),
             handle_type: handle_type.into(),
-            fd: file.map_or(-1, |file| file.into_raw_fd()),
+            fd,
             ..Default::default()
         };
 
@@ -961,7 +974,6 @@ impl Fence {
     /// - In `import_fence_win32_handle_info`, `handle` must represent a fence that was exported
     ///   from Vulkan or a compatible API, with a driver and device UUID equal to those of the
     ///   device that owns `self`.
-    #[cfg(windows)]
     #[inline]
     pub unsafe fn import_win32_handle(
         &self,
@@ -973,7 +985,6 @@ impl Fence {
         Ok(self.import_win32_handle_unchecked_locked(import_fence_win32_handle_info, &mut state)?)
     }
 
-    #[cfg(windows)]
     fn validate_import_win32_handle(
         &self,
         import_fence_win32_handle_info: &ImportFenceWin32HandleInfo,
@@ -996,10 +1007,13 @@ impl Fence {
             }));
         }
 
+        import_fence_win32_handle_info
+            .validate(&self.device)
+            .map_err(|err| err.add_context("import_fence_win32_handle_info"))?;
+
         Ok(())
     }
 
-    #[cfg(windows)]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn import_win32_handle_unchecked(
@@ -1010,7 +1024,6 @@ impl Fence {
         self.import_win32_handle_unchecked_locked(import_fence_win32_handle_info, &mut state)
     }
 
-    #[cfg(windows)]
     unsafe fn import_win32_handle_unchecked_locked(
         &self,
         import_fence_win32_handle_info: ImportFenceWin32HandleInfo,
@@ -1283,7 +1296,6 @@ vulkan_bitflags! {
     TEMPORARY = TEMPORARY,
 }
 
-#[cfg(unix)]
 #[derive(Debug)]
 pub struct ImportFenceFdInfo {
     /// Additional parameters for the import operation.
@@ -1311,7 +1323,6 @@ pub struct ImportFenceFdInfo {
     pub _ne: crate::NonExhaustive,
 }
 
-#[cfg(unix)]
 impl ImportFenceFdInfo {
     /// Returns an `ImportFenceFdInfo` with the specified `handle_type`.
     #[inline]
@@ -1373,7 +1384,6 @@ impl ImportFenceFdInfo {
     }
 }
 
-#[cfg(windows)]
 #[derive(Debug)]
 pub struct ImportFenceWin32HandleInfo {
     /// Additional parameters for the import operation.
@@ -1396,7 +1406,6 @@ pub struct ImportFenceWin32HandleInfo {
     pub _ne: crate::NonExhaustive,
 }
 
-#[cfg(windows)]
 impl ImportFenceWin32HandleInfo {
     /// Returns an `ImportFenceWin32HandleInfo` with the specified `handle_type`.
     #[inline]
