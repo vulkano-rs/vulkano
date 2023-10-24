@@ -321,8 +321,9 @@ mod tests {
     use crate::{
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferCopy,
-            CommandBufferUsage, CopyBufferInfoTyped, PrimaryCommandBufferAbstract,
+            allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
+            AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
+            PrimaryCommandBufferAbstract,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,
@@ -447,7 +448,13 @@ mod tests {
     fn secondary_nonconcurrent_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let cb_allocator = StandardCommandBufferAllocator::new(
+            device,
+            StandardCommandBufferAllocatorCreateInfo {
+                secondary_buffer_count: 1,
+                ..Default::default()
+            },
+        );
 
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
@@ -605,8 +612,13 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator =
-                StandardCommandBufferAllocator::new(device.clone(), Default::default());
+            let cb_allocator = StandardCommandBufferAllocator::new(
+                device.clone(),
+                StandardCommandBufferAllocatorCreateInfo {
+                    secondary_buffer_count: 1,
+                    ..Default::default()
+                },
+            );
             let cbb = AutoCommandBufferBuilder::primary(
                 &cb_allocator,
                 queue.queue_family_index(),
