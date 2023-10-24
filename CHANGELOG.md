@@ -124,6 +124,9 @@ Changes to memory allocation:
 - `GenericMemoryAllocatorCreateInfo::block_sizes` now represents a block size per memory type, instead of per memory heap, to allow for a more fine-grained configuration.
 - Merged `GenericMemoryAllocator::new_unchecked` into `GenericMemoryAllocator::new`.
 
+Changes to descriptor set allocation:
+- `StandardDescriptorSetAllocator` now takes a `StandardDescriptorSetAllocatorCreateInfo` parameter.
+
 Changes to synchronization primitives:
 - `Event::signaled` is renamed to `is_signaled`, to match the method on `Fence`.
 - The `set_raw` and `reset_raw` methods of `Event` are removed.
