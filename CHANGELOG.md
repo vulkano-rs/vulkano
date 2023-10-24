@@ -9,6 +9,16 @@
 
 ### Public dependency updates
 
+### Breaking changes
+
+### Additions
+
+### Bugs fixed
+
+# Version 0.34.0 (2023-10-24)
+
+### Public dependency updates
+
 - [ash](https://crates.io/crates/ash) 0.37.3 (Vulkan 1.3.251)
 - [libloading](https://crates.io/crates/libloading) 0.8
 
