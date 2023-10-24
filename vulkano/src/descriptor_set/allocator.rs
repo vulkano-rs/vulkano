@@ -465,7 +465,7 @@ pub struct StandardDescriptorSetAllocatorCreateInfo {
     /// hand would mean that the pool would have to be reset more often, or that more pools would
     /// need to be created, depending on the lifetime of the descriptor sets.
     ///
-    /// The default value is `256`.
+    /// The default value is `32`.
     pub set_count: usize,
 
     /// Whether to allocate descriptor pools with the
@@ -481,7 +481,7 @@ impl Default for StandardDescriptorSetAllocatorCreateInfo {
     #[inline]
     fn default() -> Self {
         StandardDescriptorSetAllocatorCreateInfo {
-            set_count: 256,
+            set_count: 32,
             update_after_bind: false,
             _ne: crate::NonExhaustive(()),
         }

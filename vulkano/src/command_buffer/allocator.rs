@@ -539,12 +539,12 @@ pub struct StandardCommandBufferAllocatorCreateInfo {
     /// would mean that the pool would have to be reset more often, or that more pools would need
     /// to be created, depending on the lifetime of the command buffers.
     ///
-    /// The default value is `256`.
+    /// The default value is `32`.
     pub primary_buffer_count: usize,
 
     /// Same as `primary_buffer_count` except for secondary command buffers.
     ///
-    /// The default value is `256`.
+    /// The default value is `0`.
     pub secondary_buffer_count: usize,
 
     pub _ne: crate::NonExhaustive,
@@ -554,8 +554,8 @@ impl Default for StandardCommandBufferAllocatorCreateInfo {
     #[inline]
     fn default() -> Self {
         StandardCommandBufferAllocatorCreateInfo {
-            primary_buffer_count: 256,
-            secondary_buffer_count: 256,
+            primary_buffer_count: 32,
+            secondary_buffer_count: 0,
             _ne: crate::NonExhaustive(()),
         }
     }
