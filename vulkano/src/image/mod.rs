@@ -148,14 +148,14 @@ impl Image {
         allocator: Arc<dyn MemoryAllocator>,
         create_info: ImageCreateInfo,
         allocation_info: AllocationCreateInfo,
-    ) -> Result<Arc<Self>, Validated<ImageAllocateError>> {
+    ) -> Result<Arc<Self>, Validated<AllocateImageError>> {
         // TODO: adjust the code below to make this safe
         assert!(!create_info.flags.intersects(ImageCreateFlags::DISJOINT));
 
         let allocation_type = create_info.tiling.into();
         let raw_image =
             RawImage::new(allocator.device().clone(), create_info).map_err(|err| match err {
-                Validated::Error(err) => Validated::Error(ImageAllocateError::CreateImage(err)),
+                Validated::Error(err) => Validated::Error(AllocateImageError::CreateImage(err)),
                 Validated::ValidationError(err) => err.into(),
             })?;
         let requirements = raw_image.memory_requirements()[0];
@@ -167,11 +167,11 @@ impl Image {
                 allocation_info,
                 Some(DedicatedAllocation::Image(&raw_image)),
             )
-            .map_err(ImageAllocateError::AllocateMemory)?;
+            .map_err(AllocateImageError::AllocateMemory)?;
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
         let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
-            err.map(ImageAllocateError::BindMemory)
+            err.map(AllocateImageError::BindMemory)
                 .map_validation(|err| err.add_context("RawImage::bind_memory"))
         })?;
 
@@ -572,13 +572,13 @@ impl Hash for Image {
 
 /// Error that can happen when allocating a new image.
 #[derive(Clone, Debug)]
-pub enum ImageAllocateError {
+pub enum AllocateImageError {
     CreateImage(VulkanError),
     AllocateMemory(MemoryAllocatorError),
     BindMemory(VulkanError),
 }
 
-impl Error for ImageAllocateError {
+impl Error for AllocateImageError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::CreateImage(err) => Some(err),
@@ -588,7 +588,7 @@ impl Error for ImageAllocateError {
     }
 }
 
-impl Display for ImageAllocateError {
+impl Display for AllocateImageError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CreateImage(_) => write!(f, "creating the image failed"),
@@ -598,8 +598,8 @@ impl Display for ImageAllocateError {
     }
 }
 
-impl From<ImageAllocateError> for Validated<ImageAllocateError> {
-    fn from(err: ImageAllocateError) -> Self {
+impl From<AllocateImageError> for Validated<AllocateImageError> {
+    fn from(err: AllocateImageError) -> Self {
         Self::Error(err)
     }
 }
