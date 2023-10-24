@@ -235,7 +235,8 @@ fn main() {
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
-    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator =
+        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
     // Prepare test array `[0, 1, 2, 3....]`.
     let data_buffer = Buffer::from_iter(

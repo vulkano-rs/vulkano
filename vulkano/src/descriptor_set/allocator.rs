@@ -35,8 +35,6 @@ use thread_local::ThreadLocal;
 
 const MAX_POOLS: usize = 32;
 
-const MAX_SETS: usize = 256;
-
 /// Types that manage the memory of descriptor sets.
 ///
 /// # Safety
@@ -96,6 +94,7 @@ pub trait DescriptorSetAlloc: Send + Sync {
 pub struct StandardDescriptorSetAllocator {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     pools: ThreadLocal<UnsafeCell<SortedMap<NonZeroU64, Entry>>>,
+    create_info: StandardDescriptorSetAllocatorCreateInfo,
 }
 
 #[derive(Debug)]
@@ -112,10 +111,14 @@ unsafe impl Send for Entry {}
 impl StandardDescriptorSetAllocator {
     /// Creates a new `StandardDescriptorSetAllocator`.
     #[inline]
-    pub fn new(device: Arc<Device>) -> StandardDescriptorSetAllocator {
+    pub fn new(
+        device: Arc<Device>,
+        create_info: StandardDescriptorSetAllocatorCreateInfo,
+    ) -> StandardDescriptorSetAllocator {
         StandardDescriptorSetAllocator {
             device: InstanceOwnedDebugWrapper(device),
             pools: ThreadLocal::new(),
+            create_info,
         }
     }
 
@@ -154,15 +157,15 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
 
         let entry = unsafe { &mut *pools.get() }.get_or_try_insert(layout.id(), || {
             if max_count == 0 {
-                FixedEntry::new(layout.clone()).map(Entry::Fixed)
+                FixedEntry::new(layout.clone(), &self.create_info).map(Entry::Fixed)
             } else {
-                VariableEntry::new(layout.clone()).map(Entry::Variable)
+                VariableEntry::new(layout.clone(), &self.create_info).map(Entry::Variable)
             }
         })?;
 
         match entry {
             Entry::Fixed(entry) => entry.allocate(),
-            Entry::Variable(entry) => entry.allocate(variable_descriptor_count),
+            Entry::Variable(entry) => entry.allocate(variable_descriptor_count, &self.create_info),
         }
     }
 }
@@ -199,10 +202,13 @@ struct FixedEntry {
 }
 
 impl FixedEntry {
-    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, Validated<VulkanError>> {
+    fn new(
+        layout: Arc<DescriptorSetLayout>,
+        create_info: &StandardDescriptorSetAllocatorCreateInfo,
+    ) -> Result<Self, Validated<VulkanError>> {
         Ok(FixedEntry {
-            pool: FixedPool::new(&layout, MAX_SETS)?,
-            set_count: MAX_SETS,
+            pool: FixedPool::new(&layout, create_info.set_count)?,
+            set_count: create_info.set_count,
             layout,
         })
     }
@@ -304,11 +310,14 @@ struct VariableEntry {
 }
 
 impl VariableEntry {
-    fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, Validated<VulkanError>> {
+    fn new(
+        layout: Arc<DescriptorSetLayout>,
+        create_info: &StandardDescriptorSetAllocatorCreateInfo,
+    ) -> Result<Self, Validated<VulkanError>> {
         let reserve = Arc::new(ArrayQueue::new(MAX_POOLS));
 
         Ok(VariableEntry {
-            pool: VariablePool::new(&layout, reserve.clone())?,
+            pool: VariablePool::new(&layout, reserve.clone(), create_info.set_count)?,
             reserve,
             layout,
             allocations: 0,
@@ -318,15 +327,16 @@ impl VariableEntry {
     fn allocate(
         &mut self,
         variable_descriptor_count: u32,
+        create_info: &StandardDescriptorSetAllocatorCreateInfo,
     ) -> Result<StandardDescriptorSetAlloc, Validated<VulkanError>> {
-        if self.allocations >= MAX_SETS {
+        if self.allocations >= create_info.set_count {
             self.pool = if let Some(inner) = self.reserve.pop() {
                 Arc::new(VariablePool {
                     inner: ManuallyDrop::new(inner),
                     reserve: self.reserve.clone(),
                 })
             } else {
-                VariablePool::new(&self.layout, self.reserve.clone())?
+                VariablePool::new(&self.layout, self.reserve.clone(), create_info.set_count)?
             };
             self.allocations = 0;
         }
@@ -380,17 +390,18 @@ impl VariablePool {
     fn new(
         layout: &Arc<DescriptorSetLayout>,
         reserve: Arc<ArrayQueue<DescriptorPool>>,
+        set_count: usize,
     ) -> Result<Arc<Self>, VulkanError> {
         DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {
-                max_sets: MAX_SETS as u32,
+                max_sets: set_count as u32,
                 pool_sizes: layout
                     .descriptor_counts()
                     .iter()
                     .map(|(&ty, &count)| {
                         assert!(ty != DescriptorType::InlineUniformBlock);
-                        (ty, count * MAX_SETS as u32)
+                        (ty, count * set_count as u32)
                     })
                     .collect(),
                 ..Default::default()
@@ -420,6 +431,40 @@ impl Drop for VariablePool {
         // happen is if something is resource hogging, forcing new pools to be created such that
         // the number exceeds `MAX_POOLS`, and then drops them all at once.
         let _ = self.reserve.push(inner);
+    }
+}
+
+/// Parameters to create a new `StandardDescriptorSetAllocator`.
+#[derive(Clone, Debug)]
+pub struct StandardDescriptorSetAllocatorCreateInfo {
+    /// How many descriptor sets should be allocated per pool.
+    ///
+    /// Each time a thread allocates using some descriptor set layout, and either no pools were
+    /// initialized yet or all pools are full, a new pool is allocated for that thread and
+    /// descriptor set layout combination. This option tells the allocator how many descriptor sets
+    /// should be allocated for that pool. For fixed-size descriptor set layouts, it always
+    /// allocates exactly this many descriptor sets at once for the pool, as that is more
+    /// performant than allocating them one-by-one. For descriptor set layouts with a variable
+    /// descriptor count, it allocates a pool capable of holding exactly this many descriptor sets,
+    /// but doesn't allocate any descriptor sets since the variable count isn't known. What this
+    /// means is that you should make sure that this isn't too large, so that you don't end up
+    /// wasting too much memory. You also don't want this to be too low, because that on the other
+    /// hand would mean that the pool would have to be reset more often, or that more pools would
+    /// need to be created, depending on the lifetime of the descriptor sets.
+    ///
+    /// The default value is `256`.
+    pub set_count: usize,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for StandardDescriptorSetAllocatorCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        StandardDescriptorSetAllocatorCreateInfo {
+            set_count: 256,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }
 
@@ -554,7 +599,7 @@ mod tests {
         )
         .unwrap();
 
-        let allocator = StandardDescriptorSetAllocator::new(device);
+        let allocator = StandardDescriptorSetAllocator::new(device, Default::default());
 
         let pool1 =
             if let AllocParent::Fixed(pool) = &allocator.allocate(&layout, 0).unwrap().parent {

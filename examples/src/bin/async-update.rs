@@ -483,7 +483,8 @@ fn main() {
     };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
-    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let descriptor_set_allocator =
+        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
     // A byproduct of always using the same set of uniform buffers is that we can also create one
     // descriptor set for each, reusing them in the same way as the buffers.

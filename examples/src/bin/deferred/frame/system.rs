@@ -203,6 +203,7 @@ impl FrameSystem {
 
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             gfx_queue.device().clone(),
+            Default::default(),
         ));
 
         // Initialize the three lighting systems. Note that we need to pass to them the subpass
