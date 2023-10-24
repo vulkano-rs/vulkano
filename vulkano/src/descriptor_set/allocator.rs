@@ -20,7 +20,8 @@ use self::sorted_map::SortedMap;
 use super::{
     layout::DescriptorSetLayout,
     pool::{
-        DescriptorPool, DescriptorPoolAlloc, DescriptorPoolCreateInfo, DescriptorSetAllocateInfo,
+        DescriptorPool, DescriptorPoolAlloc, DescriptorPoolCreateFlags, DescriptorPoolCreateInfo,
+        DescriptorSetAllocateInfo,
     },
 };
 use crate::{
@@ -164,7 +165,7 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
         })?;
 
         match entry {
-            Entry::Fixed(entry) => entry.allocate(),
+            Entry::Fixed(entry) => entry.allocate(&self.create_info),
             Entry::Variable(entry) => entry.allocate(variable_descriptor_count, &self.create_info),
         }
     }
@@ -207,18 +208,21 @@ impl FixedEntry {
         create_info: &StandardDescriptorSetAllocatorCreateInfo,
     ) -> Result<Self, Validated<VulkanError>> {
         Ok(FixedEntry {
-            pool: FixedPool::new(&layout, create_info.set_count)?,
+            pool: FixedPool::new(&layout, create_info)?,
             set_count: create_info.set_count,
             layout,
         })
     }
 
-    fn allocate(&mut self) -> Result<StandardDescriptorSetAlloc, Validated<VulkanError>> {
+    fn allocate(
+        &mut self,
+        create_info: &StandardDescriptorSetAllocatorCreateInfo,
+    ) -> Result<StandardDescriptorSetAlloc, Validated<VulkanError>> {
         let inner = if let Some(inner) = self.pool.reserve.pop() {
             inner
         } else {
             self.set_count *= 2;
-            self.pool = FixedPool::new(&self.layout, self.set_count)?;
+            self.pool = FixedPool::new(&self.layout, create_info)?;
 
             self.pool.reserve.pop().unwrap()
         };
@@ -243,18 +247,22 @@ struct FixedPool {
 impl FixedPool {
     fn new(
         layout: &Arc<DescriptorSetLayout>,
-        set_count: usize,
+        create_info: &StandardDescriptorSetAllocatorCreateInfo,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         let inner = DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {
-                max_sets: set_count as u32,
+                flags: create_info
+                    .update_after_bind
+                    .then_some(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
+                    .unwrap_or_default(),
+                max_sets: create_info.set_count as u32,
                 pool_sizes: layout
                     .descriptor_counts()
                     .iter()
                     .map(|(&ty, &count)| {
                         assert!(ty != DescriptorType::InlineUniformBlock);
-                        (ty, count * set_count as u32)
+                        (ty, count * create_info.set_count as u32)
                     })
                     .collect(),
                 ..Default::default()
@@ -262,7 +270,8 @@ impl FixedPool {
         )
         .map_err(Validated::unwrap)?;
 
-        let allocate_infos = (0..set_count).map(|_| DescriptorSetAllocateInfo::new(layout.clone()));
+        let allocate_infos =
+            (0..create_info.set_count).map(|_| DescriptorSetAllocateInfo::new(layout.clone()));
 
         let allocs = unsafe {
             inner
@@ -287,7 +296,7 @@ impl FixedPool {
                 })?
         };
 
-        let reserve = ArrayQueue::new(set_count);
+        let reserve = ArrayQueue::new(create_info.set_count);
         for alloc in allocs {
             let _ = reserve.push(alloc);
         }
@@ -317,7 +326,7 @@ impl VariableEntry {
         let reserve = Arc::new(ArrayQueue::new(MAX_POOLS));
 
         Ok(VariableEntry {
-            pool: VariablePool::new(&layout, reserve.clone(), create_info.set_count)?,
+            pool: VariablePool::new(&layout, reserve.clone(), create_info)?,
             reserve,
             layout,
             allocations: 0,
@@ -336,7 +345,7 @@ impl VariableEntry {
                     reserve: self.reserve.clone(),
                 })
             } else {
-                VariablePool::new(&self.layout, self.reserve.clone(), create_info.set_count)?
+                VariablePool::new(&self.layout, self.reserve.clone(), create_info)?
             };
             self.allocations = 0;
         }
@@ -390,18 +399,22 @@ impl VariablePool {
     fn new(
         layout: &Arc<DescriptorSetLayout>,
         reserve: Arc<ArrayQueue<DescriptorPool>>,
-        set_count: usize,
+        create_info: &StandardDescriptorSetAllocatorCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
         DescriptorPool::new(
             layout.device().clone(),
             DescriptorPoolCreateInfo {
-                max_sets: set_count as u32,
+                flags: create_info
+                    .update_after_bind
+                    .then_some(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
+                    .unwrap_or_default(),
+                max_sets: create_info.set_count as u32,
                 pool_sizes: layout
                     .descriptor_counts()
                     .iter()
                     .map(|(&ty, &count)| {
                         assert!(ty != DescriptorType::InlineUniformBlock);
-                        (ty, count * set_count as u32)
+                        (ty, count * create_info.set_count as u32)
                     })
                     .collect(),
                 ..Default::default()
@@ -455,6 +468,12 @@ pub struct StandardDescriptorSetAllocatorCreateInfo {
     /// The default value is `256`.
     pub set_count: usize,
 
+    /// Whether to allocate descriptor pools with the
+    /// [`DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`] flag set.
+    ///
+    /// The default value is `false`.
+    pub update_after_bind: bool,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -463,6 +482,7 @@ impl Default for StandardDescriptorSetAllocatorCreateInfo {
     fn default() -> Self {
         StandardDescriptorSetAllocatorCreateInfo {
             set_count: 256,
+            update_after_bind: false,
             _ne: crate::NonExhaustive(()),
         }
     }
