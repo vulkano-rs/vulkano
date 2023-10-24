@@ -773,7 +773,8 @@ mod tests {
             )
             .unwrap();
 
-            let ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
+            let ds_allocator =
+                StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
             let set = PersistentDescriptorSet::new(
                 &ds_allocator,

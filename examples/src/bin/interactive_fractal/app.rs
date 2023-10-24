@@ -70,6 +70,7 @@ impl FractalApp {
         ));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             gfx_queue.device().clone(),
+            Default::default(),
         ));
 
         FractalApp {

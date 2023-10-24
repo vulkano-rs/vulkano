@@ -117,6 +117,7 @@ impl Default for App {
         ));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             context.device().clone(),
+            Default::default(),
         ));
 
         App {

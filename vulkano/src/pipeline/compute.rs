@@ -549,7 +549,7 @@ mod tests {
         )
         .unwrap();
 
-        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
         let set = PersistentDescriptorSet::new(
             &ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
@@ -680,7 +680,7 @@ mod tests {
         )
         .unwrap();
 
-        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
         let set = PersistentDescriptorSet::new(
             &ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
