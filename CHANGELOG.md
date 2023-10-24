@@ -127,6 +127,9 @@ Changes to memory allocation:
 Changes to descriptor set allocation:
 - `StandardDescriptorSetAllocator` now takes a `StandardDescriptorSetAllocatorCreateInfo` parameter.
 
+Changes to command buffer allocation:
+- `StandardCommandBufferAllocatorCreateInfo::secondary_buffer_count` now defaults to 0.
+
 Changes to synchronization primitives:
 - `Event::signaled` is renamed to `is_signaled`, to match the method on `Fence`.
 - The `set_raw` and `reset_raw` methods of `Event` are removed.
