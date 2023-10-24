@@ -244,7 +244,7 @@ impl Buffer {
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         data: T,
-    ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
+    ) -> Result<Subbuffer<T>, Validated<AllocateBufferError>>
     where
         T: BufferContents,
     {
@@ -275,7 +275,7 @@ impl Buffer {
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         iter: I,
-    ) -> Result<Subbuffer<[T]>, Validated<BufferAllocateError>>
+    ) -> Result<Subbuffer<[T]>, Validated<AllocateBufferError>>
     where
         T: BufferContents,
         I: IntoIterator<Item = T>,
@@ -310,7 +310,7 @@ impl Buffer {
         allocator: Arc<dyn MemoryAllocator>,
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
-    ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
+    ) -> Result<Subbuffer<T>, Validated<AllocateBufferError>>
     where
         T: BufferContents,
     {
@@ -337,7 +337,7 @@ impl Buffer {
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
-    ) -> Result<Subbuffer<[T]>, Validated<BufferAllocateError>>
+    ) -> Result<Subbuffer<[T]>, Validated<AllocateBufferError>>
     where
         T: BufferContents,
     {
@@ -356,7 +356,7 @@ impl Buffer {
         create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         len: DeviceSize,
-    ) -> Result<Subbuffer<T>, Validated<BufferAllocateError>>
+    ) -> Result<Subbuffer<T>, Validated<AllocateBufferError>>
     where
         T: BufferContents + ?Sized,
     {
@@ -383,7 +383,7 @@ impl Buffer {
         mut create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
-    ) -> Result<Arc<Self>, Validated<BufferAllocateError>> {
+    ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
         assert!(layout.alignment().as_devicesize() <= 64);
         // TODO: Enable once sparse binding materializes
         // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
@@ -398,7 +398,7 @@ impl Buffer {
 
         let raw_buffer =
             RawBuffer::new(allocator.device().clone(), create_info).map_err(|err| match err {
-                Validated::Error(err) => Validated::Error(BufferAllocateError::CreateBuffer(err)),
+                Validated::Error(err) => Validated::Error(AllocateBufferError::CreateBuffer(err)),
                 Validated::ValidationError(err) => err.into(),
             })?;
         let mut requirements = *raw_buffer.memory_requirements();
@@ -411,11 +411,11 @@ impl Buffer {
                 allocation_info,
                 Some(DedicatedAllocation::Buffer(&raw_buffer)),
             )
-            .map_err(BufferAllocateError::AllocateMemory)?;
+            .map_err(AllocateBufferError::AllocateMemory)?;
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
         let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
-            err.map(BufferAllocateError::BindMemory)
+            err.map(AllocateBufferError::BindMemory)
                 .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
         })?;
 
@@ -569,13 +569,13 @@ impl Hash for Buffer {
 
 /// Error that can happen when allocating a new buffer.
 #[derive(Clone, Debug)]
-pub enum BufferAllocateError {
+pub enum AllocateBufferError {
     CreateBuffer(VulkanError),
     AllocateMemory(MemoryAllocatorError),
     BindMemory(VulkanError),
 }
 
-impl Error for BufferAllocateError {
+impl Error for AllocateBufferError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::CreateBuffer(err) => Some(err),
@@ -585,7 +585,7 @@ impl Error for BufferAllocateError {
     }
 }
 
-impl Display for BufferAllocateError {
+impl Display for AllocateBufferError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CreateBuffer(_) => write!(f, "creating the buffer failed"),
@@ -595,8 +595,8 @@ impl Display for BufferAllocateError {
     }
 }
 
-impl From<BufferAllocateError> for Validated<BufferAllocateError> {
-    fn from(err: BufferAllocateError) -> Self {
+impl From<AllocateBufferError> for Validated<AllocateBufferError> {
+    fn from(err: AllocateBufferError) -> Self {
         Self::Error(err)
     }
 }
