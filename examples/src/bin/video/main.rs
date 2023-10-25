@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use vulkano::{
+    command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
     device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo, QueueFlags},
     image::ImageUsage,
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
+    query::{QueryPool, QueryPoolCreateInfo, QueryType},
     video::{
         CodecCapabilities, VideoDecodeCapabilityFlags, VideoDecodeH264PictureLayoutFlags,
         VideoDecodeH264ProfileInfo, VideoFormatInfo, VideoProfileInfo, VideoProfileListInfo,
@@ -195,4 +197,19 @@ fn main() {
     // gst-launch-1.0 videotestsrc num-buffers=1 ! video/x-raw,format=I420,width=64,height=64 ! x264enc ! video/x-h264,profile=constrained-baseline,stream-format=byte-stream ! filesink location="64x64-I.h264"
     let h264_stream = include_bytes!("64x64-I.h264");
     println!("loaded {} bytes of h264 data", h264_stream.len());
+
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+
+    let command_buffer = command_buffer_allocator
+        .allocate(
+            video_queue_family_index,
+            vulkano::command_buffer::CommandBufferLevel::Primary,
+            1,
+        )
+        .unwrap();
+
+    let mut query_pool_create_info = QueryPoolCreateInfo::query_type(QueryType::ResultStatusOnly);
+    query_pool_create_info.query_count = 1;
+    let query_pool = QueryPool::new(Arc::clone(&device), query_pool_create_info).unwrap();
 }
