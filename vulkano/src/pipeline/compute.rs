@@ -465,7 +465,7 @@ mod tests {
             ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
             PipelineShaderStageCreateInfo,
         },
-        shader::{ShaderModule, ShaderModuleCreateInfo},
+        shader::{ShaderModule, ShaderModuleCreateInfo, ShaderStages},
         sync::{now, GpuFuture},
     };
     use std::sync::Arc;
@@ -596,6 +596,16 @@ mod tests {
         // to a buffer. The buffer content is then checked for the right value.
 
         let (device, queue) = gfx_dev_and_queue!(subgroup_size_control);
+
+        if !device
+            .physical_device()
+            .properties()
+            .required_subgroup_size_stages
+            .unwrap_or_default()
+            .intersects(ShaderStages::COMPUTE)
+        {
+            return;
+        }
 
         let cs = unsafe {
             /*
