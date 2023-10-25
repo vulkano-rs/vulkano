@@ -13,8 +13,12 @@ use crate::{
 };
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue, format::Format,
+    command_buffer::allocator::{
+        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
+    },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
+    device::Queue,
+    format::Format,
 };
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -113,7 +117,10 @@ impl Default for App {
         let context = VulkanoContext::new(VulkanoConfig::default());
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             context.device().clone(),
-            Default::default(),
+            StandardCommandBufferAllocatorCreateInfo {
+                secondary_buffer_count: 32,
+                ..Default::default()
+            },
         ));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             context.device().clone(),

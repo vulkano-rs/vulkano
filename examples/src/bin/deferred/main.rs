@@ -32,7 +32,9 @@ use crate::{
 use cgmath::{Matrix4, SquareMatrix, Vector3};
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
+    command_buffer::allocator::{
+        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
         QueueFlags,
@@ -161,7 +163,10 @@ fn main() {
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
         device.clone(),
-        Default::default(),
+        StandardCommandBufferAllocatorCreateInfo {
+            secondary_buffer_count: 32,
+            ..Default::default()
+        },
     ));
 
     // Here is the basic initialization for the deferred system.
