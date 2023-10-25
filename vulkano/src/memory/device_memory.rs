@@ -230,7 +230,7 @@ impl DeviceMemory {
                         );
                     };
 
-                    #[cfg_attr(not(unix), allow(unreachable))]
+                    #[cfg_attr(not(unix), allow(unreachable_code))]
                     {
                         let next = import_fd_info_vk.insert(ash::vk::ImportMemoryFdInfoKHR {
                             handle_type: handle_type.into(),
@@ -850,7 +850,7 @@ impl DeviceMemory {
             unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
         };
 
-        #[cfg_attr(not(unix), allow(unreachable))]
+        #[cfg_attr(not(unix), allow(unreachable_code))]
         {
             Ok(file)
         }

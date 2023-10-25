@@ -1028,7 +1028,7 @@ impl Device {
             unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
         };
 
-        #[cfg_attr(not(unix), allow(unreachable))]
+        #[cfg_attr(not(unix), allow(unreachable_code))]
         {
             let fns = self.fns();
             (fns.khr_external_memory_fd.get_memory_fd_properties_khr)(

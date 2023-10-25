@@ -702,7 +702,7 @@ impl Fence {
             unreachable!("`khr_external_fence_fd` was somehow enabled on a non-Unix system");
         };
 
-        #[cfg_attr(not(unix), allow(unreachable))]
+        #[cfg_attr(not(unix), allow(unreachable_code))]
         {
             Ok(file)
         }
@@ -949,7 +949,7 @@ impl Fence {
             unreachable!("`khr_external_fence_fd` was somehow enabled on a non-Unix system");
         };
 
-        #[cfg_attr(not(unix), allow(unreachable))]
+        #[cfg_attr(not(unix), allow(unreachable_code))]
         {
             let info_vk = ash::vk::ImportFenceFdInfoKHR {
                 fence: self.handle,
