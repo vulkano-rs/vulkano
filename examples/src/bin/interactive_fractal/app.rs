@@ -13,9 +13,14 @@ use crate::{
 use cgmath::Vector2;
 use std::{sync::Arc, time::Instant};
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator, device::Queue,
-    image::view::ImageView, memory::allocator::StandardMemoryAllocator, sync::GpuFuture,
+    command_buffer::allocator::{
+        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
+    },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
+    device::Queue,
+    image::view::ImageView,
+    memory::allocator::StandardMemoryAllocator,
+    sync::GpuFuture,
 };
 use vulkano_util::{renderer::VulkanoWindowRenderer, window::WindowDescriptor};
 use winit::{
@@ -66,7 +71,10 @@ impl FractalApp {
         ));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             gfx_queue.device().clone(),
-            Default::default(),
+            StandardCommandBufferAllocatorCreateInfo {
+                secondary_buffer_count: 32,
+                ..Default::default()
+            },
         ));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             gfx_queue.device().clone(),
