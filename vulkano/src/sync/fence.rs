@@ -702,7 +702,10 @@ impl Fence {
             unreachable!("`khr_external_fence_fd` was somehow enabled on a non-Unix system");
         };
 
-        Ok(file)
+        #[cfg_attr(not(unix), allow(unreachable))]
+        {
+            Ok(file)
+        }
     }
 
     /// Exports the fence into a Win32 handle.
@@ -946,22 +949,25 @@ impl Fence {
             unreachable!("`khr_external_fence_fd` was somehow enabled on a non-Unix system");
         };
 
-        let info_vk = ash::vk::ImportFenceFdInfoKHR {
-            fence: self.handle,
-            flags: flags.into(),
-            handle_type: handle_type.into(),
-            fd,
-            ..Default::default()
-        };
+        #[cfg_attr(not(unix), allow(unreachable))]
+        {
+            let info_vk = ash::vk::ImportFenceFdInfoKHR {
+                fence: self.handle,
+                flags: flags.into(),
+                handle_type: handle_type.into(),
+                fd,
+                ..Default::default()
+            };
 
-        let fns = self.device.fns();
-        (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.handle(), &info_vk)
-            .result()
-            .map_err(VulkanError::from)?;
+            let fns = self.device.fns();
+            (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.handle(), &info_vk)
+                .result()
+                .map_err(VulkanError::from)?;
 
-        state.import(handle_type, flags.intersects(FenceImportFlags::TEMPORARY));
+            state.import(handle_type, flags.intersects(FenceImportFlags::TEMPORARY));
 
-        Ok(())
+            Ok(())
+        }
     }
 
     /// Imports a fence from a Win32 handle.

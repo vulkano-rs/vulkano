@@ -1009,26 +1009,32 @@ impl Device {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[cfg_attr(not(unix), allow(unused_variables))]
     pub unsafe fn memory_fd_properties_unchecked(
         &self,
         handle_type: ExternalMemoryHandleType,
         file: File,
     ) -> Result<MemoryFdProperties, VulkanError> {
-        #[cfg(not(unix))]
-        unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
+        let mut memory_fd_properties = ash::vk::MemoryFdPropertiesKHR::default();
 
         #[cfg(unix)]
+        let fd = {
+            use std::os::fd::IntoRawFd;
+            file.into_raw_fd()
+        };
+
+        #[cfg(not(unix))]
+        let fd = {
+            let _ = file;
+            unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
+        };
+
+        #[cfg_attr(not(unix), allow(unreachable))]
         {
-            use std::os::unix::io::IntoRawFd;
-
-            let mut memory_fd_properties = ash::vk::MemoryFdPropertiesKHR::default();
-
             let fns = self.fns();
             (fns.khr_external_memory_fd.get_memory_fd_properties_khr)(
                 self.handle,
                 handle_type.into(),
-                file.into_raw_fd(),
+                fd,
                 &mut memory_fd_properties,
             )
             .result()

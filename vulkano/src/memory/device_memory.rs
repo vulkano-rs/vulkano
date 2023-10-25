@@ -230,14 +230,17 @@ impl DeviceMemory {
                         );
                     };
 
-                    let next = import_fd_info_vk.insert(ash::vk::ImportMemoryFdInfoKHR {
-                        handle_type: handle_type.into(),
-                        fd,
-                        ..Default::default()
-                    });
+                    #[cfg_attr(not(unix), allow(unreachable))]
+                    {
+                        let next = import_fd_info_vk.insert(ash::vk::ImportMemoryFdInfoKHR {
+                            handle_type: handle_type.into(),
+                            fd,
+                            ..Default::default()
+                        });
 
-                    next.p_next = allocate_info_vk.p_next;
-                    allocate_info_vk.p_next = next as *const _ as *const _;
+                        next.p_next = allocate_info_vk.p_next;
+                        allocate_info_vk.p_next = next as *const _ as *const _;
+                    }
                 }
                 MemoryImportInfo::Win32 {
                     handle_type,
@@ -847,7 +850,10 @@ impl DeviceMemory {
             unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
         };
 
-        Ok(file)
+        #[cfg_attr(not(unix), allow(unreachable))]
+        {
+            Ok(file)
+        }
     }
 }
 

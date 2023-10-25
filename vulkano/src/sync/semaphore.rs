@@ -341,7 +341,10 @@ impl Semaphore {
             unreachable!("`khr_external_semaphore_fd` was somehow enabled on a non-Unix system");
         };
 
-        Ok(file)
+        #[cfg_attr(not(unix), allow(unreachable))]
+        {
+            Ok(file)
+        }
     }
 
     /// Exports the semaphore into a Win32 handle.
@@ -753,25 +756,28 @@ impl Semaphore {
             unreachable!("`khr_external_semaphore_fd` was somehow enabled on a non-Unix system");
         };
 
-        let info_vk = ash::vk::ImportSemaphoreFdInfoKHR {
-            semaphore: self.handle,
-            flags: flags.into(),
-            handle_type: handle_type.into(),
-            fd,
-            ..Default::default()
-        };
+        #[cfg_attr(not(unix), allow(unreachable))]
+        {
+            let info_vk = ash::vk::ImportSemaphoreFdInfoKHR {
+                semaphore: self.handle,
+                flags: flags.into(),
+                handle_type: handle_type.into(),
+                fd,
+                ..Default::default()
+            };
 
-        let fns = self.device.fns();
-        (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
-            .result()
-            .map_err(VulkanError::from)?;
+            let fns = self.device.fns();
+            (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
+                .result()
+                .map_err(VulkanError::from)?;
 
-        state.import(
-            handle_type,
-            flags.intersects(SemaphoreImportFlags::TEMPORARY),
-        );
+            state.import(
+                handle_type,
+                flags.intersects(SemaphoreImportFlags::TEMPORARY),
+            );
 
-        Ok(())
+            Ok(())
+        }
     }
 
     /// Imports a semaphore from a Win32 handle.
