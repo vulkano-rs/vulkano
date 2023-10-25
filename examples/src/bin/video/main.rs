@@ -188,4 +188,11 @@ fn main() {
         VideoSessionParameters::new(Arc::clone(&device), video_session_parameters_create_info)
             .unwrap();
     println!("empty session parameters: {:#?}", empty_session_parameters);
+
+    // A 64x64 progressive byte-stream encoded I-frame.
+    // Encoded with the following GStreamer pipeline:
+    //
+    // gst-launch-1.0 videotestsrc num-buffers=1 ! video/x-raw,format=I420,width=64,height=64 ! x264enc ! video/x-h264,profile=constrained-baseline,stream-format=byte-stream ! filesink location="64x64-I.h264"
+    let h264_stream = include_bytes!("64x64-I.h264");
+    println!("loaded {} bytes of h264 data", h264_stream.len());
 }
