@@ -15,7 +15,7 @@
 
 ### Bugs fixed
 
-# Version 0.34.0 (2023-10-24)
+# Version 0.34.0 (2023-10-25)
 
 ### Public dependency updates
 
