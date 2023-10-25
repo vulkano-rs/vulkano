@@ -330,20 +330,15 @@ impl Semaphore {
         state.export(handle_type);
 
         #[cfg(unix)]
-        let file = {
+        {
             use std::os::unix::io::FromRawFd;
-            File::from_raw_fd(output.assume_init())
-        };
+            Ok(File::from_raw_fd(output.assume_init()))
+        }
 
         #[cfg(not(unix))]
-        let file = {
+        {
             let _ = output;
             unreachable!("`khr_external_semaphore_fd` was somehow enabled on a non-Unix system");
-        };
-
-        #[cfg_attr(not(unix), allow(unreachable_code))]
-        {
-            Ok(file)
         }
     }
 
@@ -753,31 +748,28 @@ impl Semaphore {
         #[cfg(not(unix))]
         let fd = {
             let _ = file;
-            unreachable!("`khr_external_semaphore_fd` was somehow enabled on a non-Unix system");
+            -1
         };
 
-        #[cfg_attr(not(unix), allow(unreachable_code))]
-        {
-            let info_vk = ash::vk::ImportSemaphoreFdInfoKHR {
-                semaphore: self.handle,
-                flags: flags.into(),
-                handle_type: handle_type.into(),
-                fd,
-                ..Default::default()
-            };
+        let info_vk = ash::vk::ImportSemaphoreFdInfoKHR {
+            semaphore: self.handle,
+            flags: flags.into(),
+            handle_type: handle_type.into(),
+            fd,
+            ..Default::default()
+        };
 
-            let fns = self.device.fns();
-            (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
-                .result()
-                .map_err(VulkanError::from)?;
+        let fns = self.device.fns();
+        (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
+            .result()
+            .map_err(VulkanError::from)?;
 
-            state.import(
-                handle_type,
-                flags.intersects(SemaphoreImportFlags::TEMPORARY),
-            );
+        state.import(
+            handle_type,
+            flags.intersects(SemaphoreImportFlags::TEMPORARY),
+        );
 
-            Ok(())
-        }
+        Ok(())
     }
 
     /// Imports a semaphore from a Win32 handle.

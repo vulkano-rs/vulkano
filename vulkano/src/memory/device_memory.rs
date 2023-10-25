@@ -225,22 +225,17 @@ impl DeviceMemory {
                     #[cfg(not(unix))]
                     let fd = {
                         let _ = file;
-                        unreachable!(
-                            "`khr_external_memory_fd` was somehow enabled on a non-Unix system"
-                        );
+                        -1
                     };
 
-                    #[cfg_attr(not(unix), allow(unreachable_code))]
-                    {
-                        let next = import_fd_info_vk.insert(ash::vk::ImportMemoryFdInfoKHR {
-                            handle_type: handle_type.into(),
-                            fd,
-                            ..Default::default()
-                        });
+                    let next = import_fd_info_vk.insert(ash::vk::ImportMemoryFdInfoKHR {
+                        handle_type: handle_type.into(),
+                        fd,
+                        ..Default::default()
+                    });
 
-                        next.p_next = allocate_info_vk.p_next;
-                        allocate_info_vk.p_next = next as *const _ as *const _;
-                    }
+                    next.p_next = allocate_info_vk.p_next;
+                    allocate_info_vk.p_next = next as *const _ as *const _;
                 }
                 MemoryImportInfo::Win32 {
                     handle_type,
@@ -839,20 +834,15 @@ impl DeviceMemory {
         .map_err(VulkanError::from)?;
 
         #[cfg(unix)]
-        let file = {
+        {
             use std::os::unix::io::FromRawFd;
-            File::from_raw_fd(output.assume_init())
-        };
+            Ok(File::from_raw_fd(output.assume_init()))
+        }
 
         #[cfg(not(unix))]
-        let file = {
+        {
             let _ = output;
             unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
-        };
-
-        #[cfg_attr(not(unix), allow(unreachable_code))]
-        {
-            Ok(file)
         }
     }
 }

@@ -965,7 +965,6 @@ impl Device {
     /// # Safety
     ///
     /// - `file` must be a handle to external memory that was created outside the Vulkan API.
-    #[cfg_attr(not(unix), allow(unused_variables))]
     #[inline]
     pub unsafe fn memory_fd_properties(
         &self,
@@ -1025,25 +1024,22 @@ impl Device {
         #[cfg(not(unix))]
         let fd = {
             let _ = file;
-            unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
+            -1
         };
 
-        #[cfg_attr(not(unix), allow(unreachable_code))]
-        {
-            let fns = self.fns();
-            (fns.khr_external_memory_fd.get_memory_fd_properties_khr)(
-                self.handle,
-                handle_type.into(),
-                fd,
-                &mut memory_fd_properties,
-            )
-            .result()
-            .map_err(VulkanError::from)?;
+        let fns = self.fns();
+        (fns.khr_external_memory_fd.get_memory_fd_properties_khr)(
+            self.handle,
+            handle_type.into(),
+            fd,
+            &mut memory_fd_properties,
+        )
+        .result()
+        .map_err(VulkanError::from)?;
 
-            Ok(MemoryFdProperties {
-                memory_type_bits: memory_fd_properties.memory_type_bits,
-            })
-        }
+        Ok(MemoryFdProperties {
+            memory_type_bits: memory_fd_properties.memory_type_bits,
+        })
     }
 
     /// Assigns a human-readable name to `object` for debugging purposes.
