@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+pub mod h264;
+
 use std::{
     mem::MaybeUninit,
     sync::{Arc, Mutex},
@@ -26,6 +28,8 @@ use crate::{
     ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
     Version, VulkanError, VulkanObject,
 };
+
+pub use ash::vk::native::*;
 
 vulkan_bitflags_enum! {
     #[non_exhaustive]
@@ -779,5 +783,395 @@ impl Default for VideoSessionCreateInfo {
             std_header_version: ExtensionProperties::from(ash::vk::ExtensionProperties::default()),
             _ne: crate::NonExhaustive(()),
         }
+    }
+}
+
+pub enum VideoSessionParametersCreateInfoNextVk {
+    VideoDecodeH264(ash::vk::VideoDecodeH264SessionParametersCreateInfoKHR),
+    VideoDecodeH265(ash::vk::VideoDecodeH265SessionParametersCreateInfoKHR),
+}
+
+pub enum VideoSessionParametersAddInfoVk {
+    VideoDecodeH264(ash::vk::VideoDecodeH264SessionParametersAddInfoKHR),
+    VideoDecodeH265(ash::vk::VideoDecodeH265SessionParametersAddInfoKHR),
+}
+
+#[derive(Debug)]
+pub struct VideoSessionParameters {
+    handle: ash::vk::VideoSessionParametersKHR,
+    device: InstanceOwnedDebugWrapper<Arc<Device>>,
+
+    pub create_info: VideoSessionParametersCreateInfo,
+    pub _ne: crate::NonExhaustive,
+}
+
+impl VideoSessionParameters {
+    pub fn new(
+        device: Arc<Device>,
+        create_info: VideoSessionParametersCreateInfo,
+    ) -> Result<Arc<Self>, Validated<VulkanError>> {
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &VideoSessionParametersCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !device
+            .physical_device()
+            .supported_extensions()
+            .khr_video_queue
+            || device.physical_device().api_version() < Version::V1_3
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                    Requires::DeviceExtension("khr_video_queue"),
+                    // Requires::APIVersion(Version::V1_3), // ?
+                ])]),
+                ..Default::default()
+            }));
+        }
+
+        create_info
+            .validate()
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: VideoSessionParametersCreateInfo,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let mut video_decode_create_info_next = None;
+        let mut video_decode_parameter_add_info = None;
+
+        let create_info_vk = create_info.clone().to_vulkan(
+            &mut video_decode_create_info_next,
+            &mut video_decode_parameter_add_info,
+        );
+
+        let handle = unsafe {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.khr_video_queue.create_video_session_parameters_khr)(
+                device.handle(),
+                &create_info_vk,
+                std::ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Self::from_handle(handle, create_info, device))
+    }
+
+    /// Creates a new `VideoSessionParameters` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        handle: ash::vk::VideoSessionParametersKHR,
+        create_info: VideoSessionParametersCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<Self> {
+        Arc::new(VideoSessionParameters {
+            handle,
+            device: InstanceOwnedDebugWrapper(device),
+            create_info,
+            _ne: crate::NonExhaustive(()),
+        })
+    }
+}
+
+impl Drop for VideoSessionParameters {
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            (fns.khr_video_queue.destroy_video_session_parameters_khr)(
+                self.device.handle(),
+                self.handle,
+                std::ptr::null(),
+            );
+        }
+    }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    VideoSessionParametersCreateFlags = VideoSessionParametersCreateFlagsKHR(u32);
+}
+
+#[derive(Clone, Debug)]
+pub enum VideoSessionParametersCreateInfoNext {
+    VideoDecodeH264SessionParametersCreateInfo {
+        max_std_sps_count: u32,
+        max_std_pps_count: u32,
+        parameter_add_info: Option<h264::VideoDecodeH264SessionParametersAddInfo>,
+    },
+    VideoDecodeH265SessionParametersCreateInfo {/* TODO */},
+}
+
+#[derive(Clone, Debug)]
+pub struct VideoSessionParametersCreateInfo {
+    pub flags: VideoSessionParametersCreateFlags,
+    pub video_session_parameters_template: Option<Arc<VideoSessionParameters>>,
+    pub video_session: Arc<VideoSession>,
+    pub next: VideoSessionParametersCreateInfoNext,
+    pub _ne: crate::NonExhaustive,
+}
+
+impl VideoSessionParametersCreateInfo {
+    #[inline]
+    pub fn new(
+        flags: VideoSessionParametersCreateFlags,
+        video_session_parameters_template: Option<Arc<VideoSessionParameters>>,
+        video_session: Arc<VideoSession>,
+        next: VideoSessionParametersCreateInfoNext,
+    ) -> Self {
+        Self {
+            flags,
+            video_session_parameters_template,
+            video_session: Arc::clone(&video_session),
+            next,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    /// Compute "spsAddList"
+    fn sps_add_list(&self) -> usize {
+        let mut seq_parameter_ids = vec![];
+        match &self.next {
+            VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo {
+                parameter_add_info,
+                ..
+            } => {
+                if let Some(parameter_add_info) = parameter_add_info {
+                    seq_parameter_ids.extend(
+                        parameter_add_info
+                            .std_sp_ss
+                            .iter()
+                            .map(|sps| sps.seq_parameter_set_id),
+                    );
+                }
+            }
+            _ => todo!(),
+        }
+
+        if let Some(video_session_parameters_template) = &self.video_session_parameters_template {
+            match &video_session_parameters_template.create_info.next {
+                VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo { parameter_add_info: Some(template_parameter_add_info), .. } => {
+                    for sps in &template_parameter_add_info.std_sp_ss {
+                        if !seq_parameter_ids.contains(&sps.seq_parameter_set_id) {
+                            seq_parameter_ids.push(sps.seq_parameter_set_id);
+                        }
+                    }
+                }
+                _ => todo!(),
+            }
+        }
+
+        seq_parameter_ids.len()
+    }
+
+    fn pps_add_list(&self) -> usize {
+        let mut seq_parameter_ids = vec![];
+        let mut pic_parameter_ids = vec![];
+        match &self.next {
+            VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo {
+                parameter_add_info,
+                ..
+            } => {
+                if let Some(parameter_add_info) = parameter_add_info {
+                    pic_parameter_ids.extend(parameter_add_info.std_pp_ss.iter().map(|pps| {
+                        seq_parameter_ids.push(pps.seq_parameter_set_id);
+                        pps.pic_parameter_set_id
+                    }));
+                }
+            }
+            _ => todo!(),
+        }
+
+        if let Some(video_session_parameters_template) = &self.video_session_parameters_template {
+            match &video_session_parameters_template.create_info.next {
+                VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo { parameter_add_info: Some(template_parameter_add_info), .. } => {
+                    for pps in &template_parameter_add_info.std_pp_ss {
+                        if !pic_parameter_ids.contains(&pps.pic_parameter_set_id) && !seq_parameter_ids.contains(&pps.seq_parameter_set_id) {
+                            pic_parameter_ids.push(pps.pic_parameter_set_id);
+                            seq_parameter_ids.push(pps.seq_parameter_set_id);
+
+                        }
+                    }
+                }
+                _ => todo!(),
+            }
+        }
+
+        pic_parameter_ids.len()
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), Box<ValidationError>> {
+        let Self {
+            video_session_parameters_template,
+            video_session,
+            ..
+        } = self;
+
+        if let Some(video_session_parameters_template) = video_session_parameters_template {
+            if video_session.handle
+                != video_session_parameters_template
+                    .create_info
+                    .video_session
+                    .handle
+            {
+                return Err(Box::new(ValidationError {
+                    context: "video_session_parameter_templte".into(),
+                    problem: " if videoSessionParametersTemplate represents a valid handle, it must have been created against videoSession"
+                        .into(),
+                    vuids: &[" VUID-VkVideoSessionParametersCreateInfoKHR-videoSessionParametersTemplate-04855"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        match video_session
+            .create_info
+            .video_profile
+            .video_codec_operation
+        {
+            VideoCodecOperation::DecodeH264 => {
+                if let VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo { max_std_sps_count, max_std_pps_count, ..} = &self.next {
+                    let sps_add_list = self.sps_add_list();
+                    if sps_add_list as u32 > *max_std_sps_count {
+                        return Err(Box::new(ValidationError {
+                            context: "spsAddList".into(),
+                            problem: "must be less than or equal to the maxStdSPSCount".into(),
+                            vuids: &["VUID-VkVideoSessionParametersCreateInfoKHR-videoSession-07203"],
+                            ..Default::default()
+                        }));
+
+                    }
+
+                    let pps_add_list = self.pps_add_list();
+                    if pps_add_list as u32 > *max_std_pps_count {
+                        return Err(Box::new(ValidationError {
+                            context: "ppsAddList".into(),
+                            problem: "must be less than or equal to the maxStdPPSCount".into(),
+                            vuids: &["VUID-VkVideoSessionParametersCreateInfoKHR-videoSession-07205"],
+                            ..Default::default()
+                        }));
+                    }
+                } else {
+                    return Err(Box::new(ValidationError {
+                        context: "next".into(),
+                        problem: "must be `VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo`".into(),
+                        vuids: &["VUID-VkVideoSessionParametersCreateInfoKHR-videoSession-07203"],
+                        ..Default::default()
+                    }));
+                }
+            }
+            VideoCodecOperation::DecodeH265 => {
+                if !matches!(self.next, VideoSessionParametersCreateInfoNext::VideoDecodeH265SessionParametersCreateInfo{}) {
+                return Err(Box::new(ValidationError {
+                    context: "next".into(),
+                    problem: "must be `VideoSessionParametersCreateInfoNext::VideoDecodeH265SessionParametersCreateInfo`".into(),
+                    vuids: &["VUID-VkVideoSessionParametersCreateInfoKHR-videoSession-07203"],
+                    ..Default::default()
+                }));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) unsafe fn to_vulkan(
+        self,
+        video_decode_create_info_next: &mut Option<VideoSessionParametersCreateInfoNextVk>,
+        video_session_parameter_add_info: &mut Option<VideoSessionParametersAddInfoVk>,
+    ) -> ash::vk::VideoSessionParametersCreateInfoKHR {
+        let mut video_session_parameters_create_info_vk =
+            ash::vk::VideoSessionParametersCreateInfoKHR {
+                flags: self.flags.into(),
+                p_next: std::ptr::null(),
+                video_session_parameters_template: self
+                    .video_session_parameters_template
+                    .map(|v| v.handle)
+                    .unwrap_or(ash::vk::VideoSessionParametersKHR::null()),
+                video_session: self.video_session.handle,
+                ..Default::default()
+            };
+
+        match self
+            .video_session
+            .create_info
+            .video_profile
+            .video_codec_operation
+        {
+            VideoCodecOperation::DecodeH264 => {
+                let (max_sps_count, max_pps_count, parameter_add_info) = match self.next {
+                    VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo { max_std_sps_count, max_std_pps_count, parameter_add_info: Some(parameter_add_info) } => (max_std_sps_count, max_std_pps_count, parameter_add_info),
+                    _ => panic!(),
+                };
+
+                let mut video_decode_h264_session_parameters_create_info_vk =
+                    ash::vk::VideoDecodeH264SessionParametersCreateInfoKHR {
+                        max_std_sps_count: max_sps_count,
+                        max_std_pps_count: max_pps_count,
+                        p_next: std::ptr::null(),
+                        ..Default::default()
+                    };
+
+                let video_decode_h264_session_parameters_add_info_vk =
+                    ash::vk::VideoDecodeH264SessionParametersAddInfoKHR {
+                        std_sps_count: parameter_add_info.std_sp_ss.len() as _,
+                        p_std_sp_ss: parameter_add_info.std_sp_ss.as_ptr() as _,
+                        std_pps_count: parameter_add_info.std_pp_ss.len() as _,
+                        p_std_pp_ss: parameter_add_info.std_pp_ss.as_ptr() as _,
+                        ..Default::default()
+                    };
+
+                let video_session_parameters_add_info_vk = video_session_parameter_add_info.insert(
+                    VideoSessionParametersAddInfoVk::VideoDecodeH264(
+                        video_decode_h264_session_parameters_add_info_vk,
+                    ),
+                );
+
+                let video_session_parameters_add_info_vk =
+                    match video_session_parameters_add_info_vk {
+                        VideoSessionParametersAddInfoVk::VideoDecodeH264(v) => v,
+                        _ => panic!(),
+                    };
+
+                video_decode_h264_session_parameters_create_info_vk.p_parameters_add_info =
+                    video_session_parameters_add_info_vk as *mut _ as _;
+
+                let video_decode_h264_session_parameters_create_info_vk =
+                    video_decode_create_info_next.insert(
+                        VideoSessionParametersCreateInfoNextVk::VideoDecodeH264(
+                            video_decode_h264_session_parameters_create_info_vk,
+                        ),
+                    );
+
+                let video_decode_h264_session_parameters_create_info_vk =
+                    match video_decode_h264_session_parameters_create_info_vk {
+                        VideoSessionParametersCreateInfoNextVk::VideoDecodeH264(v) => v,
+                        _ => panic!(),
+                    };
+
+                video_session_parameters_create_info_vk.p_next =
+                    video_decode_h264_session_parameters_create_info_vk as *mut _ as _;
+            }
+            VideoCodecOperation::DecodeH265 => todo!(),
+        }
+
+        video_session_parameters_create_info_vk
     }
 }
