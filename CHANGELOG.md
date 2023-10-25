@@ -9,6 +9,16 @@
 
 ### Public dependency updates
 
+### Breaking changes
+
+### Additions
+
+### Bugs fixed
+
+# Version 0.34.0 (2023-10-25)
+
+### Public dependency updates
+
 - [ash](https://crates.io/crates/ash) 0.37.3 (Vulkan 1.3.251)
 - [libloading](https://crates.io/crates/libloading) 0.8
 
@@ -65,6 +75,10 @@ Changes to descriptor sets and descriptor set layouts:
 - `PersistentDescriptorSet::new` now takes an additional parameter, specifying descriptor set copy operations.
 - `DescriptorSetLayoutCreateInfo::push_descriptor` has been replaced with a more generic `flags` field.
 - `DescriptorSetLayoutBinding::variable_descriptor_count` has been replaced with a more generic `binding_flags` field.
+- `DescriptorPool::allocate_descriptor_sets` is now validated, and returns `DescriptorPoolAlloc` objects.
+- `DescriptorSetAllocator::allocate` returns `Validated<VulkanError>` as its error type.
+- `UnsafeDescriptorSet::update` is now partially validated, and takes slices instead of iterators.
+- `UnsafeDescriptorSet` now owns its allocation.
 
 Changes to render pass objects:
 - `AttachmentDescription::stencil_load_op` and `stencil_store_op` are now wrapped in an `Option`. If it is `None`, the value is taken from `load_op` and `store_op` instead.
@@ -119,6 +133,12 @@ Changes to memory allocation:
 - `FreeListAllocator`, `BuddyAllocator` and `BumpAllocator` are no longer `Sync`.
 - `GenericMemoryAllocatorCreateInfo::block_sizes` now represents a block size per memory type, instead of per memory heap, to allow for a more fine-grained configuration.
 - Merged `GenericMemoryAllocator::new_unchecked` into `GenericMemoryAllocator::new`.
+
+Changes to descriptor set allocation:
+- `StandardDescriptorSetAllocator` now takes a `StandardDescriptorSetAllocatorCreateInfo` parameter.
+
+Changes to command buffer allocation:
+- `StandardCommandBufferAllocatorCreateInfo::secondary_buffer_count` now defaults to 0.
 
 Changes to synchronization primitives:
 - `Event::signaled` is renamed to `is_signaled`, to match the method on `Fence`.
@@ -178,6 +198,7 @@ Changes to the physical device:
 - Vulkano-shaders: support for specialization-constant-sized arrays in structs (they are generated with the size specified as fallback in the specialization constant initializer).
 - Added the `DeviceAddress` and `NonNullDeviceAddress` types to the crate root.
 - Support for the `ext_private_data` extension.
+- Added the `UPDATE_AFTER_BIND`, `UPDATE_UNUSED_WHILE_PENDING` and `PARTIALLY_BOUND` flags to `DescriptorBindingFlags`, as well as `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL` and `DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`.
 
 ### Bugs fixed
 

@@ -60,6 +60,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_driver_properties`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_driver_properties.html)
 - [`VK_KHR_image_format_list`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_image_format_list.html)
 - [`VK_KHR_sampler_mirror_clamp_to_edge`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_sampler_mirror_clamp_to_edge.html)
+- [`VK_KHR_separate_depth_stencil_layouts`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_separate_depth_stencil_layouts.html)
 - [`VK_KHR_spirv_1_4`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_spirv_1_4.html)
 - [`VK_KHR_shader_atomic_int64`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_atomic_int64.html)
 - [`VK_KHR_shader_float16_int8`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_float16_int8.html)
@@ -67,10 +68,10 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_shader_subgroup_extended_types`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_subgroup_extended_types.html)
 - [`VK_KHR_uniform_buffer_standard_layout`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_uniform_buffer_standard_layout.html)
 - [`VK_KHR_vulkan_memory_model`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_vulkan_memory_model.html)
+- [`VK_EXT_descriptor_indexing`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
 - [`VK_EXT_sampler_filter_minmax`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_sampler_filter_minmax.html)
 - [`VK_EXT_scalar_block_layout`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_scalar_block_layout.html)
 - [`VK_EXT_separate_stencil_usage`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_separate_stencil_usage.html)
-- [`VK_KHR_separate_depth_stencil_layouts`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_separate_depth_stencil_layouts.html)
 - [`VK_EXT_shader_viewport_index_layer`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_shader_viewport_index_layer.html)
 - SPIR-V 1.4 and 1.5
 
@@ -79,10 +80,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_buffer_device_address`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_buffer_device_address.html)
 	- `vkGetBufferOpaqueCaptureAddressKHR` / `VkBufferOpaqueCaptureAddressCreateInfoKHR`
 	- `vkGetDeviceMemoryOpaqueCaptureAddressKHR` / `VkMemoryOpaqueCaptureAddressAllocateInfoKHR`
-- [`VK_EXT_descriptor_indexing`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
-	- `VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT`
-	- `VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT` / `VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT` / `VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT`
-	- `VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT_EXT`
 
 ### Unsupported
 

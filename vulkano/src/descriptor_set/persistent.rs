@@ -21,18 +21,21 @@
 //! # Examples
 //! TODO:
 
-use super::CopyDescriptorSet;
+use super::{
+    pool::{DescriptorPool, DescriptorPoolAlloc},
+    sys::UnsafeDescriptorSet,
+    CopyDescriptorSet,
+};
 use crate::{
     descriptor_set::{
         allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
-        layout::DescriptorSetLayoutCreateFlags,
         update::WriteDescriptorSet,
-        DescriptorSet, DescriptorSetInner, DescriptorSetLayout, DescriptorSetResources,
-        UnsafeDescriptorSet,
+        DescriptorSet, DescriptorSetLayout, DescriptorSetResources,
     },
     device::{Device, DeviceOwned},
-    Validated, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
+use smallvec::SmallVec;
 use std::{
     hash::{Hash, Hasher},
     sync::Arc,
@@ -40,8 +43,8 @@ use std::{
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
 pub struct PersistentDescriptorSet<P = StandardDescriptorSetAlloc> {
-    alloc: P,
-    inner: DescriptorSetInner,
+    inner: UnsafeDescriptorSet<P>,
+    resources: DescriptorSetResources,
 }
 
 impl PersistentDescriptorSet {
@@ -78,34 +81,44 @@ impl PersistentDescriptorSet {
     where
         A: DescriptorSetAllocator + ?Sized,
     {
-        assert!(
-            !layout
-                .flags()
-                .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR),
-            "the provided descriptor set layout is for push descriptors, and cannot be used to \
-            build a descriptor set object",
-        );
+        let mut set = PersistentDescriptorSet {
+            inner: UnsafeDescriptorSet::new(allocator, &layout, variable_descriptor_count)?,
+            resources: DescriptorSetResources::new(&layout, variable_descriptor_count),
+        };
 
-        let max_count = layout.variable_descriptor_count();
+        unsafe {
+            set.update(descriptor_writes, descriptor_copies)?;
+        }
 
-        assert!(
-            variable_descriptor_count <= max_count,
-            "the provided variable_descriptor_count ({}) is greater than the maximum number of \
-            variable count descriptors in the set ({})",
-            variable_descriptor_count,
-            max_count,
-        );
+        Ok(Arc::new(set))
+    }
+}
 
-        let alloc = allocator.allocate(&layout, variable_descriptor_count)?;
-        let inner = DescriptorSetInner::new(
-            alloc.inner().handle(),
-            layout,
-            variable_descriptor_count,
-            descriptor_writes,
-            descriptor_copies,
-        )?;
+impl<P> PersistentDescriptorSet<P>
+where
+    P: DescriptorSetAlloc,
+{
+    unsafe fn update(
+        &mut self,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) -> Result<(), Box<ValidationError>> {
+        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
 
-        Ok(Arc::new(PersistentDescriptorSet { alloc, inner }))
+        unsafe {
+            self.inner.update(&descriptor_writes, &descriptor_copies)?;
+        }
+
+        for write in descriptor_writes {
+            self.resources.write(&write, self.inner.layout());
+        }
+
+        for copy in descriptor_copies {
+            self.resources.copy(&copy);
+        }
+
+        Ok(())
     }
 }
 
@@ -113,20 +126,27 @@ unsafe impl<P> DescriptorSet for PersistentDescriptorSet<P>
 where
     P: DescriptorSetAlloc,
 {
-    fn inner(&self) -> &UnsafeDescriptorSet {
-        self.alloc.inner()
+    fn alloc(&self) -> &DescriptorPoolAlloc {
+        self.inner.alloc().inner()
     }
 
-    fn layout(&self) -> &Arc<DescriptorSetLayout> {
-        self.inner.layout()
-    }
-
-    fn variable_descriptor_count(&self) -> u32 {
-        self.inner.variable_descriptor_count
+    fn pool(&self) -> &DescriptorPool {
+        self.inner.alloc().pool()
     }
 
     fn resources(&self) -> &DescriptorSetResources {
-        self.inner.resources()
+        &self.resources
+    }
+}
+
+unsafe impl<P> VulkanObject for PersistentDescriptorSet<P>
+where
+    P: DescriptorSetAlloc,
+{
+    type Handle = ash::vk::DescriptorSet;
+
+    fn handle(&self) -> Self::Handle {
+        self.inner.handle()
     }
 }
 
@@ -135,7 +155,7 @@ where
     P: DescriptorSetAlloc,
 {
     fn device(&self) -> &Arc<Device> {
-        self.inner.layout().device()
+        self.layout().device()
     }
 }
 
@@ -144,7 +164,7 @@ where
     P: DescriptorSetAlloc,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner == other.inner
     }
 }
 
@@ -155,6 +175,6 @@ where
     P: DescriptorSetAlloc,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().hash(state);
+        self.inner.hash(state);
     }
 }

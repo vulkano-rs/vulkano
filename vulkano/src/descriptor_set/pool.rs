@@ -12,7 +12,7 @@ use crate::{
         layout::{DescriptorSetLayout, DescriptorSetLayoutCreateFlags, DescriptorType},
         sys::UnsafeDescriptorSet,
     },
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
@@ -51,6 +51,18 @@ impl DescriptorPool {
         Self::validate_new(&device, &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &DescriptorPoolCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        // VUID-vkCreateDescriptorPool-pCreateInfo-parameter
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -113,18 +125,6 @@ impl DescriptorPool {
         unsafe { Ok(Self::from_handle(device, handle, create_info)) }
     }
 
-    fn validate_new(
-        device: &Device,
-        create_info: &DescriptorPoolCreateInfo,
-    ) -> Result<(), Box<ValidationError>> {
-        // VUID-vkCreateDescriptorPool-pCreateInfo-parameter
-        create_info
-            .validate(device)
-            .map_err(|err| err.add_context("create_info"))?;
-
-        Ok(())
-    }
-
     /// Creates a new `DescriptorPool` from a raw object handle.
     ///
     /// # Safety
@@ -184,54 +184,107 @@ impl DescriptorPool {
         self.max_inline_uniform_block_bindings
     }
 
-    /// Allocates descriptor sets from the pool, one for each element in `create_info`.
+    /// Allocates descriptor sets from the pool, one for each element in `allocate_info`.
     /// Returns an iterator to the allocated sets, or an error.
     ///
     /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
     /// you should just create a new pool.
     ///
-    /// # Panics
-    ///
-    /// - Panics if one of the layouts wasn't created with the same device as the pool.
-    ///
     /// # Safety
     ///
-    /// See also the `new` function.
+    /// - When the pool is dropped, the returned descriptor sets must not be in use by either
+    ///   the host or device.
+    /// - If the device API version is less than 1.1, and the [`khr_maintenance1`] extension is not
+    ///   enabled on the device, then
+    ///   the length of `allocate_infos` must not be greater than the number of descriptor sets
+    ///   remaining in the pool, and
+    ///   the total number of descriptors of each type being allocated must not be greater than the
+    ///   number of descriptors of that type remaining in the pool.
     ///
-    /// - The total descriptors of the layouts must fit in the pool.
-    /// - The total number of descriptor sets allocated from the pool must not overflow the pool.
-    /// - You must ensure that the allocated descriptor sets are no longer in use when the pool
-    ///   is destroyed, as destroying the pool is equivalent to freeing all the sets.
-    pub unsafe fn allocate_descriptor_sets<'a>(
+    /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
+    #[inline]
+    pub unsafe fn allocate_descriptor_sets(
         &self,
-        allocate_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
-    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, VulkanError> {
-        let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
-            allocate_info
-                .into_iter()
-                .map(|info| {
-                    assert_eq!(self.device.handle(), info.layout.device().handle(),);
-                    debug_assert!(!info
-                        .layout
-                        .flags()
-                        .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR));
-                    debug_assert!(
-                        info.variable_descriptor_count <= info.layout.variable_descriptor_count()
-                    );
+        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo>,
+    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, Validated<VulkanError>> {
+        let allocate_infos: SmallVec<[_; 1]> = allocate_infos.into_iter().collect();
+        self.validate_allocate_descriptor_sets(&allocate_infos)?;
 
-                    (info.layout.handle(), info.variable_descriptor_count)
-                })
-                .unzip();
+        Ok(self.allocate_descriptor_sets_unchecked(allocate_infos)?)
+    }
 
-        let output = if layouts.is_empty() {
-            vec![]
-        } else {
+    fn validate_allocate_descriptor_sets(
+        &self,
+        allocate_infos: &[DescriptorSetAllocateInfo],
+    ) -> Result<(), Box<ValidationError>> {
+        for (index, info) in allocate_infos.iter().enumerate() {
+            info.validate(self.device())
+                .map_err(|err| err.add_context(format!("allocate_infos[{}]", index)))?;
+
+            let &DescriptorSetAllocateInfo {
+                ref layout,
+                variable_descriptor_count: _,
+                _ne: _,
+            } = info;
+
+            if layout
+                .flags()
+                .intersects(DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                && !self
+                    .flags
+                    .intersects(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`allocate_infos[{}].layout.flags()` contains \
+                        `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`, but \
+                        `self.flags` does not contain \
+                        `DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`",
+                        index
+                    )
+                    .into(),
+                    vuids: &["VUID-VkDescriptorSetAllocateInfo-pSetLayouts-03044"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn allocate_descriptor_sets_unchecked(
+        &self,
+        allocate_infos: impl IntoIterator<Item = DescriptorSetAllocateInfo>,
+    ) -> Result<impl ExactSizeIterator<Item = DescriptorPoolAlloc>, VulkanError> {
+        let allocate_infos = allocate_infos.into_iter();
+
+        let (lower_size_bound, _) = allocate_infos.size_hint();
+        let mut layouts_vk = Vec::with_capacity(lower_size_bound);
+        let mut variable_descriptor_counts = Vec::with_capacity(lower_size_bound);
+        let mut layouts = Vec::with_capacity(lower_size_bound);
+
+        for info in allocate_infos {
+            let DescriptorSetAllocateInfo {
+                layout,
+                variable_descriptor_count,
+                _ne: _,
+            } = info;
+
+            layouts_vk.push(layout.handle());
+            variable_descriptor_counts.push(variable_descriptor_count);
+            layouts.push(layout);
+        }
+
+        let mut output = vec![];
+
+        if !layouts_vk.is_empty() {
             let variable_desc_count_alloc_info = if (self.device.api_version() >= Version::V1_2
                 || self.device.enabled_extensions().ext_descriptor_indexing)
                 && variable_descriptor_counts.iter().any(|c| *c != 0)
             {
                 Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
-                    descriptor_set_count: layouts.len() as u32,
+                    descriptor_set_count: layouts_vk.len() as u32,
                     p_descriptor_counts: variable_descriptor_counts.as_ptr(),
                     ..Default::default()
                 })
@@ -239,10 +292,10 @@ impl DescriptorPool {
                 None
             };
 
-            let infos = ash::vk::DescriptorSetAllocateInfo {
+            let info_vk = ash::vk::DescriptorSetAllocateInfo {
                 descriptor_pool: self.handle,
-                descriptor_set_count: layouts.len() as u32,
-                p_set_layouts: layouts.as_ptr(),
+                descriptor_set_count: layouts_vk.len() as u32,
+                p_set_layouts: layouts_vk.as_ptr(),
                 p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
                     next as *const _ as *const _
                 } else {
@@ -251,27 +304,41 @@ impl DescriptorPool {
                 ..Default::default()
             };
 
-            let mut output = Vec::with_capacity(layouts.len());
+            output.reserve(layouts_vk.len());
 
             let fns = self.device.fns();
-            (fns.v1_0.allocate_descriptor_sets)(self.device.handle(), &infos, output.as_mut_ptr())
-                .result()
-                .map_err(VulkanError::from)
-                .map_err(|err| match err {
-                    VulkanError::OutOfHostMemory
-                    | VulkanError::OutOfDeviceMemory
-                    | VulkanError::OutOfPoolMemory => err,
-                    // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after
-                    // version 1.0 of Vulkan, any negative return value except out-of-memory errors
-                    // must be considered as a fragmented pool error.
-                    _ => VulkanError::FragmentedPool,
-                })?;
+            (fns.v1_0.allocate_descriptor_sets)(
+                self.device.handle(),
+                &info_vk,
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)
+            .map_err(|err| match err {
+                VulkanError::OutOfHostMemory
+                | VulkanError::OutOfDeviceMemory
+                | VulkanError::OutOfPoolMemory => err,
+                // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after
+                // version 1.0 of Vulkan, any negative return value except out-of-memory errors
+                // must be considered as a fragmented pool error.
+                _ => VulkanError::FragmentedPool,
+            })?;
 
-            output.set_len(layouts.len());
-            output
-        };
+            output.set_len(layouts_vk.len());
+        }
 
-        Ok(output.into_iter().map(UnsafeDescriptorSet::new))
+        Ok(output
+            .into_iter()
+            .zip(layouts)
+            .zip(variable_descriptor_counts)
+            .map(
+                move |((handle, layout), variable_descriptor_count)| DescriptorPoolAlloc {
+                    handle,
+                    id: DescriptorPoolAlloc::next_id(),
+                    layout: DeviceOwnedDebugWrapper(layout),
+                    variable_descriptor_count,
+                },
+            ))
     }
 
     /// Frees some descriptor sets.
@@ -281,11 +348,37 @@ impl DescriptorPool {
     ///
     /// # Safety
     ///
-    /// - The pool must have been created with `free_descriptor_set_bit` set to `true`.
-    /// - The descriptor sets must have been allocated from the pool.
-    /// - The descriptor sets must not be free'd twice.
-    /// - The descriptor sets must not be in use by the GPU.
+    /// - All elements of `descriptor_sets` must have been allocated from `self`,
+    ///   and not freed previously.
+    /// - All elements of `descriptor_sets` must not be in use by the host or device.
+    #[inline]
     pub unsafe fn free_descriptor_sets(
+        &self,
+        descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_free_descriptor_sets()?;
+
+        Ok(self.free_descriptor_sets_unchecked(descriptor_sets)?)
+    }
+
+    fn validate_free_descriptor_sets(&self) -> Result<(), Box<ValidationError>> {
+        if !self
+            .flags
+            .intersects(DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
+        {
+            return Err(Box::new(ValidationError {
+                context: "self.flags()".into(),
+                problem: "does not contain `DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET`".into(),
+                vuids: &["VUID-vkFreeDescriptorSets-descriptorPool-00312"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn free_descriptor_sets_unchecked(
         &self,
         descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
     ) -> Result<(), VulkanError> {
@@ -308,6 +401,11 @@ impl DescriptorPool {
     /// Resets the pool.
     ///
     /// This destroys all descriptor sets and empties the pool.
+    ///
+    /// # Safety
+    ///
+    /// - All descriptor sets that were previously allocated from `self` must not be in use by the
+    ///   host or device.
     #[inline]
     pub unsafe fn reset(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
@@ -487,30 +585,132 @@ vulkan_bitflags! {
     /// destroy the whole pool at once.
     FREE_DESCRIPTOR_SET = FREE_DESCRIPTOR_SET,
 
-    /* TODO: enable
-    // TODO: document
-    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND {
-        api_version: V1_2,
-        device_extensions: [ext_descriptor_indexing],
-    }, */
+    /// The pool can allocate descriptor sets with a layout whose flags include
+    /// [`DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`].
+    ///
+    /// A pool created with this flag can still allocate descriptor sets without the flag.
+    /// However, descriptor copy operations are only allowed between pools of the same type;
+    /// it is not possible to copy between a descriptor set whose pool has `UPDATE_AFTER_BIND`,
+    /// and a descriptor set whose pool does not have this flag.
+    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND
+    RequiresOneOf([
+        RequiresAllOf([APIVersion(V1_2)]),
+        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
+    ]),
 
     /* TODO: enable
     // TODO: document
-    HOST_ONLY = HOST_ONLY_EXT {
-        device_extensions: [ext_mutable_descriptor_type, valve_mutable_descriptor_type],
-    }, */
+    HOST_ONLY = HOST_ONLY_EXT
+    RequiresOneOf([
+        RequiresAllOf([DeviceExtension(ext_mutable_descriptor_type)]),
+        RequiresAllOf([DeviceExtension(valve_mutable_descriptor_type)]),
+    ]), */
 }
 
 /// Parameters to allocate a new `UnsafeDescriptorSet` from an `UnsafeDescriptorPool`.
 #[derive(Clone, Debug)]
-pub struct DescriptorSetAllocateInfo<'a> {
+pub struct DescriptorSetAllocateInfo {
     /// The descriptor set layout to create the set for.
-    pub layout: &'a DescriptorSetLayout,
+    ///
+    /// There is no default value.
+    pub layout: Arc<DescriptorSetLayout>,
 
     /// For layouts with a variable-count binding, the number of descriptors to allocate for that
     /// binding. This should be 0 for layouts that don't have a variable-count binding.
+    ///
+    /// The default value is 0.
     pub variable_descriptor_count: u32,
+
+    pub _ne: crate::NonExhaustive,
 }
+
+impl DescriptorSetAllocateInfo {
+    /// Returns a `DescriptorSetAllocateInfo` with the specified `layout`.
+    #[inline]
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
+        Self {
+            layout,
+            variable_descriptor_count: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref layout,
+            variable_descriptor_count,
+            _ne,
+        } = self;
+
+        // VUID-VkDescriptorSetAllocateInfo-commonparent
+        assert_eq!(device, layout.device().as_ref());
+
+        if layout
+            .flags()
+            .intersects(DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR)
+        {
+            return Err(Box::new(ValidationError {
+                context: "layout.flags()".into(),
+                problem: "contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`".into(),
+                vuids: &["VUID-VkDescriptorSetAllocateInfo-pSetLayouts-00308"],
+                ..Default::default()
+            }));
+        }
+
+        if variable_descriptor_count > layout.variable_descriptor_count() {
+            return Err(Box::new(ValidationError {
+                problem: "`variable_descriptor_count` is greater than
+                    `layout.variable_descriptor_count()`"
+                    .into(),
+                // vuids: https://github.com/KhronosGroup/Vulkan-Docs/issues/2244
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
+/// Opaque type that represents a descriptor set allocated from a pool.
+#[derive(Debug)]
+pub struct DescriptorPoolAlloc {
+    handle: ash::vk::DescriptorSet,
+    id: NonZeroU64,
+    layout: DeviceOwnedDebugWrapper<Arc<DescriptorSetLayout>>,
+    variable_descriptor_count: u32,
+}
+
+impl DescriptorPoolAlloc {
+    /// Returns the descriptor set layout of the descriptor set.
+    #[inline]
+    pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        &self.layout
+    }
+
+    /// Returns the variable descriptor count that this descriptor set was allocated with.
+    #[inline]
+    pub fn variable_descriptor_count(&self) -> u32 {
+        self.variable_descriptor_count
+    }
+}
+
+unsafe impl VulkanObject for DescriptorPoolAlloc {
+    type Handle = ash::vk::DescriptorSet;
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for DescriptorPoolAlloc {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.layout.device()
+    }
+}
+
+impl_id_counter!(DescriptorPoolAlloc);
 
 #[cfg(test)]
 mod tests {
@@ -601,10 +801,7 @@ mod tests {
         .unwrap();
         unsafe {
             let sets = pool
-                .allocate_descriptor_sets([DescriptorSetAllocateInfo {
-                    layout: set_layout.as_ref(),
-                    variable_descriptor_count: 0,
-                }])
+                .allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)])
                 .unwrap();
             assert_eq!(sets.count(), 1);
         }
@@ -643,10 +840,7 @@ mod tests {
             .unwrap();
 
             unsafe {
-                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo {
-                    layout: set_layout.as_ref(),
-                    variable_descriptor_count: 0,
-                }]);
+                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)]);
             }
         });
     }

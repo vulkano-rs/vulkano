@@ -694,7 +694,7 @@ where
 
         let descriptor_sets_vk: SmallVec<[_; 12]> = descriptor_sets
             .iter()
-            .map(|x| x.as_ref().0.inner().handle())
+            .map(|x| x.as_ref().0.handle())
             .collect();
         let dynamic_offsets_vk: SmallVec<[_; 32]> = descriptor_sets
             .iter()

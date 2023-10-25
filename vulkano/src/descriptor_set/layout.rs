@@ -339,6 +339,8 @@ impl DescriptorSetLayoutCreateInfo {
 
         let mut total_descriptor_count = 0;
         let highest_binding_num = bindings.keys().copied().next_back();
+        let mut update_after_bind_binding = None;
+        let mut buffer_dynamic_binding = None;
 
         for (&binding_num, binding) in bindings.iter() {
             binding
@@ -381,11 +383,17 @@ impl DescriptorSetLayoutCreateInfo {
                     }));
                 }
 
-                if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT) {
+                if binding_flags.intersects(
+                    DescriptorBindingFlags::UPDATE_AFTER_BIND
+                        | DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
+                        | DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
+                ) {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`flags` contains `DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR`, \
-                            and `bindings[{}].flags` contains \
+                            and `bindings[{}].binding_flags` contains \
+                            `DescriptorBindingFlags::UPDATE_AFTER_BIND`, \
+                            `DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING` or \
                             `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`",
                             binding_num
                         )
@@ -401,7 +409,7 @@ impl DescriptorSetLayoutCreateInfo {
             {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`bindings[{}].flags` contains \
+                        "`bindings[{}].binding_flags` contains \
                         `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`, but {0} is not the
                         highest binding number in `bindings`",
                         binding_num
@@ -412,6 +420,32 @@ impl DescriptorSetLayoutCreateInfo {
                     ],
                     ..Default::default()
                 }));
+            }
+
+            if binding_flags.intersects(DescriptorBindingFlags::UPDATE_AFTER_BIND) {
+                if !flags.intersects(DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL) {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "`bindings[{}].binding_flags` contains \
+                            `DescriptorBindingFlags::UPDATE_AFTER_BIND`, but \
+                            `flags` does not contain \
+                            `DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`",
+                            binding_num
+                        )
+                        .into(),
+                        vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-03000"],
+                        ..Default::default()
+                    }));
+                }
+
+                update_after_bind_binding.get_or_insert(binding_num);
+            }
+
+            if matches!(
+                descriptor_type,
+                DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
+            ) {
+                buffer_dynamic_binding.get_or_insert(binding_num);
             }
         }
 
@@ -430,6 +464,24 @@ impl DescriptorSetLayoutCreateInfo {
                     `max_push_descriptors` limit"
                     .into(),
                 vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-flags-00281"],
+                ..Default::default()
+            }));
+        }
+
+        if let (Some(update_after_bind_binding), Some(buffer_dynamic_binding)) =
+            (update_after_bind_binding, buffer_dynamic_binding)
+        {
+            return Err(Box::new(ValidationError {
+                problem: format!(
+                    "`bindings[{}].binding_flags` contains \
+                    `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                    `bindings[{}].descriptor_type` is \
+                    `DescriptorType::UniformBufferDynamic` or \
+                    `DescriptorType::StorageBufferDynamic`",
+                    update_after_bind_binding, buffer_dynamic_binding
+                )
+                .into(),
+                vuids: &["VUID-VkDescriptorSetLayoutCreateInfo-descriptorType-03001"],
                 ..Default::default()
             }));
         }
@@ -455,13 +507,21 @@ vulkan_bitflags! {
     /// Flags that control how a descriptor set layout is created.
     DescriptorSetLayoutCreateFlags = DescriptorSetLayoutCreateFlags(u32);
 
-    /* TODO: enable
-    // TODO: document
+    /// Whether descriptor sets using this descriptor set layout must be allocated from a
+    /// descriptor pool whose flags contain [`DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`].
+    /// Descriptor set layouts with this flag use alternative (typically higher) device limits on
+    /// per-stage and total descriptor counts, which have `_update_after_bind_` in their names.
+    ///
+    /// This flag must be specified whenever the layout contains one or more bindings that have
+    /// the [`DescriptorBindingFlags::UPDATE_AFTER_BIND`] flag, but can be specified also if none
+    /// of the bindings have this flag, purely to use the alternative device limits.
+    ///
+    /// [`DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`]: crate::descriptor_set::pool::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND
     UPDATE_AFTER_BIND_POOL = UPDATE_AFTER_BIND_POOL
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
         RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]), */
+    ]),
 
     /// Whether the descriptor set layout should be created for push descriptors.
     ///
@@ -506,6 +566,8 @@ vulkan_bitflags! {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescriptorSetLayoutBinding {
     /// Specifies how to create the binding.
+    ///
+    /// The default value is empty.
     pub binding_flags: DescriptorBindingFlags,
 
     /// The content and layout of each array element of a binding.
@@ -733,6 +795,193 @@ impl DescriptorSetLayoutBinding {
             }
         }
 
+        if binding_flags.intersects(DescriptorBindingFlags::UPDATE_AFTER_BIND) {
+            match descriptor_type {
+                DescriptorType::UniformBuffer => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_uniform_buffer_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::UniformBuffer`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_uniform_buffer_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUniformBufferUpdateAfterBind-03005"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::Sampler
+                | DescriptorType::CombinedImageSampler
+                | DescriptorType::SampledImage => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_sampled_image_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::Sampler`, \
+                                `DescriptorType::CombinedImageSampler` or \
+                                `DescriptorType::SampledImage`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_sampled_image_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingSampledImageUpdateAfterBind-03006"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::StorageImage => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_storage_image_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::StorageImage`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_storage_image_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageImageUpdateAfterBind-03007"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::StorageBuffer => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_storage_buffer_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::StorageBuffer`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_storage_buffer_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageBufferUpdateAfterBind-03008"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::UniformTexelBuffer => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_uniform_texel_buffer_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::UniformTexelBuffer`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_uniform_texel_buffer_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUniformTexelBufferUpdateAfterBind-03009"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::StorageTexelBuffer => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_storage_texel_buffer_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::StorageTexelBuffer`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_storage_texel_buffer_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageTexelBufferUpdateAfterBind-03010"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::InlineUniformBlock => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_inline_uniform_block_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::InlineUniformBlock`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_inline_uniform_block_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingInlineUniformBlockUpdateAfterBind-02211"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::AccelerationStructure => {
+                    if !device
+                        .enabled_features()
+                        .descriptor_binding_acceleration_structure_update_after_bind
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`binding_flags` contains \
+                                `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                                `descriptor_type` is `DescriptorType::AccelerationStructure`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "descriptor_binding_acceleration_structure_update_after_bind"
+                            )])]),
+                            vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingAccelerationStructureUpdateAfterBind-03570"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                DescriptorType::InputAttachment
+                | DescriptorType::UniformBufferDynamic
+                | DescriptorType::StorageBufferDynamic => {
+                    return Err(Box::new(ValidationError {
+                        problem: "`binding_flags` contains \
+                            `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
+                            `descriptor_type` is `DescriptorType::InputAttachment`, \
+                            `DescriptorType::UniformBufferDynamic` or \
+                            `DescriptorType::StorageBufferDynamic`"
+                            .into(),
+                        vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-None-03011"],
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if binding_flags.intersects(DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING)
+            && !device
+                .enabled_features()
+                .descriptor_binding_update_unused_while_pending
+        {
+            return Err(Box::new(ValidationError {
+                context: "binding_flags".into(),
+                problem: "contains `DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "descriptor_binding_update_unused_while_pending"
+                )])]),
+                vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUpdateUnusedWhilePending-03012"],
+            }));
+        }
+
+        if binding_flags.intersects(DescriptorBindingFlags::PARTIALLY_BOUND)
+            && !device.enabled_features().descriptor_binding_partially_bound
+        {
+            return Err(Box::new(ValidationError {
+                context: "binding_flags".into(),
+                problem: "contains `DescriptorBindingFlags::PARTIALLY_BOUND`".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "descriptor_binding_partially_bound"
+                )])]),
+                vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingPartiallyBound-03013"],
+            }));
+        }
+
         if binding_flags.intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT) {
             if !device
                 .enabled_features()
@@ -741,9 +990,9 @@ impl DescriptorSetLayoutBinding {
                 return Err(Box::new(ValidationError {
                     context: "binding_flags".into(),
                     problem: "contains `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`".into(),
-                    requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("descriptor_binding_variable_descriptor_count")])
-                    ]),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "descriptor_binding_variable_descriptor_count"
+                    )])]),
                     vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014"],
                 }));
             }
@@ -790,29 +1039,59 @@ vulkan_bitflags! {
     /// Flags that control how a binding in a descriptor set layout is created.
     DescriptorBindingFlags = DescriptorBindingFlags(u32);
 
-    /* TODO: enable
-    // TODO: document
+    /// Allows descriptors in this binding to be updated after a command buffer has already
+    /// recorded a bind command containing a descriptor set with this layout, as long as the
+    /// command buffer is not executing. Each descriptor can also be updated concurrently.
+    ///
+    /// If a binding has this flag, then the descriptor set layout must be created with the
+    /// [`DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL`] flag, and descriptor sets using
+    /// it must be allocated from a descriptor pool that has the
+    /// [`DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`] flag.
+    /// In addition, the `descriptor_binding_*_update_after_bind` feature corresponding to the
+    /// descriptor type of the binding must be enabled.
+    ///
+    /// [`DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`]: crate::descriptor_set::pool::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND
     UPDATE_AFTER_BIND = UPDATE_AFTER_BIND
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
         RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]), */
+    ]),
 
-    /* TODO: enable
-    // TODO: document
+    /// Allows descriptors in this binding to be updated after a command buffer has already
+    /// recorded a bind command containing a descriptor set with this layout, as long as the
+    /// command buffer is not executing, and no shader invocation recorded in the command buffer
+    /// *uses* the descriptor. Each descriptor can also be updated concurrently.
+    ///
+    /// This is a subset of what is allowed by [`DescriptorBindingFlags::UPDATE_AFTER_BIND`], but
+    /// has much less strict requirements. It does not require any additional flags to be present
+    /// on the descriptor set layout or the descriptor pool, and instead requires the
+    /// [`descriptor_binding_update_unused_while_pending`] feature.
+    ///
+    /// What counts as "used" depends on whether the [`DescriptorBindingFlags::PARTIALLY_BOUND`]
+    /// flag is also set. If it is set, then only *dynamic use* by a shader invocation counts as
+    /// being used, otherwise all *static use* by a shader invocation is considered used.
+    ///
+    /// [`descriptor_binding_update_unused_while_pending`]: crate::device::Features::descriptor_binding_update_unused_while_pending
     UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
         RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]), */
+    ]),
 
-    /* TODO: enable
-    // TODO: document
+    /// Allows descriptors to be left empty or invalid even if they are *statically used* by a
+    /// shader invocation, as long as they are not *dynamically used* . Additionally, if
+    /// [`DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING`] is set, allows updating descriptors
+    /// if they are statically used by a command buffer they are recorded in, as long as are not
+    /// dynamically used.
+    ///
+    /// The [`descriptor_binding_partially_bound`] feature must be enabled on the device.
+    ///
+    /// [`descriptor_binding_partially_bound`]: crate::device::Features::descriptor_binding_partially_bound
     PARTIALLY_BOUND = PARTIALLY_BOUND
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
         RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]), */
+    ]),
 
     /// Whether the binding has a variable number of descriptors.
     ///

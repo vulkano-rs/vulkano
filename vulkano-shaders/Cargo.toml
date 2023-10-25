@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-shaders"
-version = "0.33.0"
+version = "0.34.0"
 edition = "2021"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
@@ -21,7 +21,7 @@ proc-macro2 = "1.0"
 quote = "1.0"
 shaderc = "0.8"
 syn = { version = "2.0", features = ["full", "extra-traits"] }
-vulkano = { version = "0.33.0", path = "../vulkano", default-features = false }
+vulkano = { version = "0.34.0", path = "../vulkano", default-features = false }
 
 [features]
 shaderc-build-from-source = ["shaderc/build-from-source"]
