@@ -893,7 +893,7 @@ where
 /// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is
 /// still usable, but the swapchain should be recreated as the Surface's properties no longer match
 /// the swapchain.
-#[deprecated(since = "0.34.0", note = "use `Swapchain::wait_for_present` instead")]
+#[deprecated(since = "0.35.0", note = "use `Swapchain::wait_for_present` instead")]
 pub fn wait_for_present(
     swapchain: Arc<Swapchain>,
     present_id: u64,
