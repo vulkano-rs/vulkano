@@ -10,6 +10,14 @@
 //! A fence provides synchronization between the device and the host, or between an external source
 //! and the host.
 //!
+//! A fence has two states: **signaled** and **unsignaled**.
+//!
+//! The device can only perform one operation on a fence:
+//! - A **fence signal operation** will put the fence into the signaled state.
+//!
+//! The host can poll a fence's status, wait for it to become signaled, or reset the fence back
+//! to the unsignaled state.
+//!
 //! # Queue-to-host synchronization
 //!
 //! The primary use of a fence is to know when a queue operation has completed executing.

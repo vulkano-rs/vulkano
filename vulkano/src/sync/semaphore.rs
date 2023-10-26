@@ -10,6 +10,20 @@
 //! A semaphore provides synchronization between multiple queues, with non-command buffer
 //! commands on the same queue, or between the device and an external source.
 //!
+//! A semaphore has two states: **signaled** and **unsignaled**.
+//! Only the device can perform operations on a semaphore,
+//! the host cannot perform any operations on it.
+//!
+//! Two operations can be performed on a semaphore:
+//! - A **semaphore signal operation** will put the semaphore into the signaled state.
+//! - A **semaphore wait operation** will block execution of the operation is associated with,
+//!   as long as the semaphore is in the unsignaled state. Once the semaphore is in the signaled
+//!   state, the semaphore is put back in the unsignaled state and execution continues.
+//!
+//! Semaphore signals and waits must always occur in pairs: one signal operation is paired with one
+//! wait operation. If a semaphore is signaled without waiting for it, it stays in the signaled
+//! state until it is waited for, or destroyed.
+//!
 //! # Safety
 //!
 //! - When a semaphore signal operation is executed on the device,
