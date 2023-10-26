@@ -1682,6 +1682,8 @@ pub struct QueueFamilyProperties {
     ///
     /// [`khr_video_decode_queue`]: crate::device::DeviceExtensions::khr_video_decode_queue
     pub video_properties: Option<QueueFamilyVideoProperties>,
+    /// Whether this queue supports result status queries.
+    pub supports_result_status_query: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1711,6 +1713,7 @@ impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
                 val.min_image_transfer_granularity.depth,
             ],
             video_properties: Default::default(),
+            supports_result_status_query: Default::default(),
         }
     }
 }

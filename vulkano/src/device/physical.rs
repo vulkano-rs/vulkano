@@ -361,6 +361,7 @@ impl PhysicalDevice {
         }
 
         let mut queue_family_video_properties_vk = vec![None; num as usize];
+        let mut queue_family_query_result_status_props = vec![None; num as usize];
         let mut output = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
 
         if supported_extensions.khr_video_decode_queue {
@@ -368,6 +369,10 @@ impl PhysicalDevice {
                 let next = queue_family_video_properties_vk[i]
                     .insert(ash::vk::QueueFamilyVideoPropertiesKHR::default());
                 output[i].p_next = next as *mut _ as *mut _;
+                let video_props = next;
+                let next = queue_family_query_result_status_props[i]
+                    .insert(ash::vk::QueueFamilyQueryResultStatusPropertiesKHR::default());
+                video_props.p_next = next as *mut _ as *mut _;
             }
         }
 
@@ -398,6 +403,10 @@ impl PhysicalDevice {
                     queue_family_properties.video_properties =
                         Some(queue_family_video_properties_vk.into());
                 }
+                queue_family_properties.supports_result_status_query =
+                    queue_family_query_result_status_props[index]
+                        .map(|props| props.query_result_status_support != 0)
+                        .unwrap_or(false);
                 queue_family_properties
             })
             .collect()
