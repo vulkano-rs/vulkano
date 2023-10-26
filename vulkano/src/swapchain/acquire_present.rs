@@ -176,7 +176,7 @@ pub fn acquire_next_image(
 /// - The swapchain must not have been replaced by being passed as the old swapchain when creating
 ///   a new one.
 #[deprecated(
-    since = "0.34.0",
+    since = "0.35.0",
     note = "use `Swapchain::acquire_next_image_unchecked` instead"
 )]
 pub unsafe fn acquire_next_image_raw(
