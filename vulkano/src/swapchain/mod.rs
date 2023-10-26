@@ -346,6 +346,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 /// Contains the swapping system and the images that can be shown on a surface.
@@ -1359,17 +1360,6 @@ impl Swapchain {
         &self.image_sharing
     }
 
-    #[inline]
-    pub(crate) unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool {
-        &self.full_screen_exclusive_held
-    }
-
-    #[inline]
-    pub(crate) unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
-        let present_id = u64::from(present_id);
-        self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
-    }
-
     /// Returns the pre-transform that was passed when creating the swapchain.
     #[inline]
     pub fn pre_transform(&self) -> SurfaceTransform {
@@ -1416,6 +1406,234 @@ impl Swapchain {
     #[inline]
     pub fn full_screen_exclusive(&self) -> FullScreenExclusive {
         self.full_screen_exclusive
+    }
+
+    /// Acquires temporary ownership of a swapchain image.
+    ///
+    /// The function returns the index of the image in the array of images that was returned
+    /// when creating the swapchain. The image will not be available immediately after the function
+    /// returns successfully.
+    ///
+    /// When the image becomes available, a semaphore or fence will be signaled. The image can then
+    /// be accessed by the host or device. After this, the image must be *presented* back to the
+    /// swapchain, using the [`present`] queue command.
+    ///
+    /// # Safety
+    ///
+    /// - `self` must be kept alive until either `acquire_info.semaphore` or `acquire_info.fence`
+    ///   is signaled.
+    /// - If all images from `self` are currently acquired, and have not been presented yet, then
+    ///   `acquire_info.timeout` must not be `None`.
+    ///
+    /// If `acquire_info.semaphore` is `Some`:
+    /// - The semaphore must be kept alive until it is signaled.
+    /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    ///
+    /// If `acquire_info.fence` is `Some`:
+    /// - The fence must be kept alive until it is signaled.
+    /// - The fence must be unsignaled and must not be associated with any other command that is
+    ///   still executing.
+    ///
+    /// [`present`]: crate::device::QueueGuard::present
+    #[inline]
+    pub unsafe fn acquire_next_image(
+        &self,
+        acquire_info: &AcquireNextImageInfo,
+    ) -> Result<AcquiredImage, Validated<VulkanError>> {
+        let is_retired_lock = self.is_retired.lock();
+        self.validate_acquire_next_image(acquire_info, *is_retired_lock)?;
+
+        Ok(self.acquire_next_image_unchecked(acquire_info)?)
+    }
+
+    fn validate_acquire_next_image(
+        &self,
+        acquire_info: &AcquireNextImageInfo,
+        is_retired: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        acquire_info
+            .validate(&self.device)
+            .map_err(|err| err.add_context("acquire_info"))?;
+
+        if is_retired {
+            return Err(Box::new(ValidationError {
+                problem: "this swapchain is retired".into(),
+                vuids: &["VUID-VkAcquireNextImageInfoKHR-swapchain-01675"],
+                ..Default::default()
+            }));
+        }
+
+        // unsafe
+        // VUID-vkAcquireNextImage2KHR-surface-07784
+        // VUID-VkAcquireNextImageInfoKHR-semaphore-01288
+        // VUID-VkAcquireNextImageInfoKHR-semaphore-01781
+        // VUID-VkAcquireNextImageInfoKHR-fence-01289
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn acquire_next_image_unchecked(
+        &self,
+        acquire_info: &AcquireNextImageInfo,
+    ) -> Result<AcquiredImage, VulkanError> {
+        let &AcquireNextImageInfo {
+            timeout,
+            ref semaphore,
+            ref fence,
+            _ne: _,
+        } = acquire_info;
+
+        let acquire_info_vk = ash::vk::AcquireNextImageInfoKHR {
+            swapchain: self.handle,
+            timeout: timeout.map_or(u64::MAX, |duration| {
+                u64::try_from(duration.as_nanos()).unwrap()
+            }),
+            semaphore: semaphore
+                .as_ref()
+                .map(VulkanObject::handle)
+                .unwrap_or_default(),
+            fence: fence.as_ref().map(VulkanObject::handle).unwrap_or_default(),
+            device_mask: self.device.device_mask(),
+            ..Default::default()
+        };
+
+        let fns = self.device.fns();
+        let mut output = MaybeUninit::uninit();
+
+        let result = if self.device.api_version() >= Version::V1_1
+            || self.device.enabled_extensions().khr_device_group
+        {
+            (fns.khr_swapchain.acquire_next_image2_khr)(
+                self.device.handle(),
+                &acquire_info_vk,
+                output.as_mut_ptr(),
+            )
+        } else {
+            debug_assert!(acquire_info_vk.p_next.is_null());
+            (fns.khr_swapchain.acquire_next_image_khr)(
+                self.device.handle(),
+                acquire_info_vk.swapchain,
+                acquire_info_vk.timeout,
+                acquire_info_vk.semaphore,
+                acquire_info_vk.fence,
+                output.as_mut_ptr(),
+            )
+        };
+
+        let is_suboptimal = match result {
+            ash::vk::Result::SUCCESS => false,
+            ash::vk::Result::SUBOPTIMAL_KHR => true,
+            ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady),
+            ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout),
+            err => {
+                let err = VulkanError::from(err);
+
+                if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
+                    self.full_screen_exclusive_held
+                        .store(false, Ordering::SeqCst);
+                }
+
+                return Err(err);
+            }
+        };
+
+        Ok(AcquiredImage {
+            image_index: output.assume_init(),
+            is_suboptimal,
+        })
+    }
+
+    /// Waits for a swapchain image with a specific present ID to be presented to the user.
+    ///
+    /// For this to work, you must set [`SwapchainPresentInfo::present_id`] to `Some` when
+    /// presenting. This function will then wait until the swapchain image with the specified ID is
+    /// presented.
+    ///
+    /// Returns whether the presentation was suboptimal. This has the same meaning as in
+    /// [`AcquiredImage::is_suboptimal`].
+    #[inline]
+    pub fn wait_for_present(
+        &self,
+        present_id: NonZeroU64,
+        timeout: Option<Duration>,
+    ) -> Result<bool, Validated<VulkanError>> {
+        let is_retired_lock = self.is_retired.lock();
+        self.validate_wait_for_present(present_id, timeout, *is_retired_lock)?;
+
+        unsafe { Ok(self.wait_for_present_unchecked(present_id, timeout)?) }
+    }
+
+    fn validate_wait_for_present(
+        &self,
+        _present_id: NonZeroU64,
+        timeout: Option<Duration>,
+        is_retired: bool,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device.enabled_features().present_wait {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "present_wait",
+                )])]),
+                vuids: &["VUID-vkWaitForPresentKHR-presentWait-06234"],
+                ..Default::default()
+            }));
+        }
+
+        if is_retired {
+            return Err(Box::new(ValidationError {
+                problem: "this swapchain is retired".into(),
+                vuids: &["VUID-vkWaitForPresentKHR-swapchain-04997"],
+                ..Default::default()
+            }));
+        }
+
+        if let Some(timeout) = timeout {
+            if timeout.as_nanos() >= u64::MAX as u128 {
+                return Err(Box::new(ValidationError {
+                    context: "timeout".into(),
+                    problem: "is not less than `u64::MAX` nanoseconds".into(),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn wait_for_present_unchecked(
+        &self,
+        present_id: NonZeroU64,
+        timeout: Option<Duration>,
+    ) -> Result<bool, VulkanError> {
+        let result = {
+            let fns = self.device.fns();
+            (fns.khr_present_wait.wait_for_present_khr)(
+                self.device.handle(),
+                self.handle,
+                present_id.get(),
+                timeout.map_or(u64::MAX, |duration| {
+                    u64::try_from(duration.as_nanos()).unwrap()
+                }),
+            )
+        };
+
+        match result {
+            ash::vk::Result::SUCCESS => Ok(false),
+            ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
+            ash::vk::Result::TIMEOUT => Err(VulkanError::Timeout),
+            err => {
+                let err = VulkanError::from(err);
+
+                if matches!(err, VulkanError::FullScreenExclusiveModeLost) {
+                    self.full_screen_exclusive_held
+                        .store(false, Ordering::SeqCst);
+                }
+
+                Err(err)
+            }
+        }
     }
 
     /// Acquires full-screen exclusivity.
@@ -1557,6 +1775,17 @@ impl Swapchain {
         } else {
             false
         }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool {
+        &self.full_screen_exclusive_held
+    }
+
+    #[inline]
+    pub(crate) unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
+        let present_id = u64::from(present_id);
+        self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
     }
 }
 
