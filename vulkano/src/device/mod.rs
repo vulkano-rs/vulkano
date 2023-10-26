@@ -532,6 +532,13 @@ impl Device {
         InstanceOwnedDebugWrapper::cast_slice_inner(&self.physical_devices)
     }
 
+    /// Returns a device mask containing all physical devices in this device. In other words:
+    /// every bit that corresponds to a physical device in this device is set to 1.
+    #[inline]
+    pub fn device_mask(&self) -> u32 {
+        (1 << self.physical_devices.len() as u32) - 1
+    }
+
     /// Returns the instance used to create this device.
     #[inline]
     pub fn instance(&self) -> &Arc<Instance> {
