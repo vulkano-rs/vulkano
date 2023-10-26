@@ -703,9 +703,8 @@ impl<'a> QueueGuard<'a> {
     ///
     /// For every semaphore in the `wait_semaphores` elements of every `submit_infos` element:
     /// - The semaphore must be kept alive while the command is being executed.
-    /// - The semaphore must be already in the signaled state, or there must be a previously
-    ///   submitted operation that will signal it.
-    /// - When the wait operation is executed, no other queue must be waiting on the same semaphore.
+    /// - The safety requirements for semaphores, as detailed in the
+    ///   [`semaphore`](crate::sync::semaphore#Safety) module documentation, must be followed.
     ///
     /// For every command buffer in the `command_buffers` elements of every `submit_infos` element,
     /// as well as any secondary command buffers recorded within it:
@@ -726,12 +725,17 @@ impl<'a> QueueGuard<'a> {
     ///
     /// For every semaphore in the `signal_semaphores` elements of every `submit_infos` element:
     /// - The semaphore must be kept alive while the command is being executed.
-    /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    /// - The safety requirements for semaphores, as detailed in the
+    ///   [`semaphore`](crate::sync::semaphore#Safety) module documentation, must be followed.
     ///
     /// If `fence` is `Some`:
     /// - The fence must be kept alive while the command is being executed.
-    /// - The fence must be unsignaled and must not be associated with any other command that is
-    ///   still executing.
+    /// - The safety requirements for fences, as detailed in the
+    ///   [`fence`](crate::sync::fence#Safety) module documentation, must be followed.
+    ///
+    /// [`CommandBufferUsage::OneTimeSubmit`]: crate::command_buffer::CommandBufferUsage::OneTimeSubmit
+    /// [`CommandBufferUsage::MultipleSubmit`]: crate::command_buffer::CommandBufferUsage::MultipleSubmit
+    /// [`Event`]: crate::sync::event::Event
     #[inline]
     pub unsafe fn submit(
         &mut self,

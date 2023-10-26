@@ -104,7 +104,7 @@
 //! [`StandardCommandBufferAllocator`]: self::allocator::StandardCommandBufferAllocator
 //! [`CommandBufferAllocator`]: self::allocator::CommandBufferAllocator
 //! [inherit]: CommandBufferInheritanceInfo
-//! [`build`]: CommandBufferBuilder::build
+//! [`build`]: AutoCommandBufferBuilder::build
 //! [pipeline barriers]: CommandBufferBuilder::pipeline_barrier
 //! [`GpuFuture`]: crate::sync::GpuFuture
 

@@ -9,6 +9,19 @@
 
 //! A semaphore provides synchronization between multiple queues, with non-command buffer
 //! commands on the same queue, or between the device and an external source.
+//!
+//! # Safety
+//!
+//! - When a semaphore signal operation is executed on the device,
+//!   the semaphore must be in the unsignaled state.
+//!   In other words, the same semaphore cannot be signalled by multiple commands;
+//!   there must always be a wait operation in between them.
+//! - There must never be more than one semaphore wait operation executing on the same semaphore
+//!   at the same time.
+//! - When a semaphore wait operation is queued as part of a command,
+//!   the semaphore must already be in the signaled state, or
+//!   the signal operation that it waits for must have been queued previously
+//!   (as part of a previous command, or an earlier batch within the same command).
 
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},

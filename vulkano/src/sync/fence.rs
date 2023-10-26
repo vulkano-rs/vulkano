@@ -9,6 +9,22 @@
 
 //! A fence provides synchronization between the device and the host, or between an external source
 //! and the host.
+//!
+//! # Queue-to-host synchronization
+//!
+//! The primary use of a fence is to know when a queue operation has completed executing.
+//! When adding a command to a queue, a fence can be provided with the command, to be signaled
+//! when the operation finishes. You can check for a fence's current status by calling
+//! `is_signaled`, `wait` or `await` on it. If the fence is found to be signaled, that means that
+//! the queue has completed the operation that is associated with the fence, and all operations
+//! that happened-before it have been completed as well.
+//!
+//! # Safety
+//!
+//! - There must never be more than one fence signal operation queued at any given time.
+//! - The fence must be unsignaled at the time the function (for example [`submit`]) is called.
+//!
+//! [`submit`]: crate::device::QueueGuard::submit
 
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
@@ -32,26 +48,6 @@ use std::{
 };
 
 /// A two-state synchronization primitive that is signalled by the device and waited on by the host.
-///
-/// # Queue-to-host synchronization
-///
-/// The primary use of a fence is to know when a queue operation has completed executing.
-/// When adding a command to a queue, a fence can be provided with the command, to be signaled
-/// when the operation finishes. You can check for a fence's current status by calling
-/// `is_signaled`, `wait` or `await` on it. If the fence is found to be signaled, that means that
-/// the queue has completed the operation that is associated with the fence, and all operations that
-/// were submitted before it have been completed as well.
-///
-/// When a queue command accesses a resource, it must be kept alive until the queue command has
-/// finished executing, and you may not be allowed to perform certain other operations (or even any)
-/// while the resource is in use. By calling `is_signaled`, `wait` or `await`, the queue will be
-/// notified when the fence is signaled, so that all resources of the associated queue operation and
-/// preceding operations can be released.
-///
-/// Because of this, it is highly recommended to call `is_signaled`, `wait` or `await` on your fences.
-/// Otherwise, the queue will hold onto resources indefinitely (using up memory)
-/// and resource locks will not be released, which may cause errors when submitting future
-/// queue operations.
 #[derive(Debug)]
 pub struct Fence {
     handle: ash::vk::Fence,
