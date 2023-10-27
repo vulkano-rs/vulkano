@@ -119,6 +119,7 @@ use crate::{
     instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
     memory::ExternalMemoryHandleType,
+    video::{VideoSession, VideoSessionCreateInfo},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };

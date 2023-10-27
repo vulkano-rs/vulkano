@@ -251,6 +251,17 @@ impl QueryPool {
                     }));
                 }
             }
+            QueryType::ResultStatusOnly => {
+                if !flags.intersects(QueryResultFlags::WITH_STATUS) {
+                    return Err(Box::new(ValidationError {
+                        problem: "`self.query_type()` is `QueryType::ResultStatusOnly`, but \
+                            `flags` does not contain `QueryResultFlags::WITH_STATUS`"
+                            .into(),
+                        vuids: &["VUID-vkGetQueryPoolResults-queryType-04810"],
+                        ..Default::default()
+                    }));
+                }
+            }
             QueryType::Occlusion
             | QueryType::PipelineStatistics(_)
             | QueryType::AccelerationStructureCompactedSize
@@ -388,7 +399,8 @@ impl QueryPoolCreateInfo {
             | QueryType::AccelerationStructureCompactedSize
             | QueryType::AccelerationStructureSerializationSize
             | QueryType::AccelerationStructureSerializationBottomLevelPointers
-            | QueryType::AccelerationStructureSize => (),
+            | QueryType::AccelerationStructureSize
+            | QueryType::ResultStatusOnly => (),
         };
 
         if query_count == 0 {
@@ -470,6 +482,8 @@ pub enum QueryType {
     ///
     /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
     AccelerationStructureSize = ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR.as_raw(),
+
+    ResultStatusOnly = ash::vk::QueryType::RESULT_STATUS_ONLY_KHR.as_raw(),
 }
 
 impl QueryType {
@@ -496,6 +510,7 @@ impl QueryType {
             | Self::AccelerationStructureSerializationBottomLevelPointers
             | Self::AccelerationStructureSize => 1,
             Self::PipelineStatistics(flags) => flags.count() as DeviceSize,
+            Self::ResultStatusOnly => 0,
         }
     }
 
@@ -550,6 +565,17 @@ impl QueryType {
                     }));
                 }
             }
+            QueryType::ResultStatusOnly => {
+                if !device.enabled_extensions().khr_video_queue {
+                    return Err(Box::new(ValidationError {
+                        problem: "is `QueryType::ResultStatusOnly`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("khr_video_queue"),
+                        ])]),
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         Ok(())
@@ -575,6 +601,7 @@ impl From<&QueryType> for ash::vk::QueryType {
             QueryType::AccelerationStructureSize => {
                 ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR
             }
+            QueryType::ResultStatusOnly => ash::vk::QueryType::RESULT_STATUS_ONLY_KHR,
         }
     }
 }
@@ -708,12 +735,11 @@ vulkan_bitflags! {
     /// available.
     PARTIAL = PARTIAL,
 
-    /* TODO: enable
     // TODO: document
     WITH_STATUS = WITH_STATUS_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_video_queue)]),
-    ]),*/
+    ]),
 }
 
 #[cfg(test)]

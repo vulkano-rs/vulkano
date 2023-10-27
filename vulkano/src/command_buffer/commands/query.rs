@@ -520,6 +520,18 @@ where
                     }));
                 }
             }
+            QueryType::ResultStatusOnly => {
+                if !queue_family_properties.supports_result_status_query {
+                    return Err(Box::new(ValidationError {
+                        problem: "`query_pool.query_type()` is `QueryType::ResultStatusOnly`, but \
+                            the queue family of the command buffer does not support \
+                            result status queries"
+                            .into(),
+                        vuids: &["VUID-vkCmdBeginQuery-queryType-07126"],
+                        ..Default::default()
+                    }));
+                }
+            }
             QueryType::Timestamp
             | QueryType::AccelerationStructureCompactedSize
             | QueryType::AccelerationStructureSerializationSize
