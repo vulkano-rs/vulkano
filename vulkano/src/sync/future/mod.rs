@@ -569,7 +569,6 @@ pub(crate) unsafe fn queue_bind_sparse(
 ) -> Result<(), Validated<VulkanError>> {
     let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
     let mut states = States::from_bind_infos(&bind_infos);
-    let fence_state = fence.as_ref().map(|fence| fence.state());
 
     queue.with(|mut queue_guard| queue_guard.bind_sparse_unchecked(&bind_infos, fence.as_ref()))?;
 
@@ -592,10 +591,6 @@ pub(crate) unsafe fn queue_bind_sparse(
             let state = states.semaphores.get_mut(&semaphore.handle()).unwrap();
             state.add_queue_wait();
         }
-    }
-
-    if let Some(mut fence_state) = fence_state {
-        fence_state.add_queue_signal();
     }
 
     Ok(())
@@ -647,7 +642,6 @@ pub(crate) unsafe fn queue_submit(
 ) -> Result<(), Validated<VulkanError>> {
     let submit_infos: SmallVec<[_; 4]> = smallvec![submit_info];
     let mut states = States::from_submit_infos(&submit_infos);
-    let fence_state = fence.as_ref().map(|fence| fence.state());
 
     for submit_info in &submit_infos {
         for command_buffer_submit_info in &submit_info.command_buffers {
@@ -866,10 +860,6 @@ pub(crate) unsafe fn queue_submit(
                 .unwrap();
             state.add_queue_signal();
         }
-    }
-
-    if let Some(mut fence_state) = fence_state {
-        fence_state.add_queue_signal();
     }
 
     Ok(())

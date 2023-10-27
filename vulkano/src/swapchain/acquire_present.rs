@@ -151,11 +151,6 @@ pub fn acquire_next_image(
         state.swapchain_acquire();
     }
 
-    unsafe {
-        let mut state = fence.state();
-        state.import_swapchain_acquire();
-    }
-
     Ok((
         image_index,
         is_suboptimal,
@@ -220,11 +215,6 @@ pub unsafe fn acquire_next_image_raw(
     if let Some(semaphore) = semaphore {
         let mut state = semaphore.state();
         state.swapchain_acquire();
-    }
-
-    if let Some(fence) = fence {
-        let mut state = fence.state();
-        state.import_swapchain_acquire();
     }
 
     Ok(AcquiredImage {
