@@ -179,6 +179,12 @@ fn main() {
     let video_session = VideoSession::new(Arc::clone(&device), video_session_create_info).unwrap();
     println!("video session: {:#?}", video_session);
 
+    let video_session_mem_requirements = video_session.get_memory_requirements().unwrap();
+    println!(
+        "video session memory requirements: {:?}",
+        video_session_mem_requirements
+    );
+
     let video_session_parameters_create_info = VideoSessionParametersCreateInfo::new(
         VideoSessionParametersCreateFlags::empty(), None, Arc::clone(&video_session), vulkano::video::VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo { max_std_sps_count: 0, max_std_pps_count: 0, parameter_add_info: Some(vulkano::video::h264::VideoDecodeH264SessionParametersAddInfo {
             std_sp_ss: vec![],

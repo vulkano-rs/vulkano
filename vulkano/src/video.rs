@@ -25,6 +25,7 @@ use crate::{
     image::{sampler::ComponentMapping, ImageCreateFlags, ImageTiling, ImageType, ImageUsage},
     instance::InstanceOwnedDebugWrapper,
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
+    memory::{allocator::DeviceLayout, MemoryRequirements},
     ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
     Version, VulkanError, VulkanObject,
 };
@@ -571,6 +572,56 @@ impl VideoSession {
             device: InstanceOwnedDebugWrapper(device),
             create_info,
         })
+    }
+
+    pub fn get_memory_requirements(
+        self: &Arc<Self>,
+    ) -> Result<Vec<VideoSessionMemoryRequirements>, VulkanError> {
+        let fns = self.device.instance().fns();
+        let device = self.device.handle();
+
+        loop {
+            let mut count = 0;
+            // Safety: just a FFI call. `device` and `handle` are valid and
+            // `self` was allocated from `device`.
+            unsafe {
+                (fns.khr_video_queue
+                    .get_video_session_memory_requirements_khr)(
+                    device,
+                    self.handle,
+                    &mut count,
+                    std::ptr::null_mut(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+            }
+
+            let mut output = Vec::with_capacity(count as usize);
+            // Safety: just a FFI call. `device` and `handle` are valid and
+            // `self` was allocated from `device`. `output` points to an
+            // appropriately sized array.
+            let result = unsafe {
+                (fns.khr_video_queue
+                    .get_video_session_memory_requirements_khr)(
+                    device,
+                    self.handle,
+                    &mut count,
+                    output.as_mut_ptr(),
+                )
+            };
+
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    // Safety: the driver will have written to `count` entries.
+                    unsafe {
+                        output.set_len(count as usize);
+                    }
+                    return Ok(output.into_iter().map(Into::into).collect());
+                }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
+            }
+        }
     }
 }
 
@@ -1173,5 +1224,29 @@ impl VideoSessionParametersCreateInfo {
         }
 
         video_session_parameters_create_info_vk
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct VideoSessionMemoryRequirements {
+    pub memory_bind_index: u32,
+    pub memory_requirements: MemoryRequirements,
+}
+
+impl From<ash::vk::VideoSessionMemoryRequirementsKHR> for VideoSessionMemoryRequirements {
+    fn from(value: ash::vk::VideoSessionMemoryRequirementsKHR) -> Self {
+        Self {
+            memory_bind_index: value.memory_bind_index,
+            memory_requirements: MemoryRequirements {
+                layout: DeviceLayout::from_size_alignment(
+                    value.memory_requirements.size,
+                    value.memory_requirements.alignment,
+                )
+                .unwrap(),
+                memory_type_bits: value.memory_requirements.memory_type_bits,
+                prefers_dedicated_allocation: false,
+                requires_dedicated_allocation: false,
+            },
+        }
     }
 }
