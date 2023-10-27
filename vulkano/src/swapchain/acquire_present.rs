@@ -146,11 +146,6 @@ pub fn acquire_next_image(
         })?
     };
 
-    unsafe {
-        let mut state = semaphore.state();
-        state.swapchain_acquire();
-    }
-
     Ok((
         image_index,
         is_suboptimal,
@@ -211,11 +206,6 @@ pub unsafe fn acquire_next_image_raw(
         ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
         err => return Err(VulkanError::from(err).into()),
     };
-
-    if let Some(semaphore) = semaphore {
-        let mut state = semaphore.state();
-        state.swapchain_acquire();
-    }
 
     Ok(AcquiredImage {
         image_index: out.assume_init(),

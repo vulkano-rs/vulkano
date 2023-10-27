@@ -96,10 +96,7 @@ pub use self::{
     now::{now, NowFuture},
     semaphore_signal::SemaphoreSignalFuture,
 };
-use super::{
-    fence::Fence,
-    semaphore::{Semaphore, SemaphoreState},
-};
+use super::{fence::Fence, semaphore::Semaphore};
 use crate::{
     buffer::{Buffer, BufferState},
     command_buffer::{
@@ -568,30 +565,7 @@ pub(crate) unsafe fn queue_bind_sparse(
     fence: Option<Arc<Fence>>,
 ) -> Result<(), Validated<VulkanError>> {
     let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
-    let mut states = States::from_bind_infos(&bind_infos);
-
     queue.with(|mut queue_guard| queue_guard.bind_sparse_unchecked(&bind_infos, fence.as_ref()))?;
-
-    for bind_info in &bind_infos {
-        let BindSparseInfo {
-            wait_semaphores,
-            buffer_binds: _,
-            image_opaque_binds: _,
-            image_binds: _,
-            signal_semaphores,
-            _ne: _,
-        } = bind_info;
-
-        for semaphore in wait_semaphores {
-            let state = states.semaphores.get_mut(&semaphore.handle()).unwrap();
-            state.add_queue_wait();
-        }
-
-        for semaphore in signal_semaphores {
-            let state = states.semaphores.get_mut(&semaphore.handle()).unwrap();
-            state.add_queue_wait();
-        }
-    }
 
     Ok(())
 }
@@ -600,25 +574,15 @@ pub(crate) unsafe fn queue_present(
     queue: &Arc<Queue>,
     present_info: PresentInfo,
 ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, Validated<VulkanError>> {
-    let mut states = States::from_present_info(&present_info);
-
     let results: SmallVec<[_; 1]> = queue
         .with(|mut queue_guard| queue_guard.present(&present_info))?
         .collect();
 
     let PresentInfo {
-        wait_semaphores,
+        wait_semaphores: _,
         swapchains,
         _ne: _,
     } = &present_info;
-
-    for semaphore_info in wait_semaphores {
-        let state = states
-            .semaphores
-            .get_mut(&semaphore_info.semaphore.handle())
-            .unwrap();
-        state.add_queue_wait();
-    }
 
     // If a presentation results in a loss of full-screen exclusive mode,
     // signal that to the relevant swapchain.
@@ -795,19 +759,11 @@ pub(crate) unsafe fn queue_submit(
 
     for submit_info in &submit_infos {
         let SubmitInfo {
-            wait_semaphores,
+            wait_semaphores: _,
             command_buffers,
-            signal_semaphores,
+            signal_semaphores: _,
             _ne: _,
         } = submit_info;
-
-        for semaphore_submit_info in wait_semaphores {
-            let state = states
-                .semaphores
-                .get_mut(&semaphore_submit_info.semaphore.handle())
-                .unwrap();
-            state.add_queue_wait();
-        }
 
         for command_buffer_submit_info in command_buffers {
             let CommandBufferSubmitInfo {
@@ -852,14 +808,6 @@ pub(crate) unsafe fn queue_submit(
                 }
             }
         }
-
-        for semaphore_submit_info in signal_semaphores {
-            let state = states
-                .semaphores
-                .get_mut(&semaphore_submit_info.semaphore.handle())
-                .unwrap();
-            state.add_queue_signal();
-        }
     }
 
     Ok(())
@@ -872,108 +820,21 @@ struct States<'a> {
     buffers: HashMap<ash::vk::Buffer, MutexGuard<'a, BufferState>>,
     command_buffers: HashMap<ash::vk::CommandBuffer, MutexGuard<'a, CommandBufferState>>,
     images: HashMap<ash::vk::Image, MutexGuard<'a, ImageState>>,
-    semaphores: HashMap<ash::vk::Semaphore, MutexGuard<'a, SemaphoreState>>,
 }
 
 impl<'a> States<'a> {
-    fn from_bind_infos(bind_infos: &'a [BindSparseInfo]) -> Self {
-        let mut buffers = HashMap::default();
-        let mut images = HashMap::default();
-        let mut semaphores = HashMap::default();
-
-        for bind_info in bind_infos {
-            let BindSparseInfo {
-                wait_semaphores,
-                buffer_binds,
-                image_opaque_binds,
-                image_binds,
-                signal_semaphores,
-                _ne: _,
-            } = bind_info;
-
-            for semaphore in wait_semaphores {
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
-
-            for (buffer, _) in buffer_binds {
-                let buffer = buffer.buffer();
-                buffers
-                    .entry(buffer.handle())
-                    .or_insert_with(|| buffer.state());
-            }
-
-            for (image, _) in image_opaque_binds {
-                images
-                    .entry(image.handle())
-                    .or_insert_with(|| image.state());
-            }
-
-            for (image, _) in image_binds {
-                images
-                    .entry(image.handle())
-                    .or_insert_with(|| image.state());
-            }
-
-            for semaphore in signal_semaphores {
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
-        }
-
-        Self {
-            buffers,
-            command_buffers: HashMap::default(),
-            images,
-            semaphores,
-        }
-    }
-
-    fn from_present_info(present_info: &'a PresentInfo) -> Self {
-        let mut semaphores = HashMap::default();
-
-        let PresentInfo {
-            wait_semaphores,
-            swapchains: _,
-            _ne: _,
-        } = present_info;
-
-        for semaphore_info in wait_semaphores {
-            semaphores
-                .entry(semaphore_info.semaphore.handle())
-                .or_insert_with(|| semaphore_info.semaphore.state());
-        }
-
-        Self {
-            buffers: HashMap::default(),
-            command_buffers: HashMap::default(),
-            images: HashMap::default(),
-            semaphores,
-        }
-    }
-
     fn from_submit_infos(submit_infos: &'a [SubmitInfo]) -> Self {
         let mut buffers = HashMap::default();
         let mut command_buffers = HashMap::default();
         let mut images = HashMap::default();
-        let mut semaphores = HashMap::default();
 
         for submit_info in submit_infos {
             let SubmitInfo {
-                wait_semaphores,
+                wait_semaphores: _,
                 command_buffers: info_command_buffers,
-                signal_semaphores,
+                signal_semaphores: _,
                 _ne: _,
             } = submit_info;
-
-            for semaphore_submit_info in wait_semaphores {
-                let semaphore = &semaphore_submit_info.semaphore;
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
 
             for command_buffer_submit_info in info_command_buffers {
                 let &CommandBufferSubmitInfo {
@@ -1006,20 +867,12 @@ impl<'a> States<'a> {
                         .or_insert_with(|| image.state());
                 }
             }
-
-            for semaphore_submit_info in signal_semaphores {
-                let semaphore = &semaphore_submit_info.semaphore;
-                semaphores
-                    .entry(semaphore.handle())
-                    .or_insert_with(|| semaphore.state());
-            }
         }
 
         Self {
             buffers,
             command_buffers,
             images,
-            semaphores,
         }
     }
 }

@@ -434,7 +434,7 @@ impl Fence {
     ///
     /// # Safety
     ///
-    /// - If `handle_type` has copy transference, then the fence is must be signaled, or a signal
+    /// - If `handle_type` has copy transference, then the fence must be signaled, or a signal
     ///   operation on the fence must be pending.
     /// - The fence must not currently have an imported payload from a swapchain acquire operation.
     /// - If the fence has an imported payload, its handle type must allow re-exporting as
@@ -533,7 +533,7 @@ impl Fence {
     ///
     /// # Safety
     ///
-    /// - If `handle_type` has copy transference, then the fence is must be signaled, or a signal
+    /// - If `handle_type` has copy transference, then the fence must be signaled, or a signal
     ///   operation on the fence must be pending.
     /// - The fence must not currently have an imported payload from a swapchain acquire operation.
     /// - If the fence has an imported payload, its handle type must allow re-exporting as

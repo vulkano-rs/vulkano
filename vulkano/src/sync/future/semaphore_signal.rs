@@ -203,11 +203,6 @@ where
 
     unsafe fn signal_finished(&self) {
         debug_assert!(*self.wait_submitted.lock());
-
-        let mut state = self.semaphore.state();
-        state.set_signal_finished();
-        state.set_wait_finished();
-
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
