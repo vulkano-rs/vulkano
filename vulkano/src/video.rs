@@ -25,7 +25,7 @@ use crate::{
     image::{sampler::ComponentMapping, ImageCreateFlags, ImageTiling, ImageType, ImageUsage},
     instance::InstanceOwnedDebugWrapper,
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
-    memory::{allocator::DeviceLayout, MemoryRequirements},
+    memory::{allocator::DeviceLayout, DeviceMemory, MemoryRequirements},
     ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError,
     Version, VulkanError, VulkanObject,
 };
@@ -449,6 +449,7 @@ pub struct VideoSession {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     /// The `VideoSessionCreateInfo` that created `self`.
     create_info: VideoSessionCreateInfo,
+    bound_memory_indices: std::collections::HashSet<u32>,
 }
 
 impl VideoSession {
@@ -571,6 +572,7 @@ impl VideoSession {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             create_info,
+            bound_memory_indices: Default::default(),
         })
     }
 
@@ -622,6 +624,134 @@ impl VideoSession {
                 err => return Err(VulkanError::from(err)),
             }
         }
+    }
+
+    fn validate_bind_video_session_memory(
+        self: &Arc<Self>,
+        bind_session_memory_infos: &Vec<BindVideoSessionMemoryInfo>,
+        memory_requirements: Vec<VideoSessionMemoryRequirements>,
+    ) -> Result<(), Box<ValidationError>> {
+        for info in bind_session_memory_infos {
+            if self.bound_memory_indices.contains(&info.memory_bind_index) {
+                return Err(Box::new(ValidationError {
+                    context: "memory_bind_index".into(),
+                    problem: "The memory binding of videoSession identified by the memoryBindIndex member of any element of pBindSessionMemoryInfos must not already be backed by a memory object"
+                        .into(),
+                    vuids: &["VUID-vkBindVideoSessionMemoryKHR-videoSession-07195"],
+                    ..Default::default()
+                }));
+            }
+
+            let corresponding_mem_req = match memory_requirements
+                .iter()
+                .find(|mem_req| mem_req.memory_bind_index == info.memory_bind_index)
+            {
+                None => {
+                    return Err(Box::new(ValidationError {
+                    context: "memory_bind_index".into(),
+                    problem: "Each element of pBindSessionMemoryInfos must have a corresponding VkMemoryRequirements structure"
+                        .into(),
+                    vuids: &["VUID-vkBindVideoSessionMemoryKHR-pBindSessionMemoryInfos-07197"],
+                    ..Default::default()
+                }));
+                }
+                Some(mem_req) => mem_req,
+            };
+
+            if info.memory.memory_type_index()
+                & corresponding_mem_req.memory_requirements.memory_type_bits
+                == 0
+            {
+                return Err(Box::new(ValidationError {
+                    context: "memory".into(),
+                    problem: "The memory type of each element of pBindSessionMemoryInfos must be supported by the memoryRequirements.memoryTypeBits of the corresponding element of pMemoryRequirements"
+                        .into(),
+                    vuids: &["VUID-vkBindVideoSessionMemoryKHR-pBindSessionMemoryInfos-07198"],
+                    ..Default::default()
+                }));
+            }
+
+            if !vulkano::memory::is_aligned(
+                info.memory_offset,
+                corresponding_mem_req.memory_requirements.layout.alignment(),
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: "memory".into(),
+                    problem: "The memory must be aligned according to the corresponding VkMemoryRequirements"
+                        .into(),
+                    vuids: &["VUID-vkBindVideoSessionMemoryKHR-pBindSessionMemoryInfos-07199"],
+                    ..Default::default()
+                }));
+            }
+
+            if info.memory_size != corresponding_mem_req.memory_requirements.layout.size() {
+                return Err(Box::new(ValidationError {
+                    context: "memory".into(),
+                    problem: "The memorySize member of that element of pBindSessionMemoryInfos must equal the size member of the corresponding VkMemoryRequirements structure"
+                        .into(),
+                    vuids: &["VUID-vkBindVideoSessionMemoryKHR-pBindSessionMemoryInfos-07200"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let memory_bind_indices: Vec<u32> = bind_session_memory_infos
+            .iter()
+            .map(|b| b.memory_bind_index)
+            .collect();
+
+        let mut unique = std::collections::HashSet::new();
+        let unique = memory_bind_indices.iter().all(|i| unique.insert(i));
+
+        if !unique {
+            return Err(Box::new(ValidationError {
+                context: "memory_bind_index".into(),
+                problem: "The memoryBindIndex member of each element of pBindSessionMemoryInfos must be unique within pBindSessionMemoryInfos"
+                    .into(),
+                vuids: &["VUID-vkBindVideoSessionMemoryKHR-memoryBindIndex-07196"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    unsafe fn bind_video_session_memory_unchecked(
+        &self,
+        bind_video_session_memory_infos: Vec<BindVideoSessionMemoryInfo>,
+    ) -> Result<(), Validated<VulkanError>> {
+        let bind_video_session_memory_infos: Vec<_> = (0..bind_video_session_memory_infos.len())
+            .map(|i| {
+                let info = &bind_video_session_memory_infos[i];
+                info.to_vulkan()
+            })
+            .collect();
+
+        let fns = self.device.instance().fns();
+        (fns.khr_video_queue.bind_video_session_memory_khr)(
+            self.device.handle(),
+            self.handle,
+            bind_video_session_memory_infos.len() as _,
+            bind_video_session_memory_infos.as_ptr(),
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        Ok(())
+    }
+
+    pub fn bind_video_session_memory(
+        self: &Arc<Self>,
+        bind_video_session_memory_infos: Vec<BindVideoSessionMemoryInfo>,
+    ) -> Result<(), Validated<VulkanError>> {
+        for info in &bind_video_session_memory_infos {
+            info.validate()
+                .map_err(|err| err.add_context("bind_session_memory_info"))?;
+        }
+
+        let reqs = self.get_memory_requirements()?;
+        self.validate_bind_video_session_memory(&bind_video_session_memory_infos, reqs)?;
+        unsafe { self.bind_video_session_memory_unchecked(bind_video_session_memory_infos) }
     }
 }
 
@@ -1247,6 +1377,75 @@ impl From<ash::vk::VideoSessionMemoryRequirementsKHR> for VideoSessionMemoryRequ
                 prefers_dedicated_allocation: false,
                 requires_dedicated_allocation: false,
             },
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BindVideoSessionMemoryInfo {
+    pub memory_bind_index: u32,
+    pub memory: DeviceMemory,
+    pub memory_offset: DeviceSize,
+    pub memory_size: DeviceSize,
+    ne: crate::NonExhaustive,
+}
+
+impl BindVideoSessionMemoryInfo {
+    fn validate(&self) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            ref memory,
+            memory_offset,
+            memory_size,
+            ..
+        } = self;
+
+        if memory_offset >= memory.allocation_size() {
+            return Err(Box::new(ValidationError {
+                context: "memory_offset".into(),
+                problem: "memoryOffset must be less than the size of memory".into(),
+                vuids: &["VUID-VkBindVideoSessionMemoryInfoKHR-memoryOffset-07201"],
+                ..Default::default()
+            }));
+        }
+
+        if memory_size > (memory.allocation_size() - memory_offset) {
+            return Err(Box::new(ValidationError {
+                context: "memory_size".into(),
+                problem:
+                    "memorySize must be less than or equal to the size of memory minus memoryOffset"
+                        .into(),
+                vuids: &["VUID-VkBindVideoSessionMemoryInfoKHR-memorySize-07202"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+}
+
+impl BindVideoSessionMemoryInfo {
+    pub fn new(
+        memory_bind_index: u32,
+        memory: DeviceMemory,
+        memory_offset: DeviceSize,
+        memory_size: DeviceSize,
+    ) -> Self {
+        Self {
+            memory_bind_index,
+            memory,
+            memory_offset,
+            memory_size,
+            ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn to_vulkan(&self) -> ash::vk::BindVideoSessionMemoryInfoKHR {
+        ash::vk::BindVideoSessionMemoryInfoKHR {
+            memory_bind_index: self.memory_bind_index,
+            memory: self.memory.handle(),
+            memory_offset: self.memory_offset,
+            memory_size: self.memory_size,
+            ..Default::default()
         }
     }
 }

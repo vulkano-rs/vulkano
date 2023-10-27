@@ -5,15 +5,35 @@ use vulkano::{
     device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo, QueueFlags},
     image::ImageUsage,
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
+    memory::{DeviceMemory, MemoryAllocateFlags, MemoryAllocateInfo},
     query::{QueryPool, QueryPoolCreateInfo, QueryType},
     video::{
-        CodecCapabilities, VideoDecodeCapabilityFlags, VideoDecodeH264PictureLayoutFlags,
-        VideoDecodeH264ProfileInfo, VideoFormatInfo, VideoProfileInfo, VideoProfileListInfo,
-        VideoSession, VideoSessionCreateInfo, VideoSessionParameters,
-        VideoSessionParametersCreateFlags, VideoSessionParametersCreateInfo,
+        BindVideoSessionMemoryInfo, CodecCapabilities, VideoDecodeCapabilityFlags,
+        VideoDecodeH264PictureLayoutFlags, VideoDecodeH264ProfileInfo, VideoFormatInfo,
+        VideoProfileInfo, VideoProfileListInfo, VideoSession, VideoSessionCreateInfo,
+        VideoSessionMemoryRequirements, VideoSessionParameters, VideoSessionParametersCreateFlags,
+        VideoSessionParametersCreateInfo,
     },
     VulkanLibrary,
 };
+
+fn find_suitable_memory(
+    device: Arc<Device>,
+    memory_requirements: VideoSessionMemoryRequirements,
+) -> Option<u32> {
+    let mem_props = device.physical_device().memory_properties();
+
+    for (i, mem_type) in mem_props.memory_types.iter().enumerate() {
+        /* The memory type must agree with the memory requirements */
+        if memory_requirements.memory_requirements.memory_type_bits & (1 << i) == 0 {
+            continue;
+        }
+
+        return Some(i as u32);
+    }
+
+    None
+}
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -184,6 +204,42 @@ fn main() {
         "video session memory requirements: {:?}",
         video_session_mem_requirements
     );
+
+    let mut mems: Vec<_> = video_session_mem_requirements
+        .iter()
+        .map(|mem_req| {
+            let mem_idx = find_suitable_memory(Arc::clone(&device), *mem_req)
+                .expect("no suitable memory found");
+            DeviceMemory::allocate(
+                Arc::clone(&device),
+                MemoryAllocateInfo {
+                    allocation_size: mem_req.memory_requirements.layout.size(),
+                    memory_type_index: mem_idx,
+                    dedicated_allocation: None,
+                    export_handle_types: Default::default(),
+                    flags: MemoryAllocateFlags::empty(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        })
+        .collect();
+
+    let bind_video_session_memory_infos = video_session_mem_requirements
+        .iter()
+        .map(|mem_req| {
+            BindVideoSessionMemoryInfo::new(
+                mem_req.memory_bind_index,
+                mems.pop().unwrap(),
+                0,
+                mem_req.memory_requirements.layout.size(),
+            )
+        })
+        .collect();
+
+    video_session
+        .bind_video_session_memory(bind_video_session_memory_infos)
+        .unwrap();
 
     let video_session_parameters_create_info = VideoSessionParametersCreateInfo::new(
         VideoSessionParametersCreateFlags::empty(), None, Arc::clone(&video_session), vulkano::video::VideoSessionParametersCreateInfoNext::VideoDecodeH264SessionParametersCreateInfo { max_std_sps_count: 0, max_std_pps_count: 0, parameter_add_info: Some(vulkano::video::h264::VideoDecodeH264SessionParametersAddInfo {
