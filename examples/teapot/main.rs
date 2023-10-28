@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use self::model::{Normal, Position, INDICES, NORMALS, POSITIONS};
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
-use examples::{Normal, Position, INDICES, NORMALS, POSITIONS};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{
@@ -58,6 +58,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
+
+mod model;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the `triangle`
@@ -538,13 +540,13 @@ fn window_size_dependent_setup(
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/bin/teapot/vert.glsl",
+        path: "vert.glsl",
     }
 }
 
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/bin/teapot/frag.glsl",
+        path: "frag.glsl",
     }
 }
