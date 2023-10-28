@@ -177,7 +177,7 @@ fn main() {
 
     let graphics_pipeline = {
         let vs = {
-            let code = read_spirv_words_from_file("src/bin/runtime-shader/vert.spv");
+            let code = read_spirv_words_from_file("vert.spv");
 
             // Create a ShaderModule on a device the same Shader::load does it.
             // NOTE: You will have to verify correctness of the data by yourself!
@@ -188,7 +188,7 @@ fn main() {
         };
 
         let fs = {
-            let code = read_spirv_words_from_file("src/bin/runtime-shader/frag.spv");
+            let code = read_spirv_words_from_file("frag.spv");
 
             let module = unsafe {
                 ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&code)).unwrap()
@@ -434,14 +434,8 @@ fn read_spirv_words_from_file(path: impl AsRef<Path>) -> Vec<u32> {
     // Read the file.
     let path = path.as_ref();
     let mut bytes = vec![];
-    let mut file = File::open(path).unwrap_or_else(|err| {
-        panic!(
-            "can't open file `{}`: {}.\n\
-            Note: this example needs to be run from the root of the example crate",
-            path.display(),
-            err,
-        )
-    });
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+    let mut file = File::open(&path).unwrap();
     file.read_to_end(&mut bytes).unwrap();
 
     vulkano::shader::spirv::bytes_to_words(&bytes)
