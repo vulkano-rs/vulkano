@@ -7,5 +7,5 @@ set -e
 # Human monitoring is also required to check for errors in stdout
 
 cargo build
-exa -F src/bin | rg '(\.rs|/)$' | sd '(\.rs|/)' '' | rargs cargo run --bin {}
+exa -F . | rg '/$' | sd '/' '' | rargs cargo run --bin {}
 rm -f pipeline_cache.bin
