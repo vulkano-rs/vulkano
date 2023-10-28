@@ -13,6 +13,8 @@
 
 ### Additions
 
+- Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
+
 ### Bugs fixed
 
 # Version 0.34.0 (2023-10-25)
