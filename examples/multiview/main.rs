@@ -420,8 +420,8 @@ fn main() {
 
 fn write_image_buffer_to_file(buffer: Subbuffer<[u8]>, path: &str, width: u32, height: u32) {
     let buffer_content = buffer.read().unwrap();
-    let path = Path::new(path);
-    let file = File::create(path).unwrap();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+    let file = File::create(&path).unwrap();
     let w = &mut BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, width, height);
     encoder.set_color(png::ColorType::Rgba);

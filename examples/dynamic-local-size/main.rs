@@ -288,12 +288,16 @@ fn main() {
     println!("Success");
 
     let buffer_content = buf.read().unwrap();
-    let path = Path::new("mandelbrot.png");
-    let file = File::create(path).unwrap();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("mandelbrot.png");
+    let file = File::create(&path).unwrap();
     let w = &mut BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();
+
+    if let Ok(path) = path.canonicalize() {
+        println!("Saved to {}", path.display());
+    }
 }

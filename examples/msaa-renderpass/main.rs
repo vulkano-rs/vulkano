@@ -423,8 +423,8 @@ fn main() {
         .unwrap();
 
     let buffer_content = buf.read().unwrap();
-    let path = Path::new("triangle.png");
-    let file = File::create(path).unwrap();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("triangle.png");
+    let file = File::create(&path).unwrap();
     let w = &mut BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
     encoder.set_color(png::ColorType::Rgba);
