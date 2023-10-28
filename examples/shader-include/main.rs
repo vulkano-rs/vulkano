@@ -96,7 +96,7 @@ fn main() {
                  ty: "compute",
                  // We declare what directories to search for when using the `#include <...>`
                  // syntax. Specified directories have descending priorities based on their order.
-                 include: ["src/bin/shader-include/standard-shaders"],
+                 include: ["standard-shaders"],
                  src: r#"
                     #version 450
 
