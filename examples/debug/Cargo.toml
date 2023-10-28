@@ -1,0 +1,12 @@
+[package]
+name = "debug"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "debug"
+path = "main.rs"
+
+[dependencies]
+vulkano = { path = "../../vulkano" }

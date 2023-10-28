@@ -1,0 +1,13 @@
+[package]
+name = "runtime-shader"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "runtime-shader"
+path = "main.rs"
+
+[dependencies]
+vulkano = { path = "../../vulkano" }
+winit = "0.28"

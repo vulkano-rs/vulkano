@@ -1,0 +1,17 @@
+[package]
+name = "interactive-fractal"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "interactive-fractal"
+path = "main.rs"
+
+[dependencies]
+cgmath = "0.18"
+rand = "0.8"
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }
+vulkano-util = { path = "../../vulkano-util" }
+winit = "0.28"

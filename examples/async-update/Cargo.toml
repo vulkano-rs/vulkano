@@ -1,0 +1,16 @@
+[package]
+name = "async-update"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "async-update"
+path = "main.rs"
+
+[dependencies]
+cgmath = "0.18"
+rand = "0.8"
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }
+winit = "0.28"

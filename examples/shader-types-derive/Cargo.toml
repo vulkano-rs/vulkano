@@ -1,0 +1,16 @@
+[package]
+name = "shader-types-derive"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "shader-types-derive"
+path = "main.rs"
+
+[dependencies]
+ron = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+vulkano = { path = "../../vulkano", features = ["serde"] }
+vulkano-shaders = { path = "../../vulkano-shaders" }
+winit = "0.28"

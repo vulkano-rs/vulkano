@@ -1,0 +1,14 @@
+[package]
+name = "triangle-v1_3"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "triangle-v1_3"
+path = "main.rs"
+
+[dependencies]
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }
+winit = "0.28"
