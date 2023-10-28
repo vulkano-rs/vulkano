@@ -9,11 +9,9 @@ name = "gl-interop"
 path = "main.rs"
 
 [dependencies]
-cgmath = "0.18"
 glium = "0.32.1"
 vulkano = { path = "../../vulkano" }
 vulkano-shaders = { path = "../../vulkano-shaders" }
-vulkano-util = { path = "../../vulkano-util" }
 winit = "0.28"
 # Glium has still not been updated to the latest winit version
 winit_glium = { package = "winit", version = "0.27.1" }
