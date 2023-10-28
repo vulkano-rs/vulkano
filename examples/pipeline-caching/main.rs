@@ -27,6 +27,7 @@
 use std::{
     fs::{remove_file, rename, File},
     io::{Read, Write},
+    path::{Path, PathBuf},
 };
 use vulkano::{
     device::{
@@ -160,11 +161,13 @@ fn main() {
     // disk.
 
     if let Ok(data) = pipeline_cache.get_data() {
-        if let Ok(mut file) = File::create("pipeline_cache.bin.tmp") {
+        let tmp_path = relpath("pipeline_cache.bin.tmp");
+
+        if let Ok(mut file) = File::create(&tmp_path) {
             if file.write_all(&data).is_ok() {
-                let _ = rename("pipeline_cache.bin.tmp", "pipeline_cache.bin");
+                let _ = rename(&tmp_path, relpath("pipeline_cache.bin"));
             } else {
-                let _ = remove_file("pipeline_cache.bin.tmp");
+                let _ = remove_file(&tmp_path);
             }
         }
     }
@@ -177,7 +180,7 @@ fn main() {
     // `PipelineCache` from that. Note that this function is currently unsafe as there are no
     // checks, as it was mentioned at the start of this example.
     let initial_data = {
-        if let Ok(mut file) = File::open("pipeline_cache.bin") {
+        if let Ok(mut file) = File::open(relpath("pipeline_cache.bin")) {
             let mut data = Vec::new();
             if file.read_to_end(&mut data).is_ok() {
                 data
@@ -210,4 +213,8 @@ fn main() {
         second_cache.get_data().unwrap(),
     );
     println!("Success");
+}
+
+fn relpath(path: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(path)
 }

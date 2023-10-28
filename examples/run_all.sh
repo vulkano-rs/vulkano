@@ -8,4 +8,4 @@ set -e
 
 cargo build
 exa -F . | rg '/$' | sd '/' '' | rargs cargo run --bin {}
-rm -f pipeline_cache.bin
+rm -f pipeline-caching/pipeline_cache.bin
