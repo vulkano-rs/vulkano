@@ -98,22 +98,26 @@ pub use self::{
 };
 use super::{fence::Fence, semaphore::Semaphore};
 use crate::{
-    buffer::Buffer,
+    buffer::{Buffer, BufferState},
     command_buffer::{
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract, SubmitInfo,
+        CommandBufferExecError, CommandBufferExecFuture, CommandBufferResourcesUsage,
+        CommandBufferState, CommandBufferSubmitInfo, CommandBufferUsage,
+        PrimaryCommandBufferAbstract, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
-    image::{Image, ImageLayout},
+    image::{Image, ImageLayout, ImageState},
     memory::BindSparseInfo,
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
-    DeviceSize, Validated, VulkanError,
+    DeviceSize, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use smallvec::SmallVec;
+use ahash::HashMap;
+use parking_lot::MutexGuard;
+use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     ops::Range,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
 
 mod fence_signal;
@@ -552,5 +556,323 @@ impl Display for AccessCheckError {
 impl From<AccessError> for AccessCheckError {
     fn from(err: AccessError) -> AccessCheckError {
         AccessCheckError::Denied(err)
+    }
+}
+
+pub(crate) unsafe fn queue_bind_sparse(
+    queue: &Arc<Queue>,
+    bind_infos: impl IntoIterator<Item = BindSparseInfo>,
+    fence: Option<Arc<Fence>>,
+) -> Result<(), Validated<VulkanError>> {
+    let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
+    queue.with(|mut queue_guard| queue_guard.bind_sparse_unchecked(&bind_infos, fence.as_ref()))?;
+
+    Ok(())
+}
+
+pub(crate) unsafe fn queue_present(
+    queue: &Arc<Queue>,
+    present_info: PresentInfo,
+) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, Validated<VulkanError>> {
+    let results: SmallVec<[_; 1]> = queue
+        .with(|mut queue_guard| queue_guard.present(&present_info))?
+        .collect();
+
+    let PresentInfo {
+        wait_semaphores: _,
+        swapchains,
+        _ne: _,
+    } = &present_info;
+
+    // If a presentation results in a loss of full-screen exclusive mode,
+    // signal that to the relevant swapchain.
+    for (&result, swapchain_info) in results.iter().zip(swapchains) {
+        if result == Err(VulkanError::FullScreenExclusiveModeLost) {
+            swapchain_info
+                .swapchain
+                .full_screen_exclusive_held()
+                .store(false, Ordering::SeqCst);
+        }
+    }
+
+    Ok(results.into_iter())
+}
+
+pub(crate) unsafe fn queue_submit(
+    queue: &Arc<Queue>,
+    submit_info: SubmitInfo,
+    fence: Option<Arc<Fence>>,
+    future: &dyn GpuFuture,
+) -> Result<(), Validated<VulkanError>> {
+    let submit_infos: SmallVec<[_; 4]> = smallvec![submit_info];
+    let mut states = States::from_submit_infos(&submit_infos);
+
+    for submit_info in &submit_infos {
+        for command_buffer_submit_info in &submit_info.command_buffers {
+            let &CommandBufferSubmitInfo {
+                ref command_buffer,
+                _ne: _,
+            } = command_buffer_submit_info;
+
+            let state = states
+                .command_buffers
+                .get(&command_buffer.handle())
+                .unwrap();
+
+            match command_buffer.usage() {
+                CommandBufferUsage::OneTimeSubmit => {
+                    if state.has_been_submitted() {
+                        return Err(Box::new(ValidationError {
+                            problem: "a command buffer, or one of the secondary \
+                                command buffers it executes, was created with the \
+                                `CommandBufferUsage::OneTimeSubmit` usage, but \
+                                it has already been submitted in the past"
+                                .into(),
+                            vuids: &["VUID-vkQueueSubmit2-commandBuffer-03874"],
+                            ..Default::default()
+                        })
+                        .into());
+                    }
+                }
+                CommandBufferUsage::MultipleSubmit => {
+                    if state.is_submit_pending() {
+                        return Err(Box::new(ValidationError {
+                            problem: "a command buffer, or one of the secondary \
+                                command buffers it executes, was not created with the \
+                                `CommandBufferUsage::SimultaneousUse` usage, but \
+                                it is already in use by the device"
+                                .into(),
+                            vuids: &["VUID-vkQueueSubmit2-commandBuffer-03875"],
+                            ..Default::default()
+                        })
+                        .into());
+                    }
+                }
+                CommandBufferUsage::SimultaneousUse => (),
+            }
+
+            let CommandBufferResourcesUsage {
+                buffers,
+                images,
+                buffer_indices: _,
+                image_indices: _,
+            } = command_buffer.resources_usage();
+
+            for usage in buffers {
+                let state = states.buffers.get_mut(&usage.buffer.handle()).unwrap();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    match future.check_buffer_access(
+                        &usage.buffer,
+                        range.clone(),
+                        range_usage.mutable,
+                        queue,
+                    ) {
+                        Err(AccessCheckError::Denied(error)) => {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "access to a resource has been denied \
+                                    (resource use: {:?}, error: {})",
+                                    range_usage.first_use, error
+                                )
+                                .into(),
+                                ..Default::default()
+                            })
+                            .into());
+                        }
+                        Err(AccessCheckError::Unknown) => {
+                            let result = if range_usage.mutable {
+                                state.check_gpu_write(range.clone())
+                            } else {
+                                state.check_gpu_read(range.clone())
+                            };
+
+                            if let Err(error) = result {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "access to a resource has been denied \
+                                        (resource use: {:?}, error: {})",
+                                        range_usage.first_use, error
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                })
+                                .into());
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+
+            for usage in images {
+                let state = states.images.get_mut(&usage.image.handle()).unwrap();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    match future.check_image_access(
+                        &usage.image,
+                        range.clone(),
+                        range_usage.mutable,
+                        range_usage.expected_layout,
+                        queue,
+                    ) {
+                        Err(AccessCheckError::Denied(error)) => {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "access to a resource has been denied \
+                                    (resource use: {:?}, error: {})",
+                                    range_usage.first_use, error
+                                )
+                                .into(),
+                                ..Default::default()
+                            })
+                            .into());
+                        }
+                        Err(AccessCheckError::Unknown) => {
+                            let result = if range_usage.mutable {
+                                state.check_gpu_write(range.clone(), range_usage.expected_layout)
+                            } else {
+                                state.check_gpu_read(range.clone(), range_usage.expected_layout)
+                            };
+
+                            if let Err(error) = result {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "access to a resource has been denied \
+                                        (resource use: {:?}, error: {})",
+                                        range_usage.first_use, error
+                                    )
+                                    .into(),
+                                    ..Default::default()
+                                })
+                                .into());
+                            }
+                        }
+                        _ => (),
+                    };
+                }
+            }
+        }
+    }
+
+    queue.with(|mut queue_guard| queue_guard.submit(&submit_infos, fence.as_ref()))?;
+
+    for submit_info in &submit_infos {
+        let SubmitInfo {
+            wait_semaphores: _,
+            command_buffers,
+            signal_semaphores: _,
+            _ne: _,
+        } = submit_info;
+
+        for command_buffer_submit_info in command_buffers {
+            let CommandBufferSubmitInfo {
+                command_buffer,
+                _ne: _,
+            } = command_buffer_submit_info;
+
+            let state = states
+                .command_buffers
+                .get_mut(&command_buffer.handle())
+                .unwrap();
+            state.add_queue_submit();
+
+            let CommandBufferResourcesUsage {
+                buffers,
+                images,
+                buffer_indices: _,
+                image_indices: _,
+            } = command_buffer.resources_usage();
+
+            for usage in buffers {
+                let state = states.buffers.get_mut(&usage.buffer.handle()).unwrap();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    if range_usage.mutable {
+                        state.gpu_write_lock(range.clone());
+                    } else {
+                        state.gpu_read_lock(range.clone());
+                    }
+                }
+            }
+
+            for usage in images {
+                let state = states.images.get_mut(&usage.image.handle()).unwrap();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    if range_usage.mutable {
+                        state.gpu_write_lock(range.clone(), range_usage.final_layout);
+                    } else {
+                        state.gpu_read_lock(range.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// This struct exists to ensure that every object gets locked exactly once.
+// Otherwise we get deadlocks.
+#[derive(Debug)]
+struct States<'a> {
+    buffers: HashMap<ash::vk::Buffer, MutexGuard<'a, BufferState>>,
+    command_buffers: HashMap<ash::vk::CommandBuffer, MutexGuard<'a, CommandBufferState>>,
+    images: HashMap<ash::vk::Image, MutexGuard<'a, ImageState>>,
+}
+
+impl<'a> States<'a> {
+    fn from_submit_infos(submit_infos: &'a [SubmitInfo]) -> Self {
+        let mut buffers = HashMap::default();
+        let mut command_buffers = HashMap::default();
+        let mut images = HashMap::default();
+
+        for submit_info in submit_infos {
+            let SubmitInfo {
+                wait_semaphores: _,
+                command_buffers: info_command_buffers,
+                signal_semaphores: _,
+                _ne: _,
+            } = submit_info;
+
+            for command_buffer_submit_info in info_command_buffers {
+                let &CommandBufferSubmitInfo {
+                    ref command_buffer,
+                    _ne: _,
+                } = command_buffer_submit_info;
+
+                command_buffers
+                    .entry(command_buffer.handle())
+                    .or_insert_with(|| command_buffer.state());
+
+                let CommandBufferResourcesUsage {
+                    buffers: buffers_usage,
+                    images: images_usage,
+                    buffer_indices: _,
+                    image_indices: _,
+                } = command_buffer.resources_usage();
+
+                for usage in buffers_usage {
+                    let buffer = &usage.buffer;
+                    buffers
+                        .entry(buffer.handle())
+                        .or_insert_with(|| buffer.state());
+                }
+
+                for usage in images_usage {
+                    let image = &usage.image;
+                    images
+                        .entry(image.handle())
+                        .or_insert_with(|| image.state());
+                }
+            }
+        }
+
+        Self {
+            buffers,
+            command_buffers,
+            images,
+        }
     }
 }

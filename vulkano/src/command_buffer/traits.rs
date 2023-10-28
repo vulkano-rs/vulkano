@@ -9,7 +9,8 @@
 
 use super::{
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, SecondaryCommandBufferResourcesUsage, SemaphoreSubmitInfo, SubmitInfo,
+    CommandBufferSubmitInfo, CommandBufferUsage, SecondaryCommandBufferResourcesUsage,
+    SemaphoreSubmitInfo, SubmitInfo,
 };
 use crate::{
     buffer::Buffer,
@@ -17,7 +18,10 @@ use crate::{
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
-        future::{now, AccessCheckError, AccessError, GpuFuture, NowFuture, SubmitAnyBuilder},
+        future::{
+            now, queue_submit, AccessCheckError, AccessError, GpuFuture, NowFuture,
+            SubmitAnyBuilder,
+        },
         PipelineStages,
     },
     DeviceSize, SafeDeref, Validated, ValidationError, VulkanError, VulkanObject,
@@ -38,6 +42,9 @@ use std::{
 pub unsafe trait PrimaryCommandBufferAbstract:
     VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
 {
+    /// Returns the queue family index of this command buffer.
+    fn queue_family_index(&self) -> u32;
+
     /// Returns the usage of this command buffer.
     fn usage(&self) -> CommandBufferUsage;
 
@@ -143,6 +150,10 @@ where
     T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
     T::Target: PrimaryCommandBufferAbstract,
 {
+    fn queue_family_index(&self) -> u32 {
+        (**self).queue_family_index()
+    }
+
     fn usage(&self) -> CommandBufferUsage {
         (**self).usage()
     }
@@ -237,7 +248,9 @@ where
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
                 SubmitInfo {
-                    command_buffers: vec![self.command_buffer.clone()],
+                    command_buffers: vec![CommandBufferSubmitInfo::new(
+                        self.command_buffer.clone(),
+                    )],
                     ..Default::default()
                 },
                 None,
@@ -251,11 +264,13 @@ where
                                 SemaphoreSubmitInfo {
                                     // TODO: correct stages ; hard
                                     stages: PipelineStages::ALL_COMMANDS,
-                                    ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                    ..SemaphoreSubmitInfo::new(semaphore)
                                 }
                             })
                             .collect(),
-                        command_buffers: vec![self.command_buffer.clone()],
+                        command_buffers: vec![CommandBufferSubmitInfo::new(
+                            self.command_buffer.clone(),
+                        )],
                         ..Default::default()
                     },
                     None,
@@ -265,7 +280,7 @@ where
                 // FIXME: add pipeline barrier
                 submit_info
                     .command_buffers
-                    .push(self.command_buffer.clone());
+                    .push(CommandBufferSubmitInfo::new(self.command_buffer.clone()));
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence)
             }
             SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_, _) => {
@@ -305,9 +320,7 @@ where
             match self.build_submission_impl()? {
                 SubmitAnyBuilder::Empty => {}
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
-                    self.queue.with(|mut q| {
-                        q.submit_with_future(submit_info, fence, &self.previous, &self.queue)
-                    })?;
+                    queue_submit(&self.queue, submit_info, fence, &self.previous).unwrap();
                 }
                 _ => unreachable!(),
             };
@@ -319,7 +332,36 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        self.finished.store(true, Ordering::SeqCst);
+        if !self.finished.swap(true, Ordering::SeqCst) {
+            let resource_usage = self.command_buffer.resources_usage();
+
+            for usage in &resource_usage.buffers {
+                let mut state = usage.buffer.state();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    if range_usage.mutable {
+                        state.gpu_write_unlock(range.clone());
+                    } else {
+                        state.gpu_read_unlock(range.clone());
+                    }
+                }
+            }
+
+            for usage in &resource_usage.images {
+                let mut state = usage.image.state();
+
+                for (range, range_usage) in usage.ranges.iter() {
+                    if range_usage.mutable {
+                        state.gpu_write_unlock(range.clone());
+                    } else {
+                        state.gpu_read_unlock(range.clone());
+                    }
+                }
+            }
+
+            self.command_buffer.state().set_submit_finished();
+        }
+
         self.previous.signal_finished();
     }
 
@@ -445,7 +487,10 @@ where
             self.flush().unwrap();
             // Block until the queue finished.
             self.queue.with(|mut q| q.wait_idle()).unwrap();
-            unsafe { self.previous.signal_finished() };
+
+            unsafe {
+                self.signal_finished();
+            }
         }
     }
 }

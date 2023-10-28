@@ -9,22 +9,42 @@
 
 //! A semaphore provides synchronization between multiple queues, with non-command buffer
 //! commands on the same queue, or between the device and an external source.
+//!
+//! A semaphore has two states: **signaled** and **unsignaled**.
+//! Only the device can perform operations on a semaphore,
+//! the host cannot perform any operations on it.
+//!
+//! Two operations can be performed on a semaphore:
+//! - A **semaphore signal operation** will put the semaphore into the signaled state.
+//! - A **semaphore wait operation** will block execution of the operation is associated with,
+//!   as long as the semaphore is in the unsignaled state. Once the semaphore is in the signaled
+//!   state, the semaphore is put back in the unsignaled state and execution continues.
+//!
+//! Semaphore signals and waits must always occur in pairs: one signal operation is paired with one
+//! wait operation. If a semaphore is signaled without waiting for it, it stays in the signaled
+//! state until it is waited for, or destroyed.
+//!
+//! # Safety
+//!
+//! - When a semaphore signal operation is executed on the device,
+//!   the semaphore must be in the unsignaled state.
+//!   In other words, the same semaphore cannot be signalled by multiple commands;
+//!   there must always be a wait operation in between them.
+//! - There must never be more than one semaphore wait operation executing on the same semaphore
+//!   at the same time.
+//! - When a semaphore wait operation is queued as part of a command,
+//!   the semaphore must already be in the signaled state, or
+//!   the signal operation that it waits for must have been queued previously
+//!   (as part of a previous command, or an earlier batch within the same command).
 
 use crate::{
-    device::{physical::PhysicalDevice, Device, DeviceOwned, Queue},
+    device::{physical::PhysicalDevice, Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use parking_lot::{Mutex, MutexGuard};
-use std::{
-    fs::File,
-    mem::MaybeUninit,
-    num::NonZeroU64,
-    ptr,
-    sync::{Arc, Weak},
-};
+use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -39,7 +59,6 @@ pub struct Semaphore {
     export_handle_types: ExternalSemaphoreHandleTypes,
 
     must_put_in_pool: bool,
-    state: Mutex<SemaphoreState>,
 }
 
 impl Semaphore {
@@ -128,7 +147,6 @@ impl Semaphore {
                 export_handle_types: ExternalSemaphoreHandleTypes::empty(),
 
                 must_put_in_pool: true,
-                state: Mutex::new(Default::default()),
             },
             None => {
                 // Pool is empty, alloc new semaphore
@@ -167,7 +185,6 @@ impl Semaphore {
             export_handle_types,
 
             must_put_in_pool: false,
-            state: Mutex::new(Default::default()),
         }
     }
 
@@ -178,21 +195,28 @@ impl Semaphore {
     }
 
     /// Exports the semaphore into a POSIX file descriptor. The caller owns the returned `File`.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the semaphore must be signaled, or a signal
+    ///   operation on the semaphore must be pending, and no wait operations must be pending.
+    /// - The semaphore must not currently have an imported payload from a swapchain acquire
+    ///   operation.
+    /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
     #[inline]
-    pub fn export_fd(
+    pub unsafe fn export_fd(
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<File, Validated<VulkanError>> {
-        let mut state = self.state.lock();
-        self.validate_export_fd(handle_type, &state)?;
+        self.validate_export_fd(handle_type)?;
 
-        unsafe { Ok(self.export_fd_unchecked_locked(handle_type, &mut state)?) }
+        unsafe { Ok(self.export_fd_unchecked(handle_type)?) }
     }
 
     fn validate_export_fd(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-        state: &SemaphoreState,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
             return Err(Box::new(ValidationError {
@@ -230,86 +254,13 @@ impl Semaphore {
             }));
         }
 
-        if let Some(imported_handle_type) = state.current_import {
-            match imported_handle_type {
-                ImportType::SwapchainAcquire => {
-                    return Err(Box::new(ValidationError {
-                        problem: "the semaphore currently has an imported payload from a \
-                            swapchain acquire operation"
-                            .into(),
-                        vuids: &["VUID-VkSemaphoreGetFdInfoKHR-semaphore-01133"],
-                        ..Default::default()
-                    }));
-                }
-                ImportType::ExternalSemaphore(imported_handle_type) => {
-                    let external_semaphore_properties = unsafe {
-                        self.device
-                            .physical_device()
-                            .external_semaphore_properties_unchecked(
-                                ExternalSemaphoreInfo::handle_type(handle_type),
-                            )
-                    };
-
-                    if !external_semaphore_properties
-                        .export_from_imported_handle_types
-                        .intersects(imported_handle_type.into())
-                    {
-                        return Err(Box::new(ValidationError {
-                            problem: "the semaphore currently has an imported payload, whose type \
-                                does not allow re-exporting as `handle_type`, as \
-                                returned by `PhysicalDevice::external_semaphore_properties`"
-                                .into(),
-                            vuids: &["VUID-VkSemaphoreGetFdInfoKHR-semaphore-01133"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-            }
-        }
-
-        if handle_type.has_copy_transference() {
-            if state.is_wait_pending() {
-                return Err(Box::new(ValidationError {
-                    problem: "`handle_type` has copy transference, but \
-                        a wait operation on the semaphore is pending"
-                        .into(),
-                    vuids: &["VUID-VkSemaphoreGetFdInfoKHR-handleType-01134"],
-                    ..Default::default()
-                }));
-            }
-
-            if !(state.is_signaled().unwrap_or(false) || state.is_signal_pending()) {
-                return Err(Box::new(ValidationError {
-                    problem: "`handle_type` has copy transference, but \
-                        the semaphore is not signaled, and \
-                        a signal operation on the semaphore is not pending"
-                        .into(),
-                    vuids: &[
-                        "VUID-VkSemaphoreGetFdInfoKHR-handleType-01135",
-                        "VUID-VkSemaphoreGetFdInfoKHR-handleType-03254",
-                    ],
-                    ..Default::default()
-                }));
-            }
-        }
-
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn export_fd_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<File, VulkanError> {
-        let mut state = self.state.lock();
-        self.export_fd_unchecked_locked(handle_type, &mut state)
-    }
-
-    unsafe fn export_fd_unchecked_locked(
-        &self,
-        handle_type: ExternalSemaphoreHandleType,
-        state: &mut SemaphoreState,
     ) -> Result<File, VulkanError> {
         let info_vk = ash::vk::SemaphoreGetFdInfoKHR {
             semaphore: self.handle,
@@ -326,8 +277,6 @@ impl Semaphore {
         )
         .result()
         .map_err(VulkanError::from)?;
-
-        state.export(handle_type);
 
         #[cfg(unix)]
         {
@@ -346,21 +295,31 @@ impl Semaphore {
     ///
     /// The [`khr_external_semaphore_win32`](crate::device::DeviceExtensions::khr_external_semaphore_win32)
     /// extension must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the semaphore must be signaled, or a signal
+    ///   operation on the semaphore must be pending, and no wait operations must be pending.
+    /// - The semaphore must not currently have an imported payload from a swapchain acquire
+    ///   operation.
+    /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
+    /// - If `handle_type` is `ExternalSemaphoreHandleType::OpaqueWin32` or
+    ///   `ExternalSemaphoreHandleType::D3D12Fence`, then a handle of this type must not have been
+    ///   already exported from this semaphore.
     #[inline]
     pub fn export_win32_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<*mut std::ffi::c_void, Validated<VulkanError>> {
-        let mut state = self.state.lock();
-        self.validate_export_win32_handle(handle_type, &state)?;
+        self.validate_export_win32_handle(handle_type)?;
 
-        unsafe { Ok(self.export_win32_handle_unchecked_locked(handle_type, &mut state)?) }
+        unsafe { Ok(self.export_win32_handle_unchecked(handle_type)?) }
     }
 
     fn validate_export_win32_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-        state: &SemaphoreState,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .device
@@ -405,98 +364,13 @@ impl Semaphore {
             }));
         }
 
-        if matches!(
-            handle_type,
-            ExternalSemaphoreHandleType::OpaqueWin32 | ExternalSemaphoreHandleType::D3D12Fence
-        ) && state.is_exported(handle_type)
-        {
-            return Err(Box::new(ValidationError {
-                problem: "`handle_type` is `ExternalSemaphoreHandleType::OpaqueWin32` or \
-                    `ExternalSemaphoreHandleType::D3D12Fence`, but \
-                    a handle of this type has already been exported from this semaphore"
-                    .into(),
-                vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01127"],
-                ..Default::default()
-            }));
-        }
-
-        if let Some(imported_handle_type) = state.current_import {
-            match imported_handle_type {
-                ImportType::SwapchainAcquire => {
-                    return Err(Box::new(ValidationError {
-                        problem: "the semaphore currently has an imported payload from a \
-                            swapchain acquire operation"
-                            .into(),
-                        vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-semaphore-01128"],
-                        ..Default::default()
-                    }));
-                }
-                ImportType::ExternalSemaphore(imported_handle_type) => {
-                    let external_semaphore_properties = unsafe {
-                        self.device
-                            .physical_device()
-                            .external_semaphore_properties_unchecked(
-                                ExternalSemaphoreInfo::handle_type(handle_type),
-                            )
-                    };
-
-                    if !external_semaphore_properties
-                        .export_from_imported_handle_types
-                        .intersects(imported_handle_type.into())
-                    {
-                        return Err(Box::new(ValidationError {
-                            problem: "the semaphore currently has an imported payload, whose type \
-                                does not allow re-exporting as `handle_type`, as \
-                                returned by `PhysicalDevice::external_semaphore_properties`"
-                                .into(),
-                            vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-semaphore-01128"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-            }
-        }
-
-        if handle_type.has_copy_transference() {
-            if state.is_wait_pending() {
-                return Err(Box::new(ValidationError {
-                    problem: "`handle_type` has copy transference, but \
-                        a wait operation on the semaphore is pending"
-                        .into(),
-                    vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01129"],
-                    ..Default::default()
-                }));
-            }
-
-            if !(state.is_signaled().unwrap_or(false) || state.is_signal_pending()) {
-                return Err(Box::new(ValidationError {
-                    problem: "`handle_type` has copy transference, but \
-                        the semaphore is not signaled, and \
-                        a signal operation on the semaphore is not pending"
-                        .into(),
-                    vuids: &["VUID-VkSemaphoreGetWin32HandleInfoKHR-handleType-01130"],
-                    ..Default::default()
-                }));
-            }
-        }
-
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn export_win32_handle_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<*mut std::ffi::c_void, VulkanError> {
-        let mut state = self.state.lock();
-        self.export_win32_handle_unchecked_locked(handle_type, &mut state)
-    }
-
-    unsafe fn export_win32_handle_unchecked_locked(
-        &self,
-        handle_type: ExternalSemaphoreHandleType,
-        state: &mut SemaphoreState,
     ) -> Result<*mut std::ffi::c_void, VulkanError> {
         let info_vk = ash::vk::SemaphoreGetWin32HandleInfoKHR {
             semaphore: self.handle,
@@ -513,27 +387,32 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.export(handle_type);
-
         Ok(output.assume_init())
     }
 
     /// Exports the semaphore into a Zircon event handle.
+    ///
+    /// # Safety
+    ///
+    /// - If `handle_type` has copy transference, then the semaphore must be signaled, or a signal
+    ///   operation on the semaphore must be pending, and no wait operations must be pending.
+    /// - The semaphore must not currently have an imported payload from a swapchain acquire
+    ///   operation.
+    /// - If the semaphore has an imported payload, its handle type must allow re-exporting as
+    ///   `handle_type`, as returned by [`PhysicalDevice::external_semaphore_properties`].
     #[inline]
-    pub fn export_zircon_handle(
+    pub unsafe fn export_zircon_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<ash::vk::zx_handle_t, Validated<VulkanError>> {
-        let mut state = self.state.lock();
-        self.validate_export_zircon_handle(handle_type, &state)?;
+        self.validate_export_zircon_handle(handle_type)?;
 
-        unsafe { Ok(self.export_zircon_handle_unchecked_locked(handle_type, &mut state)?) }
+        unsafe { Ok(self.export_zircon_handle_unchecked(handle_type)?) }
     }
 
     fn validate_export_zircon_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-        state: &SemaphoreState,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
             return Err(Box::new(ValidationError {
@@ -566,83 +445,13 @@ impl Semaphore {
             }));
         }
 
-        if let Some(imported_handle_type) = state.current_import {
-            match imported_handle_type {
-                ImportType::SwapchainAcquire => {
-                    return Err(Box::new(ValidationError {
-                        problem: "the semaphore currently has an imported payload from a \
-                            swapchain acquire operation"
-                            .into(),
-                        vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-semaphore-04759"],
-                        ..Default::default()
-                    }));
-                }
-                ImportType::ExternalSemaphore(imported_handle_type) => {
-                    let external_semaphore_properties = unsafe {
-                        self.device
-                            .physical_device()
-                            .external_semaphore_properties_unchecked(
-                                ExternalSemaphoreInfo::handle_type(handle_type),
-                            )
-                    };
-
-                    if !external_semaphore_properties
-                        .export_from_imported_handle_types
-                        .intersects(imported_handle_type.into())
-                    {
-                        return Err(Box::new(ValidationError {
-                            problem: "the semaphore currently has an imported payload, whose type \
-                                does not allow re-exporting as `handle_type`, as \
-                                returned by `PhysicalDevice::external_semaphore_properties`"
-                                .into(),
-                            vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-semaphore-04759"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-            }
-        }
-
-        if handle_type.has_copy_transference() {
-            if state.is_wait_pending() {
-                return Err(Box::new(ValidationError {
-                    problem: "`handle_type` has copy transference, but \
-                        a wait operation on the semaphore is pending"
-                        .into(),
-                    vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04760"],
-                    ..Default::default()
-                }));
-            }
-
-            if !(state.is_signaled().unwrap_or(false) || state.is_signal_pending()) {
-                return Err(Box::new(ValidationError {
-                    problem: "`handle_type` has copy transference, but \
-                        the semaphore is not signaled, and \
-                        a signal operation on the semaphore is not pending"
-                        .into(),
-                    vuids: &["VUID-VkSemaphoreGetZirconHandleInfoFUCHSIA-handleType-04761"],
-                    ..Default::default()
-                }));
-            }
-        }
-
         Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn export_zircon_handle_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<ash::vk::zx_handle_t, VulkanError> {
-        let mut state = self.state.lock();
-        self.export_zircon_handle_unchecked_locked(handle_type, &mut state)
-    }
-
-    unsafe fn export_zircon_handle_unchecked_locked(
-        &self,
-        handle_type: ExternalSemaphoreHandleType,
-        state: &mut SemaphoreState,
     ) -> Result<ash::vk::zx_handle_t, VulkanError> {
         let info_vk = ash::vk::SemaphoreGetZirconHandleInfoFUCHSIA {
             semaphore: self.handle,
@@ -661,8 +470,6 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.export(handle_type);
-
         Ok(output.assume_init())
     }
 
@@ -673,6 +480,7 @@ impl Semaphore {
     ///
     /// # Safety
     ///
+    /// - The semaphore must not be in use by the device.
     /// - If in `import_semaphore_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`,
     ///   then `file` must represent a binary semaphore that was exported from Vulkan or a
     ///   compatible API, with a driver and device UUID equal to those of the device that owns
@@ -682,30 +490,20 @@ impl Semaphore {
         &self,
         import_semaphore_fd_info: ImportSemaphoreFdInfo,
     ) -> Result<(), Validated<VulkanError>> {
-        let mut state = self.state.lock();
-        self.validate_import_fd(&import_semaphore_fd_info, &state)?;
+        self.validate_import_fd(&import_semaphore_fd_info)?;
 
-        Ok(self.import_fd_unchecked_locked(import_semaphore_fd_info, &mut state)?)
+        Ok(self.import_fd_unchecked(import_semaphore_fd_info)?)
     }
 
     fn validate_import_fd(
         &self,
         import_semaphore_fd_info: &ImportSemaphoreFdInfo,
-        state: &SemaphoreState,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().khr_external_semaphore_fd {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "khr_external_semaphore_fd",
                 )])]),
-                ..Default::default()
-            }));
-        }
-
-        if state.is_in_queue() {
-            return Err(Box::new(ValidationError {
-                problem: "the semaphore is in use".into(),
-                vuids: &["VUID-vkImportSemaphoreFdKHR-semaphore-01142"],
                 ..Default::default()
             }));
         }
@@ -718,19 +516,9 @@ impl Semaphore {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn import_fd_unchecked(
         &self,
         import_semaphore_fd_info: ImportSemaphoreFdInfo,
-    ) -> Result<(), VulkanError> {
-        let mut state = self.state.lock();
-        self.import_fd_unchecked_locked(import_semaphore_fd_info, &mut state)
-    }
-
-    unsafe fn import_fd_unchecked_locked(
-        &self,
-        import_semaphore_fd_info: ImportSemaphoreFdInfo,
-        state: &mut SemaphoreState,
     ) -> Result<(), VulkanError> {
         let ImportSemaphoreFdInfo {
             flags,
@@ -764,11 +552,6 @@ impl Semaphore {
             .result()
             .map_err(VulkanError::from)?;
 
-        state.import(
-            handle_type,
-            flags.intersects(SemaphoreImportFlags::TEMPORARY),
-        );
-
         Ok(())
     }
 
@@ -779,6 +562,7 @@ impl Semaphore {
     ///
     /// # Safety
     ///
+    /// - The semaphore must not be in use by the device.
     /// - In `import_semaphore_win32_handle_info`, `handle` must represent a binary semaphore that
     ///   was exported from Vulkan or a compatible API, with a driver and device UUID equal to
     ///   those of the device that owns `self`.
@@ -787,17 +571,14 @@ impl Semaphore {
         &self,
         import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
     ) -> Result<(), Validated<VulkanError>> {
-        let mut state = self.state.lock();
-        self.validate_import_win32_handle(&import_semaphore_win32_handle_info, &state)?;
+        self.validate_import_win32_handle(&import_semaphore_win32_handle_info)?;
 
-        Ok(self
-            .import_win32_handle_unchecked_locked(import_semaphore_win32_handle_info, &mut state)?)
+        Ok(self.import_win32_handle_unchecked(import_semaphore_win32_handle_info)?)
     }
 
     fn validate_import_win32_handle(
         &self,
         import_semaphore_win32_handle_info: &ImportSemaphoreWin32HandleInfo,
-        state: &SemaphoreState,
     ) -> Result<(), Box<ValidationError>> {
         if !self
             .device
@@ -812,14 +593,6 @@ impl Semaphore {
             }));
         }
 
-        if state.is_in_queue() {
-            return Err(Box::new(ValidationError {
-                problem: "the semaphore is in use".into(),
-                // vuids?
-                ..Default::default()
-            }));
-        }
-
         import_semaphore_win32_handle_info
             .validate(&self.device)
             .map_err(|err| err.add_context("import_semaphore_win32_handle_info"))?;
@@ -828,19 +601,9 @@ impl Semaphore {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn import_win32_handle_unchecked(
         &self,
         import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
-    ) -> Result<(), VulkanError> {
-        let mut state = self.state.lock();
-        self.import_win32_handle_unchecked_locked(import_semaphore_win32_handle_info, &mut state)
-    }
-
-    unsafe fn import_win32_handle_unchecked_locked(
-        &self,
-        import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
-        state: &mut SemaphoreState,
     ) -> Result<(), VulkanError> {
         let ImportSemaphoreWin32HandleInfo {
             flags,
@@ -864,11 +627,6 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(
-            handle_type,
-            flags.intersects(SemaphoreImportFlags::TEMPORARY),
-        );
-
         Ok(())
     }
 
@@ -879,6 +637,7 @@ impl Semaphore {
     ///
     /// # Safety
     ///
+    /// - The semaphore must not be in use by the device.
     /// - In `import_semaphore_zircon_handle_info`, `zircon_handle` must have `ZX_RIGHTS_BASIC` and
     ///   `ZX_RIGHTS_SIGNAL`.
     #[inline]
@@ -886,33 +645,20 @@ impl Semaphore {
         &self,
         import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
     ) -> Result<(), Validated<VulkanError>> {
-        let mut state = self.state.lock();
-        self.validate_import_zircon_handle(&import_semaphore_zircon_handle_info, &state)?;
+        self.validate_import_zircon_handle(&import_semaphore_zircon_handle_info)?;
 
-        Ok(self.import_zircon_handle_unchecked_locked(
-            import_semaphore_zircon_handle_info,
-            &mut state,
-        )?)
+        Ok(self.import_zircon_handle_unchecked(import_semaphore_zircon_handle_info)?)
     }
 
     fn validate_import_zircon_handle(
         &self,
         import_semaphore_zircon_handle_info: &ImportSemaphoreZirconHandleInfo,
-        state: &SemaphoreState,
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_extensions().fuchsia_external_semaphore {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                     "fuchsia_external_semaphore",
                 )])]),
-                ..Default::default()
-            }));
-        }
-
-        if state.is_in_queue() {
-            return Err(Box::new(ValidationError {
-                problem: "the semaphore is in use".into(),
-                vuids: &["VUID-vkImportSemaphoreZirconHandleFUCHSIA-semaphore-04764"],
                 ..Default::default()
             }));
         }
@@ -925,19 +671,9 @@ impl Semaphore {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
     pub unsafe fn import_zircon_handle_unchecked(
         &self,
         import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
-    ) -> Result<(), VulkanError> {
-        let mut state = self.state.lock();
-        self.import_zircon_handle_unchecked_locked(import_semaphore_zircon_handle_info, &mut state)
-    }
-
-    unsafe fn import_zircon_handle_unchecked_locked(
-        &self,
-        import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
-        state: &mut SemaphoreState,
     ) -> Result<(), VulkanError> {
         let ImportSemaphoreZirconHandleInfo {
             flags,
@@ -960,16 +696,7 @@ impl Semaphore {
         .result()
         .map_err(VulkanError::from)?;
 
-        state.import(
-            handle_type,
-            flags.intersects(SemaphoreImportFlags::TEMPORARY),
-        );
-
         Ok(())
-    }
-
-    pub(crate) fn state(&self) -> MutexGuard<'_, SemaphoreState> {
-        self.state.lock()
     }
 }
 
@@ -1498,136 +1225,6 @@ pub struct ExternalSemaphoreProperties {
     pub compatible_handle_types: ExternalSemaphoreHandleTypes,
 }
 
-#[derive(Debug, Default)]
-pub(crate) struct SemaphoreState {
-    is_signaled: bool,
-    pending_signal: Option<SignalType>,
-    pending_wait: Option<Weak<Queue>>,
-
-    reference_exported: bool,
-    exported_handle_types: ExternalSemaphoreHandleTypes,
-    current_import: Option<ImportType>,
-    permanent_import: Option<ExternalSemaphoreHandleType>,
-}
-
-impl SemaphoreState {
-    /// If the semaphore does not have a pending operation and has no external references,
-    /// returns the current status.
-    #[inline]
-    fn is_signaled(&self) -> Option<bool> {
-        // If any of these is true, we can't be certain of the status.
-        if self.pending_signal.is_some()
-            || self.pending_wait.is_some()
-            || self.has_external_reference()
-        {
-            None
-        } else {
-            Some(self.is_signaled)
-        }
-    }
-
-    #[inline]
-    fn is_signal_pending(&self) -> bool {
-        self.pending_signal.is_some()
-    }
-
-    #[inline]
-    fn is_wait_pending(&self) -> bool {
-        self.pending_wait.is_some()
-    }
-
-    #[inline]
-    fn is_in_queue(&self) -> bool {
-        matches!(self.pending_signal, Some(SignalType::Queue(_))) || self.pending_wait.is_some()
-    }
-
-    /// Returns whether there are any potential external references to the semaphore payload.
-    /// That is, the semaphore has been exported by reference transference, or imported.
-    #[inline]
-    fn has_external_reference(&self) -> bool {
-        self.reference_exported || self.current_import.is_some()
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    fn is_exported(&self, handle_type: ExternalSemaphoreHandleType) -> bool {
-        self.exported_handle_types.intersects(handle_type.into())
-    }
-
-    #[inline]
-    pub(crate) unsafe fn add_queue_signal(&mut self, queue: &Arc<Queue>) {
-        self.pending_signal = Some(SignalType::Queue(Arc::downgrade(queue)));
-    }
-
-    #[inline]
-    pub(crate) unsafe fn add_queue_wait(&mut self, queue: &Arc<Queue>) {
-        self.pending_wait = Some(Arc::downgrade(queue));
-    }
-
-    /// Called when a queue is unlocking resources.
-    #[inline]
-    pub(crate) unsafe fn set_signal_finished(&mut self) {
-        self.pending_signal = None;
-        self.is_signaled = true;
-    }
-
-    /// Called when a queue is unlocking resources.
-    #[inline]
-    pub(crate) unsafe fn set_wait_finished(&mut self) {
-        self.pending_wait = None;
-        self.current_import = self.permanent_import.map(Into::into);
-        self.is_signaled = false;
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    unsafe fn export(&mut self, handle_type: ExternalSemaphoreHandleType) {
-        self.exported_handle_types |= handle_type.into();
-
-        if handle_type.has_copy_transference() {
-            self.current_import = self.permanent_import.map(Into::into);
-            self.is_signaled = false;
-        } else {
-            self.reference_exported = true;
-        }
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    unsafe fn import(&mut self, handle_type: ExternalSemaphoreHandleType, temporary: bool) {
-        self.current_import = Some(handle_type.into());
-
-        if !temporary {
-            self.permanent_import = Some(handle_type);
-        }
-    }
-
-    #[inline]
-    pub(crate) unsafe fn swapchain_acquire(&mut self) {
-        self.pending_signal = Some(SignalType::SwapchainAcquire);
-        self.current_import = Some(ImportType::SwapchainAcquire);
-    }
-}
-
-#[derive(Clone, Debug)]
-enum SignalType {
-    Queue(Weak<Queue>),
-    SwapchainAcquire,
-}
-
-#[derive(Clone, Copy, Debug)]
-enum ImportType {
-    SwapchainAcquire,
-    ExternalSemaphore(ExternalSemaphoreHandleType),
-}
-
-impl From<ExternalSemaphoreHandleType> for ImportType {
-    #[inline]
-    fn from(handle_type: ExternalSemaphoreHandleType) -> Self {
-        Self::ExternalSemaphore(handle_type)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -1717,8 +1314,9 @@ mod tests {
             },
         )
         .unwrap();
-        let _fd = sem
-            .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
-            .unwrap();
+        let _fd = unsafe {
+            sem.export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+                .unwrap()
+        };
     }
 }

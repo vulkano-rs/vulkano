@@ -75,6 +75,7 @@
 //!   [`DescriptorSet`]. It is what you pass to the draw functions.
 //!
 //! [`DescriptorPool`]: pool::DescriptorPool
+//! [`UnsafeDescriptorSet`]: sys::UnsafeDescriptorSet
 //! [`DescriptorSetAllocator`]: allocator::DescriptorSetAllocator
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 

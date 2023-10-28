@@ -131,6 +131,10 @@ unsafe impl<A> PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer<A>
 where
     A: CommandBufferAllocator,
 {
+    fn queue_family_index(&self) -> u32 {
+        self.inner.queue_family_index()
+    }
+
     fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
