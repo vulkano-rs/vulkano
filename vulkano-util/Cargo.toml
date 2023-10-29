@@ -3,13 +3,14 @@ name = "vulkano-util"
 version = "0.34.0"
 edition = "2021"
 authors = ["The vulkano contributors"]
-repository = "https://github.com/vulkano-rs/vulkano"
-description = "Utility functionality to make usage of Vulkano easier"
+repository = "https://github.com/vulkano-rs/vulkano/vulkano-util"
+description = "Utility functionality to make usage of vulkano easier"
 license = "MIT OR Apache-2.0"
-documentation = "https://docs.rs/vulkano"
+documentation = "https://docs.rs/vulkano-util"
 homepage = "https://vulkano.rs"
 keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
+readme = "../README.md"
 
 [dependencies]
 ahash = "0.8"

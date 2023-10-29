@@ -3,7 +3,7 @@ name = "vulkano"
 version = "0.34.0"
 edition = "2021"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
-repository = "https://github.com/vulkano-rs/vulkano"
+repository = "https://github.com/vulkano-rs/vulkano/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/vulkano"
@@ -52,5 +52,5 @@ nalgebra = "0.32"
 
 [features]
 default = ["macros"]
-macros = ["vulkano-macros"]
+macros = ["dep:vulkano-macros"]
 document_unchecked = []

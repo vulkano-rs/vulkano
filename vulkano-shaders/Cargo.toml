@@ -3,13 +3,14 @@ name = "vulkano-shaders"
 version = "0.34.0"
 edition = "2021"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
-repository = "https://github.com/vulkano-rs/vulkano"
-description = "Shaders rust code generation macro"
+repository = "https://github.com/vulkano-rs/vulkano/vulkano-shaders"
+description = "Macro for generating Rust code from shaders"
 license = "MIT OR Apache-2.0"
-documentation = "https://docs.rs/vulkano"
+documentation = "https://docs.rs/vulkano-shaders"
 homepage = "https://vulkano.rs"
 keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
+readme = "../README.md"
 
 [lib]
 proc-macro = true
