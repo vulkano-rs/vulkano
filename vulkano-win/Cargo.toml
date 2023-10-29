@@ -3,13 +3,14 @@ name = "vulkano-win"
 version = "0.34.0"
 edition = "2021"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
-repository = "https://github.com/vulkano-rs/vulkano"
+repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-win"
 description = "Link between vulkano and winit"
 license = "MIT OR Apache-2.0"
-documentation = "https://docs.rs/vulkano"
+documentation = "https://docs.rs/vulkano-win"
 homepage = "https://vulkano.rs"
 keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
+readme = "../README.md"
 
 [features]
 default = ["winit", "raw-window-handle"]

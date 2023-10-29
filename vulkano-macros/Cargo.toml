@@ -3,12 +3,14 @@ name = "vulkano-macros"
 version = "0.34.0"
 edition = "2021"
 authors = ["The vulkano contributors"]
-repository = "https://github.com/vulkano-rs/vulkano"
-description = "Macros used by Vulkano"
+repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-macros"
+description = "Macros used by vulkano"
 license = "MIT OR Apache-2.0"
-documentation = "https://docs.rs/vulkano"
+documentation = "https://docs.rs/vulkano-macros"
 homepage = "https://vulkano.rs"
-publish = true
+keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
+categories = ["rendering::graphics-api"]
+readme = "../README.md"
 
 [lib]
 proc-macro = true
