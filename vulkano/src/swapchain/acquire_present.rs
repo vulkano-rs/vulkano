@@ -15,7 +15,7 @@ use crate::{
     sync::{
         fence::Fence,
         future::{queue_present, AccessCheckError, AccessError, GpuFuture, SubmitAnyBuilder},
-        semaphore::Semaphore,
+        semaphore::{Semaphore, SemaphoreType},
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
@@ -104,6 +104,15 @@ impl AcquireNextImageInfo {
         if let Some(semaphore) = semaphore {
             // VUID-VkAcquireNextImageInfoKHR-commonparent
             assert_eq!(device, semaphore.device().as_ref());
+
+            if semaphore.semaphore_type() != SemaphoreType::Binary {
+                return Err(Box::new(ValidationError {
+                    context: "semaphore.semaphore_type()".into(),
+                    problem: "is not `SemaphoreType::Binary`".into(),
+                    vuids: &["VUID-VkAcquireNextImageInfoKHR-semaphore-03266"],
+                    ..Default::default()
+                }));
+            }
         }
 
         if let Some(fence) = fence {
@@ -756,6 +765,15 @@ impl SemaphorePresentInfo {
 
         // VUID-VkPresentInfoKHR-commonparent
         assert_eq!(device, semaphore.device().as_ref());
+
+        if semaphore.semaphore_type() != SemaphoreType::Binary {
+            return Err(Box::new(ValidationError {
+                context: "semaphore.semaphore_type()".into(),
+                problem: "is not `SemaphoreType::Binary`".into(),
+                vuids: &["VUID-vkQueuePresentKHR-pWaitSemaphores-03267"],
+                ..Default::default()
+            }));
+        }
 
         Ok(())
     }

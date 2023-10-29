@@ -128,7 +128,10 @@ use crate::{
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     range_map::RangeMap,
     render_pass::{Framebuffer, Subpass},
-    sync::{semaphore::Semaphore, PipelineStageAccessFlags, PipelineStages},
+    sync::{
+        semaphore::{Semaphore, SemaphoreType},
+        PipelineStageAccessFlags, PipelineStages,
+    },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
@@ -774,6 +777,7 @@ impl SubmitInfo {
 
             let &SemaphoreSubmitInfo {
                 semaphore: _,
+                value: _,
                 stages,
                 _ne: _,
             } = semaphore_submit_info;
@@ -790,6 +794,15 @@ impl SubmitInfo {
                 }));
             }
         }
+
+        // VUID-VkSubmitInfo2-semaphore-03881
+        // If the same semaphore is used as the semaphore member of both an element of pSignalSemaphoreInfos and pWaitSemaphoreInfos, and that semaphore is a timeline semaphore,
+        // the value member of the pSignalSemaphoreInfos element must be greater than the value member of the pWaitSemaphoreInfos element
+
+        // unsafe
+        // VUID-VkSubmitInfo2-semaphore-03882
+        // VUID-VkSubmitInfo2-semaphore-03883
+        // VUID-VkSubmitInfo2-semaphore-03884
 
         Ok(())
     }
@@ -837,6 +850,18 @@ pub struct SemaphoreSubmitInfo {
     /// There is no default value.
     pub semaphore: Arc<Semaphore>,
 
+    /// If `semaphore.semaphore_type()` is [`SemaphoreType::Timeline`], specifies the value that
+    /// will used for the semaphore operation:
+    /// - If it's a signal operation, then the semaphore's value will be set to this value
+    ///   when it is signaled.
+    /// - If it's a wait operation, then the semaphore will wait until its value is greater than
+    ///   or equal to this value.
+    ///
+    /// If `semaphore.semaphore_type()` is [`SemaphoreType::Binary`], then this must be `0`.
+    ///
+    /// The default value is `0`.
+    pub value: u64,
+
     /// For a semaphore wait operation, specifies the pipeline stages in the second synchronization
     /// scope: stages of queue operations following the wait operation that can start executing
     /// after the semaphore is signalled.
@@ -862,6 +887,7 @@ impl SemaphoreSubmitInfo {
     pub fn new(semaphore: Arc<Semaphore>) -> Self {
         Self {
             semaphore,
+            value: 0,
             stages: PipelineStages::ALL_COMMANDS,
             _ne: crate::NonExhaustive(()),
         }
@@ -870,12 +896,27 @@ impl SemaphoreSubmitInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref semaphore,
+            value,
             stages,
             _ne: _,
         } = self;
 
         // VUID?
         assert_eq!(device, semaphore.device().as_ref());
+
+        match semaphore.semaphore_type() {
+            SemaphoreType::Binary => {
+                if value != 0 {
+                    return Err(Box::new(ValidationError {
+                        problem: "`semaphore.semaphore_type()` is `SemaphoreType::Binary`, but \
+                            `value` is not `0`"
+                            .into(),
+                        ..Default::default()
+                    }));
+                }
+            }
+            SemaphoreType::Timeline => {}
+        }
 
         stages.validate_device(device).map_err(|err| {
             err.add_context("stages")
