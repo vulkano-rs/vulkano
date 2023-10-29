@@ -847,7 +847,7 @@ pub struct SemaphoreSubmitInfo {
     pub semaphore: Arc<Semaphore>,
 
     /// If `semaphore.semaphore_type()` is [`SemaphoreType::Timeline`], specifies the value that
-    /// will used for the semaphore operation:
+    /// will be used for the semaphore operation:
     /// - If it's a signal operation, then the semaphore's value will be set to this value
     ///   when it is signaled.
     /// - If it's a wait operation, then the semaphore will wait until its value is greater than
