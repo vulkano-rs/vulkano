@@ -795,10 +795,6 @@ impl SubmitInfo {
             }
         }
 
-        // VUID-VkSubmitInfo2-semaphore-03881
-        // If the same semaphore is used as the semaphore member of both an element of pSignalSemaphoreInfos and pWaitSemaphoreInfos, and that semaphore is a timeline semaphore,
-        // the value member of the pSignalSemaphoreInfos element must be greater than the value member of the pWaitSemaphoreInfos element
-
         // unsafe
         // VUID-VkSubmitInfo2-semaphore-03882
         // VUID-VkSubmitInfo2-semaphore-03883
