@@ -14,7 +14,9 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
+use winit::raw_window_handle::{
+    HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 
 pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
     let ideal = InstanceExtensions {
@@ -112,21 +114,17 @@ unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
-    
     let window_handle = {
         match window.window_handle() {
             Ok(window_handle) => window_handle,
-            Err(e) => unreachable!("Window handle unobtainable : {}",e)
+            Err(e) => unreachable!("Window handle unobtainable : {}", e),
         }
     };
-    
-    if let RawWindowHandle::AndroidNdk(surface) = window_handle.as_raw()
-    {
-        return Surface::from_android(instance,
-            surface.a_native_window.as_ptr(),
-            Some(window));
+
+    if let RawWindowHandle::AndroidNdk(surface) = window_handle.as_raw() {
+        return Surface::from_android(instance, surface.a_native_window.as_ptr(), Some(window));
     }
-    
+
     unreachable!("This should be unreachable if the target is android");
 }
 
@@ -140,38 +138,33 @@ unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
-    
     let window_handle = {
         match window.window_handle() {
             Ok(window_handle) => window_handle,
-            Err(e) => unreachable!("Window handle unobtainable : {}",e)
+            Err(e) => unreachable!("Window handle unobtainable : {}", e),
         }
     };
     let display_handle = {
         match window.display_handle() {
             Ok(display_handle) => display_handle,
-            Err(e) => unreachable!("Display handle unobtainable : {}",e)
+            Err(e) => unreachable!("Display handle unobtainable : {}", e),
         }
     };
-    
-    if let RawWindowHandle::Wayland(window_handle_raw) = window_handle.as_raw()
-    {
-        if let RawDisplayHandle::Wayland(display_raw) = display_handle.as_raw()
-        {
-            return Surface::from_wayland(instance,
+
+    if let RawWindowHandle::Wayland(window_handle_raw) = window_handle.as_raw() {
+        if let RawDisplayHandle::Wayland(display_raw) = display_handle.as_raw() {
+            return Surface::from_wayland(
+                instance,
                 display_raw.display.as_ptr(),
                 window_handle_raw.surface.as_ptr(),
-                Some(window)
+                Some(window),
             );
         }
     }
-    
-    if instance.enabled_extensions().khr_xlib_surface
-    {
-        if let RawWindowHandle::Xlib(window_handle_raw) = window_handle.as_raw()
-        {
-            if let RawDisplayHandle::Xlib(display_raw) = display_handle.as_raw()
-            {
+
+    if instance.enabled_extensions().khr_xlib_surface {
+        if let RawWindowHandle::Xlib(window_handle_raw) = window_handle.as_raw() {
+            if let RawDisplayHandle::Xlib(display_raw) = display_handle.as_raw() {
                 return Surface::from_xlib(
                     instance,
                     display_raw.display.unwrap().as_ptr(),
@@ -180,11 +173,8 @@ unsafe fn winit_to_surface(
                 );
             }
         }
-    }
-    else if let RawWindowHandle::Xcb(window_handle_raw) = window_handle.as_raw()
-    {
-        if let RawDisplayHandle::Xcb(display_raw) = display_handle.as_raw()
-        {
+    } else if let RawWindowHandle::Xcb(window_handle_raw) = window_handle.as_raw() {
+        if let RawDisplayHandle::Xcb(display_raw) = display_handle.as_raw() {
             return Surface::from_xcb(
                 instance,
                 display_raw.connection.unwrap().as_ptr(),
@@ -193,7 +183,7 @@ unsafe fn winit_to_surface(
             );
         }
     }
-    
+
     unreachable!("This should be unreachable.");
 }
 
@@ -277,16 +267,15 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::windows::WindowExtWindows;
-    
+
     let window_handle = {
         match window.window_handle() {
             Ok(window_handle) => window_handle,
-            Err(e) => unreachable!("Window handle unobtainable : {}",e)
+            Err(e) => unreachable!("Window handle unobtainable : {}", e),
         }
     };
-    
-    if let RawWindowHandle::Win32(window_handle_raw) = window_handle.as_raw()
-    {
+
+    if let RawWindowHandle::Win32(window_handle_raw) = window_handle.as_raw() {
         return Surface::from_win32(
             instance,
             window_handle_raw.hinstance.unwrap().get() as *const (),
@@ -294,16 +283,16 @@ unsafe fn winit_to_surface(
             Some(Arc::new(window)),
         );
     }
-    
+
     unreachable!("This should be unreachable.");
 }
 
 #[cfg(target_os = "windows")]
 use vulkano::swapchain::Win32Monitor;
 #[cfg(target_os = "windows")]
-use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
-#[cfg(target_os = "windows")]
 use winit::raw_window_handle::{HandleError, WindowHandle};
+#[cfg(target_os = "windows")]
+use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
 
 #[cfg(target_os = "windows")]
 /// Creates a `Win32Monitor` from a Winit monitor handle.
