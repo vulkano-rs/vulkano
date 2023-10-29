@@ -125,8 +125,6 @@ impl VulkanoContext {
     /// # Panics
     ///
     /// - Panics where the underlying Vulkano struct creations fail
-    // FIXME:
-    #[allow(deprecated)]
     pub fn new(mut config: VulkanoConfig) -> Self {
         let library = match VulkanLibrary::new() {
             Ok(x) => x,
@@ -139,7 +137,21 @@ impl VulkanoContext {
         };
 
         // Append required extensions
-        config.instance_create_info.enabled_extensions = vulkano_win::required_extensions(&library)
+        // HACK: This should be replaced with `Surface::required_extensions`, but will need to
+        // happen in the next minor version bump. It should have been done before releasing 0.34.
+        config.instance_create_info.enabled_extensions = library
+            .supported_extensions()
+            .intersection(&InstanceExtensions {
+                khr_surface: true,
+                khr_xlib_surface: true,
+                khr_xcb_surface: true,
+                khr_wayland_surface: true,
+                khr_android_surface: true,
+                khr_win32_surface: true,
+                mvk_ios_surface: true,
+                mvk_macos_surface: true,
+                ..InstanceExtensions::empty()
+            })
             .union(&config.instance_create_info.enabled_extensions);
 
         // Create instance
