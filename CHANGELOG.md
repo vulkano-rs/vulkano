@@ -18,6 +18,8 @@
 
 ### Bugs fixed
 
+- `StandardDescriptorSetAllocator` panicking due to an arithmetic overflow when arithmetic overflow checks are enabled.
+
 # Version 0.34.0 (2023-10-25)
 
 ### Public dependency updates
