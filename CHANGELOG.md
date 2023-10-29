@@ -14,6 +14,7 @@
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
+- Support for the `khr_timeline_semaphore` extension.
 
 ### Bugs fixed
 
