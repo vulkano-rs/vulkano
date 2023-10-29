@@ -19,9 +19,9 @@
 //! An event can also be signaled from the host, by calling the [`set`] method directly on the
 //! [`Event`].
 //!
-//! [`set_event`]: crate::command_buffer::CommandBufferBuilder::set_event
-//! [pipeline barrier]: crate::command_buffer::CommandBufferBuilder::pipeline_barrier
-//! [`wait_events`]: crate::command_buffer::CommandBufferBuilder::wait_events
+//! [`set_event`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::set_event
+//! [pipeline barrier]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::pipeline_barrier
+//! [`wait_events`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::wait_events
 //! [`set`]: Event::set
 
 use crate::{

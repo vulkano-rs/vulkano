@@ -27,7 +27,7 @@ use crate::{
     },
     sync::{
         fence::{ExternalFenceInfo, ExternalFenceProperties},
-        semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
+        semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, SemaphoreType},
         Sharing,
     },
     DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated,
@@ -1191,13 +1191,28 @@ impl PhysicalDevice {
 
                 let &ExternalSemaphoreInfo {
                     handle_type,
+                    semaphore_type,
+                    initial_value,
                     _ne: _,
                 } = info;
 
-                let external_semaphore_info = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
+                let mut external_semaphore_info_vk = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
                     handle_type: handle_type.into(),
                     ..Default::default()
                 };
+                let mut semaphore_type_create_info_vk = None;
+
+                if semaphore_type != SemaphoreType::Binary {
+                    let next =
+                        semaphore_type_create_info_vk.insert(ash::vk::SemaphoreTypeCreateInfo {
+                            semaphore_type: semaphore_type.into(),
+                            initial_value,
+                            ..Default::default()
+                        });
+
+                    next.p_next = external_semaphore_info_vk.p_next;
+                    external_semaphore_info_vk.p_next = next as *const _ as *const _;
+                }
 
                 /* Output */
 
@@ -1211,14 +1226,14 @@ impl PhysicalDevice {
                 if self.instance.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_physical_device_external_semaphore_properties)(
                         self.handle,
-                        &external_semaphore_info,
+                        &external_semaphore_info_vk,
                         &mut external_semaphore_properties,
                     )
                 } else {
                     (fns.khr_external_semaphore_capabilities
                         .get_physical_device_external_semaphore_properties_khr)(
                         self.handle,
-                        &external_semaphore_info,
+                        &external_semaphore_info_vk,
                         &mut external_semaphore_properties,
                     );
                 }
