@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-util"
-version = "0.34.0"
+version = { workspace = true }
 edition = "2021"
 authors = ["The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-util"

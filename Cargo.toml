@@ -8,6 +8,9 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "0.34.0"
+
 [workspace.dependencies.vulkano]
 version = "0.34"
 path = "vulkano"
