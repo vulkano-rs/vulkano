@@ -16,10 +16,10 @@ readme = "../README.md"
 proc-macro = true
 
 [dependencies]
-syn = "1.0"
-quote = "1.0"
-proc-macro2 = "1.0"
-proc-macro-crate = "1.2"
+syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
+proc-macro-crate = { workspace = true }
 
 [dev-dependencies]
-vulkano = { path = "../vulkano" }
+vulkano = { workspace = true }

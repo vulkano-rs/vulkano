@@ -13,7 +13,8 @@ categories = ["rendering::graphics-api"]
 readme = "../README.md"
 
 [dependencies]
-ahash = "0.8"
-vulkano = { version = "0.34.0", path = "../vulkano", default-features = false }
+ahash = { workspace = true }
+vulkano = { workspace = true }
+# FIXME: These need to be removed.
 vulkano-win = { version = "0.34.0", path = "../vulkano-win" }
 winit = { version = "0.28" }

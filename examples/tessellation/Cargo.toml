@@ -9,6 +9,6 @@ name = "tessellation"
 path = "main.rs"
 
 [dependencies]
-vulkano = { path = "../../vulkano" }
-vulkano-shaders = { path = "../../vulkano-shaders" }
-winit = "0.28"
+vulkano = { workspace = true }
+vulkano-shaders = { workspace = true }
+winit = { workspace = true }

@@ -1,5 +1,5 @@
 target
-/Cargo.lock
+Cargo.lock
 .cargo
 examples/dynamic-local-size/mandelbrot.png
 examples/msaa-renderpass/triangle.png

@@ -9,7 +9,7 @@ name = "texture-array"
 path = "main.rs"
 
 [dependencies]
-png = "0.17"
-vulkano = { path = "../../vulkano" }
-vulkano-shaders = { path = "../../vulkano-shaders" }
-winit = "0.28"
+png = { workspace = true }
+vulkano = { workspace = true }
+vulkano-shaders = { workspace = true }
+winit = { workspace = true }

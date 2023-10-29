@@ -9,7 +9,7 @@ name = "teapot"
 path = "main.rs"
 
 [dependencies]
-cgmath = "0.18"
-vulkano = { path = "../../vulkano" }
-vulkano-shaders = { path = "../../vulkano-shaders" }
-winit = "0.28"
+cgmath = { workspace = true }
+vulkano = { workspace = true }
+vulkano-shaders = { workspace = true }
+winit = { workspace = true }
