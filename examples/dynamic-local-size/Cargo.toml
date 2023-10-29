@@ -1,0 +1,14 @@
+[package]
+name = "dynamic-local-size"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "dynamic-local-size"
+path = "main.rs"
+
+[dependencies]
+png = "0.17"
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }

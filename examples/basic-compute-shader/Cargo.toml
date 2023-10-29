@@ -1,0 +1,13 @@
+[package]
+name = "basic-compute-shader"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "basic-compute-shader"
+path = "main.rs"
+
+[dependencies]
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }

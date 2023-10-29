@@ -1,0 +1,15 @@
+[package]
+name = "deferred"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "deferred"
+path = "main.rs"
+
+[dependencies]
+cgmath = "0.18"
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }
+winit = "0.28"

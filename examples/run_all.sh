@@ -6,6 +6,6 @@ set -e
 # Human input is required to close all the windows
 # Human monitoring is also required to check for errors in stdout
 
-cargo build
-exa -F src/bin | rg '(\.rs|/)$' | sd '(\.rs|/)' '' | rargs cargo run --bin {}
-rm -f pipeline_cache.bin
+cargo build --bins
+exa -F . | rg '/$' | sd '/' '' | rargs cargo run --bin {}
+rm -f pipeline-caching/pipeline_cache.bin

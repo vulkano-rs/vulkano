@@ -1,0 +1,13 @@
+[package]
+name = "dynamic-buffers"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "dynamic-buffers"
+path = "main.rs"
+
+[dependencies]
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }

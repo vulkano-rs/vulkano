@@ -1,0 +1,13 @@
+[package]
+name = "shader-types-sharing"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "shader-types-sharing"
+path = "main.rs"
+
+[dependencies]
+vulkano = { path = "../../vulkano" }
+vulkano-shaders = { path = "../../vulkano-shaders" }
