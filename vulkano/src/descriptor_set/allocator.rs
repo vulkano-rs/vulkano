@@ -196,8 +196,6 @@ struct FixedEntry {
     // The `FixedPool` struct contains an actual Vulkan pool. Every time it is full we create
     // a new pool and replace the current one with the new one.
     pool: Arc<FixedPool>,
-    // The amount of sets available to use when we create a new Vulkan pool.
-    set_count: usize,
     // The descriptor set layout that this pool is for.
     layout: Arc<DescriptorSetLayout>,
 }
@@ -209,7 +207,6 @@ impl FixedEntry {
     ) -> Result<Self, Validated<VulkanError>> {
         Ok(FixedEntry {
             pool: FixedPool::new(&layout, create_info)?,
-            set_count: create_info.set_count,
             layout,
         })
     }
@@ -221,7 +218,6 @@ impl FixedEntry {
         let inner = if let Some(inner) = self.pool.reserve.pop() {
             inner
         } else {
-            self.set_count *= 2;
             self.pool = FixedPool::new(&self.layout, create_info)?;
 
             self.pool.reserve.pop().unwrap()
