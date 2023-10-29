@@ -8,6 +8,23 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies.vulkano]
+version = "0.34"
+path = "vulkano"
+default-features = false
+
+[workspace.dependencies.vulkano-macros]
+version = "0.34"
+path = "vulkano-macros"
+
+[workspace.dependencies.vulkano-shaders]
+version = "0.34"
+path = "vulkano-shaders"
+
+[workspace.dependencies.vulkano-util]
+version = "0.34"
+path = "vulkano-util"
+
 [workspace.dependencies]
 ahash = "0.8"
 # When updating Ash, also update vk.xml to the same Vulkan patch version that Ash uses.
@@ -38,7 +55,3 @@ smallvec = "1.8"
 syn = "1.0"
 thread_local = "1.1"
 vk-parse = "0.12"
-vulkano = { version = "0.34", path = "vulkano", default-features = false }
-vulkano-macros = { version = "0.34", path = "vulkano-macros" }
-vulkano-shaders = { version = "0.34", path = "vulkano-shaders" }
-vulkano-util = { version = "0.34", path = "vulkano-util" }
