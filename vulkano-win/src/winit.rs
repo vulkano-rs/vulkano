@@ -14,6 +14,8 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
+
 pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
     let ideal = InstanceExtensions {
         khr_surface: true,
@@ -110,13 +112,22 @@ unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
-    use raw_window_handle::HasRawWindowHandle;
-    use raw_window_handle::RawWindowHandle::AndroidNdk;
-    if let AndroidNdk(handle) = window.raw_window_handle() {
-        Surface::from_android(instance, handle.a_native_window, Some(window))
-    } else {
-        unreachable!("This should be unreachable if the target is android");
+    
+    let window_handle = {
+        match window.window_handle() {
+            Ok(window_handle) => window_handle,
+            Err(e) => unreachable!("Window handle unobtainable : {}",e)
+        }
+    };
+    
+    if let RawWindowHandle::AndroidNdk(surface) = window_handle.as_raw()
+    {
+        return Surface::from_android(instance,
+            surface.a_native_window.as_ptr(),
+            Some(window));
     }
+    
+    unreachable!("This should be unreachable if the target is android");
 }
 
 #[cfg(all(
@@ -129,32 +140,61 @@ unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
-    use winit::platform::{wayland::WindowExtWayland, x11::WindowExtX11};
-
-    match (window.wayland_display(), window.wayland_surface()) {
-        (Some(display), Some(surface)) => {
-            Surface::from_wayland(instance, display, surface, Some(window))
+    
+    let window_handle = {
+        match window.window_handle() {
+            Ok(window_handle) => window_handle,
+            Err(e) => unreachable!("Window handle unobtainable : {}",e)
         }
-        _ => {
-            // No wayland display found, check if we can use xlib.
-            // If not, we use xcb.
-            if instance.enabled_extensions().khr_xlib_surface {
-                Surface::from_xlib(
+    };
+    let display_handle = {
+        match window.display_handle() {
+            Ok(display_handle) => display_handle,
+            Err(e) => unreachable!("Display handle unobtainable : {}",e)
+        }
+    };
+    
+    if let RawWindowHandle::Wayland(window_handle_raw) = window_handle.as_raw()
+    {
+        if let RawDisplayHandle::Wayland(display_raw) = display_handle.as_raw()
+        {
+            return Surface::from_wayland(instance,
+                display_raw.display.as_ptr(),
+                window_handle_raw.surface.as_ptr(),
+                Some(window)
+            );
+        }
+    }
+    
+    if instance.enabled_extensions().khr_xlib_surface
+    {
+        if let RawWindowHandle::Xlib(window_handle_raw) = window_handle.as_raw()
+        {
+            if let RawDisplayHandle::Xlib(display_raw) = display_handle.as_raw()
+            {
+                return Surface::from_xlib(
                     instance,
-                    window.xlib_display().unwrap(),
-                    window.xlib_window().unwrap() as _,
+                    display_raw.display.unwrap().as_ptr(),
+                    window_handle_raw.window,
                     Some(window),
-                )
-            } else {
-                Surface::from_xcb(
-                    instance,
-                    window.xcb_connection().unwrap(),
-                    window.xlib_window().unwrap() as _,
-                    Some(window),
-                )
+                );
             }
         }
     }
+    else if let RawWindowHandle::Xcb(window_handle_raw) = window_handle.as_raw()
+    {
+        if let RawDisplayHandle::Xcb(display_raw) = display_handle.as_raw()
+        {
+            return Surface::from_xcb(
+                instance,
+                display_raw.connection.unwrap().as_ptr(),
+                window_handle_raw.window.get(),
+                Some(window),
+            );
+        }
+    }
+    
+    unreachable!("This should be unreachable.");
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -196,7 +236,7 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::macos::WindowExtMacOS;
-    let layer = get_metal_layer_macos(window.ns_view());
+    let layer = get_metal_layer_macos(window.ns_screen().unwrap());
     Surface::from_mac_os(instance, layer as *const (), Some(window))
 }
 
@@ -227,7 +267,7 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::ios::WindowExtIOS;
-    let layer = get_metal_layer_ios(window.ui_view());
+    let layer = get_metal_layer_ios(window.ui_screen());
     Surface::from_ios(instance, layer, Some(window))
 }
 
@@ -237,19 +277,33 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::windows::WindowExtWindows;
-
-    Surface::from_win32(
-        instance,
-        window.hinstance() as *const (),
-        window.hwnd() as *const (),
-        Some(window),
-    )
+    
+    let window_handle = {
+        match window.window_handle() {
+            Ok(window_handle) => window_handle,
+            Err(e) => unreachable!("Window handle unobtainable : {}",e)
+        }
+    };
+    
+    if let RawWindowHandle::Win32(window_handle_raw) = window_handle.as_raw()
+    {
+        return Surface::from_win32(
+            instance,
+            window_handle_raw.hinstance.unwrap().get() as *const (),
+            window_handle_raw.hwnd.get() as *const (),
+            Some(Arc::new(window)),
+        );
+    }
+    
+    unreachable!("This should be unreachable.");
 }
 
 #[cfg(target_os = "windows")]
 use vulkano::swapchain::Win32Monitor;
 #[cfg(target_os = "windows")]
 use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
+#[cfg(target_os = "windows")]
+use winit::raw_window_handle::{HandleError, WindowHandle};
 
 #[cfg(target_os = "windows")]
 /// Creates a `Win32Monitor` from a Winit monitor handle.
