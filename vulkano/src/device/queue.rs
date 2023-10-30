@@ -16,7 +16,7 @@ use crate::{
         BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
     },
     swapchain::{PresentInfo, SemaphorePresentInfo, SwapchainPresentInfo},
-    sync::{fence::Fence, PipelineStages},
+    sync::{fence::Fence, semaphore::SemaphoreType, PipelineStages},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
@@ -778,6 +778,7 @@ impl<'a> QueueGuard<'a> {
             for (semaphore_index, semaphore_submit_info) in wait_semaphores.iter().enumerate() {
                 let &SemaphoreSubmitInfo {
                     semaphore: _,
+                    value: _,
                     stages,
                     _ne: _,
                 } = semaphore_submit_info;
@@ -824,6 +825,7 @@ impl<'a> QueueGuard<'a> {
             for (semaphore_index, semaphore_submit_info) in signal_semaphores.iter().enumerate() {
                 let &SemaphoreSubmitInfo {
                     semaphore: _,
+                    value: _,
                     stages,
                     _ne: _,
                 } = semaphore_submit_info;
@@ -846,12 +848,14 @@ impl<'a> QueueGuard<'a> {
         }
 
         // unsafe
+        // VUID-VkSubmitInfo2-semaphore-03882
+        // VUID-VkSubmitInfo2-semaphore-03883
+        // VUID-VkSubmitInfo2-semaphore-03884
         // VUID-vkQueueSubmit2-fence-04894
         // VUID-vkQueueSubmit2-fence-04895
         // VUID-vkQueueSubmit2-commandBuffer-03867
         // VUID-vkQueueSubmit2-semaphore-03868
         // VUID-vkQueueSubmit2-semaphore-03871
-        // VUID-vkQueueSubmit2-semaphore-03872
         // VUID-vkQueueSubmit2-semaphore-03873
         // VUID-vkQueueSubmit2-commandBuffer-03874
         // VUID-vkQueueSubmit2-commandBuffer-03875
@@ -875,7 +879,7 @@ impl<'a> QueueGuard<'a> {
                 signal_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
             }
 
-            let (mut submit_info_vk, per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
+            let (mut submit_info_vk, mut per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
                 submit_infos
                     .iter()
                     .map(|submit_info| {
@@ -886,59 +890,65 @@ impl<'a> QueueGuard<'a> {
                             _ne: _,
                         } = submit_info;
 
-                        let wait_semaphore_infos_vk = wait_semaphores
-                            .iter()
-                            .map(|semaphore_submit_info| {
-                                let &SemaphoreSubmitInfo {
-                                    ref semaphore,
-                                    stages,
-                                    _ne: _,
-                                } = semaphore_submit_info;
+                        let mut per_submit_vk = PerSubmitInfo {
+                            wait_semaphore_infos_vk: SmallVec::with_capacity(wait_semaphores.len()),
+                            command_buffer_infos_vk: SmallVec::with_capacity(command_buffers.len()),
+                            signal_semaphore_infos_vk: SmallVec::with_capacity(
+                                signal_semaphores.len(),
+                            ),
+                        };
+                        let PerSubmitInfo {
+                            wait_semaphore_infos_vk,
+                            command_buffer_infos_vk,
+                            signal_semaphore_infos_vk,
+                        } = &mut per_submit_vk;
 
-                                ash::vk::SemaphoreSubmitInfo {
-                                    semaphore: semaphore.handle(),
-                                    value: 0, // TODO:
-                                    stage_mask: stages.into(),
-                                    device_index: 0, // TODO:
-                                    ..Default::default()
-                                }
-                            })
-                            .collect();
+                        for semaphore_submit_info in wait_semaphores {
+                            let &SemaphoreSubmitInfo {
+                                ref semaphore,
+                                value,
+                                stages,
+                                _ne: _,
+                            } = semaphore_submit_info;
 
-                        let command_buffer_infos_vk = command_buffers
-                            .iter()
-                            .map(|command_buffer_submit_info| {
-                                let &CommandBufferSubmitInfo {
-                                    ref command_buffer,
-                                    _ne: _,
-                                } = command_buffer_submit_info;
+                            wait_semaphore_infos_vk.push(ash::vk::SemaphoreSubmitInfo {
+                                semaphore: semaphore.handle(),
+                                value,
+                                stage_mask: stages.into(),
+                                device_index: 0, // TODO:
+                                ..Default::default()
+                            });
+                        }
 
-                                ash::vk::CommandBufferSubmitInfo {
-                                    command_buffer: command_buffer.handle(),
-                                    device_mask: 0, // TODO:
-                                    ..Default::default()
-                                }
-                            })
-                            .collect();
+                        for command_buffer_submit_info in command_buffers {
+                            let &CommandBufferSubmitInfo {
+                                ref command_buffer,
+                                _ne: _,
+                            } = command_buffer_submit_info;
 
-                        let signal_semaphore_infos_vk = signal_semaphores
-                            .iter()
-                            .map(|semaphore_submit_info| {
-                                let &SemaphoreSubmitInfo {
-                                    ref semaphore,
-                                    stages,
-                                    _ne: _,
-                                } = semaphore_submit_info;
+                            command_buffer_infos_vk.push(ash::vk::CommandBufferSubmitInfo {
+                                command_buffer: command_buffer.handle(),
+                                device_mask: 0, // TODO:
+                                ..Default::default()
+                            });
+                        }
 
-                                ash::vk::SemaphoreSubmitInfo {
-                                    semaphore: semaphore.handle(),
-                                    value: 0, // TODO:
-                                    stage_mask: stages.into(),
-                                    device_index: 0, // TODO:
-                                    ..Default::default()
-                                }
-                            })
-                            .collect();
+                        for semaphore_submit_info in signal_semaphores {
+                            let &SemaphoreSubmitInfo {
+                                ref semaphore,
+                                value,
+                                stages,
+                                _ne: _,
+                            } = semaphore_submit_info;
+
+                            signal_semaphore_infos_vk.push(ash::vk::SemaphoreSubmitInfo {
+                                semaphore: semaphore.handle(),
+                                value,
+                                stage_mask: stages.into(),
+                                device_index: 0, // TODO:
+                                ..Default::default()
+                            });
+                        }
 
                         (
                             ash::vk::SubmitInfo2 {
@@ -951,11 +961,7 @@ impl<'a> QueueGuard<'a> {
                                 p_signal_semaphore_infos: ptr::null(),
                                 ..Default::default()
                             },
-                            PerSubmitInfo {
-                                wait_semaphore_infos_vk,
-                                command_buffer_infos_vk,
-                                signal_semaphore_infos_vk,
-                            },
+                            per_submit_vk,
                         )
                     })
                     .unzip();
@@ -967,7 +973,7 @@ impl<'a> QueueGuard<'a> {
                     command_buffer_infos_vk,
                     signal_semaphore_infos_vk,
                 },
-            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter())
+            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter_mut())
             {
                 *submit_info_vk = ash::vk::SubmitInfo2 {
                     wait_semaphore_info_count: wait_semaphore_infos_vk.len() as u32,
@@ -1006,13 +1012,16 @@ impl<'a> QueueGuard<'a> {
             .map_err(VulkanError::from)
         } else {
             struct PerSubmitInfo {
+                timeline_semaphore_submit_info_vk: Option<ash::vk::TimelineSemaphoreSubmitInfo>,
                 wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+                wait_semaphore_values_vk: SmallVec<[u64; 4]>,
                 wait_dst_stage_mask_vk: SmallVec<[ash::vk::PipelineStageFlags; 4]>,
                 command_buffers_vk: SmallVec<[ash::vk::CommandBuffer; 4]>,
                 signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+                signal_semaphore_values_vk: SmallVec<[u64; 4]>,
             }
 
-            let (mut submit_info_vk, per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
+            let (mut submit_info_vk, mut per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
                 submit_infos
                     .iter()
                     .map(|submit_info| {
@@ -1023,43 +1032,77 @@ impl<'a> QueueGuard<'a> {
                             _ne: _,
                         } = submit_info;
 
-                        let (wait_semaphores_vk, wait_dst_stage_mask_vk) = wait_semaphores
-                            .iter()
-                            .map(|semaphore_submit_info| {
-                                let &SemaphoreSubmitInfo {
-                                    ref semaphore,
-                                    stages,
-                                    _ne: _,
-                                } = semaphore_submit_info;
+                        let mut per_submit_vk = PerSubmitInfo {
+                            timeline_semaphore_submit_info_vk: None,
+                            wait_semaphores_vk: SmallVec::with_capacity(wait_semaphores.len()),
+                            wait_semaphore_values_vk: SmallVec::with_capacity(
+                                wait_semaphores.len(),
+                            ),
+                            wait_dst_stage_mask_vk: SmallVec::with_capacity(wait_semaphores.len()),
+                            command_buffers_vk: SmallVec::with_capacity(command_buffers.len()),
+                            signal_semaphores_vk: SmallVec::with_capacity(signal_semaphores.len()),
+                            signal_semaphore_values_vk: SmallVec::with_capacity(
+                                signal_semaphores.len(),
+                            ),
+                        };
+                        let PerSubmitInfo {
+                            timeline_semaphore_submit_info_vk,
+                            wait_semaphores_vk,
+                            wait_semaphore_values_vk,
+                            wait_dst_stage_mask_vk,
+                            command_buffers_vk,
+                            signal_semaphores_vk,
+                            signal_semaphore_values_vk,
+                        } = &mut per_submit_vk;
 
-                                (semaphore.handle(), stages.into())
-                            })
-                            .unzip();
+                        let mut has_timeline_semaphores = false;
 
-                        let command_buffers_vk = command_buffers
-                            .iter()
-                            .map(|command_buffer_submit_info| {
-                                let &CommandBufferSubmitInfo {
-                                    ref command_buffer,
-                                    _ne: _,
-                                } = command_buffer_submit_info;
+                        for semaphore_submit_info in wait_semaphores {
+                            let &SemaphoreSubmitInfo {
+                                ref semaphore,
+                                value,
+                                stages,
+                                _ne: _,
+                            } = semaphore_submit_info;
 
-                                command_buffer.handle()
-                            })
-                            .collect();
+                            if semaphore.semaphore_type() == SemaphoreType::Timeline {
+                                has_timeline_semaphores = true;
+                            }
 
-                        let signal_semaphores_vk = signal_semaphores
-                            .iter()
-                            .map(|semaphore_submit_info| {
-                                let &SemaphoreSubmitInfo {
-                                    ref semaphore,
-                                    stages: _,
-                                    _ne: _,
-                                } = semaphore_submit_info;
+                            wait_semaphores_vk.push(semaphore.handle());
+                            wait_semaphore_values_vk.push(value);
+                            wait_dst_stage_mask_vk.push(stages.into());
+                        }
 
-                                semaphore.handle()
-                            })
-                            .collect();
+                        for command_buffer_submit_info in command_buffers {
+                            let &CommandBufferSubmitInfo {
+                                ref command_buffer,
+                                _ne: _,
+                            } = command_buffer_submit_info;
+
+                            command_buffers_vk.push(command_buffer.handle());
+                        }
+
+                        for semaphore_submit_info in signal_semaphores {
+                            let &SemaphoreSubmitInfo {
+                                ref semaphore,
+                                value,
+                                stages: _,
+                                _ne: _,
+                            } = semaphore_submit_info;
+
+                            if semaphore.semaphore_type() == SemaphoreType::Timeline {
+                                has_timeline_semaphores = true;
+                            }
+
+                            signal_semaphores_vk.push(semaphore.handle());
+                            signal_semaphore_values_vk.push(value);
+                        }
+
+                        if has_timeline_semaphores {
+                            *timeline_semaphore_submit_info_vk =
+                                Some(ash::vk::TimelineSemaphoreSubmitInfo::default());
+                        }
 
                         (
                             ash::vk::SubmitInfo {
@@ -1072,12 +1115,7 @@ impl<'a> QueueGuard<'a> {
                                 p_signal_semaphores: ptr::null(),
                                 ..Default::default()
                             },
-                            PerSubmitInfo {
-                                wait_semaphores_vk,
-                                wait_dst_stage_mask_vk,
-                                command_buffers_vk,
-                                signal_semaphores_vk,
-                            },
+                            per_submit_vk,
                         )
                     })
                     .unzip();
@@ -1085,12 +1123,15 @@ impl<'a> QueueGuard<'a> {
             for (
                 submit_info_vk,
                 PerSubmitInfo {
+                    timeline_semaphore_submit_info_vk,
                     wait_semaphores_vk,
+                    wait_semaphore_values_vk,
                     wait_dst_stage_mask_vk,
                     command_buffers_vk,
                     signal_semaphores_vk,
+                    signal_semaphore_values_vk,
                 },
-            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter())
+            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter_mut())
             {
                 *submit_info_vk = ash::vk::SubmitInfo {
                     wait_semaphore_count: wait_semaphores_vk.len() as u32,
@@ -1102,6 +1143,19 @@ impl<'a> QueueGuard<'a> {
                     p_signal_semaphores: signal_semaphores_vk.as_ptr(),
                     ..*submit_info_vk
                 };
+
+                if let Some(timeline_semaphore_submit_info_vk) = timeline_semaphore_submit_info_vk {
+                    *timeline_semaphore_submit_info_vk = ash::vk::TimelineSemaphoreSubmitInfo {
+                        wait_semaphore_value_count: wait_semaphore_values_vk.len() as u32,
+                        p_wait_semaphore_values: wait_semaphore_values_vk.as_ptr(),
+                        signal_semaphore_value_count: signal_semaphore_values_vk.len() as u32,
+                        p_signal_semaphore_values: signal_semaphore_values_vk.as_ptr(),
+                        ..*timeline_semaphore_submit_info_vk
+                    };
+
+                    timeline_semaphore_submit_info_vk.p_next = submit_info_vk.p_next;
+                    submit_info_vk.p_next = timeline_semaphore_submit_info_vk as *mut _ as *mut _;
+                }
             }
 
             let fns = self.queue.device.fns();

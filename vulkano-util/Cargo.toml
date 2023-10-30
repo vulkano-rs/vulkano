@@ -15,6 +15,4 @@ readme = "../README.md"
 [dependencies]
 ahash = { workspace = true }
 vulkano = { workspace = true }
-# FIXME: These need to be removed.
-vulkano-win = { version = "0.34.0", path = "../vulkano-win" }
 winit = { version = "0.28" }
