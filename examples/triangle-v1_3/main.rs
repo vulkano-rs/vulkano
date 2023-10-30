@@ -74,7 +74,7 @@ fn main() -> Result<(), impl Error> {
     // All the window-drawing functionalities are part of non-core extensions that we need to
     // enable manually. To do so, we ask `Surface` for the list of extensions required to draw to
     // a window.
-    let required_extensions = Surface::required_extensions(&event_loop);
+    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
 
     // Now creating the instance.
     let instance = Instance::new(

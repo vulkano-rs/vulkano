@@ -482,7 +482,7 @@ mod linux {
         Subbuffer<[MyVertex]>,
     ) {
         let library = VulkanLibrary::new().unwrap();
-        let required_extensions = Surface::required_extensions(&event_loop);
+        let required_extensions = Surface::required_extensions(&event_loop).unwrap();
         let instance = Instance::new(
             library,
             InstanceCreateInfo {
