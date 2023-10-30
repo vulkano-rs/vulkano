@@ -15,4 +15,4 @@ readme = "../README.md"
 [dependencies]
 ahash = { workspace = true }
 vulkano = { workspace = true }
-winit = { version = "0.28" }
+winit = { workspace = true }
