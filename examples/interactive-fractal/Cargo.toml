@@ -9,9 +9,9 @@ name = "interactive-fractal"
 path = "main.rs"
 
 [dependencies]
-cgmath = "0.18"
-rand = "0.8"
-vulkano = { path = "../../vulkano" }
-vulkano-shaders = { path = "../../vulkano-shaders" }
-vulkano-util = { path = "../../vulkano-util" }
-winit = "0.28"
+cgmath = { workspace = true }
+rand = { workspace = true }
+vulkano = { workspace = true }
+vulkano-shaders = { workspace = true }
+vulkano-util = { workspace = true }
+winit = { workspace = true }

@@ -9,4 +9,4 @@ name = "debug"
 path = "main.rs"
 
 [dependencies]
-vulkano = { path = "../../vulkano" }
+vulkano = { workspace = true }

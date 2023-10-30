@@ -10,9 +10,9 @@ path = "main.rs"
 
 [dependencies]
 # The `vulkano` crate is the main crate that you must use to use Vulkan.
-vulkano = { path = "../../vulkano" }
+vulkano = { workspace = true }
 # Provides the `shader!` macro that is used to generate code for using shaders.
-vulkano-shaders = { path = "../../vulkano-shaders" }
+vulkano-shaders = { workspace = true }
 # The Vulkan library doesn't provide any functionality to create and handle windows, as
 # this would be out of scope. In order to open a window, we are going to use the `winit` crate.
-winit = "0.28"
+winit = { workspace = true }

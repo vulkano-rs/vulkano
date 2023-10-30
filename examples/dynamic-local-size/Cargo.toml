@@ -9,6 +9,6 @@ name = "dynamic-local-size"
 path = "main.rs"
 
 [dependencies]
-png = "0.17"
-vulkano = { path = "../../vulkano" }
-vulkano-shaders = { path = "../../vulkano-shaders" }
+png = { workspace = true }
+vulkano = { workspace = true }
+vulkano-shaders = { workspace = true }

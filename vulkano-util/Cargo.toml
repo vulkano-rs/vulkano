@@ -13,6 +13,6 @@ categories = ["rendering::graphics-api"]
 readme = "../README.md"
 
 [dependencies]
-ahash = "0.8"
-vulkano = { version = "0.34.0", path = "../vulkano", default-features = false }
-winit = { version = "0.28" }
+ahash = { workspace = true }
+vulkano = { workspace = true }
+winit = { workspace = true }

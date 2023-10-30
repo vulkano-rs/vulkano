@@ -10,8 +10,8 @@ path = "main.rs"
 
 [dependencies]
 glium = "0.32.1"
-vulkano = { path = "../../vulkano" }
-vulkano-shaders = { path = "../../vulkano-shaders" }
-winit = "0.28"
+vulkano = { workspace = true }
+vulkano-shaders = { workspace = true }
+winit = { workspace = true }
 # Glium has still not been updated to the latest winit version
 winit_glium = { package = "winit", version = "0.27.1" }

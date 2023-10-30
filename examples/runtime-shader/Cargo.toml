@@ -9,5 +9,5 @@ name = "runtime-shader"
 path = "main.rs"
 
 [dependencies]
-vulkano = { path = "../../vulkano" }
-winit = "0.28"
+vulkano = { workspace = true }
+winit = { workspace = true }
