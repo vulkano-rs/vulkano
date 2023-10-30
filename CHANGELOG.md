@@ -18,6 +18,10 @@
 
 ### Bugs fixed
 
+# Version 0.34.1 (2023-10-29)
+
+### Bugs fixed
+
 - `StandardDescriptorSetAllocator` panicking due to an arithmetic overflow when arithmetic overflow checks are enabled.
 - Vulkano-util still depending on the now-deprecated vulkano-win.
 
