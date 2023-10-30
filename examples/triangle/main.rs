@@ -16,7 +16,7 @@
 // that you want to learn Vulkan. This means that for example it won't go into details about what a
 // vertex or a shader is.
 
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -56,8 +56,8 @@ use winit::{
     window::WindowBuilder,
 };
 
-fn main() {
-    let event_loop = EventLoop::new();
+fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
 
@@ -512,13 +512,15 @@ fn main() {
     // that, we store the submission of the previous frame here.
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
@@ -526,7 +528,10 @@ fn main() {
             } => {
                 recreate_swapchain = true;
             }
-            Event::RedrawEventsCleared => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 // Do not draw the frame when the screen size is zero. On Windows, this can
                 // occur when minimizing the application.
                 let image_extent: [u32; 2] = window.inner_size().into();
@@ -687,9 +692,10 @@ fn main() {
                     }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
             _ => (),
         }
-    });
+    })
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.

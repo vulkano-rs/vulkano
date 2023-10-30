@@ -25,10 +25,8 @@ use vulkano::{
 use vulkano_util::{renderer::VulkanoWindowRenderer, window::WindowDescriptor};
 use winit::{
     dpi::PhysicalPosition,
-    event::{
-        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
-        WindowEvent,
-    },
+    event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent},
+    keyboard::{Key, NamedKey},
     window::Fullscreen,
 };
 
@@ -324,9 +322,9 @@ impl InputState {
 
     fn handle_input(&mut self, window_size: [f32; 2], event: &Event<()>) {
         self.window_size = window_size;
-        if let winit::event::Event::WindowEvent { event, .. } = event {
+        if let Event::WindowEvent { event, .. } = event {
             match event {
-                WindowEvent::KeyboardInput { input, .. } => self.on_keyboard_event(input),
+                WindowEvent::KeyboardInput { event, .. } => self.on_keyboard_event(event),
                 WindowEvent::MouseInput { state, button, .. } => {
                     self.on_mouse_click_event(*state, *button)
                 }
@@ -338,21 +336,19 @@ impl InputState {
     }
 
     /// Matches keyboard events to our defined inputs.
-    fn on_keyboard_event(&mut self, input: &KeyboardInput) {
-        if let Some(key_code) = input.virtual_keycode {
-            match key_code {
-                VirtualKeyCode::Escape => self.should_quit = state_is_pressed(input.state),
-                VirtualKeyCode::W => self.pan_up = state_is_pressed(input.state),
-                VirtualKeyCode::A => self.pan_left = state_is_pressed(input.state),
-                VirtualKeyCode::S => self.pan_down = state_is_pressed(input.state),
-                VirtualKeyCode::D => self.pan_right = state_is_pressed(input.state),
-                VirtualKeyCode::F => self.toggle_full_screen = state_is_pressed(input.state),
-                VirtualKeyCode::Return => self.randomize_palette = state_is_pressed(input.state),
-                VirtualKeyCode::Equals => self.increase_iterations = state_is_pressed(input.state),
-                VirtualKeyCode::Minus => self.decrease_iterations = state_is_pressed(input.state),
-                VirtualKeyCode::Space => self.toggle_julia = state_is_pressed(input.state),
-                _ => (),
-            }
+    fn on_keyboard_event(&mut self, event: &KeyEvent) {
+        match event.logical_key.as_ref() {
+            Key::Named(NamedKey::Escape) => self.should_quit = state_is_pressed(event.state),
+            Key::Character("w") => self.pan_up = state_is_pressed(event.state),
+            Key::Character("a") => self.pan_left = state_is_pressed(event.state),
+            Key::Character("s") => self.pan_down = state_is_pressed(event.state),
+            Key::Character("d") => self.pan_right = state_is_pressed(event.state),
+            Key::Character("f") => self.toggle_full_screen = state_is_pressed(event.state),
+            Key::Named(NamedKey::Enter) => self.randomize_palette = state_is_pressed(event.state),
+            Key::Character("=") => self.increase_iterations = state_is_pressed(event.state),
+            Key::Character("-") => self.decrease_iterations = state_is_pressed(event.state),
+            Key::Named(NamedKey::Space) => self.toggle_julia = state_is_pressed(event.state),
+            _ => (),
         }
     }
 

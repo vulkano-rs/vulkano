@@ -10,6 +10,7 @@
 // Modified triangle example to show `SubbufferAllocator`.
 
 use std::{
+    error::Error,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -55,8 +56,8 @@ use winit::{
     window::WindowBuilder,
 };
 
-fn main() {
-    let event_loop = EventLoop::new();
+fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = Surface::required_extensions(&event_loop);
@@ -280,13 +281,15 @@ fn main() {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
@@ -294,7 +297,10 @@ fn main() {
             } => {
                 recreate_swapchain = true;
             }
-            Event::RedrawEventsCleared => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 let image_extent: [u32; 2] = window.inner_size().into();
 
                 if image_extent.contains(&0) {
@@ -426,9 +432,10 @@ fn main() {
                     }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
             _ => (),
         }
-    });
+    })
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.

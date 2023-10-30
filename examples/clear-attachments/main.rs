@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, ClearAttachment,
@@ -32,11 +32,11 @@ use winit::{
     window::WindowBuilder,
 };
 
-fn main() {
+fn main() -> Result<(), impl Error> {
     // The start of this example is exactly the same as `triangle`. You should read the `triangle`
     // example if you haven't done so yet.
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = Surface::required_extensions(&event_loop);
@@ -157,140 +157,149 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => {
-            *control_flow = ControlFlow::Exit;
-        }
-        Event::WindowEvent {
-            event: WindowEvent::Resized(_),
-            ..
-        } => {
-            recreate_swapchain = true;
-        }
-        Event::RedrawEventsCleared => {
-            let image_extent: [u32; 2] = window.inner_size().into();
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
 
-            if image_extent.contains(&0) {
-                return;
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                elwt.exit();
             }
-
-            previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-            if recreate_swapchain {
-                let (new_swapchain, new_images) = swapchain
-                    .recreate(SwapchainCreateInfo {
-                        image_extent,
-                        ..swapchain.create_info()
-                    })
-                    .expect("failed to recreate swapchain");
-
-                swapchain = new_swapchain;
-                width = swapchain.image_extent()[0];
-                height = swapchain.image_extent()[1];
-                framebuffers = window_size_dependent_setup(&new_images, render_pass.clone());
-                recreate_swapchain = false;
-            }
-
-            let (image_index, suboptimal, acquire_future) =
-                match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
-                    Ok(r) => r,
-                    Err(VulkanError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        return;
-                    }
-                    Err(e) => panic!("failed to acquire next image: {e}"),
-                };
-
-            if suboptimal {
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
                 recreate_swapchain = true;
             }
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
+                let image_extent: [u32; 2] = window.inner_size().into();
 
-            let mut builder = AutoCommandBufferBuilder::primary(
-                &command_buffer_allocator,
-                queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
-            )
-            .unwrap();
-            builder
-                .begin_render_pass(
-                    RenderPassBeginInfo {
-                        clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                        ..RenderPassBeginInfo::framebuffer(
-                            framebuffers[image_index as usize].clone(),
-                        )
-                    },
-                    Default::default(),
-                )
-                .unwrap()
-                // Clear attachments with clear values and rects information. All the rects will be
-                // cleared by the same value. Note that the ClearRect offsets and extents are not
-                // affected by the viewport, they are directly applied to the rendering image.
-                .clear_attachments(
-                    [ClearAttachment::Color {
-                        color_attachment: 0,
-                        clear_value: [1.0, 0.0, 0.0, 1.0].into(),
-                    }]
-                    .into_iter()
-                    .collect(),
-                    [
-                        // Fixed offset and extent.
-                        ClearRect {
-                            offset: [0, 0],
-                            extent: [100, 100],
-                            array_layers: 0..1,
-                        },
-                        // Fixed offset, relative extent.
-                        ClearRect {
-                            offset: [100, 150],
-                            extent: [width / 4, height / 4],
-                            array_layers: 0..1,
-                        },
-                        // Relative offset and extent.
-                        ClearRect {
-                            offset: [width / 2, height / 2],
-                            extent: [width / 3, height / 5],
-                            array_layers: 0..1,
-                        },
-                    ]
-                    .into_iter()
-                    .collect(),
-                )
-                .unwrap()
-                .end_render_pass(Default::default())
-                .unwrap();
-            let command_buffer = builder.build().unwrap();
-
-            let future = previous_frame_end
-                .take()
-                .unwrap()
-                .join(acquire_future)
-                .then_execute(queue.clone(), command_buffer)
-                .unwrap()
-                .then_swapchain_present(
-                    queue.clone(),
-                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
-                )
-                .then_signal_fence_and_flush();
-
-            match future.map_err(Validated::unwrap) {
-                Ok(future) => {
-                    previous_frame_end = Some(future.boxed());
+                if image_extent.contains(&0) {
+                    return;
                 }
-                Err(VulkanError::OutOfDate) => {
+
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+                if recreate_swapchain {
+                    let (new_swapchain, new_images) = swapchain
+                        .recreate(SwapchainCreateInfo {
+                            image_extent,
+                            ..swapchain.create_info()
+                        })
+                        .expect("failed to recreate swapchain");
+
+                    swapchain = new_swapchain;
+                    width = swapchain.image_extent()[0];
+                    height = swapchain.image_extent()[1];
+                    framebuffers = window_size_dependent_setup(&new_images, render_pass.clone());
+                    recreate_swapchain = false;
+                }
+
+                let (image_index, suboptimal, acquire_future) =
+                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+                        Ok(r) => r,
+                        Err(VulkanError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("failed to acquire next image: {e}"),
+                    };
+
+                if suboptimal {
                     recreate_swapchain = true;
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
-                Err(e) => {
-                    println!("failed to flush future: {e}");
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+                let mut builder = AutoCommandBufferBuilder::primary(
+                    &command_buffer_allocator,
+                    queue.queue_family_index(),
+                    CommandBufferUsage::OneTimeSubmit,
+                )
+                .unwrap();
+                builder
+                    .begin_render_pass(
+                        RenderPassBeginInfo {
+                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
+                        },
+                        Default::default(),
+                    )
+                    .unwrap()
+                    // Clear attachments with clear values and rects information. All the rects
+                    // will be cleared by the same value. Note that the ClearRect offsets and
+                    // extents are not affected by the viewport, they are directly applied to the
+                    // rendering image.
+                    .clear_attachments(
+                        [ClearAttachment::Color {
+                            color_attachment: 0,
+                            clear_value: [1.0, 0.0, 0.0, 1.0].into(),
+                        }]
+                        .into_iter()
+                        .collect(),
+                        [
+                            // Fixed offset and extent.
+                            ClearRect {
+                                offset: [0, 0],
+                                extent: [100, 100],
+                                array_layers: 0..1,
+                            },
+                            // Fixed offset, relative extent.
+                            ClearRect {
+                                offset: [100, 150],
+                                extent: [width / 4, height / 4],
+                                array_layers: 0..1,
+                            },
+                            // Relative offset and extent.
+                            ClearRect {
+                                offset: [width / 2, height / 2],
+                                extent: [width / 3, height / 5],
+                                array_layers: 0..1,
+                            },
+                        ]
+                        .into_iter()
+                        .collect(),
+                    )
+                    .unwrap()
+                    .end_render_pass(Default::default())
+                    .unwrap();
+                let command_buffer = builder.build().unwrap();
+
+                let future = previous_frame_end
+                    .take()
+                    .unwrap()
+                    .join(acquire_future)
+                    .then_execute(queue.clone(), command_buffer)
+                    .unwrap()
+                    .then_swapchain_present(
+                        queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                    )
+                    .then_signal_fence_and_flush();
+
+                match future.map_err(Validated::unwrap) {
+                    Ok(future) => {
+                        previous_frame_end = Some(future.boxed());
+                    }
+                    Err(VulkanError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
+                    Err(e) => {
+                        println!("failed to flush future: {e}");
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
+            _ => (),
         }
-        _ => (),
-    });
+    })
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.

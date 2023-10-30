@@ -39,6 +39,7 @@
 use cgmath::{Matrix4, Rad};
 use rand::Rng;
 use std::{
+    error::Error,
     hint,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -91,15 +92,16 @@ use vulkano::{
     Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    keyboard::{Key, NamedKey},
     window::WindowBuilder,
 };
 
 const TRANSFER_GRANULARITY: u32 = 4096;
 
-fn main() {
-    let event_loop = EventLoop::new();
+fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = Surface::required_extensions(&event_loop);
@@ -521,13 +523,15 @@ fn main() {
 
     println!("\nPress space to update part of the texture");
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
@@ -538,10 +542,10 @@ fn main() {
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
+                                logical_key: Key::Named(NamedKey::Space),
                                 state: ElementState::Released,
-                                virtual_keycode: Some(VirtualKeyCode::Space),
                                 ..
                             },
                         ..
@@ -550,7 +554,10 @@ fn main() {
             } => {
                 channel.send(()).unwrap();
             }
-            Event::RedrawEventsCleared => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 let image_extent: [u32; 2] = window.inner_size().into();
 
                 if image_extent.contains(&0) {
@@ -685,9 +692,10 @@ fn main() {
                     }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
             _ => (),
         }
-    });
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
