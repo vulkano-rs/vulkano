@@ -23,7 +23,7 @@ mod render_pass;
 
 use crate::app::{App, RenderPipeline};
 use cgmath::Vector2;
-use std::time::Instant;
+use std::{error::Error, time::Instant};
 use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
@@ -36,11 +36,11 @@ pub const WINDOW2_WIDTH: f32 = 512.0;
 pub const WINDOW2_HEIGHT: f32 = 512.0;
 pub const SCALING: f32 = 2.0;
 
-fn main() {
+fn main() -> Result<(), impl Error> {
     println!("Welcome to Vulkano Game of Life\nUse the mouse to draw life on the grid(s)\n");
 
     // Create event loop.
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
     // Create app with vulkano context.
     let mut app = App::default();
@@ -54,7 +54,9 @@ fn main() {
     let mut mouse_is_pressed_w1 = false;
     let mut mouse_is_pressed_w2 = false;
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         if process_event(
             &event,
             &mut app,
@@ -62,8 +64,12 @@ fn main() {
             &mut mouse_is_pressed_w1,
             &mut mouse_is_pressed_w2,
         ) {
-            *control_flow = ControlFlow::Exit;
+            elwt.exit();
             return;
+        } else if event == Event::AboutToWait {
+            for (_, renderer) in app.windows.iter() {
+                renderer.window().request_redraw();
+            }
         }
 
         // Draw life on windows if mouse is down.

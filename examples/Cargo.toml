@@ -12,4 +12,4 @@ vulkano = { path = "../vulkano" }
 vulkano-macros = { path = "../vulkano-macros" }
 vulkano-shaders = { path = "../vulkano-shaders" }
 vulkano-util = { path = "../vulkano-util" }
-winit = "0.28"
+winit = { version = "0.29", features = ["rwh_05"] }

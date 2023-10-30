@@ -16,7 +16,7 @@
 // that you want to learn Vulkan. This means that for example it won't go into details about what a
 // vertex or a shader is.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, error::Error, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -51,7 +51,7 @@ use vulkano::{
     Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
-    event::{ElementState, Event, KeyboardInput, WindowEvent},
+    event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -65,8 +65,8 @@ struct WindowSurface {
     previous_frame_end: Option<Box<dyn GpuFuture>>,
 }
 
-fn main() {
-    let event_loop = EventLoop::new();
+fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = Surface::required_extensions(&event_loop);
@@ -326,188 +326,198 @@ fn main() {
         },
     );
 
-    event_loop.run(move |event, event_loop, control_flow| match event {
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => {
-            *control_flow = ControlFlow::Exit;
-        }
-        Event::WindowEvent {
-            window_id,
-            event: WindowEvent::Resized(_),
-            ..
-        } => {
-            window_surfaces
-                .get_mut(&window_id)
-                .unwrap()
-                .recreate_swapchain = true;
-        }
-        Event::WindowEvent {
-            event:
-                WindowEvent::KeyboardInput {
-                    input:
-                        KeyboardInput {
-                            state: ElementState::Pressed,
-                            ..
-                        },
-                    ..
-                },
-            ..
-        } => {
-            let window = Arc::new(WindowBuilder::new().build(event_loop).unwrap());
-            let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
-            let window_id = window.id();
-            let (swapchain, images) = {
-                let composite_alpha = surface_caps
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap();
-                let image_format = device
-                    .physical_device()
-                    .surface_formats(&surface, Default::default())
-                    .unwrap()[0]
-                    .0;
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
 
-                Swapchain::new(
-                    device.clone(),
-                    surface,
-                    SwapchainCreateInfo {
-                        min_image_count: surface_caps.min_image_count.max(2),
-                        image_format,
-                        image_extent: window.inner_size().into(),
-                        image_usage: ImageUsage::COLOR_ATTACHMENT,
-                        composite_alpha,
-                        ..Default::default()
-                    },
-                )
-                .unwrap()
-            };
-
-            window_surfaces.insert(
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                elwt.exit();
+            }
+            Event::WindowEvent {
                 window_id,
-                WindowSurface {
-                    window,
-                    swapchain,
-                    recreate_swapchain: false,
-                    framebuffers: window_size_dependent_setup(
-                        &images,
-                        render_pass.clone(),
-                        &mut viewport,
-                    ),
-                    previous_frame_end: Some(sync::now(device.clone()).boxed()),
-                },
-            );
-        }
-        Event::RedrawEventsCleared => {
-            window_surfaces
-                .values()
-                .for_each(|s| s.window.request_redraw());
-        }
-        Event::RedrawRequested(window_id) => {
-            let WindowSurface {
-                window,
-                swapchain,
-                recreate_swapchain,
-                framebuffers,
-                previous_frame_end,
-            } = window_surfaces.get_mut(&window_id).unwrap();
-
-            let image_extent: [u32; 2] = window.inner_size().into();
-
-            if image_extent.contains(&0) {
-                return;
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+                window_surfaces
+                    .get_mut(&window_id)
+                    .unwrap()
+                    .recreate_swapchain = true;
             }
+            Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => {
+                let window = Arc::new(WindowBuilder::new().build(elwt).unwrap());
+                let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
+                let window_id = window.id();
+                let (swapchain, images) = {
+                    let composite_alpha = surface_caps
+                        .supported_composite_alpha
+                        .into_iter()
+                        .next()
+                        .unwrap();
+                    let image_format = device
+                        .physical_device()
+                        .surface_formats(&surface, Default::default())
+                        .unwrap()[0]
+                        .0;
 
-            previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-            if *recreate_swapchain {
-                let (new_swapchain, new_images) = swapchain
-                    .recreate(SwapchainCreateInfo {
-                        image_extent,
-                        ..swapchain.create_info()
-                    })
-                    .expect("failed to recreate swapchain");
-
-                *swapchain = new_swapchain;
-                *framebuffers =
-                    window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
-                *recreate_swapchain = false;
-            }
-
-            let (image_index, suboptimal, acquire_future) =
-                match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
-                    Ok(r) => r,
-                    Err(VulkanError::OutOfDate) => {
-                        *recreate_swapchain = true;
-                        return;
-                    }
-                    Err(e) => panic!("failed to acquire next image: {e}"),
+                    Swapchain::new(
+                        device.clone(),
+                        surface,
+                        SwapchainCreateInfo {
+                            min_image_count: surface_caps.min_image_count.max(2),
+                            image_format,
+                            image_extent: window.inner_size().into(),
+                            image_usage: ImageUsage::COLOR_ATTACHMENT,
+                            composite_alpha,
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap()
                 };
 
-            if suboptimal {
-                *recreate_swapchain = true;
-            }
-
-            let mut builder = AutoCommandBufferBuilder::primary(
-                &command_buffer_allocator,
-                queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
-            )
-            .unwrap();
-
-            builder
-                .begin_render_pass(
-                    RenderPassBeginInfo {
-                        clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                        ..RenderPassBeginInfo::framebuffer(
-                            framebuffers[image_index as usize].clone(),
-                        )
+                window_surfaces.insert(
+                    window_id,
+                    WindowSurface {
+                        window,
+                        swapchain,
+                        recreate_swapchain: false,
+                        framebuffers: window_size_dependent_setup(
+                            &images,
+                            render_pass.clone(),
+                            &mut viewport,
+                        ),
+                        previous_frame_end: Some(sync::now(device.clone()).boxed()),
                     },
-                    Default::default(),
-                )
-                .unwrap()
-                .set_viewport(0, [viewport.clone()].into_iter().collect())
-                .unwrap()
-                .bind_pipeline_graphics(pipeline.clone())
-                .unwrap()
-                .bind_vertex_buffers(0, vertex_buffer.clone())
-                .unwrap()
-                .draw(vertex_buffer.len() as u32, 1, 0, 0)
-                .unwrap()
-                .end_render_pass(Default::default())
-                .unwrap();
-            let command_buffer = builder.build().unwrap();
+                );
+            }
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                window_id,
+            } => {
+                let WindowSurface {
+                    window,
+                    swapchain,
+                    recreate_swapchain,
+                    framebuffers,
+                    previous_frame_end,
+                } = window_surfaces.get_mut(&window_id).unwrap();
 
-            let future = previous_frame_end
-                .take()
-                .unwrap()
-                .join(acquire_future)
-                .then_execute(queue.clone(), command_buffer)
-                .unwrap()
-                .then_swapchain_present(
-                    queue.clone(),
-                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
-                )
-                .then_signal_fence_and_flush();
+                let image_extent: [u32; 2] = window.inner_size().into();
 
-            match future.map_err(Validated::unwrap) {
-                Ok(future) => {
-                    *previous_frame_end = Some(future.boxed());
+                if image_extent.contains(&0) {
+                    return;
                 }
-                Err(VulkanError::OutOfDate) => {
+
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+                if *recreate_swapchain {
+                    let (new_swapchain, new_images) = swapchain
+                        .recreate(SwapchainCreateInfo {
+                            image_extent,
+                            ..swapchain.create_info()
+                        })
+                        .expect("failed to recreate swapchain");
+
+                    *swapchain = new_swapchain;
+                    *framebuffers = window_size_dependent_setup(
+                        &new_images,
+                        render_pass.clone(),
+                        &mut viewport,
+                    );
+                    *recreate_swapchain = false;
+                }
+
+                let (image_index, suboptimal, acquire_future) =
+                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+                        Ok(r) => r,
+                        Err(VulkanError::OutOfDate) => {
+                            *recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("failed to acquire next image: {e}"),
+                    };
+
+                if suboptimal {
                     *recreate_swapchain = true;
-                    *previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
-                Err(e) => {
-                    println!("failed to flush future: {e}");
-                    *previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+                let mut builder = AutoCommandBufferBuilder::primary(
+                    &command_buffer_allocator,
+                    queue.queue_family_index(),
+                    CommandBufferUsage::OneTimeSubmit,
+                )
+                .unwrap();
+
+                builder
+                    .begin_render_pass(
+                        RenderPassBeginInfo {
+                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
+                        },
+                        Default::default(),
+                    )
+                    .unwrap()
+                    .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .unwrap()
+                    .bind_pipeline_graphics(pipeline.clone())
+                    .unwrap()
+                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .unwrap()
+                    .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                    .unwrap()
+                    .end_render_pass(Default::default())
+                    .unwrap();
+                let command_buffer = builder.build().unwrap();
+
+                let future = previous_frame_end
+                    .take()
+                    .unwrap()
+                    .join(acquire_future)
+                    .then_execute(queue.clone(), command_buffer)
+                    .unwrap()
+                    .then_swapchain_present(
+                        queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                    )
+                    .then_signal_fence_and_flush();
+
+                match future.map_err(Validated::unwrap) {
+                    Ok(future) => {
+                        *previous_frame_end = Some(future.boxed());
+                    }
+                    Err(VulkanError::OutOfDate) => {
+                        *recreate_swapchain = true;
+                        *previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
+                    Err(e) => {
+                        println!("failed to flush future: {e}");
+                        *previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
                 }
             }
+            Event::AboutToWait => {
+                window_surfaces
+                    .values()
+                    .for_each(|s| s.window.request_redraw());
+            }
+            _ => (),
         }
-        _ => (),
-    });
+    })
 }
 
 fn window_size_dependent_setup(

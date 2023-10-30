@@ -12,7 +12,7 @@
 // staging buffer and then copying the data to a device-local buffer to be accessed solely by the
 // GPU through the compute shader and as a vertex array.
 
-use std::{sync::Arc, time::SystemTime};
+use std::{error::Error, sync::Arc, time::SystemTime};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -63,10 +63,10 @@ const WINDOW_HEIGHT: u32 = 600;
 
 const PARTICLE_COUNT: usize = 100_000;
 
-fn main() {
+fn main() -> Result<(), impl Error> {
     // The usual Vulkan initialization. Largely the same as example `triangle.rs` until further
     // commentation is provided.
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = Surface::required_extensions(&event_loop);
@@ -521,15 +521,20 @@ fn main() {
 
     let start_time = SystemTime::now();
     let mut last_frame_time = start_time;
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
-            Event::RedrawEventsCleared => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 let image_extent: [u32; 2] = window.inner_size().into();
 
                 if image_extent.contains(&0) {
@@ -644,7 +649,8 @@ fn main() {
                 };
                 previous_fence_index = image_index;
             }
+            Event::AboutToWait => window.request_redraw(),
             _ => (),
         }
-    });
+    })
 }

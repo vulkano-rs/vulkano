@@ -1,8 +1,12 @@
-fn main() {
+fn main() -> Result<(), impl std::error::Error> {
     #[cfg(target_os = "linux")]
-    linux::main();
+    {
+        linux::main()
+    }
     #[cfg(not(target_os = "linux"))]
-    println!("Not Implemented");
+    {
+        Ok(println!("Not Implemented"))
+    }
 }
 
 // TODO: Can this be demonstrated for other platforms as well?
@@ -10,6 +14,7 @@ fn main() {
 mod linux {
     use glium::glutin::{self, platform::unix::HeadlessContextExt};
     use std::{
+        error::Error,
         sync::{Arc, Barrier},
         time::Instant,
     };
@@ -80,7 +85,7 @@ mod linux {
         window::{Window, WindowBuilder},
     };
 
-    pub fn main() {
+    pub fn main() -> Result<(), impl Error> {
         let event_loop_gl = winit_glium::event_loop::EventLoop::new();
         // For some reason, this must be created before the vulkan window
         let hrb = glutin::ContextBuilder::new()
@@ -102,7 +107,7 @@ mod linux {
         )
         .unwrap();
 
-        let event_loop = EventLoop::new();
+        let event_loop = EventLoop::new().unwrap();
         let (
             device,
             _instance,
@@ -287,13 +292,15 @@ mod linux {
         let mut previous_frame_end: Option<Box<dyn GpuFuture>> =
             Some(Box::new(now(device.clone())));
 
-        event_loop.run(move |event, _, control_flow| {
+        event_loop.run(move |event, elwt| {
+            elwt.set_control_flow(ControlFlow::Poll);
+
             match event {
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
                 } => {
-                    *control_flow = ControlFlow::Exit;
+                    elwt.exit();
                 }
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
@@ -301,7 +308,10 @@ mod linux {
                 } => {
                     recreate_swapchain = true;
                 }
-                Event::RedrawEventsCleared => {
+                Event::WindowEvent {
+                    event: WindowEvent::RedrawRequested,
+                    ..
+                } => {
                     queue
                         .with(|mut q| unsafe {
                             q.submit(
@@ -441,10 +451,10 @@ mod linux {
                         }
                     };
                 }
-
+                Event::AboutToWait => window.request_redraw(),
                 _ => (),
             };
-        });
+        })
     }
 
     #[derive(BufferContents, Vertex)]
