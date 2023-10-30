@@ -4,7 +4,7 @@ members = [
     "vulkano-macros",
     "vulkano-shaders",
     "vulkano-util",
-    "vulkano-win",
+    # "vulkano-win",
 ]
 resolver = "2"
 
