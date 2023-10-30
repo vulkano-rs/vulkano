@@ -536,28 +536,28 @@ fn main() -> Result<(), impl Error> {
                 // write results to a Vulkano buffer. This could then be used to influence draw
                 // operations further down the line, either in the same frame or a future frame.
                 #[rustfmt::skip]
-            query_pool.get_results(
-                0..3,
-                &mut query_results,
-                // Block the function call until the results are available.
-                // NOTE: If not all the queries have actually been executed, then this will
-                // wait forever for something that never happens!
-                QueryResultFlags::WAIT
+                query_pool.get_results(
+                    0..3,
+                    &mut query_results,
+                    // Block the function call until the results are available.
+                    // NOTE: If not all the queries have actually been executed, then this will
+                    // wait forever for something that never happens!
+                    QueryResultFlags::WAIT
 
-                // Enable this flag to give partial results if available, instead of waiting
-                // for the full results.
-                // | QueryResultFlags::PARTIAL
+                    // Enable this flag to give partial results if available, instead of waiting
+                    // for the full results.
+                    // | QueryResultFlags::PARTIAL
 
-                // Blocking and waiting will ensure the results are always available after the
-                // function returns.
-                //
-                // If you disable waiting, then this flag can be enabled to include the
-                // availability of each query's results. You need one extra element per query
-                // in your `query_results` buffer for this. This element will be filled with a
-                // zero/nonzero value indicating availability.
-                // | QueryResultFlags::WITH_AVAILABILITY
-            )
-            .unwrap();
+                    // Blocking and waiting will ensure the results are always available after the
+                    // function returns.
+                    //
+                    // If you disable waiting, then this flag can be enabled to include the
+                    // availability of each query's results. You need one extra element per query
+                    // in your `query_results` buffer for this. This element will be filled with a
+                    // zero/nonzero value indicating availability.
+                    // | QueryResultFlags::WITH_AVAILABILITY
+                )
+                .unwrap();
 
                 // If the `precise` bit was not enabled, then you're only guaranteed to get a
                 // boolean result here: zero if all pixels were occluded, nonzero if only some were
