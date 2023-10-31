@@ -15,9 +15,7 @@ use syn::{
     Meta, MetaList, NestedMeta, Result, Type, TypeArray, TypeSlice, WherePredicate,
 };
 
-pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
-    let crate_ident = crate::crate_ident();
-
+pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Result<TokenStream> {
     let struct_ident = &ast.ident;
 
     if !ast
@@ -60,7 +58,7 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
         ast.generics.split_for_impl()
     };
 
-    let layout = write_layout(&crate_ident, &ast)?;
+    let layout = write_layout(crate_ident, &ast)?;
 
     Ok(quote! {
         #[allow(unsafe_code)]
@@ -266,25 +264,28 @@ fn find_innermost_element_type(mut field_type: &Type) -> &Type {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proc_macro2::Span;
 
     #[test]
     fn repr() {
+        let crate_ident = Ident::new("vulkano", Span::call_site());
+
         let default_repr = parse_quote! {
             struct Test(u8, [u8]);
         };
-        assert!(derive_buffer_contents(default_repr).is_err());
+        assert!(derive_buffer_contents(&crate_ident, default_repr).is_err());
 
         let irellevant_reprs = parse_quote! {
             #[repr(packed(2), align(16))]
             struct Test(u8, [u8]);
         };
-        assert!(derive_buffer_contents(irellevant_reprs).is_err());
+        assert!(derive_buffer_contents(&crate_ident, irellevant_reprs).is_err());
 
         let transparent_repr = parse_quote! {
             #[repr(transparent)]
             struct Test([u8]);
         };
-        assert!(derive_buffer_contents(transparent_repr).is_ok());
+        assert!(derive_buffer_contents(&crate_ident, transparent_repr).is_ok());
 
         let multiple_reprs = parse_quote! {
             #[repr(align(16))]
@@ -292,24 +293,28 @@ mod tests {
             #[repr(packed)]
             struct Test(u8, [u8]);
         };
-        assert!(derive_buffer_contents(multiple_reprs).is_ok());
+        assert!(derive_buffer_contents(&crate_ident, multiple_reprs).is_ok());
     }
 
     #[test]
     fn zero_sized() {
+        let crate_ident = Ident::new("vulkano", Span::call_site());
+
         let unit = parse_quote! {
             struct Test;
         };
-        assert!(derive_buffer_contents(unit).is_err());
+        assert!(derive_buffer_contents(&crate_ident, unit).is_err());
     }
 
     #[test]
     fn unsupported_datatype() {
+        let crate_ident = Ident::new("vulkano", Span::call_site());
+
         let enum_ = parse_quote! {
             #[repr(C)]
             enum Test { A, B, C }
         };
-        assert!(derive_buffer_contents(enum_).is_err());
+        assert!(derive_buffer_contents(&crate_ident, enum_).is_err());
 
         let union = parse_quote! {
             #[repr(C)]
@@ -318,6 +323,6 @@ mod tests {
                 b: f32,
             }
         };
-        assert!(derive_buffer_contents(union).is_err());
+        assert!(derive_buffer_contents(&crate_ident, union).is_err());
     }
 }

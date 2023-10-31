@@ -16,7 +16,7 @@ use syn::{
     Data, DataStruct, Fields, Ident, LitStr, Result, Token,
 };
 
-pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
+pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<TokenStream> {
     let struct_name = &ast.ident;
 
     let fields = match &ast.data {
@@ -26,8 +26,6 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         }) => &fields.named,
         _ => bail!("expected a struct with named fields"),
     };
-
-    let crate_ident = crate::crate_ident();
 
     let mut members = quote! {
         let mut offset = 0;
