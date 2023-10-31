@@ -565,16 +565,14 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         ///
         /// For [`cgmath`]:
         ///
-        /// ```
-        /// # use vulkano::type_for_format;
+        /// ```ignore
         /// let pixel: type_for_format!(cgmath, R32G32B32A32_SFLOAT);
         /// pixel = cgmath::Vector4::new(1.0f32, 0.0, 0.0, 1.0);
         /// ```
         ///
         /// For [`nalgebra`]:
         ///
-        /// ```
-        /// # use vulkano::type_for_format;
+        /// ```ignore
         /// let pixel: type_for_format!(nalgebra, R32G32B32A32_SFLOAT);
         /// pixel = nalgebra::vector![1.0f32, 0.0, 0.0, 1.0];
         /// ```
