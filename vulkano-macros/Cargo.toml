@@ -20,6 +20,3 @@ syn = { workspace = true }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 proc-macro-crate = { workspace = true }
-
-[dev-dependencies]
-vulkano = { workspace = true }
