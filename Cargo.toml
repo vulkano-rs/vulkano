@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "examples/*",
     "vulkano",
     "vulkano-macros",
     "vulkano-shaders",
@@ -54,3 +55,9 @@ syn = "2.0"
 thread_local = "1.1"
 vk-parse = "0.12"
 winit = "0.29"
+
+# Only used in examples
+cgmath = "0.18"
+png = "0.17"
+rand = "0.8"
+ron = "0.8"
