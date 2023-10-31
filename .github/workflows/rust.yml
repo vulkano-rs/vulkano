@@ -26,7 +26,7 @@ jobs:
     - name: Build examples
       run: |
         cd examples
-        cargo build --verbose
+        cargo build --bins --verbose
   linux_stable:
     runs-on: ubuntu-latest
     steps:
@@ -38,7 +38,7 @@ jobs:
     - name: Build examples
       run: |
         cd examples
-        cargo build --verbose
+        cargo build --bins --verbose
   macos_stable:
     runs-on: macos-latest
     steps:
@@ -50,4 +50,4 @@ jobs:
     - name: Build examples
       run: |
         cd examples
-        cargo build --verbose
+        cargo build --bins --verbose
