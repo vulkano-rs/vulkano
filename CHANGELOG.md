@@ -8,8 +8,16 @@
 -->
 
 ### Public dependency updates
+- [raw-window-handle](https://crates.io/raw-window-handle) 0.6
+- [winit](https://crates.io/crates/winit) 0.29
+
+### Public dependency updates
 
 ### Breaking changes
+
+Changes to `Surface`:
+- `Surface::required_extensions` now returns a result.
+- `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
 
 ### Additions
 
