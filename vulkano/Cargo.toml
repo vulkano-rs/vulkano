@@ -44,10 +44,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 vk-parse = { workspace = true }
 
-[dev-dependencies]
-cgmath = { workspace = true }
-nalgebra = { workspace = true }
-
 [features]
 default = ["macros"]
 macros = ["dep:vulkano-macros"]
