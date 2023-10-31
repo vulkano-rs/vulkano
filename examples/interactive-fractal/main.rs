@@ -20,6 +20,7 @@
 // - A simple `InputState` to interact with the application.
 
 use crate::app::FractalApp;
+use std::error::Error;
 use vulkano::{image::ImageUsage, swapchain::PresentMode, sync::GpuFuture};
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -36,9 +37,9 @@ mod fractal_compute_pipeline;
 mod pixels_draw_pipeline;
 mod place_over_frame;
 
-fn main() {
+fn main() -> Result<(), impl Error> {
     // Create the event loop.
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let context = VulkanoContext::new(VulkanoConfig::default());
     let mut windows = VulkanoWindows::default();
     let _id = windows.create_window(
@@ -74,11 +75,13 @@ fn main() {
     );
     app.print_guide();
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         let renderer = windows.get_primary_renderer_mut().unwrap();
 
         if process_event(renderer, &event, &mut app, render_target_id) {
-            *control_flow = ControlFlow::Exit;
+            elwt.exit();
             return;
         }
 
@@ -96,15 +99,20 @@ pub fn process_event(
     render_target_id: usize,
 ) -> bool {
     match &event {
-        Event::WindowEvent { event, .. } => match event {
-            WindowEvent::CloseRequested => {
-                return true;
-            }
-            WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => renderer.resize(),
-            _ => (),
-        },
-        Event::MainEventsCleared => renderer.window().request_redraw(),
-        Event::RedrawRequested(_) => 'redraw: {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            return true;
+        }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. },
+            ..
+        } => renderer.resize(),
+        Event::WindowEvent {
+            event: WindowEvent::RedrawRequested,
+            ..
+        } => 'redraw: {
             // Tasks for redrawing:
             // 1. Update state based on events
             // 2. Compute & Render
@@ -132,6 +140,7 @@ pub fn process_event(
                 app.max_iters
             ));
         }
+        Event::AboutToWait => renderer.window().request_redraw(),
         _ => (),
     }
     !app.is_running()

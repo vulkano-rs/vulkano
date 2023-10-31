@@ -22,12 +22,13 @@ use crate::{
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+    HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 use smallvec::SmallVec;
 use std::{
     any::Any,
-    fmt::{Debug, Error as FmtError, Formatter},
+    error::Error,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -60,12 +61,14 @@ pub struct Surface {
 impl Surface {
     /// Returns the instance extensions required to create a surface from a window of the given
     /// event loop.
-    pub fn required_extensions(event_loop: &impl HasRawDisplayHandle) -> InstanceExtensions {
+    pub fn required_extensions(
+        event_loop: &impl HasDisplayHandle,
+    ) -> Result<InstanceExtensions, HandleError> {
         let mut extensions = InstanceExtensions {
             khr_surface: true,
             ..InstanceExtensions::empty()
         };
-        match event_loop.raw_display_handle() {
+        match event_loop.display_handle()?.as_raw() {
             RawDisplayHandle::Android(_) => extensions.khr_android_surface = true,
             // FIXME: `mvk_macos_surface` and `mvk_ios_surface` are deprecated.
             RawDisplayHandle::AppKit(_) => extensions.mvk_macos_surface = true,
@@ -77,14 +80,14 @@ impl Surface {
             _ => unimplemented!(),
         }
 
-        extensions
+        Ok(extensions)
     }
 
     /// Creates a new `Surface` from the given `window`.
     pub fn from_window(
         instance: Arc<Instance>,
-        window: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Any + Send + Sync>,
-    ) -> Result<Arc<Self>, Validated<VulkanError>> {
+        window: Arc<impl HasWindowHandle + HasDisplayHandle + Any + Send + Sync>,
+    ) -> Result<Arc<Self>, FromWindowError> {
         let mut surface = unsafe { Self::from_window_ref(instance, &*window) }?;
         Arc::get_mut(&mut surface).unwrap().object = Some(window);
 
@@ -99,43 +102,67 @@ impl Surface {
     /// - The given `window` must outlive the created surface.
     pub unsafe fn from_window_ref(
         instance: Arc<Instance>,
-        window: &(impl HasRawWindowHandle + HasRawDisplayHandle),
-    ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        match (window.raw_window_handle(), window.raw_display_handle()) {
+        window: &(impl HasWindowHandle + HasDisplayHandle),
+    ) -> Result<Arc<Self>, FromWindowError> {
+        let window_handle = window
+            .window_handle()
+            .map_err(FromWindowError::RetrieveHandle)?;
+        let display_handle = window
+            .display_handle()
+            .map_err(FromWindowError::RetrieveHandle)?;
+
+        match (window_handle.as_raw(), display_handle.as_raw()) {
             (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => {
-                Self::from_android(instance, window.a_native_window, None)
+                Self::from_android(instance, window.a_native_window.as_ptr(), None)
             }
             #[cfg(target_os = "macos")]
             (RawWindowHandle::AppKit(window), RawDisplayHandle::AppKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let layer = get_metal_layer_macos(window.ns_view);
+                let layer = get_metal_layer_macos(window.ns_view.as_ptr());
 
                 Self::from_mac_os(instance, layer as *const (), None)
             }
             #[cfg(target_os = "ios")]
             (RawWindowHandle::UiKit(window), RawDisplayHandle::UiKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let layer = get_metal_layer_ios(window.ui_view);
+                let layer = get_metal_layer_ios(window.ui_view.as_ptr());
 
                 Self::from_ios(instance, layer, None)
             }
             (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => {
-                Self::from_wayland(instance, display.display, window.surface, None)
+                Self::from_wayland(
+                    instance,
+                    display.display.as_ptr(),
+                    window.surface.as_ptr(),
+                    None,
+                )
             }
             (RawWindowHandle::Win32(window), RawDisplayHandle::Windows(_display)) => {
-                Self::from_win32(instance, window.hinstance, window.hwnd, None)
+                Self::from_win32(
+                    instance,
+                    window.hinstance.unwrap().get() as *const (),
+                    window.hwnd.get() as *const (),
+                    None,
+                )
             }
-            (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => {
-                Self::from_xcb(instance, display.connection, window.window, None)
-            }
-            (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => {
-                Self::from_xlib(instance, display.display, window.window, None)
-            }
+            (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => Self::from_xcb(
+                instance,
+                display.connection.unwrap().as_ptr(),
+                window.window.get(),
+                None,
+            ),
+            (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => Self::from_xlib(
+                instance,
+                display.display.unwrap().as_ptr(),
+                window.window,
+                None,
+            ),
             _ => unimplemented!(
                 "the window was created with a windowing API that is not supported \
                 by Vulkan/Vulkano"
             ),
         }
+        .map_err(FromWindowError::CreateSurface)
     }
 
     /// Creates a `Surface` from a raw handle.
@@ -2333,6 +2360,35 @@ pub struct SurfaceCapabilities {
 
     /// Whether full-screen exclusivity is supported.
     pub full_screen_exclusive_supported: bool,
+}
+
+/// Error that can happen when creating a [`Surface`] from a window.
+#[derive(Clone, Debug)]
+pub enum FromWindowError {
+    /// Retrieving the window or display handle failed.
+    RetrieveHandle(HandleError),
+    /// Creating the surface failed.
+    CreateSurface(Validated<VulkanError>),
+}
+
+impl Error for FromWindowError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::RetrieveHandle(err) => Some(err),
+            Self::CreateSurface(err) => Some(err),
+        }
+    }
+}
+
+impl Display for FromWindowError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::RetrieveHandle(_) => {
+                write!(f, "retrieving the window or display handle has failed")
+            }
+            Self::CreateSurface(_) => write!(f, "creating the surface has failed"),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{
     parse_quote, spanned::Spanned, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident,
-    Meta, MetaList, NestedMeta, Result, Type, TypeArray, TypeSlice, WherePredicate,
+    Result, Type, TypeArray, TypeSlice, WherePredicate,
 };
 
 pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
@@ -20,23 +20,26 @@ pub fn derive_buffer_contents(mut ast: DeriveInput) -> Result<TokenStream> {
 
     let struct_ident = &ast.ident;
 
-    if !ast
+    let is_repr_rust = ast
         .attrs
         .iter()
-        .filter(|&attr| attr.path.is_ident("repr"))
-        .map(|attr| attr.parse_meta().unwrap())
-        .any(|meta| match meta {
-            Meta::List(MetaList { nested, .. }) => {
-                nested.iter().any(|nested_meta| match nested_meta {
-                    NestedMeta::Meta(Meta::Path(path)) => {
-                        path.is_ident("C") || path.is_ident("transparent")
-                    }
-                    _ => false,
-                })
-            }
-            _ => false,
+        .filter(|&attr| attr.path().is_ident("repr"))
+        .map(|attr| {
+            let mut is_repr_rust = true;
+
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("C") || meta.path.is_ident("transparent") {
+                    is_repr_rust = false;
+                }
+
+                Ok(())
+            });
+
+            is_repr_rust
         })
-    {
+        .all(|b| b);
+
+    if is_repr_rust {
         bail!(
             "deriving `BufferContents` is only supported for types that are marked `#[repr(C)]` \
             or `#[repr(transparent)]`",

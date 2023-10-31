@@ -9,7 +9,7 @@
 
 use self::model::{Normal, Position, INDICES, NORMALS, POSITIONS};
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
-use std::{sync::Arc, time::Instant};
+use std::{error::Error, sync::Arc, time::Instant};
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -55,20 +55,20 @@ use vulkano::{
 };
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::EventLoop,
     window::WindowBuilder,
 };
 
 mod model;
 
-fn main() {
+fn main() -> Result<(), impl Error> {
     // The start of this example is exactly the same as `triangle`. You should read the `triangle`
     // example if you haven't done so yet.
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop);
+    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -265,13 +265,13 @@ fn main() {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
@@ -279,7 +279,10 @@ fn main() {
             } => {
                 recreate_swapchain = true;
             }
-            Event::RedrawEventsCleared => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 let image_extent: [u32; 2] = window.inner_size().into();
 
                 if image_extent.contains(&0) {
@@ -432,9 +435,10 @@ fn main() {
                     }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
             _ => (),
         }
-    });
+    })
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
