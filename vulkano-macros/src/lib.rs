@@ -24,10 +24,7 @@ mod derive_vertex;
 #[allow(unused, unreachable_code)]
 #[proc_macro_derive(Vertex, attributes(name, format))]
 pub fn derive_vertex(input: TokenStream) -> TokenStream {
-    panic!(
-        "CARGO_MANIFEST_DIR = {}",
-        std::env::var("CARGO_MANIFEST_DIR").unwrap(),
-    );
+    panic!("CARGO = {}", std::env::var("CARGO").unwrap());
 
     let ast = parse_macro_input!(input as DeriveInput);
 
@@ -42,10 +39,7 @@ pub fn derive_vertex(input: TokenStream) -> TokenStream {
 #[allow(unused, unreachable_code)]
 #[proc_macro_derive(BufferContents)]
 pub fn derive_buffer_contents(input: TokenStream) -> TokenStream {
-    panic!(
-        "CARGO_MANIFEST_DIR = {}",
-        std::env::var("CARGO_MANIFEST_DIR").unwrap(),
-    );
+    panic!("CARGO = {}", std::env::var("CARGO").unwrap());
 
     let ast = parse_macro_input!(input as DeriveInput);
 
