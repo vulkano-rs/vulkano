@@ -21,8 +21,14 @@ mod derive_vertex;
 /// Derives the [`Vertex`] trait.
 ///
 /// [`Vertex`]: https://docs.rs/vulkano/latest/vulkano/pipeline/graphics/vertex_input/trait.Vertex.html
+#[allow(unused, unreachable_code)]
 #[proc_macro_derive(Vertex, attributes(name, format))]
 pub fn derive_vertex(input: TokenStream) -> TokenStream {
+    panic!(
+        "CARGO_MANIFEST_DIR = {}",
+        std::env::var("CARGO_MANIFEST_DIR").unwrap(),
+    );
+
     let ast = parse_macro_input!(input as DeriveInput);
 
     derive_vertex::derive_vertex(ast)
@@ -33,8 +39,14 @@ pub fn derive_vertex(input: TokenStream) -> TokenStream {
 /// Derives the [`BufferContents`] trait.
 ///
 /// [`BufferContents`]: https://docs.rs/vulkano/latest/vulkano/buffer/trait.BufferContents.html
+#[allow(unused, unreachable_code)]
 #[proc_macro_derive(BufferContents)]
 pub fn derive_buffer_contents(input: TokenStream) -> TokenStream {
+    panic!(
+        "CARGO_MANIFEST_DIR = {}",
+        std::env::var("CARGO_MANIFEST_DIR").unwrap(),
+    );
+
     let ast = parse_macro_input!(input as DeriveInput);
 
     derive_buffer_contents::derive_buffer_contents(ast)
