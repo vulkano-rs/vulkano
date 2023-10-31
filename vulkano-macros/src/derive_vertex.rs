@@ -39,7 +39,7 @@ pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<Token
         let mut names = vec![field_name_lit.clone()];
         let mut format = quote! {};
         for attr in &field.attrs {
-            let attr_ident = if let Some(ident) = attr.path.get_ident() {
+            let attr_ident = if let Some(ident) = attr.path().get_ident() {
                 ident
             } else {
                 continue;
@@ -132,7 +132,7 @@ struct NameMeta {
 impl Parse for NameMeta {
     fn parse(input: ParseStream) -> Result<Self> {
         Ok(Self {
-            lit_str_list: input.parse_terminated(<LitStr as Parse>::parse)?,
+            lit_str_list: input.parse_terminated(<LitStr as Parse>::parse, Token![,])?,
         })
     }
 }
