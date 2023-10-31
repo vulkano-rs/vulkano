@@ -20,7 +20,7 @@ jobs:
 #     run: pip install ninja
     - uses: actions/checkout@v3
     - name: Build tests
-      run: cargo build --verbose
+      run: cargo build --tests --verbose
     - name: Run tests
       run: cargo test --verbose
     - name: Build examples
@@ -32,7 +32,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build tests
-      run: cargo build --verbose
+      run: cargo build --tests --verbose
     - name: Run tests
       run: cargo test --verbose
     - name: Build examples
@@ -44,7 +44,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build tests
-      run: cargo build --verbose
+      run: cargo build --tests --verbose
     - name: Run tests
       run: cargo test --verbose
     - name: Build examples
