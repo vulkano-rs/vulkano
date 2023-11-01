@@ -23,7 +23,7 @@
 // For an explanation of how the rendering of the triangles takes place see the `triangle.rs`
 // example.
 
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -72,11 +72,11 @@ use winit::{
     window::WindowBuilder,
 };
 
-fn main() {
-    let event_loop = EventLoop::new();
+fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop);
+    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -226,9 +226,9 @@ fn main() {
                 void main() {
                     uint idx = gl_GlobalInvocationID.x;
 
-                    // Each invocation of the compute shader is going to increment the counter, so 
-                    // we need to use atomic operations for safety. The previous value of the 
-                    // counter is returned so that gives us the offset into the vertex buffer this 
+                    // Each invocation of the compute shader is going to increment the counter, so
+                    // we need to use atomic operations for safety. The previous value of the
+                    // counter is returned so that gives us the offset into the vertex buffer this
                     // thread can write it's vertices into.
                     uint offset = atomicAdd(vertices, 6);
 
@@ -375,13 +375,15 @@ fn main() {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
@@ -389,7 +391,10 @@ fn main() {
             } => {
                 recreate_swapchain = true;
             }
-            Event::RedrawEventsCleared => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 let image_extent: [u32; 2] = window.inner_size().into();
 
                 if image_extent.contains(&0) {
@@ -538,9 +543,10 @@ fn main() {
                     }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
             _ => (),
         }
-    });
+    })
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.

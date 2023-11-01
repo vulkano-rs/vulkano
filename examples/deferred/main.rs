@@ -30,7 +30,7 @@ use crate::{
     triangle_draw_system::TriangleDrawSystem,
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 use vulkano::{
     command_buffer::allocator::{
         StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
@@ -57,13 +57,13 @@ use winit::{
 mod frame;
 mod triangle_draw_system;
 
-fn main() {
+fn main() -> Result<(), impl Error> {
     // Basic initialization. See the triangle example if you want more details about this.
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop);
+    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -186,107 +186,116 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => {
-            *control_flow = ControlFlow::Exit;
-        }
-        Event::WindowEvent {
-            event: WindowEvent::Resized(_),
-            ..
-        } => {
-            recreate_swapchain = true;
-        }
-        Event::RedrawEventsCleared => {
-            let image_extent: [u32; 2] = window.inner_size().into();
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
 
-            if image_extent.contains(&0) {
-                return;
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                elwt.exit();
             }
-
-            previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-            if recreate_swapchain {
-                let (new_swapchain, new_images) = swapchain
-                    .recreate(SwapchainCreateInfo {
-                        image_extent,
-                        ..swapchain.create_info()
-                    })
-                    .expect("failed to recreate swapchain");
-                let new_images = new_images
-                    .into_iter()
-                    .map(|image| ImageView::new_default(image).unwrap())
-                    .collect::<Vec<_>>();
-
-                swapchain = new_swapchain;
-                images = new_images;
-                recreate_swapchain = false;
-            }
-
-            let (image_index, suboptimal, acquire_future) =
-                match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
-                    Ok(r) => r,
-                    Err(VulkanError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        return;
-                    }
-                    Err(e) => panic!("failed to acquire next image: {e}"),
-                };
-
-            if suboptimal {
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
                 recreate_swapchain = true;
             }
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
+                let image_extent: [u32; 2] = window.inner_size().into();
 
-            let future = previous_frame_end.take().unwrap().join(acquire_future);
-            let mut frame = frame_system.frame(
-                future,
-                images[image_index as usize].clone(),
-                Matrix4::identity(),
-            );
-            let mut after_future = None;
-            while let Some(pass) = frame.next_pass() {
-                match pass {
-                    Pass::Deferred(mut draw_pass) => {
-                        let cb = triangle_draw_system.draw(draw_pass.viewport_dimensions());
-                        draw_pass.execute(cb);
-                    }
-                    Pass::Lighting(mut lighting) => {
-                        lighting.ambient_light([0.1, 0.1, 0.1]);
-                        lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6]);
-                        lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0]);
-                        lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0]);
-                        lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0]);
-                    }
-                    Pass::Finished(af) => {
-                        after_future = Some(af);
-                    }
+                if image_extent.contains(&0) {
+                    return;
                 }
-            }
 
-            let future = after_future
-                .unwrap()
-                .then_swapchain_present(
-                    queue.clone(),
-                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
-                )
-                .then_signal_fence_and_flush();
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-            match future.map_err(Validated::unwrap) {
-                Ok(future) => {
-                    previous_frame_end = Some(future.boxed());
+                if recreate_swapchain {
+                    let (new_swapchain, new_images) = swapchain
+                        .recreate(SwapchainCreateInfo {
+                            image_extent,
+                            ..swapchain.create_info()
+                        })
+                        .expect("failed to recreate swapchain");
+                    let new_images = new_images
+                        .into_iter()
+                        .map(|image| ImageView::new_default(image).unwrap())
+                        .collect::<Vec<_>>();
+
+                    swapchain = new_swapchain;
+                    images = new_images;
+                    recreate_swapchain = false;
                 }
-                Err(VulkanError::OutOfDate) => {
+
+                let (image_index, suboptimal, acquire_future) =
+                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+                        Ok(r) => r,
+                        Err(VulkanError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("failed to acquire next image: {e}"),
+                    };
+
+                if suboptimal {
                     recreate_swapchain = true;
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
-                Err(e) => {
-                    println!("failed to flush future: {e}");
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+                let future = previous_frame_end.take().unwrap().join(acquire_future);
+                let mut frame = frame_system.frame(
+                    future,
+                    images[image_index as usize].clone(),
+                    Matrix4::identity(),
+                );
+                let mut after_future = None;
+                while let Some(pass) = frame.next_pass() {
+                    match pass {
+                        Pass::Deferred(mut draw_pass) => {
+                            let cb = triangle_draw_system.draw(draw_pass.viewport_dimensions());
+                            draw_pass.execute(cb);
+                        }
+                        Pass::Lighting(mut lighting) => {
+                            lighting.ambient_light([0.1, 0.1, 0.1]);
+                            lighting
+                                .directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6]);
+                            lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0]);
+                            lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0]);
+                            lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0]);
+                        }
+                        Pass::Finished(af) => {
+                            after_future = Some(af);
+                        }
+                    }
+                }
+
+                let future = after_future
+                    .unwrap()
+                    .then_swapchain_present(
+                        queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                    )
+                    .then_signal_fence_and_flush();
+
+                match future.map_err(Validated::unwrap) {
+                    Ok(future) => {
+                        previous_frame_end = Some(future.boxed());
+                    }
+                    Err(VulkanError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
+                    Err(e) => {
+                        println!("failed to flush future: {e}");
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
+            _ => (),
         }
-        _ => (),
-    });
+    })
 }
