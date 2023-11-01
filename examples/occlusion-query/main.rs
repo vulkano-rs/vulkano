@@ -11,7 +11,7 @@
 // queries. Occlusion queries allow you to query whether, and sometimes how many, pixels pass the
 // depth test in a range of draw calls.
 
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -54,11 +54,11 @@ use winit::{
     window::WindowBuilder,
 };
 
-fn main() {
-    let event_loop = EventLoop::new();
+fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop);
+    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -335,9 +335,9 @@ fn main() {
                 viewport_state: Some(ViewportState::default()),
                 rasterization_state: Some(RasterizationState::default()),
                 multisample_state: Some(MultisampleState::default()),
-                // Enable depth testing, which is needed for occlusion queries to make sense at all. If you
-                // disable depth testing, every pixel is considered to pass the depth test, so every query
-                // will return a nonzero result.
+                // Enable depth testing, which is needed for occlusion queries to make sense at
+                // all. If you disable depth testing, every pixel is considered to pass the depth
+                // test, so every query will return a nonzero result.
                 depth_stencil_state: Some(DepthStencilState {
                     depth: Some(DepthState::simple()),
                     ..Default::default()
@@ -373,199 +373,211 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => {
-            *control_flow = ControlFlow::Exit;
-        }
-        Event::WindowEvent {
-            event: WindowEvent::Resized(_),
-            ..
-        } => {
-            recreate_swapchain = true;
-        }
-        Event::RedrawEventsCleared => {
-            let image_extent: [u32; 2] = window.inner_size().into();
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
 
-            if image_extent.contains(&0) {
-                return;
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                elwt.exit();
             }
-
-            previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-            if recreate_swapchain {
-                let (new_swapchain, new_images) = swapchain
-                    .recreate(SwapchainCreateInfo {
-                        image_extent,
-                        ..swapchain.create_info()
-                    })
-                    .expect("failed to recreate swapchain");
-
-                swapchain = new_swapchain;
-                framebuffers = window_size_dependent_setup(
-                    &new_images,
-                    render_pass.clone(),
-                    &mut viewport,
-                    memory_allocator.clone(),
-                );
-                recreate_swapchain = false;
-            }
-
-            let (image_index, suboptimal, acquire_future) =
-                match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
-                    Ok(r) => r,
-                    Err(VulkanError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        return;
-                    }
-                    Err(e) => panic!("failed to acquire next image: {e}"),
-                };
-
-            if suboptimal {
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
                 recreate_swapchain = true;
             }
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
+                let image_extent: [u32; 2] = window.inner_size().into();
 
-            let mut builder = AutoCommandBufferBuilder::primary(
-                &command_buffer_allocator,
-                queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
-            )
-            .unwrap();
-
-            // Beginning or resetting a query is unsafe for now.
-            unsafe {
-                builder
-                    // A query must be reset before each use, including the first use. This must be
-                    // done outside a render pass.
-                    .reset_query_pool(query_pool.clone(), 0..3)
-                    .unwrap()
-                    .set_viewport(0, [viewport.clone()].into_iter().collect())
-                    .unwrap()
-                    .bind_pipeline_graphics(pipeline.clone())
-                    .unwrap()
-                    .begin_render_pass(
-                        RenderPassBeginInfo {
-                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), Some(1.0.into())],
-                            ..RenderPassBeginInfo::framebuffer(
-                                framebuffers[image_index as usize].clone(),
-                            )
-                        },
-                        Default::default(),
-                    )
-                    .unwrap()
-                    // Begin query 0, then draw the red triangle. Enabling the
-                    // `QueryControlFlags::PRECISE` flag would give exact numeric results. This
-                    // needs the `occlusion_query_precise` feature to be enabled on the device.
-                    .begin_query(
-                        query_pool.clone(),
-                        0,
-                        QueryControlFlags::empty(),
-                        // QueryControlFlags::PRECISE,
-                    )
-                    .unwrap()
-                    .bind_vertex_buffers(0, triangle1.clone())
-                    .unwrap()
-                    .draw(triangle1.len() as u32, 1, 0, 0)
-                    .unwrap()
-                    // End query 0.
-                    .end_query(query_pool.clone(), 0)
-                    .unwrap()
-                    // Begin query 1 for the cyan triangle.
-                    .begin_query(query_pool.clone(), 1, QueryControlFlags::empty())
-                    .unwrap()
-                    .bind_vertex_buffers(0, triangle2.clone())
-                    .unwrap()
-                    .draw(triangle2.len() as u32, 1, 0, 0)
-                    .unwrap()
-                    .end_query(query_pool.clone(), 1)
-                    .unwrap()
-                    // Finally, query 2 for the green triangle.
-                    .begin_query(query_pool.clone(), 2, QueryControlFlags::empty())
-                    .unwrap()
-                    .bind_vertex_buffers(0, triangle3.clone())
-                    .unwrap()
-                    .draw(triangle3.len() as u32, 1, 0, 0)
-                    .unwrap()
-                    .end_query(query_pool.clone(), 2)
-                    .unwrap()
-                    .end_render_pass(Default::default())
-                    .unwrap();
-            }
-
-            let command_buffer = builder.build().unwrap();
-
-            let future = previous_frame_end
-                .take()
-                .unwrap()
-                .join(acquire_future)
-                .then_execute(queue.clone(), command_buffer)
-                .unwrap()
-                .then_swapchain_present(
-                    queue.clone(),
-                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
-                )
-                .then_signal_fence_and_flush();
-
-            match future.map_err(Validated::unwrap) {
-                Ok(future) => {
-                    previous_frame_end = Some(future.boxed());
+                if image_extent.contains(&0) {
+                    return;
                 }
-                Err(VulkanError::OutOfDate) => {
+
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+                if recreate_swapchain {
+                    let (new_swapchain, new_images) = swapchain
+                        .recreate(SwapchainCreateInfo {
+                            image_extent,
+                            ..swapchain.create_info()
+                        })
+                        .expect("failed to recreate swapchain");
+
+                    swapchain = new_swapchain;
+                    framebuffers = window_size_dependent_setup(
+                        &new_images,
+                        render_pass.clone(),
+                        &mut viewport,
+                        memory_allocator.clone(),
+                    );
+                    recreate_swapchain = false;
+                }
+
+                let (image_index, suboptimal, acquire_future) =
+                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+                        Ok(r) => r,
+                        Err(VulkanError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("failed to acquire next image: {e}"),
+                    };
+
+                if suboptimal {
                     recreate_swapchain = true;
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
-                Err(e) => {
-                    println!("failed to flush future: {e}");
-                    previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+                let mut builder = AutoCommandBufferBuilder::primary(
+                    &command_buffer_allocator,
+                    queue.queue_family_index(),
+                    CommandBufferUsage::OneTimeSubmit,
+                )
+                .unwrap();
+
+                // Beginning or resetting a query is unsafe for now.
+                unsafe {
+                    builder
+                        // A query must be reset before each use, including the first use. This
+                        // must be done outside a render pass.
+                        .reset_query_pool(query_pool.clone(), 0..3)
+                        .unwrap()
+                        .set_viewport(0, [viewport.clone()].into_iter().collect())
+                        .unwrap()
+                        .bind_pipeline_graphics(pipeline.clone())
+                        .unwrap()
+                        .begin_render_pass(
+                            RenderPassBeginInfo {
+                                clear_values: vec![
+                                    Some([0.0, 0.0, 1.0, 1.0].into()),
+                                    Some(1.0.into()),
+                                ],
+                                ..RenderPassBeginInfo::framebuffer(
+                                    framebuffers[image_index as usize].clone(),
+                                )
+                            },
+                            Default::default(),
+                        )
+                        .unwrap()
+                        // Begin query 0, then draw the red triangle. Enabling the
+                        // `QueryControlFlags::PRECISE` flag would give exact numeric results. This
+                        // needs the `occlusion_query_precise` feature to be enabled on the device.
+                        .begin_query(
+                            query_pool.clone(),
+                            0,
+                            QueryControlFlags::empty(),
+                            // QueryControlFlags::PRECISE,
+                        )
+                        .unwrap()
+                        .bind_vertex_buffers(0, triangle1.clone())
+                        .unwrap()
+                        .draw(triangle1.len() as u32, 1, 0, 0)
+                        .unwrap()
+                        // End query 0.
+                        .end_query(query_pool.clone(), 0)
+                        .unwrap()
+                        // Begin query 1 for the cyan triangle.
+                        .begin_query(query_pool.clone(), 1, QueryControlFlags::empty())
+                        .unwrap()
+                        .bind_vertex_buffers(0, triangle2.clone())
+                        .unwrap()
+                        .draw(triangle2.len() as u32, 1, 0, 0)
+                        .unwrap()
+                        .end_query(query_pool.clone(), 1)
+                        .unwrap()
+                        // Finally, query 2 for the green triangle.
+                        .begin_query(query_pool.clone(), 2, QueryControlFlags::empty())
+                        .unwrap()
+                        .bind_vertex_buffers(0, triangle3.clone())
+                        .unwrap()
+                        .draw(triangle3.len() as u32, 1, 0, 0)
+                        .unwrap()
+                        .end_query(query_pool.clone(), 2)
+                        .unwrap()
+                        .end_render_pass(Default::default())
+                        .unwrap();
                 }
+
+                let command_buffer = builder.build().unwrap();
+
+                let future = previous_frame_end
+                    .take()
+                    .unwrap()
+                    .join(acquire_future)
+                    .then_execute(queue.clone(), command_buffer)
+                    .unwrap()
+                    .then_swapchain_present(
+                        queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                    )
+                    .then_signal_fence_and_flush();
+
+                match future.map_err(Validated::unwrap) {
+                    Ok(future) => {
+                        previous_frame_end = Some(future.boxed());
+                    }
+                    Err(VulkanError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
+                    Err(e) => {
+                        println!("failed to flush future: {e}");
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
+                }
+
+                // Retrieve the query results. This copies the results to a variable on the CPU.
+                // You can also use the `copy_query_pool_results` function on a command buffer to
+                // write results to a Vulkano buffer. This could then be used to influence draw
+                // operations further down the line, either in the same frame or a future frame.
+                #[rustfmt::skip]
+                query_pool.get_results(
+                    0..3,
+                    &mut query_results,
+                    // Block the function call until the results are available.
+                    // NOTE: If not all the queries have actually been executed, then this will
+                    // wait forever for something that never happens!
+                    QueryResultFlags::WAIT
+
+                    // Enable this flag to give partial results if available, instead of waiting
+                    // for the full results.
+                    // | QueryResultFlags::PARTIAL
+
+                    // Blocking and waiting will ensure the results are always available after the
+                    // function returns.
+                    //
+                    // If you disable waiting, then this flag can be enabled to include the
+                    // availability of each query's results. You need one extra element per query
+                    // in your `query_results` buffer for this. This element will be filled with a
+                    // zero/nonzero value indicating availability.
+                    // | QueryResultFlags::WITH_AVAILABILITY
+                )
+                .unwrap();
+
+                // If the `precise` bit was not enabled, then you're only guaranteed to get a
+                // boolean result here: zero if all pixels were occluded, nonzero if only some were
+                // occluded. Enabling `precise` will give the exact number of pixels.
+
+                // Query 0 (red triangle) will always succeed, because the depth buffer starts
+                // empty and will never occlude anything.
+                assert_ne!(query_results[0], 0);
+
+                // Query 1 (cyan triangle) will fail, because it's drawn completely behind the
+                // first.
+                assert_eq!(query_results[1], 0);
+
+                // Query 2 (green triangle) will succeed, because it's only partially occluded.
+                assert_ne!(query_results[2], 0);
             }
-
-            // Retrieve the query results. This copies the results to a variable on the CPU. You
-            // can also use the `copy_query_pool_results` function on a command buffer to write
-            // results to a Vulkano buffer. This could then be used to influence draw operations
-            // further down the line, either in the same frame or a future frame.
-            #[rustfmt::skip]
-            query_pool.get_results(
-                0..3,
-                &mut query_results,
-                // Block the function call until the results are available.
-                // NOTE: If not all the queries have actually been executed, then this will 
-                // wait forever for something that never happens!
-                QueryResultFlags::WAIT
-
-                // Enable this flag to give partial results if available, instead of waiting
-                // for the full results.
-                // | QueryResultFlags::PARTIAL
-
-                // Blocking and waiting will ensure the results are always available after the 
-                // function returns.
-                //
-                // If you disable waiting, then this flag can be enabled to include the
-                // availability of each query's results. You need one extra element per query 
-                // in your `query_results` buffer for this. This element will be filled with a 
-                // zero/nonzero value indicating availability.
-                // | QueryResultFlags::WITH_AVAILABILITY
-            )
-            .unwrap();
-
-            // If the `precise` bit was not enabled, then you're only guaranteed to get a boolean
-            // result here: zero if all pixels were occluded, nonzero if only some were occluded.
-            // Enabling `precise` will give the exact number of pixels.
-
-            // Query 0 (red triangle) will always succeed, because the depth buffer starts empty
-            // and will never occlude anything.
-            assert_ne!(query_results[0], 0);
-
-            // Query 1 (cyan triangle) will fail, because it's drawn completely behind the first.
-            assert_eq!(query_results[1], 0);
-
-            // Query 2 (green triangle) will succeed, because it's only partially occluded.
-            assert_ne!(query_results[2], 0);
+            Event::AboutToWait => window.request_redraw(),
+            _ => (),
         }
-        _ => (),
-    });
+    })
 }
 
 fn window_size_dependent_setup(

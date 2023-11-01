@@ -24,8 +24,9 @@ mod derive_vertex;
 #[proc_macro_derive(Vertex, attributes(name, format))]
 pub fn derive_vertex(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
+    let crate_ident = crate_ident();
 
-    derive_vertex::derive_vertex(ast)
+    derive_vertex::derive_vertex(&crate_ident, ast)
         .unwrap_or_else(Error::into_compile_error)
         .into()
 }
@@ -36,8 +37,9 @@ pub fn derive_vertex(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(BufferContents)]
 pub fn derive_buffer_contents(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
+    let crate_ident = crate_ident();
 
-    derive_buffer_contents::derive_buffer_contents(ast)
+    derive_buffer_contents::derive_buffer_contents(&crate_ident, ast)
         .unwrap_or_else(Error::into_compile_error)
         .into()
 }

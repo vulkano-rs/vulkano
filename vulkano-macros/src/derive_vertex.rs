@@ -16,7 +16,7 @@ use syn::{
     Data, DataStruct, Fields, Ident, LitStr, Result, Token,
 };
 
-pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
+pub fn derive_vertex(crate_ident: &Ident, ast: syn::DeriveInput) -> Result<TokenStream> {
     let struct_name = &ast.ident;
 
     let fields = match &ast.data {
@@ -26,8 +26,6 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         }) => &fields.named,
         _ => bail!("expected a struct with named fields"),
     };
-
-    let crate_ident = crate::crate_ident();
 
     let mut members = quote! {
         let mut offset = 0;
@@ -41,7 +39,7 @@ pub fn derive_vertex(ast: syn::DeriveInput) -> Result<TokenStream> {
         let mut names = vec![field_name_lit.clone()];
         let mut format = quote! {};
         for attr in &field.attrs {
-            let attr_ident = if let Some(ident) = attr.path.get_ident() {
+            let attr_ident = if let Some(ident) = attr.path().get_ident() {
                 ident
             } else {
                 continue;
@@ -134,7 +132,7 @@ struct NameMeta {
 impl Parse for NameMeta {
     fn parse(input: ParseStream) -> Result<Self> {
         Ok(Self {
-            lit_str_list: input.parse_terminated(<LitStr as Parse>::parse)?,
+            lit_str_list: input.parse_terminated(<LitStr as Parse>::parse, Token![,])?,
         })
     }
 }

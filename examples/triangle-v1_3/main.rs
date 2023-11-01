@@ -21,7 +21,7 @@
 // `khr_dynamic_rendering` extension, or if you want to see how to support older versions, see the
 // original triangle example.
 
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -62,8 +62,8 @@ use winit::{
     window::WindowBuilder,
 };
 
-fn main() {
-    let event_loop = EventLoop::new();
+fn main() -> Result<(), impl Error> {
+    let event_loop = EventLoop::new().unwrap();
 
     let library = VulkanLibrary::new().unwrap();
 
@@ -74,7 +74,7 @@ fn main() {
     // All the window-drawing functionalities are part of non-core extensions that we need to
     // enable manually. To do so, we ask `Surface` for the list of extensions required to draw to
     // a window.
-    let required_extensions = Surface::required_extensions(&event_loop);
+    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
 
     // Now creating the instance.
     let instance = Instance::new(
@@ -515,13 +515,15 @@ fn main() {
     // that, we store the submission of the previous frame here.
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
@@ -529,7 +531,10 @@ fn main() {
             } => {
                 recreate_swapchain = true;
             }
-            Event::RedrawEventsCleared => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 // Do not draw the frame when the screen size is zero. On Windows, this can
                 // occur when minimizing the application.
                 let image_extent: [u32; 2] = window.inner_size().into();
@@ -688,9 +693,10 @@ fn main() {
                     }
                 }
             }
+            Event::AboutToWait => window.request_redraw(),
             _ => (),
         }
-    });
+    })
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
