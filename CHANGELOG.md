@@ -26,6 +26,8 @@ Changes to `Surface`:
 
 ### Bugs fixed
 
+- Incorrect assert condition in `PipelineLayout::is_compatible_with`.
+
 # Version 0.34.1 (2023-10-29)
 
 ### Bugs fixed
