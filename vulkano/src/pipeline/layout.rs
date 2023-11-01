@@ -295,7 +295,7 @@ impl PipelineLayout {
     #[inline]
     pub fn is_compatible_with(&self, other: &PipelineLayout, num_sets: u32) -> bool {
         let num_sets = num_sets as usize;
-        assert!(num_sets >= self.set_layouts.len());
+        assert!(num_sets <= self.set_layouts.len());
 
         if self == other {
             return true;
