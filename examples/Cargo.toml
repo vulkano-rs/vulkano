@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["*"]
+exclude = ["target"]
+
+[workspace.dependencies]
+cgmath = "0.18"
+png = "0.17"
+rand = "0.8"
+ron = "0.8"
+serde = "1.0"
+vulkano = { path = "../vulkano" }
+vulkano-shaders = { path = "../vulkano-shaders" }
+vulkano-util = { path = "../vulkano-util" }
+winit = "0.29"
