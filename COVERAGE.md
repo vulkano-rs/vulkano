@@ -66,6 +66,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_shader_float16_int8`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_float16_int8.html)
 - [`VK_KHR_shader_float_controls`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_float_controls.html)
 - [`VK_KHR_shader_subgroup_extended_types`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_subgroup_extended_types.html)
+- [`VK_KHR_timeline_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_timeline_semaphore.html)
 - [`VK_KHR_uniform_buffer_standard_layout`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_uniform_buffer_standard_layout.html)
 - [`VK_KHR_vulkan_memory_model`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_vulkan_memory_model.html)
 - [`VK_EXT_descriptor_indexing`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html)
@@ -85,7 +86,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 
 - [`VK_KHR_draw_indirect_count`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_draw_indirect_count.html)
 - [`VK_KHR_imageless_framebuffer`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_imageless_framebuffer.html)
-- [`VK_KHR_timeline_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_timeline_semaphore.html)
 - [`VK_EXT_host_query_reset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_host_query_reset.html)
 - `framebufferIntegerColorSampleCounts`
 
