@@ -19,10 +19,6 @@ jobs:
 #   - name: Ninja Install
 #     run: pip install ninja
     - uses: actions/checkout@v3
-    - name: Set up environment
-      run: |
-        New-Item '.cargo' -ItemType 'directory'
-        'build.rustflags = [''--cfg'', ''CI'']' | Out-File .cargo/config.toml -Encoding 'utf8'
     - name: Build tests
       run: cargo build --tests --verbose
     - name: Run tests
