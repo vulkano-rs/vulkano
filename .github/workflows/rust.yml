@@ -29,6 +29,10 @@ jobs:
       run: cargo test --verbose
     - name: Build examples
       run: cargo build --bins --verbose
+    - name: Run examples
+      run: |
+        cd examples
+        ./run_all_headless.ps1
   linux_stable:
     runs-on: ubuntu-latest
     steps:
