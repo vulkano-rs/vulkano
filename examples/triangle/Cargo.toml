@@ -7,6 +7,9 @@ publish = false
 [[bin]]
 name = "triangle"
 path = "main.rs"
+test = false
+bench = false
+doc = false
 
 [dependencies]
 # The `vulkano` crate is the main crate that you must use to use Vulkan.

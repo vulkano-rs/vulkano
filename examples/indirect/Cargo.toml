@@ -7,6 +7,9 @@ publish = false
 [[bin]]
 name = "indirect"
 path = "main.rs"
+test = false
+bench = false
+doc = false
 
 [dependencies]
 vulkano = { workspace = true }
