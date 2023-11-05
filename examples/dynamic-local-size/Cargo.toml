@@ -7,6 +7,9 @@ publish = false
 [[bin]]
 name = "dynamic-local-size"
 path = "main.rs"
+test = false
+bench = false
+doc = false
 
 [dependencies]
 png = { workspace = true }

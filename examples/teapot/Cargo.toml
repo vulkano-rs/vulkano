@@ -7,6 +7,9 @@ publish = false
 [[bin]]
 name = "teapot"
 path = "main.rs"
+test = false
+bench = false
+doc = false
 
 [dependencies]
 cgmath = { workspace = true }
