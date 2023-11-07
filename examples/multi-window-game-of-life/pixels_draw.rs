@@ -192,7 +192,7 @@ impl PixelsDrawPipeline {
         .unwrap();
 
         PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
+            self.descriptor_set_allocator.clone(),
             layout.clone(),
             [
                 WriteDescriptorSet::sampler(0, sampler),

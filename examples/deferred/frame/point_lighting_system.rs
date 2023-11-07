@@ -201,7 +201,7 @@ impl PointLightingSystem {
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let descriptor_set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
+            self.descriptor_set_allocator.clone(),
             layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, color_input),
