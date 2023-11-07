@@ -206,6 +206,29 @@ impl DescriptorSet {
 
         Ok(())
     }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn update_unchecked(
+        &mut self,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) {
+        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+
+        unsafe {
+            self.inner
+                .update_unchecked(&descriptor_writes, &descriptor_copies);
+        }
+
+        for write in descriptor_writes {
+            self.resources.write(&write, self.inner.layout());
+        }
+
+        for copy in descriptor_copies {
+            self.resources.copy(&copy);
+        }
+    }
 }
 
 unsafe impl VulkanObject for DescriptorSet {
