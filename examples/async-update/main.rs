@@ -47,7 +47,7 @@ use vulkano::{
         PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -486,7 +486,7 @@ fn main() -> Result<(), impl Error> {
     let uniform_buffer_sets = uniform_buffers
         .iter()
         .map(|buffer| {
-            PersistentDescriptorSet::new(
+            DescriptorSet::new(
                 descriptor_set_allocator.clone(),
                 pipeline.layout().set_layouts()[0].clone(),
                 [WriteDescriptorSet::buffer(0, buffer.clone())],
@@ -499,7 +499,7 @@ fn main() -> Result<(), impl Error> {
     // Create the descriptor sets for sampling the textures.
     let sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear()).unwrap();
     let sampler_sets = textures.map(|texture| {
-        PersistentDescriptorSet::new(
+        DescriptorSet::new(
             descriptor_set_allocator.clone(),
             pipeline.layout().set_layouts()[1].clone(),
             [
