@@ -20,7 +20,7 @@
 //!             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
 //!             DescriptorType,
 //!         },
-//!         PersistentDescriptorSet, WriteDescriptorSet,
+//!         DescriptorSet, WriteDescriptorSet,
 //!     },
 //!     format::Format,
 //!     image::{
@@ -99,7 +99,7 @@
 //! };
 //! let image_view = ImageView::new(image, create_info).unwrap();
 //!
-//! let descriptor_set = PersistentDescriptorSet::new(
+//! let descriptor_set = DescriptorSet::new(
 //!     descriptor_set_allocator.clone(),
 //!     descriptor_set_layout.clone(),
 //!     [WriteDescriptorSet::image_view(0, image_view)],

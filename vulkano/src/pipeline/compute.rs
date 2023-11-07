@@ -448,7 +448,7 @@ mod tests {
             allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         },
         descriptor_set::{
-            allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+            allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
         },
         memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
         pipeline::{
@@ -544,7 +544,7 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let set = PersistentDescriptorSet::new(
+        let set = DescriptorSet::new(
             ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
@@ -688,7 +688,7 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let set = PersistentDescriptorSet::new(
+        let set = DescriptorSet::new(
             ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
