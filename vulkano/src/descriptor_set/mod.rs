@@ -71,17 +71,18 @@
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
 pub(crate) use self::update::DescriptorWriteInfo;
+use self::{
+    allocator::DescriptorSetAllocator,
+    layout::DescriptorSetLayout,
+    pool::{DescriptorPool, DescriptorPoolAlloc},
+    sys::UnsafeDescriptorSet,
+};
 pub use self::{
     collection::DescriptorSetsCollection,
-    persistent::PersistentDescriptorSet,
     update::{
         CopyDescriptorSet, DescriptorBufferInfo, DescriptorImageViewInfo, WriteDescriptorSet,
         WriteDescriptorSetElements,
     },
-};
-use self::{
-    layout::DescriptorSetLayout,
-    pool::{DescriptorPool, DescriptorPoolAlloc},
 };
 use crate::{
     acceleration_structure::AccelerationStructure,
@@ -89,9 +90,9 @@ use crate::{
     descriptor_set::layout::{
         DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType,
     },
-    device::DeviceOwned,
+    device::{Device, DeviceOwned},
     image::{sampler::Sampler, ImageLayout},
-    VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
@@ -103,62 +104,139 @@ use std::{
 pub mod allocator;
 mod collection;
 pub mod layout;
-pub mod persistent;
 pub mod pool;
 pub mod sys;
 mod update;
 
-/// Trait for objects that contain a collection of resources that will be accessible by shaders.
+/// An object that contains a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-pub unsafe trait DescriptorSet:
-    VulkanObject<Handle = ash::vk::DescriptorSet> + DeviceOwned + Send + Sync
-{
+pub struct DescriptorSet {
+    inner: UnsafeDescriptorSet,
+    resources: DescriptorSetResources,
+}
+
+impl DescriptorSet {
+    /// Creates and returns a new descriptor set with a variable descriptor count of 0.
+    pub fn new(
+        allocator: Arc<dyn DescriptorSetAllocator>,
+        layout: Arc<DescriptorSetLayout>,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) -> Result<Arc<DescriptorSet>, Validated<VulkanError>> {
+        Self::new_variable(allocator, layout, 0, descriptor_writes, descriptor_copies)
+    }
+
+    /// Creates and returns a new descriptor set with the requested variable descriptor count.
+    pub fn new_variable(
+        allocator: Arc<dyn DescriptorSetAllocator>,
+        layout: Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) -> Result<Arc<DescriptorSet>, Validated<VulkanError>> {
+        let mut set = DescriptorSet {
+            inner: UnsafeDescriptorSet::new(allocator, &layout, variable_descriptor_count)?,
+            resources: DescriptorSetResources::new(&layout, variable_descriptor_count),
+        };
+
+        set.update(descriptor_writes, descriptor_copies)?;
+
+        Ok(Arc::new(set))
+    }
+
     /// Returns the allocation of the descriptor set.
-    fn alloc(&self) -> &DescriptorPoolAlloc;
+    #[inline]
+    pub fn alloc(&self) -> &DescriptorPoolAlloc {
+        &self.inner.alloc().inner
+    }
 
     /// Returns the descriptor pool that the descriptor set was allocated from.
-    fn pool(&self) -> &DescriptorPool;
+    #[inline]
+    pub fn pool(&self) -> &DescriptorPool {
+        self.inner.pool()
+    }
 
     /// Returns the layout of this descriptor set.
     #[inline]
-    fn layout(&self) -> &Arc<DescriptorSetLayout> {
+    pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
         self.alloc().layout()
     }
 
     /// Returns the variable descriptor count that this descriptor set was allocated with.
     #[inline]
-    fn variable_descriptor_count(&self) -> u32 {
+    pub fn variable_descriptor_count(&self) -> u32 {
         self.alloc().variable_descriptor_count()
     }
 
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
-    fn offsets(
+    pub fn offsets(
         self: Arc<Self>,
         dynamic_offsets: impl IntoIterator<Item = u32>,
-    ) -> DescriptorSetWithOffsets
-    where
-        Self: Sized + 'static,
-    {
+    ) -> DescriptorSetWithOffsets {
         DescriptorSetWithOffsets::new(self, dynamic_offsets)
     }
 
     /// Returns the resources bound to this descriptor set.
-    fn resources(&self) -> &DescriptorSetResources;
-}
-
-impl PartialEq for dyn DescriptorSet {
     #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.alloc() == other.alloc()
+    pub fn resources(&self) -> &DescriptorSetResources {
+        &self.resources
+    }
+
+    /// Updates the descriptor set with new values.
+    pub fn update(
+        &mut self,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) -> Result<(), Box<ValidationError>> {
+        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+
+        unsafe {
+            self.inner.update(&descriptor_writes, &descriptor_copies)?;
+        }
+
+        for write in descriptor_writes {
+            self.resources.write(&write, self.inner.layout());
+        }
+
+        for copy in descriptor_copies {
+            self.resources.copy(&copy);
+        }
+
+        Ok(())
     }
 }
 
-impl Eq for dyn DescriptorSet {}
+unsafe impl VulkanObject for DescriptorSet {
+    type Handle = ash::vk::DescriptorSet;
 
-impl Hash for dyn DescriptorSet {
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        self.inner.handle()
+    }
+}
+
+unsafe impl DeviceOwned for DescriptorSet {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
+impl PartialEq for DescriptorSet {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl Eq for DescriptorSet {}
+
+impl Hash for DescriptorSet {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.alloc().hash(state);
+        self.inner.hash(state);
     }
 }
 
@@ -471,13 +549,13 @@ impl DescriptorBindingResources {
 
 #[derive(Clone)]
 pub struct DescriptorSetWithOffsets {
-    descriptor_set: Arc<dyn DescriptorSet>,
+    descriptor_set: Arc<DescriptorSet>,
     dynamic_offsets: SmallVec<[u32; 4]>,
 }
 
 impl DescriptorSetWithOffsets {
     pub fn new(
-        descriptor_set: Arc<dyn DescriptorSet>,
+        descriptor_set: Arc<DescriptorSet>,
         dynamic_offsets: impl IntoIterator<Item = u32>,
     ) -> Self {
         Self {
@@ -487,21 +565,19 @@ impl DescriptorSetWithOffsets {
     }
 
     #[inline]
-    pub fn as_ref(&self) -> (&Arc<dyn DescriptorSet>, &[u32]) {
+    pub fn as_ref(&self) -> (&Arc<DescriptorSet>, &[u32]) {
         (&self.descriptor_set, &self.dynamic_offsets)
     }
 
     #[inline]
-    pub fn into_tuple(self) -> (Arc<dyn DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
+    pub fn into_tuple(self) -> (Arc<DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
         (self.descriptor_set, self.dynamic_offsets.into_iter())
     }
 }
 
-impl<S> From<Arc<S>> for DescriptorSetWithOffsets
-where
-    S: DescriptorSet + 'static,
-{
-    fn from(descriptor_set: Arc<S>) -> Self {
+impl From<Arc<DescriptorSet>> for DescriptorSetWithOffsets {
+    #[inline]
+    fn from(descriptor_set: Arc<DescriptorSet>) -> Self {
         DescriptorSetWithOffsets::new(descriptor_set, std::iter::empty())
     }
 }
