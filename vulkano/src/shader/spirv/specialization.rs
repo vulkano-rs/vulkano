@@ -341,8 +341,14 @@ fn evaluate_spec_constant_op(
 
     let constant_to_instruction = |constant_id: Id| -> SmallVec<[Instruction; 1]> {
         let constant = &constants[&constant_id];
-        debug_assert_eq!(constant.type_id, result_type_id);
-
+        if !matches!(
+            opcode,
+            SpecConstantInstruction::UConvert { .. }
+                | SpecConstantInstruction::SConvert { .. }
+                | SpecConstantInstruction::FConvert { .. }
+        ) {
+            debug_assert_eq!(constant.type_id, result_type_id);
+        }
         match constant.value {
             ConstantValue::Scalar(value) => smallvec![scalar_constant_to_instruction(
                 result_type_id,
