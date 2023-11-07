@@ -789,11 +789,13 @@ mod tests {
             )
             .unwrap();
 
-            let ds_allocator =
-                StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+            let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+                device.clone(),
+                Default::default(),
+            ));
 
             let set = PersistentDescriptorSet::new(
-                &ds_allocator,
+                ds_allocator.clone(),
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
@@ -864,7 +866,7 @@ mod tests {
             .unwrap();
 
             let set = PersistentDescriptorSet::new(
-                &ds_allocator,
+                ds_allocator.clone(),
                 set_layout,
                 [WriteDescriptorSet::sampler(
                     0,

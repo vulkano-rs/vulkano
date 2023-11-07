@@ -49,30 +49,38 @@
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
-//! # let descriptor_set_allocator: vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator = return;
+//! # let descriptor_set_allocator: std::sync::Arc<vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator> = return;
 //! #
-//! let conversion = SamplerYcbcrConversion::new(device.clone(), SamplerYcbcrConversionCreateInfo {
-//!     format: Format::G8_B8_R8_3PLANE_420_UNORM,
-//!     ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
-//!     ..Default::default()
-//! })
+//! let conversion = SamplerYcbcrConversion::new(
+//!     device.clone(),
+//!     SamplerYcbcrConversionCreateInfo {
+//!         format: Format::G8_B8_R8_3PLANE_420_UNORM,
+//!         ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
+//!         ..Default::default()
+//!     },
+//! )
 //! .unwrap();
 //!
-//! let sampler = Sampler::new(device.clone(), SamplerCreateInfo {
-//!     sampler_ycbcr_conversion: Some(conversion.clone()),
-//!     ..Default::default()
-//! })
+//! let sampler = Sampler::new(
+//!     device.clone(),
+//!     SamplerCreateInfo {
+//!         sampler_ycbcr_conversion: Some(conversion.clone()),
+//!         ..Default::default()
+//!     },
+//! )
 //! .unwrap();
 //!
 //! let descriptor_set_layout = DescriptorSetLayout::new(
 //!     device.clone(),
-//!         DescriptorSetLayoutCreateInfo {
+//!     DescriptorSetLayoutCreateInfo {
 //!         bindings: [(
 //!             0,
 //!             DescriptorSetLayoutBinding {
 //!                 stages: ShaderStage::Fragment.into(),
 //!                 immutable_samplers: vec![sampler],
-//!                 ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::CombinedImageSampler)
+//!                 ..DescriptorSetLayoutBinding::descriptor_type(
+//!                     DescriptorType::CombinedImageSampler
+//!                 )
 //!             },
 //!         )]
 //!         .into(),
@@ -101,7 +109,7 @@
 //! let image_view = ImageView::new(image, create_info).unwrap();
 //!
 //! let descriptor_set = PersistentDescriptorSet::new(
-//!     &descriptor_set_allocator,
+//!     descriptor_set_allocator.clone(),
 //!     descriptor_set_layout.clone(),
 //!     [WriteDescriptorSet::image_view(0, image_view)],
 //!     [],

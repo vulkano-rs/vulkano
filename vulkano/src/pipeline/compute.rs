@@ -549,9 +549,12 @@ mod tests {
         )
         .unwrap();
 
-        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+        let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
         let set = PersistentDescriptorSet::new(
-            &ds_allocator,
+            ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
             [],
@@ -690,9 +693,12 @@ mod tests {
         )
         .unwrap();
 
-        let ds_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+        let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
         let set = PersistentDescriptorSet::new(
-            &ds_allocator,
+            ds_allocator,
             pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
             [],
