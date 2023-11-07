@@ -28,9 +28,8 @@ use super::{
 };
 use crate::{
     descriptor_set::{
-        allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
-        update::WriteDescriptorSet,
-        DescriptorSet, DescriptorSetLayout, DescriptorSetResources,
+        allocator::DescriptorSetAllocator, update::WriteDescriptorSet, DescriptorSet,
+        DescriptorSetLayout, DescriptorSetResources,
     },
     device::{Device, DeviceOwned},
     Validated, ValidationError, VulkanError, VulkanObject,
@@ -42,8 +41,8 @@ use std::{
 };
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
-pub struct PersistentDescriptorSet<P = StandardDescriptorSetAlloc> {
-    inner: UnsafeDescriptorSet<P>,
+pub struct PersistentDescriptorSet {
+    inner: UnsafeDescriptorSet,
     resources: DescriptorSetResources,
 }
 
@@ -52,15 +51,12 @@ impl PersistentDescriptorSet {
     ///
     /// See `new_with_pool` for more.
     #[inline]
-    pub fn new<A>(
-        allocator: &A,
+    pub fn new(
+        allocator: Arc<dyn DescriptorSetAllocator>,
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
         descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, Validated<VulkanError>>
-    where
-        A: DescriptorSetAllocator + ?Sized,
-    {
+    ) -> Result<Arc<PersistentDescriptorSet>, Validated<VulkanError>> {
         Self::new_variable(allocator, layout, 0, descriptor_writes, descriptor_copies)
     }
 
@@ -71,16 +67,13 @@ impl PersistentDescriptorSet {
     ///
     /// - Panics if `layout` was created for push descriptors rather than descriptor sets.
     /// - Panics if `variable_descriptor_count` is too large for the given `layout`.
-    pub fn new_variable<A>(
-        allocator: &A,
+    pub fn new_variable(
+        allocator: Arc<dyn DescriptorSetAllocator>,
         layout: Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
         descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, Validated<VulkanError>>
-    where
-        A: DescriptorSetAllocator + ?Sized,
-    {
+    ) -> Result<Arc<PersistentDescriptorSet>, Validated<VulkanError>> {
         let mut set = PersistentDescriptorSet {
             inner: UnsafeDescriptorSet::new(allocator, &layout, variable_descriptor_count)?,
             resources: DescriptorSetResources::new(&layout, variable_descriptor_count),
@@ -92,12 +85,7 @@ impl PersistentDescriptorSet {
 
         Ok(Arc::new(set))
     }
-}
 
-impl<P> PersistentDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
     unsafe fn update(
         &mut self,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
@@ -122,58 +110,50 @@ where
     }
 }
 
-unsafe impl<P> DescriptorSet for PersistentDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+unsafe impl DescriptorSet for PersistentDescriptorSet {
+    #[inline]
     fn alloc(&self) -> &DescriptorPoolAlloc {
-        self.inner.alloc().inner()
+        &self.inner.alloc().inner
     }
 
+    #[inline]
     fn pool(&self) -> &DescriptorPool {
-        self.inner.alloc().pool()
+        &self.inner.alloc().pool
     }
 
+    #[inline]
     fn resources(&self) -> &DescriptorSetResources {
         &self.resources
     }
 }
 
-unsafe impl<P> VulkanObject for PersistentDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+unsafe impl VulkanObject for PersistentDescriptorSet {
     type Handle = ash::vk::DescriptorSet;
 
+    #[inline]
     fn handle(&self) -> Self::Handle {
         self.inner.handle()
     }
 }
 
-unsafe impl<P> DeviceOwned for PersistentDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+unsafe impl DeviceOwned for PersistentDescriptorSet {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.layout().device()
     }
 }
 
-impl<P> PartialEq for PersistentDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+impl PartialEq for PersistentDescriptorSet {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
 }
 
-impl<P> Eq for PersistentDescriptorSet<P> where P: DescriptorSetAlloc {}
+impl Eq for PersistentDescriptorSet {}
 
-impl<P> Hash for PersistentDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+impl Hash for PersistentDescriptorSet {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
     }
