@@ -27,6 +27,7 @@ Changes to `Surface`:
 ### Bugs fixed
 
 - Incorrect assert condition in `PipelineLayout::is_compatible_with`.
+- `evaluate_spec_constant_op` panics with UConvert, SConvert, and FConvert.
 
 # Version 0.34.1 (2023-10-29)
 
