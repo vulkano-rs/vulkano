@@ -1,12 +1,3 @@
-// Copyright (c) 2017 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 // Push constants are a small bank of values written directly to the command buffer and accessible
 // in shaders. They allow the application to set values used in shaders without creating buffers or
 // modifying and binding descriptor sets for each update. As a result, they are expected to
