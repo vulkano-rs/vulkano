@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-set -euo pipefail
+set -eu
 
 # This script builds and runs all the examples
 # It is NOT headless
