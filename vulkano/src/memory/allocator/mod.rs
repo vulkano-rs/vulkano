@@ -1,12 +1,3 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! In Vulkan, suballocation of [`DeviceMemory`] is left to the application, because every
 //! application has slightly different needs and one can not incorporate an allocator into the
 //! driver that would perform well in all cases. Vulkano stays true to this sentiment, but aims to

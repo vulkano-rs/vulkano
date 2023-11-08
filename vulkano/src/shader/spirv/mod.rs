@@ -1,12 +1,3 @@
-// Copyright (c) 2021 The Vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
-
 //! Parsing and analysis utilities for SPIR-V shader binaries.
 //!
 //! This can be used to inspect and validate a SPIR-V module at runtime. The `Spirv` type does some
