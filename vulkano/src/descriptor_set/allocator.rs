@@ -50,12 +50,11 @@ const MAX_POOLS: usize = 32;
 ///
 /// A Vulkan descriptor pool must be externally synchronized as if it owned the descriptor sets
 /// that were allocated from it. This includes allocating from the pool, freeing from the pool and
-/// resetting the pool or individual descriptor sets. The implementation of
-/// `DescriptorSetAllocator` is expected to manage this.
+/// resetting the pool. The implementation of `DescriptorSetAllocator` is expected to manage this.
 ///
-/// The destructor of the [`DescriptorSetAlloc`] is expected to free the descriptor set, reset the
-/// descriptor set, or add it to a pool so that it gets reused. If the implementation frees or
-/// resets the descriptor set, it must not forget that this operation must be externally
+/// The implementation of `deallocate` is expected to free the descriptor set, reset its descriptor
+/// pool, or add it to a pool so that it gets reused. If the implementation frees the descriptor
+/// set or resets the descriptor pool, it must not forget that this operation must be externally
 /// synchronized.
 pub unsafe trait DescriptorSetAllocator: DeviceOwned + Send + Sync + 'static {
     /// Allocates a descriptor set.
