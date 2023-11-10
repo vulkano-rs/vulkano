@@ -582,7 +582,8 @@ where
                     let dynamic_offsets = &dynamic_offsets_remaining[..split_index];
                     dynamic_offsets_remaining = &dynamic_offsets_remaining[split_index..];
 
-                    let elements = match set.resources().binding(binding_num) {
+                    let resources = set.resources();
+                    let elements = match resources.binding(binding_num) {
                         Some(DescriptorBindingResources::Buffer(elements)) => elements.as_slice(),
                         _ => unreachable!(),
                     };

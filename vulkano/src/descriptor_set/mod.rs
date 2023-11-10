@@ -93,6 +93,7 @@ use crate::{
     Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
+use parking_lot::{RwLock, RwLockReadGuard};
 use smallvec::{smallvec, SmallVec};
 use std::{
     hash::{Hash, Hasher},
@@ -112,7 +113,7 @@ mod update;
 #[derive(Debug)]
 pub struct DescriptorSet {
     inner: UnsafeDescriptorSet,
-    resources: DescriptorSetResources,
+    resources: RwLock<DescriptorSetResources>,
 }
 
 impl DescriptorSet {
@@ -136,7 +137,10 @@ impl DescriptorSet {
     ) -> Result<Arc<DescriptorSet>, Validated<VulkanError>> {
         let mut set = DescriptorSet {
             inner: UnsafeDescriptorSet::new(allocator, &layout, variable_descriptor_count)?,
-            resources: DescriptorSetResources::new(&layout, variable_descriptor_count),
+            resources: RwLock::new(DescriptorSetResources::new(
+                &layout,
+                variable_descriptor_count,
+            )),
         };
 
         set.update(descriptor_writes, descriptor_copies)?;
@@ -178,8 +182,8 @@ impl DescriptorSet {
 
     /// Returns the resources bound to this descriptor set.
     #[inline]
-    pub fn resources(&self) -> &DescriptorSetResources {
-        &self.resources
+    pub fn resources(&self) -> RwLockReadGuard<'_, DescriptorSetResources> {
+        self.resources.read()
     }
 
     /// Updates the descriptor set with new values.
@@ -191,16 +195,16 @@ impl DescriptorSet {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
 
+        self.inner
+            .validate_update(&descriptor_writes, &descriptor_copies)?;
+
         unsafe {
-            self.inner.update(&descriptor_writes, &descriptor_copies)?;
-        }
-
-        for write in descriptor_writes {
-            self.resources.write(&write, self.inner.layout());
-        }
-
-        for copy in descriptor_copies {
-            self.resources.copy(&copy);
+            Self::update_inner(
+                &self.inner,
+                self.resources.get_mut(),
+                &descriptor_writes,
+                &descriptor_copies,
+            );
         }
 
         Ok(())
@@ -215,17 +219,71 @@ impl DescriptorSet {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
 
-        unsafe {
-            self.inner
-                .update_unchecked(&descriptor_writes, &descriptor_copies);
-        }
+        Self::update_inner(
+            &self.inner,
+            self.resources.get_mut(),
+            &descriptor_writes,
+            &descriptor_copies,
+        );
+    }
+
+    /// Updates the descriptor set with new values.
+    ///
+    /// # Safety
+    ///
+    /// - Host access to the descriptor set must be externally synchronized.
+    pub unsafe fn update_by_ref(
+        &self,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) -> Result<(), Box<ValidationError>> {
+        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+
+        self.inner
+            .validate_update(&descriptor_writes, &descriptor_copies)?;
+
+        Self::update_inner(
+            &self.inner,
+            &mut self.resources.write(),
+            &descriptor_writes,
+            &descriptor_copies,
+        );
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn update_by_ref_unchecked(
+        &self,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+        descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
+    ) {
+        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+        let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+
+        Self::update_inner(
+            &self.inner,
+            &mut self.resources.write(),
+            &descriptor_writes,
+            &descriptor_copies,
+        );
+    }
+
+    unsafe fn update_inner(
+        inner: &UnsafeDescriptorSet,
+        resources: &mut DescriptorSetResources,
+        descriptor_writes: &[WriteDescriptorSet],
+        descriptor_copies: &[CopyDescriptorSet],
+    ) {
+        inner.update_unchecked(descriptor_writes, descriptor_copies);
 
         for write in descriptor_writes {
-            self.resources.write(&write, self.inner.layout());
+            resources.write(write, inner.layout());
         }
 
         for copy in descriptor_copies {
-            self.resources.copy(&copy);
+            resources.copy(copy);
         }
     }
 }
@@ -362,9 +420,8 @@ impl DescriptorSetResources {
 
     #[inline]
     pub(crate) fn copy(&mut self, copy: &CopyDescriptorSet) {
-        let src = copy
-            .src_set
-            .resources()
+        let resources = copy.src_set.resources();
+        let src = resources
             .binding_resources
             .get(&copy.src_binding)
             .expect("descriptor copy has invalid src_binding number");

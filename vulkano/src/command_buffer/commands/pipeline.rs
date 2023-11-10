@@ -1279,28 +1279,29 @@ where
                     {
                         // Check sampler-image compatibility. Only done for separate samplers;
                         // combined image samplers are checked when updating the descriptor set.
-
-                        // If the image view isn't actually present in the resources, then just skip it.
-                        // It will be caught later by check_resources.
-                        let iter = desc_reqs.sampler_with_images.iter().filter_map(|id| {
-                            descriptor_set_state
-                                .descriptor_sets
-                                .get(&id.set)
-                                .and_then(|set| set.resources().binding(id.binding))
-                                .and_then(|res| match res {
-                                    DescriptorBindingResources::ImageView(elements) => elements
-                                        .get(id.index as usize)
-                                        .and_then(|opt| opt.as_ref().map(|opt| (id, opt))),
-                                    _ => None,
-                                })
-                        });
-
-                        for (id, image_view_info) in iter {
+                        for id in &desc_reqs.sampler_with_images {
                             let DescriptorIdentifier {
                                 set: iset_num,
                                 binding: ibinding_num,
                                 index: iindex,
                             } = id;
+
+                            // If the image view isn't actually present in the resources, then just
+                            // skip it. It will be caught later by check_resources.
+                            let Some(set) = descriptor_set_state.descriptor_sets.get(iset_num)
+                            else {
+                                continue;
+                            };
+                            let resources = set.resources();
+                            let Some(DescriptorBindingResources::ImageView(elements)) =
+                                resources.binding(*ibinding_num)
+                            else {
+                                continue;
+                            };
+                            let Some(Some(image_view_info)) = elements.get(*iindex as usize) else {
+                                continue;
+                            };
+
                             let DescriptorImageViewInfo {
                                 image_view,
                                 image_layout: _,

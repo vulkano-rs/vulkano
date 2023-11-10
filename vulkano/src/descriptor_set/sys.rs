@@ -77,11 +77,12 @@ impl UnsafeDescriptorSet {
     ///
     /// - The resources in `descriptor_writes` and `descriptor_copies` must be kept alive for as
     ///   long as `self` is in use.
-    /// - The descriptor set must not be in use by the device,
-    ///   or be recorded to a command buffer as part of a bind command.
+    /// - The descriptor set must not be in use by the device, or be recorded to a command buffer
+    ///   as part of a bind command.
+    /// - Host access to the descriptor set must be externally synchronized.
     #[inline]
     pub unsafe fn update(
-        &mut self,
+        &self,
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
     ) -> Result<(), Box<ValidationError>> {
@@ -91,7 +92,7 @@ impl UnsafeDescriptorSet {
         Ok(())
     }
 
-    fn validate_update(
+    pub(super) fn validate_update(
         &self,
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
@@ -112,7 +113,7 @@ impl UnsafeDescriptorSet {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn update_unchecked(
-        &mut self,
+        &self,
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
     ) {
