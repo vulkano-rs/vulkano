@@ -23,7 +23,7 @@
 //!
 //! ## Creating a descriptor set
 //!
-//! TODO: write example for: PersistentDescriptorSet::start(layout.clone()).add_buffer(data_buffer.clone())
+//! TODO: write
 //!
 //! ## Passing the descriptor set when drawing
 //!
@@ -31,9 +31,8 @@
 //!
 //! # When drawing
 //!
-//! When you call a function that adds a draw command to a command buffer, one of the parameters
-//! corresponds to the list of descriptor sets to use. Vulkano will check that what you passed is
-//! compatible with the layout of the pipeline.
+//! When you call a function that adds a draw command to a command buffer, vulkano will check that
+//! the descriptor sets you bound are compatible with the layout of the pipeline.
 //!
 //! TODO: talk about perfs of changing sets
 //!
@@ -41,29 +40,28 @@
 //!
 //! There are three concepts in Vulkan related to descriptor sets:
 //!
-//! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
+//! - A `VkDescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
 //!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
 //!   instance of this object. This is represented with the [`DescriptorSetLayout`] type in
 //!   vulkano.
-//! - A `DescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
+//! - A `VkDescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
 //!   be used to allocate and free individual descriptor sets. This is represented with the
 //!   [`DescriptorPool`] type in vulkano.
-//! - A `DescriptorSet` contains the bindings to resources and is allocated from a pool. This is
+//! - A `VkDescriptorSet` contains the bindings to resources and is allocated from a pool. This is
 //!   represented with the [`UnsafeDescriptorSet`] type in vulkano.
 //!
 //! In addition to this, vulkano defines the following:
 //!
 //! - The [`DescriptorSetAllocator`] trait can be implemented on types from which you can allocate
 //!   and free descriptor sets. However it is different from Vulkan descriptor pools in the sense
-//!   that an implementation of the [`DescriptorSetAllocator`] trait can manage multiple Vulkan
+//!   that an implementation of the `DescriptorSetAllocator` trait can manage multiple Vulkan
 //!   descriptor pools.
 //! - The [`StandardDescriptorSetAllocator`] type is a default implementation of the
 //!   [`DescriptorSetAllocator`] trait.
-//! - The [`DescriptorSet`] trait is implemented on types that wrap around Vulkan descriptor sets in
-//!   a safe way. A Vulkan descriptor set is inherently unsafe, so we need safe wrappers around
-//!   them.
-//! - The [`DescriptorSetsCollection`] trait is implemented on collections of types that implement
-//!   [`DescriptorSet`]. It is what you pass to the draw functions.
+//! - The [`DescriptorSet`] type wraps around an `UnsafeDescriptorSet` a safe way. A Vulkan
+//!   descriptor set is inherently unsafe, so we need safe wrappers around them.
+//! - The [`DescriptorSetsCollection`] trait is implemented on collections of descriptor sets. It
+//!   is what you pass to the bind function.
 //!
 //! [`DescriptorPool`]: pool::DescriptorPool
 //! [`UnsafeDescriptorSet`]: sys::UnsafeDescriptorSet
@@ -110,7 +108,7 @@ mod update;
 
 /// An object that contains a collection of resources that will be accessible by shaders.
 ///
-/// Objects of this type can be passed when submitting a draw command.
+/// Descriptor sets can be bound when recording a command buffer.
 pub struct DescriptorSet {
     inner: UnsafeDescriptorSet,
     resources: DescriptorSetResources,
