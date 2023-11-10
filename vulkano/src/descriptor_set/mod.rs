@@ -109,6 +109,7 @@ mod update;
 /// An object that contains a collection of resources that will be accessible by shaders.
 ///
 /// Descriptor sets can be bound when recording a command buffer.
+#[derive(Debug)]
 pub struct DescriptorSet {
     inner: UnsafeDescriptorSet,
     resources: DescriptorSetResources,
@@ -262,7 +263,7 @@ impl Hash for DescriptorSet {
 }
 
 /// The resources that are bound to a descriptor set.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DescriptorSetResources {
     binding_resources: HashMap<u32, DescriptorBindingResources>,
 }
@@ -380,7 +381,7 @@ impl DescriptorSetResources {
 }
 
 /// The resources that are bound to a single descriptor set binding.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum DescriptorBindingResources {
     None(Elements<()>),
     Buffer(Elements<DescriptorBufferInfo>),
