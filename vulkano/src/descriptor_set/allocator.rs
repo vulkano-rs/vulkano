@@ -280,7 +280,9 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
             // can safely drop this clone at the end of the scope here.
             let reserve = unsafe { Arc::from_raw(ptr.cast::<ArrayQueue<DescriptorPoolAlloc>>()) };
 
-            let _ = reserve.push(allocation.inner);
+            // This cannot happen because every allocation is (supposed to be) returned to the pool
+            // whence it came, so there must be enough room for it.
+            debug_assert!(reserve.push(allocation.inner).is_ok());
         } else {
             // SAFETY: Same as the `Arc::from_raw` above.
             let reserve = unsafe { Arc::from_raw(ptr.cast::<ArrayQueue<Arc<DescriptorPool>>>()) };
