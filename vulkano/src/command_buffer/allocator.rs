@@ -14,7 +14,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
-    Validated, VulkanError,
+    Validated, ValidationError, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
 use smallvec::SmallVec;
@@ -61,7 +61,7 @@ pub unsafe trait CommandBufferAllocator: DeviceOwned + Send + Sync + 'static {
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
-    ) -> Result<CommandBufferAlloc, VulkanError>;
+    ) -> Result<CommandBufferAlloc, Validated<VulkanError>>;
 
     /// Deallocates the given `allocation`.
     ///
@@ -262,12 +262,19 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
-    ) -> Result<CommandBufferAlloc, VulkanError> {
-        // VUID-vkCreateCommandPool-queueFamilyIndex-01937
-        assert!(self
+    ) -> Result<CommandBufferAlloc, Validated<VulkanError>> {
+        if !self
             .device
             .active_queue_family_indices()
-            .contains(&queue_family_index));
+            .contains(&queue_family_index)
+        {
+            Err(Box::new(ValidationError {
+                context: "queue_family_index".into(),
+                problem: "is not active on the device".into(),
+                vuids: &["VUID-vkCreateCommandPool-queueFamilyIndex-01937"],
+                ..Default::default()
+            }))?;
+        }
 
         let entry = unsafe { &mut *self.entry(queue_family_index) };
 
@@ -280,10 +287,9 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
             )?);
         }
 
-        entry
-            .as_mut()
-            .unwrap()
-            .allocate(queue_family_index, level, &self.buffer_count)
+        let entry = entry.as_mut().unwrap();
+
+        Ok(entry.allocate(queue_family_index, level, &self.buffer_count)?)
     }
 
     #[inline]
@@ -330,7 +336,7 @@ unsafe impl<T: CommandBufferAllocator> CommandBufferAllocator for Arc<T> {
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
-    ) -> Result<CommandBufferAlloc, VulkanError> {
+    ) -> Result<CommandBufferAlloc, Validated<VulkanError>> {
         (**self).allocate(queue_family_index, level)
     }
 

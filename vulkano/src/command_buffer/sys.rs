@@ -9,7 +9,7 @@ use crate::{
     },
     device::{Device, DeviceOwned, QueueFamilyProperties},
     query::QueryControlFlags,
-    ValidationError, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
@@ -42,7 +42,7 @@ impl UnsafeCommandBufferBuilder {
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<Self, VulkanError> {
+    ) -> Result<Self, Validated<VulkanError>> {
         let allocation = allocator.allocate(queue_family_index, level)?;
 
         let CommandBufferBeginInfo {

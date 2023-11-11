@@ -92,7 +92,7 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, VulkanError> {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -136,7 +136,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, VulkanError> {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -164,14 +164,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<AutoCommandBufferBuilder<L>, Validated<VulkanError>> {
         Self::validate_begin(allocator.device(), queue_family_index, level, &begin_info)?;
 
-        unsafe {
-            Ok(Self::begin_unchecked(
-                allocator,
-                queue_family_index,
-                level,
-                begin_info,
-            )?)
-        }
+        unsafe { Self::begin_unchecked(allocator, queue_family_index, level, begin_info) }
     }
 
     fn validate_begin(
@@ -193,7 +186,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<Self, VulkanError> {
+    ) -> Result<Self, Validated<VulkanError>> {
         let &CommandBufferBeginInfo {
             usage: _,
             ref inheritance_info,
