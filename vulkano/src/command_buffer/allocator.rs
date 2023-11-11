@@ -252,11 +252,6 @@ impl StandardCommandBufferAllocator {
 }
 
 unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
-    /// Allocates a command buffer.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the queue family index is not active on the device.
     #[inline]
     fn allocate(
         &self,
