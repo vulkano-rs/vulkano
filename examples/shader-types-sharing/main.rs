@@ -180,7 +180,7 @@ fn main() {
         queue: Arc<Queue>,
         data_buffer: Subbuffer<[u32]>,
         parameters: shaders::Parameters,
-        command_buffer_allocator: &StandardCommandBufferAllocator,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: &StandardDescriptorSetAllocator,
     ) {
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
@@ -224,8 +224,10 @@ fn main() {
     }
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
     let descriptor_set_allocator =
         StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
@@ -299,7 +301,7 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::Parameters { value: 2 },
-        &command_buffer_allocator,
+        command_buffer_allocator.clone(),
         &descriptor_set_allocator,
     );
 
@@ -309,7 +311,7 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::Parameters { value: 1 },
-        &command_buffer_allocator,
+        command_buffer_allocator.clone(),
         &descriptor_set_allocator,
     );
 
@@ -319,7 +321,7 @@ fn main() {
         queue,
         data_buffer.clone(),
         shaders::Parameters { value: 3 },
-        &command_buffer_allocator,
+        command_buffer_allocator,
         &descriptor_set_allocator,
     );
 

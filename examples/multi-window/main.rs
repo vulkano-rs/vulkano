@@ -303,8 +303,10 @@ fn main() -> Result<(), impl Error> {
         depth_range: 0.0..=1.0,
     };
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     window_surfaces.insert(
         window_id,
@@ -446,7 +448,7 @@ fn main() -> Result<(), impl Error> {
                 }
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &command_buffer_allocator,
+                    command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
