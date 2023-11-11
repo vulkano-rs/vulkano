@@ -38,7 +38,6 @@ use std::{
     num::NonZeroU64,
     ptr,
     sync::Arc,
-    thread,
 };
 use thread_local::ThreadLocal;
 
@@ -55,7 +54,7 @@ const MAX_POOLS: usize = 32;
 /// The implementation of `deallocate` is expected to free the descriptor set, reset its descriptor
 /// pool, or add it to a pool so that it gets reused. If the implementation frees the descriptor
 /// set or resets the descriptor pool, it must not forget that this operation must be externally
-/// synchronized.
+/// synchronized. The implementation should not panic as it is used while dropping descriptor sets.
 pub unsafe trait DescriptorSetAllocator: DeviceOwned + Send + Sync + 'static {
     /// Allocates a descriptor set.
     fn allocate(
@@ -275,26 +274,18 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
 
             let pool = allocation.pool;
 
-            // We have to make sure that we don't reset the pool under these conditions, because
-            // 1. it could cause a panic while panicking
-            // 2. the pool could still be in use by `VariableEntry`, in which case the count would
-            //    be at last 2 (one for our reference and one in the `VariableEntry`), however
-            //    there could also be other references in other allocations, or the user could have
-            //    created a reference themself (which will most certainly cause a leak)
-            // respectively.
-            if thread::panicking() || Arc::strong_count(&pool) != 1 {
-                return;
+            // We have to make sure that we only reset the pool under this condition, because the
+            // pool could still be in use by `VariableEntry`, in which case the count would be at
+            // last 2 (one for our reference and one in the `VariableEntry`), however there could
+            // also be other references in other allocations, or the user could have created a
+            // reference themself (which will most certainly cause a leak).
+            if Arc::strong_count(&pool) == 1 {
+                // If there is not enough space in the reserve, we destroy the pool. The only way
+                // this can happen is if something is resource hogging, forcing new pools to be
+                // created such that the number exceeds `MAX_POOLS`, and then drops them all at
+                // once.
+                let _ = reserve.push(pool);
             }
-
-            // SAFETY: We checked that the pool has a single strong reference above, and we own
-            // this last reference, therefore it's impossible that a new reference would be created
-            // outside of this scope.
-            unsafe { pool.reset() }.unwrap();
-
-            // If there is not enough space in the reserve, we destroy the pool. The only way this
-            // can happen is if something is resource hogging, forcing new pools to be created such
-            // that the number exceeds `MAX_POOLS`, and then drops them all at once.
-            let _ = reserve.push(pool);
         }
     }
 }
@@ -471,14 +462,18 @@ impl VariableEntry {
             // when deallocated. If the user created a reference themself that will most certainly
             // lead to a memory leak.
             if Arc::strong_count(&self.pool) == 1 {
-                // SAFETY: We checked that the pool has a single strong reference above, and we own
-                // this last reference, therefore it's impossible that a new reference would be
-                // created outside of this scope.
-                unsafe { self.pool.reset() }.unwrap();
+                // SAFETY: We checked that the pool has a single strong reference above, meaning
+                // that all the allocations we gave out must have been deallocated.
+                unsafe { self.pool.reset() }?;
 
                 self.allocations = 0;
             } else {
                 *self = if let Some(pool) = self.reserve.pop() {
+                    // SAFETY: We checked that the pool has a single strong reference when
+                    // deallocating, meaning that all the allocations we gave out must have been
+                    // deallocated.
+                    unsafe { pool.reset() }?;
+
                     VariableEntry {
                         pool,
                         reserve: self.reserve.clone(),
