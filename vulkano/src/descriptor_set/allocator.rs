@@ -51,6 +51,11 @@ const MAX_POOLS: usize = 32;
 /// that were allocated from it. This includes allocating from the pool, freeing from the pool and
 /// resetting the pool. The implementation of `DescriptorSetAllocator` is expected to manage this.
 ///
+/// The implementation of `allocate` must return a valid allocation that stays allocated until
+/// either `deallocate` is called on it or the allocator is dropped. If the allocator is cloned, it
+/// must produce the same allocator, and an allocation must stay allocated until either
+/// `deallocate` is called on any of the clones or all clones have been dropped.
+///
 /// The implementation of `deallocate` is expected to free the descriptor set, reset its descriptor
 /// pool, or add it to a pool so that it gets reused. If the implementation frees the descriptor
 /// set or resets the descriptor pool, it must not forget that this operation must be externally
