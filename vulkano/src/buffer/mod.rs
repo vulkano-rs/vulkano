@@ -133,7 +133,7 @@ pub mod view;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
-/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+/// # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 /// #
 /// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
@@ -175,7 +175,7 @@ pub mod view;
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
-///     &command_buffer_allocator,
+///     command_buffer_allocator.clone(),
 ///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )

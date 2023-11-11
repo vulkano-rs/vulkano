@@ -327,10 +327,13 @@ mod tests {
     fn basic_creation() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
 
         AutoCommandBufferBuilder::primary(
-            &allocator,
+            allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -391,9 +394,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
         let mut cbb = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -429,17 +435,17 @@ mod tests {
     fn secondary_nonconcurrent_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
             device,
             StandardCommandBufferAllocatorCreateInfo {
                 secondary_buffer_count: 1,
                 ..Default::default()
             },
-        );
+        ));
 
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
-            &cb_allocator,
+            cb_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             Default::default(),
@@ -449,7 +455,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -465,7 +471,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -474,7 +480,7 @@ mod tests {
             let cb1 = builder.build().unwrap();
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -511,9 +517,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
         let mut builder = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -566,9 +575,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
         let mut builder = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -593,15 +605,15 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = StandardCommandBufferAllocator::new(
+            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
                 device.clone(),
                 StandardCommandBufferAllocatorCreateInfo {
                     secondary_buffer_count: 1,
                     ..Default::default()
                 },
-            );
+            ));
             let cbb = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
@@ -637,7 +649,7 @@ mod tests {
             let secondary = (0..2)
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
-                        &cb_allocator,
+                        cb_allocator.clone(),
                         queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
@@ -652,7 +664,7 @@ mod tests {
 
             {
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &cb_allocator,
+                    cb_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
                 )
@@ -675,7 +687,7 @@ mod tests {
 
             {
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &cb_allocator,
+                    cb_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
                 )
@@ -697,10 +709,12 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator =
-                StandardCommandBufferAllocator::new(device.clone(), Default::default());
+            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+                device.clone(),
+                Default::default(),
+            ));
             let mut sync = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )
@@ -734,10 +748,12 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator =
-                StandardCommandBufferAllocator::new(device.clone(), Default::default());
+            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+                device.clone(),
+                Default::default(),
+            ));
             let mut sync = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )

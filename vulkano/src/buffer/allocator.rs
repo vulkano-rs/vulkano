@@ -87,7 +87,7 @@ const MAX_ARENAS: usize = 32;
 ///
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 /// # let memory_allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator> = return;
-/// # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+/// # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 /// #
 /// // Create the buffer allocator.
 /// let buffer_allocator = SubbufferAllocator::new(
@@ -108,7 +108,7 @@ const MAX_ARENAS: usize = 32;
 ///
 ///     // You can then use `subbuffer` as if it was an entirely separate buffer.
 ///     AutoCommandBufferBuilder::primary(
-///         &command_buffer_allocator,
+///         command_buffer_allocator.clone(),
 ///         queue.queue_family_index(),
 ///         CommandBufferUsage::OneTimeSubmit,
 ///     )
@@ -117,7 +117,8 @@ const MAX_ARENAS: usize = 32;
 ///     // it is pointless to do that.
 ///     .update_buffer(subbuffer.clone(), &[0.2, 0.3, 0.4, 0.5])
 ///     .unwrap()
-///     .build().unwrap()
+///     .build()
+///     .unwrap()
 ///     .execute(queue.clone())
 ///     .unwrap()
 ///     .then_signal_fence_and_flush()
