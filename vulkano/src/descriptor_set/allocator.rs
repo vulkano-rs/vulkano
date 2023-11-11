@@ -249,7 +249,12 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
             if is_fixed {
                 FixedEntry::new(layout, &self.create_info).map(Entry::Fixed)
             } else {
-                VariableEntry::new(layout, &self.create_info).map(Entry::Variable)
+                VariableEntry::new(
+                    layout,
+                    &self.create_info,
+                    Arc::new(ArrayQueue::new(MAX_POOLS)),
+                )
+                .map(Entry::Variable)
             }
         })?;
 
@@ -413,13 +418,6 @@ impl VariableEntry {
     fn new(
         layout: &DescriptorSetLayout,
         create_info: &StandardDescriptorSetAllocatorCreateInfo,
-    ) -> Result<Self, Validated<VulkanError>> {
-        Self::with_reserve(layout, create_info, Arc::new(ArrayQueue::new(MAX_POOLS)))
-    }
-
-    fn with_reserve(
-        layout: &DescriptorSetLayout,
-        create_info: &StandardDescriptorSetAllocatorCreateInfo,
         reserve: Arc<ArrayQueue<Arc<DescriptorPool>>>,
     ) -> Result<Self, Validated<VulkanError>> {
         let pool = DescriptorPool::new(
@@ -485,7 +483,7 @@ impl VariableEntry {
                     self.pool = pool;
                     self.allocations = 0;
                 } else {
-                    *self = VariableEntry::with_reserve(layout, create_info, self.reserve.clone())?;
+                    *self = VariableEntry::new(layout, create_info, self.reserve.clone())?;
                 }
             }
         }
