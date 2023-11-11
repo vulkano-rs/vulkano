@@ -476,20 +476,17 @@ impl VariableEntry {
 
                 self.allocations = 0;
             } else {
-                *self = if let Some(pool) = self.reserve.pop() {
+                if let Some(pool) = self.reserve.pop() {
                     // SAFETY: We checked that the pool has a single strong reference when
                     // deallocating, meaning that all the allocations we gave out must have been
                     // deallocated.
                     unsafe { pool.reset() }?;
 
-                    VariableEntry {
-                        pool,
-                        reserve: self.reserve.clone(),
-                        allocations: 0,
-                    }
+                    self.pool = pool;
+                    self.allocations = 0;
                 } else {
-                    VariableEntry::with_reserve(layout, create_info, self.reserve.clone())?
-                };
+                    *self = VariableEntry::with_reserve(layout, create_info, self.reserve.clone())?;
+                }
             }
         }
 
