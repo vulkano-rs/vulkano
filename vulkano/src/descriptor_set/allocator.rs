@@ -87,6 +87,9 @@ pub struct DescriptorSetAlloc {
     pub inner: DescriptorPoolAlloc,
 
     /// The descriptor pool that the descriptor set was allocated from.
+    ///
+    /// Using this for anything other than looking at the pool's metadata will lead to a Bad
+    /// Time<sup>TM</sup>. That includes making additional references.
     pub pool: Arc<DescriptorPool>,
 
     /// An opaque handle identifying the allocation inside the allocator.
@@ -274,11 +277,9 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
 
             let pool = allocation.pool;
 
-            // We have to make sure that we only reset the pool under this condition, because the
-            // pool could still be in use by `VariableEntry`, in which case the count would be at
-            // least 2 (one for our reference and one in the `VariableEntry`), however there could
-            // also be other references in other allocations, or the user could have created a
-            // reference themself (which will most certainly cause a leak).
+            // We have to make sure that we only reset the pool under this condition, because there
+            // could be other references in other allocations. If the user cloned the pool
+            // themself, that will most certainly cause a leak.
             if Arc::strong_count(&pool) == 1 {
                 // If there is not enough space in the reserve, we destroy the pool. The only way
                 // this can happen is if something is resource hogging, forcing new pools to be
@@ -461,6 +462,8 @@ impl VariableEntry {
             // allocation still holding a reference will be able to put the pool into the reserve
             // when deallocated. If the user created a reference themself that will most certainly
             // lead to a memory leak.
+            //
+            // TODO: This can still run into the A/B/A problem causing the pool to be dropped.
             if Arc::strong_count(&self.pool) == 1 {
                 // SAFETY: We checked that the pool has a single strong reference above, meaning
                 // that all the allocations we gave out must have been deallocated.
