@@ -28,6 +28,7 @@ Changes to `Surface`:
 
 - Incorrect assert condition in `PipelineLayout::is_compatible_with`.
 - `evaluate_spec_constant_op` panics with UConvert, SConvert, and FConvert.
+- [#2398](https://github.com/vulkano-rs/vulkano/issues/2398) Push constant reflection sometimes uses the wrong types.
 
 # Version 0.34.1 (2023-10-29)
 
