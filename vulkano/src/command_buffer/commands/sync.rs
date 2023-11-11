@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::{allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder},
+    command_buffer::sys::UnsafeCommandBufferBuilder,
     device::{DeviceOwned, QueueFlags},
     sync::{
         event::Event, BufferMemoryBarrier, DependencyFlags, DependencyInfo, ImageMemoryBarrier,
@@ -10,10 +10,8 @@ use crate::{
 use smallvec::SmallVec;
 use std::{ptr, sync::Arc};
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn pipeline_barrier(
         &mut self,
         dependency_info: &DependencyInfo,
@@ -454,6 +452,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_event(
         &mut self,
         event: &Event,
@@ -808,6 +807,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn wait_events(
         &mut self,
         events: &[(Arc<Event>, DependencyInfo)],
@@ -1315,6 +1315,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn reset_event(
         &mut self,
         event: &Event,

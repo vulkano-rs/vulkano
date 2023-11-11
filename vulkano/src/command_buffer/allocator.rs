@@ -17,15 +17,13 @@ use crate::{
     Validated, VulkanError,
 };
 use crossbeam_queue::ArrayQueue;
-use smallvec::{IntoIter, SmallVec};
+use smallvec::SmallVec;
 use std::{
-    cell::{Cell, UnsafeCell},
+    cell::UnsafeCell,
     error::Error,
-    fmt::Display,
-    marker::PhantomData,
-    mem::ManuallyDrop,
-    sync::Arc,
-    thread,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    mem, ptr,
+    sync::{Arc, Weak},
 };
 use thread_local::ThreadLocal;
 
@@ -36,66 +34,126 @@ const MAX_POOLS: usize = 32;
 /// # Safety
 ///
 /// A Vulkan command pool must be externally synchronized as if it owned the command buffers that
-/// were allocated from it. This includes allocating from the pool, freeing from the pool, resetting
-/// the pool or individual command buffers, and most importantly recording commands to command
-/// buffers. The implementation of `CommandBufferAllocator` is expected to manage this.
+/// were allocated from it. This includes allocating from the pool, freeing from the pool,
+/// resetting the pool or individual command buffers, and most importantly recording commands to
+/// command buffers. The implementation of `CommandBufferAllocator` is expected to manage this.
 ///
-/// The destructors of the [`CommandBufferBuilderAlloc`] and the [`CommandBufferAlloc`] are expected
-/// to free the command buffer, reset the command buffer, or add it to a pool so that it gets
-/// reused. If the implementation frees or resets the command buffer, it must not forget that this
-/// operation must be externally synchronized.
-pub unsafe trait CommandBufferAllocator: DeviceOwned {
-    /// See [`allocate`](Self::allocate).
-    type Iter: Iterator<Item = Self::Builder>;
-
-    /// Represents a command buffer that has been allocated and that is currently being built.
-    type Builder: CommandBufferBuilderAlloc<Alloc = Self::Alloc>;
-
-    /// Represents a command buffer that has been allocated and that is pending execution or is
-    /// being executed.
-    type Alloc: CommandBufferAlloc;
-
-    /// Allocates command buffers.
-    ///
-    /// Returns an iterator that contains the requested amount of allocated command buffers.
+/// The implementation of `allocate` must return a valid allocation that stays allocated until
+/// either `deallocate` is called on it or the allocator is dropped. If the allocator is cloned, it
+/// must produce the same allocator, and an allocation must stay allocated until either
+/// `deallocate` is called on any of the clones or all clones have been dropped.
+///
+/// The implementation of `deallocate` is expected to free the command buffer, reset the command
+/// buffer or its pool, or add it to a pool so that it gets reused. If the implementation frees the
+/// command buffer or resets the command buffer or pool, it must not forget that this operation
+/// must be externally synchronized. The implementation should not panic as it is used when
+/// dropping command buffers.
+///
+/// Command buffers in the recording state can never be sent between threads in vulkano, which
+/// means that the implementation of `allocate` can freely assume that the command buffer won't
+/// leave the thread it was allocated on until it has finished recording. Note however that after
+/// recording is finished, command buffers are free to be sent between threads, which means that
+/// `deallocate` must account for the possibility that a command buffer can be deallocated from a
+/// different thread than it was allocated from.
+pub unsafe trait CommandBufferAllocator: DeviceOwned + Send + Sync + 'static {
+    /// Allocates a command buffer.
     fn allocate(
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        command_buffer_count: u32,
-    ) -> Result<Self::Iter, VulkanError>;
+    ) -> Result<CommandBufferAlloc, VulkanError>;
+
+    /// Deallocates the given `allocation`.
+    ///
+    /// # Safety
+    ///
+    /// - `allocation` must refer to a **currently allocated** allocation of `self`.
+    unsafe fn deallocate(&self, allocation: CommandBufferAlloc);
 }
 
-/// A command buffer allocated from a pool and that can be recorded.
-///
-/// # Safety
-///
-/// See [`CommandBufferAllocator`] for information about safety.
-pub unsafe trait CommandBufferBuilderAlloc: DeviceOwned {
-    /// Return type of `into_alloc`.
-    type Alloc: CommandBufferAlloc;
-
-    /// Returns the internal object that contains the command buffer.
-    fn inner(&self) -> &CommandPoolAlloc;
-
-    /// Turns this builder into a command buffer that is pending execution.
-    fn into_alloc(self) -> Self::Alloc;
-
-    /// Returns the index of the queue family that the pool targets.
-    fn queue_family_index(&self) -> u32;
+impl Debug for dyn CommandBufferAllocator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        f.debug_struct("CommandBufferAllocator")
+            .finish_non_exhaustive()
+    }
 }
 
-/// A command buffer allocated from a pool that has finished being recorded.
+/// An allocation made using a [command buffer allocator].
 ///
-/// # Safety
-///
-/// See [`CommandBufferAllocator`] for information about safety.
-pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
-    /// Returns the internal object that contains the command buffer.
-    fn inner(&self) -> &CommandPoolAlloc;
+/// [command buffer allocator]: CommandBufferAllocator
+#[derive(Debug)]
+pub struct CommandBufferAlloc {
+    /// The internal object that contains the command buffer.
+    pub inner: CommandPoolAlloc,
 
-    /// Returns the index of the queue family that the pool targets.
-    fn queue_family_index(&self) -> u32;
+    /// The command pool that the command buffer was allocated from.
+    ///
+    /// Using this for anything other than looking at the pool's metadata will lead to a Bad
+    /// Time<sup>TM</sup>.
+    pub pool: Arc<CommandPool>,
+
+    /// An opaque handle identifying the allocation inside the allocator.
+    pub handle: AllocationHandle,
+}
+
+/// An opaque handle identifying an allocation inside an allocator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(not(doc), repr(transparent))]
+pub struct AllocationHandle(*mut ());
+
+unsafe impl Send for AllocationHandle {}
+unsafe impl Sync for AllocationHandle {}
+
+impl AllocationHandle {
+    /// Creates a null `AllocationHandle`.
+    ///
+    /// Use this if you don't have anything that you need to associate with the allocation.
+    #[inline]
+    pub const fn null() -> Self {
+        AllocationHandle(ptr::null_mut())
+    }
+
+    /// Stores a pointer in an `AllocationHandle`.
+    ///
+    /// Use this if you want to associate an allocation with some (host) heap allocation.
+    #[inline]
+    pub const fn from_ptr(ptr: *mut ()) -> Self {
+        AllocationHandle(ptr)
+    }
+
+    /// Stores an index inside an `AllocationHandle`.
+    ///
+    /// Use this if you want to associate an allocation with some index.
+    #[allow(clippy::useless_transmute)]
+    #[inline]
+    pub const fn from_index(index: usize) -> Self {
+        // SAFETY: `usize` and `*mut ()` have the same layout.
+        AllocationHandle(unsafe { mem::transmute::<usize, *mut ()>(index) })
+    }
+
+    /// Retrieves a previously-stored pointer from the `AllocationHandle`.
+    ///
+    /// If this handle hasn't been created using [`from_ptr`] then this will return an invalid
+    /// pointer, dereferencing which is undefined behavior.
+    ///
+    /// [`from_ptr`]: Self::from_ptr
+    #[inline]
+    pub const fn as_ptr(self) -> *mut () {
+        self.0
+    }
+
+    /// Retrieves a previously-stored index from the `AllocationHandle`.
+    ///
+    /// If this handle hasn't been created using [`from_index`] then this will return a bogus
+    /// result.
+    ///
+    /// [`from_index`]: Self::from_index
+    #[allow(clippy::transmutes_expressible_as_ptr_casts)]
+    #[inline]
+    pub const fn as_index(self) -> usize {
+        // SAFETY: `usize` and `*mut ()` have the same layout.
+        unsafe { mem::transmute::<*mut (), usize>(self.0) }
+    }
 }
 
 /// Standard implementation of a command buffer allocator.
@@ -115,25 +173,26 @@ pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
 ///
 /// This allocator only needs to lock when a thread first allocates or when a thread that
 /// previously allocated exits. In all other cases, allocation is lock-free.
-///
-/// Command buffers can't be moved between threads during the building process, but finished command
-/// buffers can. When a command buffer is dropped, it is returned back to the pool for reuse.
 #[derive(Debug)]
 pub struct StandardCommandBufferAllocator {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     // Each queue family index points directly to its entry.
     pools: ThreadLocal<SmallVec<[UnsafeCell<Option<Entry>>; 8]>>,
-    create_info: StandardCommandBufferAllocatorCreateInfo,
+    buffer_count: [usize; 2],
 }
 
 impl StandardCommandBufferAllocator {
     /// Creates a new `StandardCommandBufferAllocator`.
     #[inline]
     pub fn new(device: Arc<Device>, create_info: StandardCommandBufferAllocatorCreateInfo) -> Self {
+        let mut buffer_count = [0, 0];
+        buffer_count[CommandBufferLevel::Primary as usize] = create_info.primary_buffer_count;
+        buffer_count[CommandBufferLevel::Secondary as usize] = create_info.secondary_buffer_count;
+
         StandardCommandBufferAllocator {
             device: InstanceOwnedDebugWrapper(device),
             pools: ThreadLocal::new(),
-            create_info,
+            buffer_count,
         }
     }
 
@@ -193,28 +252,17 @@ impl StandardCommandBufferAllocator {
 }
 
 unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
-    type Iter = IntoIter<[StandardCommandBufferBuilderAlloc; 1]>;
-
-    type Builder = StandardCommandBufferBuilderAlloc;
-
-    type Alloc = StandardCommandBufferAlloc;
-
-    /// Allocates command buffers.
-    ///
-    /// Returns an iterator that contains the requested amount of allocated command buffers.
+    /// Allocates a command buffer.
     ///
     /// # Panics
     ///
     /// - Panics if the queue family index is not active on the device.
-    /// - Panics if `command_buffer_count` exceeds the count configured for the pool corresponding
-    ///   to `level`.
     #[inline]
     fn allocate(
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        command_buffer_count: u32,
-    ) -> Result<Self::Iter, VulkanError> {
+    ) -> Result<CommandBufferAlloc, VulkanError> {
         // VUID-vkCreateCommandPool-queueFamilyIndex-01937
         assert!(self
             .device
@@ -222,66 +270,73 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
             .contains(&queue_family_index));
 
         let entry = unsafe { &mut *self.entry(queue_family_index) };
+
         if entry.is_none() {
-            let reserve = Arc::new(ArrayQueue::new(MAX_POOLS));
-            *entry = Some(Entry {
-                pool: Pool::new(
-                    self.device.clone(),
-                    queue_family_index,
-                    reserve.clone(),
-                    &self.create_info,
-                )?,
-                reserve,
-            });
-        }
-        let entry = entry.as_mut().unwrap();
-
-        // First try to allocate from existing command buffers.
-        if let Some(allocs) = entry.pool.allocate(level, command_buffer_count) {
-            return Ok(allocs);
+            *entry = Some(Entry::new(
+                self.device.clone(),
+                queue_family_index,
+                &self.buffer_count,
+                Arc::new(ArrayQueue::new(MAX_POOLS)),
+            )?);
         }
 
-        // Else try to reset the pool.
-        if entry
-            .try_reset_pool(CommandPoolResetFlags::empty())
-            .is_err()
-        {
-            // If that fails too try to grab a pool from the reserve.
-            entry.pool = if let Some(inner) = entry.reserve.pop() {
-                Arc::new(Pool {
-                    inner: ManuallyDrop::new(inner),
-                    reserve: entry.reserve.clone(),
-                })
-            } else {
-                // Else we are unfortunately forced to create a new pool.
-                Pool::new(
-                    self.device.clone(),
-                    queue_family_index,
-                    entry.reserve.clone(),
-                    &self.create_info,
-                )?
-            };
-        }
+        entry
+            .as_mut()
+            .unwrap()
+            .allocate(queue_family_index, level, &self.buffer_count)
+    }
 
-        Ok(entry.pool.allocate(level, command_buffer_count).unwrap())
+    #[inline]
+    unsafe fn deallocate(&self, allocation: CommandBufferAlloc) {
+        let ptr = allocation.handle.as_ptr().cast::<Pool>();
+
+        // SAFETY: The caller must guarantee that `allocation` refers to one allocated by `self`,
+        // therefore `ptr` must be the same one we gave out on allocation. We also know that the
+        // pointer must be valid, because the caller must guarantee that the same allocation isn't
+        // deallocated more than once. That means that since we cloned the `Arc` on allocation, at
+        // least that strong reference must still keep it alive, and we can safely drop this clone
+        // at the end of the scope here.
+        let pool = unsafe { Arc::from_raw(ptr) };
+
+        let level = allocation.inner.level();
+
+        // This cannot panic because in order to have allocated a command buffer with the level in
+        // the first place, the size of the pool for that level must have been non-zero.
+        let buffer_reserve = pool.buffer_reserve[level as usize].as_ref().unwrap();
+
+        // This cannot happen because every allocation is (supposed to be) returned to the pool
+        // whence it came, so there must be enough room for it.
+        debug_assert!(buffer_reserve.push(allocation.inner).is_ok());
+
+        // We have to make sure that we only reset the pool under this condition, because there
+        // could be other references in other allocations.
+        if Arc::strong_count(&pool) == 1 {
+            // The pool reserve can be dropped from under us when an entry is cleared, in which
+            // case we destroy the pool.
+            if let Some(reserve) = pool.pool_reserve.upgrade() {
+                // If there is not enough space in the reserve, we destroy the pool. The only way
+                // this can happen is if something is resource hogging, forcing new pools to be
+                // created such that the number exceeds `MAX_POOLS`, and then drops them all at
+                // once.
+                let _ = reserve.push(pool);
+            }
+        }
     }
 }
 
 unsafe impl<T: CommandBufferAllocator> CommandBufferAllocator for Arc<T> {
-    type Iter = T::Iter;
-
-    type Builder = T::Builder;
-
-    type Alloc = T::Alloc;
-
     #[inline]
     fn allocate(
         &self,
         queue_family_index: u32,
         level: CommandBufferLevel,
-        command_buffer_count: u32,
-    ) -> Result<Self::Iter, VulkanError> {
-        (**self).allocate(queue_family_index, level, command_buffer_count)
+    ) -> Result<CommandBufferAlloc, VulkanError> {
+        (**self).allocate(queue_family_index, level)
+    }
+
+    #[inline]
+    unsafe fn deallocate(&self, allocation: CommandBufferAlloc) {
+        (**self).deallocate(allocation)
     }
 }
 
@@ -296,32 +351,108 @@ unsafe impl DeviceOwned for StandardCommandBufferAllocator {
 struct Entry {
     // Contains the actual Vulkan command pool that is currently in use.
     pool: Arc<Pool>,
-    // When a `Pool` is dropped, it returns itself here for reuse.
-    reserve: Arc<ArrayQueue<PoolInner>>,
+    // How many command buffers have been allocated from `pool.buffer_reserve`.
+    allocations: [usize; 2],
+    // When a `Pool` is about to be dropped, it is returned here for reuse.
+    pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
 }
 
 // This is needed because of the blanket impl of `Send` on `Arc<T>`, which requires that `T` is
 // `Send + Sync`. `Pool` is `Send + !Sync` because `CommandPool` is `!Sync`. That's fine however
-// because we never access the Vulkan command pool concurrently. Same goes for the `Cell`s.
+// because we never access the Vulkan command pool concurrently.
 unsafe impl Send for Entry {}
 
 impl Entry {
+    fn new(
+        device: Arc<Device>,
+        queue_family_index: u32,
+        buffer_count: &[usize; 2],
+        pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
+    ) -> Result<Self, VulkanError> {
+        Ok(Entry {
+            pool: Pool::new(device, queue_family_index, buffer_count, &pool_reserve)?,
+            allocations: [0; 2],
+            pool_reserve,
+        })
+    }
+
+    fn allocate(
+        &mut self,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        buffer_count: &[usize; 2],
+    ) -> Result<CommandBufferAlloc, VulkanError> {
+        if self.allocations[level as usize] >= buffer_count[level as usize] {
+            // This can happen if there's only ever one allocation alive at any point in time. In
+            // that case, when deallocating the last command buffer before reaching `buffer_count`,
+            // there will be 2 references to the pool (one here and one in the allocation) and so
+            // the pool won't be returned to the reserve when deallocating. However, since there
+            // are no other allocations alive, there would be no other allocations that could
+            // return it to the reserve. To avoid dropping the pool unneccessarily, we simply
+            // continue using it. In the case where there are other references, we drop ours, at
+            // which point an allocation still holding a reference will be able to put the pool
+            // into the reserve when deallocated.
+            //
+            // TODO: This can still run into the A/B/A problem causing the pool to be dropped.
+            if Arc::strong_count(&self.pool) == 1 {
+                // SAFETY: We checked that the pool has a single strong reference above, meaning
+                // that all the allocations we gave out must have been deallocated.
+                unsafe {
+                    self.pool
+                        .inner
+                        .reset_unchecked(CommandPoolResetFlags::empty())
+                }?;
+
+                self.allocations = [0; 2];
+            } else {
+                if let Some(pool) = self.pool_reserve.pop() {
+                    // SAFETY: We checked that the pool has a single strong reference when
+                    // deallocating, meaning that all the allocations we gave out must have been
+                    // deallocated.
+                    unsafe { pool.inner.reset_unchecked(CommandPoolResetFlags::empty()) }?;
+
+                    self.pool = pool;
+                    self.allocations = [0; 2];
+                } else {
+                    *self = Entry::new(
+                        self.pool.inner.device().clone(),
+                        queue_family_index,
+                        buffer_count,
+                        self.pool_reserve.clone(),
+                    )?;
+                }
+            }
+        }
+
+        let buffer_reserve = self.pool.buffer_reserve[level as usize]
+            .as_ref()
+            .unwrap_or_else(|| {
+                panic!(
+                    "attempted to allocate a command buffer with level `{level:?}`, but the \
+                    command buffer pool for that level was configured to be empty",
+                )
+            });
+
+        self.allocations[level as usize] += 1;
+
+        Ok(CommandBufferAlloc {
+            inner: buffer_reserve.pop().unwrap(),
+            pool: self.pool.inner.clone(),
+            handle: AllocationHandle::from_ptr(Arc::into_raw(self.pool.clone()) as _),
+        })
+    }
+
     fn try_reset_pool(
         &mut self,
         flags: CommandPoolResetFlags,
     ) -> Result<(), Validated<ResetCommandPoolError>> {
         if let Some(pool) = Arc::get_mut(&mut self.pool) {
-            unsafe {
-                pool.inner.inner.reset(flags).map_err(|err| match err {
-                    Validated::Error(err) => {
-                        Validated::Error(ResetCommandPoolError::VulkanError(err))
-                    }
-                    Validated::ValidationError(err) => err.into(),
-                })?
-            };
+            unsafe { pool.inner.reset(flags) }.map_err(|err| match err {
+                Validated::Error(err) => Validated::Error(ResetCommandPoolError::VulkanError(err)),
+                Validated::ValidationError(err) => err.into(),
+            })?;
 
-            *pool.inner.primary_allocations.get_mut() = 0;
-            *pool.inner.secondary_allocations.get_mut() = 0;
+            self.allocations = [0; 2];
 
             Ok(())
         } else {
@@ -332,31 +463,20 @@ impl Entry {
 
 #[derive(Debug)]
 struct Pool {
-    inner: ManuallyDrop<PoolInner>,
-    // Where we return the `PoolInner` in our `Drop` impl.
-    reserve: Arc<ArrayQueue<PoolInner>>,
-}
-
-#[derive(Debug)]
-struct PoolInner {
     // The Vulkan pool specific to a device's queue family.
-    inner: CommandPool,
-    // List of existing primary command buffers that are available for reuse.
-    primary_pool: Option<ArrayQueue<CommandPoolAlloc>>,
-    // List of existing secondary command buffers that are available for reuse.
-    secondary_pool: Option<ArrayQueue<CommandPoolAlloc>>,
-    // How many command buffers have been allocated from `self.primary_pool`.
-    primary_allocations: Cell<usize>,
-    // How many command buffers have been allocated from `self.secondary_pool`.
-    secondary_allocations: Cell<usize>,
+    inner: Arc<CommandPool>,
+    // List of existing command buffers that are available for reuse.
+    buffer_reserve: [Option<ArrayQueue<CommandPoolAlloc>>; 2],
+    // Where to return this pool once there are no more current allocations.
+    pool_reserve: Weak<ArrayQueue<Arc<Self>>>,
 }
 
 impl Pool {
     fn new(
         device: Arc<Device>,
         queue_family_index: u32,
-        reserve: Arc<ArrayQueue<PoolInner>>,
-        create_info: &StandardCommandBufferAllocatorCreateInfo,
+        buffer_counts: &[usize; 2],
+        pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let inner = CommandPool::new(
             device,
@@ -367,151 +487,32 @@ impl Pool {
         )
         .map_err(Validated::unwrap)?;
 
-        let primary_pool = if create_info.primary_buffer_count > 0 {
-            let pool = ArrayQueue::new(create_info.primary_buffer_count);
+        let levels = [CommandBufferLevel::Primary, CommandBufferLevel::Secondary];
+        let mut buffer_reserve = [None, None];
 
-            for alloc in inner.allocate_command_buffers(CommandBufferAllocateInfo {
-                level: CommandBufferLevel::Primary,
-                command_buffer_count: create_info.primary_buffer_count as u32,
-                ..Default::default()
-            })? {
-                let _ = pool.push(alloc);
+        for (level, &buffer_count) in levels.into_iter().zip(buffer_counts) {
+            if buffer_count == 0 {
+                continue;
             }
 
-            Some(pool)
-        } else {
-            None
-        };
+            let pool = ArrayQueue::new(buffer_count);
 
-        let secondary_pool = if create_info.secondary_buffer_count > 0 {
-            let pool = ArrayQueue::new(create_info.secondary_buffer_count);
-
-            for alloc in inner.allocate_command_buffers(CommandBufferAllocateInfo {
-                level: CommandBufferLevel::Secondary,
-                command_buffer_count: create_info.secondary_buffer_count as u32,
+            for allocation in inner.allocate_command_buffers(CommandBufferAllocateInfo {
+                level,
+                command_buffer_count: buffer_count.try_into().unwrap(),
                 ..Default::default()
             })? {
-                let _ = pool.push(alloc);
+                let _ = pool.push(allocation);
             }
 
-            Some(pool)
-        } else {
-            None
-        };
+            buffer_reserve[level as usize] = Some(pool);
+        }
 
         Ok(Arc::new(Pool {
-            inner: ManuallyDrop::new(PoolInner {
-                inner,
-                primary_pool,
-                secondary_pool,
-                primary_allocations: Cell::new(0),
-                secondary_allocations: Cell::new(0),
-            }),
-            reserve,
+            inner: Arc::new(inner),
+            buffer_reserve,
+            pool_reserve: Arc::downgrade(pool_reserve),
         }))
-    }
-
-    fn allocate(
-        self: &Arc<Self>,
-        level: CommandBufferLevel,
-        command_buffer_count: u32,
-    ) -> Option<IntoIter<[StandardCommandBufferBuilderAlloc; 1]>> {
-        let command_buffer_count = command_buffer_count as usize;
-
-        match level {
-            CommandBufferLevel::Primary => {
-                if let Some(pool) = &self.inner.primary_pool {
-                    let count = self.inner.primary_allocations.get();
-                    if count + command_buffer_count <= pool.capacity() {
-                        let mut output = SmallVec::<[_; 1]>::with_capacity(command_buffer_count);
-                        for _ in 0..command_buffer_count {
-                            output.push(StandardCommandBufferBuilderAlloc {
-                                inner: StandardCommandBufferAlloc {
-                                    inner: ManuallyDrop::new(pool.pop().unwrap()),
-                                    pool: self.clone(),
-                                },
-                                _marker: PhantomData,
-                            });
-                        }
-
-                        self.inner
-                            .primary_allocations
-                            .set(count + command_buffer_count);
-
-                        Some(output.into_iter())
-                    } else if command_buffer_count > pool.capacity() {
-                        panic!(
-                            "command buffer count ({}) exceeds the capacity of the primary command \
-                            buffer pool ({})",
-                            command_buffer_count, pool.capacity(),
-                        );
-                    } else {
-                        None
-                    }
-                } else {
-                    panic!(
-                        "attempted to allocate a primary command buffer when the primary command \
-                        buffer pool was configured to be empty",
-                    );
-                }
-            }
-            CommandBufferLevel::Secondary => {
-                if let Some(pool) = &self.inner.secondary_pool {
-                    let count = self.inner.secondary_allocations.get();
-                    if count + command_buffer_count <= pool.capacity() {
-                        let mut output = SmallVec::<[_; 1]>::with_capacity(command_buffer_count);
-                        for _ in 0..command_buffer_count {
-                            output.push(StandardCommandBufferBuilderAlloc {
-                                inner: StandardCommandBufferAlloc {
-                                    inner: ManuallyDrop::new(pool.pop().unwrap()),
-                                    pool: self.clone(),
-                                },
-                                _marker: PhantomData,
-                            });
-                        }
-
-                        self.inner
-                            .secondary_allocations
-                            .set(count + command_buffer_count);
-
-                        Some(output.into_iter())
-                    } else if command_buffer_count > pool.capacity() {
-                        panic!(
-                            "command buffer count ({}) exceeds the capacity of the secondary \
-                            command buffer pool ({})",
-                            command_buffer_count,
-                            pool.capacity(),
-                        );
-                    } else {
-                        None
-                    }
-                } else {
-                    panic!(
-                        "attempted to allocate a secondary command buffer when the secondary \
-                        command buffer pool was configured to be empty",
-                    );
-                }
-            }
-        }
-    }
-}
-
-impl Drop for Pool {
-    fn drop(&mut self) {
-        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
-
-        if thread::panicking() {
-            return;
-        }
-
-        unsafe { inner.inner.reset(CommandPoolResetFlags::empty()) }.unwrap();
-        inner.primary_allocations.set(0);
-        inner.secondary_allocations.set(0);
-
-        // If there is not enough space in the reserve, we destroy the pool. The only way this can
-        // happen is if something is resource hogging, forcing new pools to be created such that
-        // the number exceeds `MAX_POOLS`, and then drops them all at once.
-        let _ = self.reserve.push(inner);
     }
 }
 
@@ -552,89 +553,6 @@ impl Default for StandardCommandBufferAllocatorCreateInfo {
     }
 }
 
-/// Command buffer allocated from a [`StandardCommandBufferAllocator`] that is currently being
-/// built.
-pub struct StandardCommandBufferBuilderAlloc {
-    // The only difference between a `StandardCommandBufferBuilder` and a
-    // `StandardCommandBufferAlloc` is that the former must not implement `Send` and `Sync`.
-    // Therefore we just share the structs.
-    inner: StandardCommandBufferAlloc,
-    // Unimplemented `Send` and `Sync` from the builder.
-    _marker: PhantomData<*const ()>,
-}
-
-unsafe impl CommandBufferBuilderAlloc for StandardCommandBufferBuilderAlloc {
-    type Alloc = StandardCommandBufferAlloc;
-
-    #[inline]
-    fn inner(&self) -> &CommandPoolAlloc {
-        self.inner.inner()
-    }
-
-    #[inline]
-    fn into_alloc(self) -> Self::Alloc {
-        self.inner
-    }
-
-    #[inline]
-    fn queue_family_index(&self) -> u32 {
-        self.inner.queue_family_index()
-    }
-}
-
-unsafe impl DeviceOwned for StandardCommandBufferBuilderAlloc {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-}
-
-/// Command buffer allocated from a [`StandardCommandBufferAllocator`].
-pub struct StandardCommandBufferAlloc {
-    // The actual command buffer. Extracted in the `Drop` implementation.
-    inner: ManuallyDrop<CommandPoolAlloc>,
-    // We hold a reference to the pool for our destructor.
-    pool: Arc<Pool>,
-}
-
-// It's fine to share `Pool` between threads because we never access the Vulkan command pool
-// concurrently. Same goes for the `Cell`s.
-unsafe impl Send for StandardCommandBufferAlloc {}
-unsafe impl Sync for StandardCommandBufferAlloc {}
-
-unsafe impl CommandBufferAlloc for StandardCommandBufferAlloc {
-    #[inline]
-    fn inner(&self) -> &CommandPoolAlloc {
-        &self.inner
-    }
-
-    #[inline]
-    fn queue_family_index(&self) -> u32 {
-        self.pool.inner.inner.queue_family_index()
-    }
-}
-
-unsafe impl DeviceOwned for StandardCommandBufferAlloc {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.pool.inner.inner.device()
-    }
-}
-
-impl Drop for StandardCommandBufferAlloc {
-    #[inline]
-    fn drop(&mut self) {
-        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
-        let pool = match inner.level() {
-            CommandBufferLevel::Primary => &self.pool.inner.primary_pool,
-            CommandBufferLevel::Secondary => &self.pool.inner.secondary_pool,
-        };
-        // This can't panic, because if an allocation from a particular kind of pool was made, then
-        // the pool must exist.
-        let _ = pool.as_ref().unwrap().push(inner);
-    }
-}
-
 /// Error that can be returned when resetting a [`CommandPool`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResetCommandPoolError {
@@ -648,7 +566,7 @@ pub enum ResetCommandPoolError {
 impl Error for ResetCommandPoolError {}
 
 impl Display for ResetCommandPoolError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::VulkanError(_) => write!(f, "a runtime error occurred"),
             Self::InUse => write!(f, "the command pool is still in use"),
@@ -665,46 +583,5 @@ impl From<VulkanError> for ResetCommandPoolError {
 impl From<ResetCommandPoolError> for Validated<ResetCommandPoolError> {
     fn from(err: ResetCommandPoolError) -> Self {
         Self::Error(err)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::VulkanObject;
-    use std::thread;
-
-    #[test]
-    fn threads_use_different_pools() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let allocator = StandardCommandBufferAllocator::new(device, Default::default());
-
-        let pool1 = allocator
-            .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
-            .unwrap()
-            .next()
-            .unwrap()
-            .into_alloc()
-            .pool
-            .inner
-            .inner
-            .handle();
-
-        thread::spawn(move || {
-            let pool2 = allocator
-                .allocate(queue.queue_family_index(), CommandBufferLevel::Primary, 1)
-                .unwrap()
-                .next()
-                .unwrap()
-                .into_alloc()
-                .pool
-                .inner
-                .inner
-                .handle();
-            assert_ne!(pool1, pool2);
-        })
-        .join()
-        .unwrap();
     }
 }

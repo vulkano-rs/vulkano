@@ -1,8 +1,5 @@
 use crate::{
-    command_buffer::{
-        allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
-    },
+    command_buffer::{sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
@@ -14,10 +11,7 @@ use std::ffi::CString;
 /// These commands all require the [`ext_debug_utils`] extension to be enabled on the instance.
 ///
 /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Opens a command buffer debug label region.
     pub fn begin_debug_utils_label(
         &mut self,
@@ -45,7 +39,7 @@ where
         self.add_command(
             "begin_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.begin_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -81,7 +75,7 @@ where
         self.add_command(
             "end_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.end_debug_utils_label_unchecked();
             },
         );
@@ -116,7 +110,7 @@ where
         self.add_command(
             "insert_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.insert_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -125,10 +119,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn begin_debug_utils_label(
         &mut self,
         label_info: &DebugUtilsLabel,
@@ -197,6 +189,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
 
@@ -243,6 +236,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn insert_debug_utils_label(
         &mut self,
         label_info: &DebugUtilsLabel,

@@ -1,8 +1,8 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator, auto::Resource, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand,
+        auto::Resource, sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder,
+        ResourceInCommand,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures},
@@ -15,10 +15,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{mem::size_of_val, sync::Arc};
 
 /// # Commands to fill resources with new data.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Clears a color image with a specific value.
     pub fn clear_color_image(
         &mut self,
@@ -77,7 +74,7 @@ where
                     )]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.clear_color_image_unchecked(&clear_info);
             },
         );
@@ -143,7 +140,7 @@ where
                     )]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.clear_depth_stencil_image_unchecked(&clear_info);
             },
         );
@@ -201,7 +198,7 @@ where
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.fill_buffer_unchecked(&dst_buffer, data);
             },
         );
@@ -267,7 +264,7 @@ where
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.update_buffer_unchecked(&dst_buffer, &data);
             },
         );
@@ -276,10 +273,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn clear_color_image(
         &mut self,
         clear_info: &ClearColorImageInfo,
@@ -351,6 +346,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn clear_depth_stencil_image(
         &mut self,
         clear_info: &ClearDepthStencilImageInfo,
@@ -422,6 +418,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn fill_buffer(
         &mut self,
         dst_buffer: &Subbuffer<[u32]>,
@@ -516,6 +513,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn update_buffer<D>(
         &mut self,
         dst_buffer: &Subbuffer<D>,

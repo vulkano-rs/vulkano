@@ -1,9 +1,6 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, IndexBuffer, Subbuffer},
-    command_buffer::{
-        allocator::CommandBufferAllocator, auto::SetOrPush, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
-    },
+    command_buffer::{auto::SetOrPush, sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder},
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
         DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
@@ -24,10 +21,7 @@ use std::{cmp::min, ffi::c_void, mem::size_of, sync::Arc};
 /// # Commands to bind or push state for pipeline execution commands.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Binds descriptor sets for future dispatch or draw calls.
     pub fn bind_descriptor_sets(
         &mut self,
@@ -101,7 +95,7 @@ where
         self.add_command(
             "bind_descriptor_sets",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.bind_descriptor_sets_unchecked(
                     pipeline_bind_point,
                     &pipeline_layout,
@@ -144,7 +138,7 @@ where
         self.add_command(
             "bind_index_buffer",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.bind_index_buffer_unchecked(&index_buffer);
             },
         );
@@ -180,7 +174,7 @@ where
         self.add_command(
             "bind_pipeline_compute",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.bind_pipeline_compute_unchecked(&pipeline);
             },
         );
@@ -223,7 +217,7 @@ where
         self.add_command(
             "bind_pipeline_graphics",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.bind_pipeline_graphics_unchecked(&pipeline);
             },
         );
@@ -271,7 +265,7 @@ where
         self.add_command(
             "bind_vertex_buffers",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.bind_vertex_buffers_unchecked(first_binding, &vertex_buffers);
             },
         );
@@ -335,7 +329,7 @@ where
         self.add_command(
             "push_constants",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.push_constants_unchecked(&pipeline_layout, offset, &push_constants);
             },
         );
@@ -420,7 +414,7 @@ where
         self.add_command(
             "push_descriptor_set",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.push_descriptor_set_unchecked(
                     pipeline_bind_point,
                     &pipeline_layout,
@@ -434,10 +428,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn bind_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
@@ -707,6 +699,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn bind_index_buffer(
         &mut self,
         index_buffer: &IndexBuffer,
@@ -786,6 +779,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn bind_pipeline_compute(
         &mut self,
         pipeline: &ComputePipeline,
@@ -834,6 +828,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn bind_pipeline_graphics(
         &mut self,
         pipeline: &GraphicsPipeline,
@@ -882,6 +877,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn bind_vertex_buffers(
         &mut self,
         first_binding: u32,
@@ -974,6 +970,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn push_constants<Pc>(
         &mut self,
         pipeline_layout: &PipelineLayout,
@@ -1131,6 +1128,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn push_descriptor_set(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,

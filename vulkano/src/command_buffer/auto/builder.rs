@@ -5,7 +5,7 @@ use super::{
 use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
     command_buffer::{
-        allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
+        allocator::CommandBufferAllocator,
         sys::{CommandBufferBeginInfo, UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferImageRangeUsage,
         CommandBufferImageUsage, CommandBufferInheritanceInfo,
@@ -54,31 +54,24 @@ use std::{
 /// the `Send` and `Sync` traits. If you use this allocator, then the `AutoCommandBufferBuilder`
 /// will not implement `Send` and `Sync` either. Once a command buffer is built, however, it *does*
 /// implement `Send` and `Sync`.
-pub struct AutoCommandBufferBuilder<L, A = StandardCommandBufferAllocator>
-where
-    A: CommandBufferAllocator,
-{
-    pub(in crate::command_buffer) inner: UnsafeCommandBufferBuilder<A>,
+pub struct AutoCommandBufferBuilder<L> {
+    pub(in crate::command_buffer) inner: UnsafeCommandBufferBuilder,
     commands: Vec<(
         CommandInfo,
-        Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>,
+        Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>,
     )>,
     pub(in crate::command_buffer) builder_state: CommandBufferBuilderState,
     _data: PhantomData<L>,
 }
 
-impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, A>
-where
-    A: CommandBufferAllocator,
-{
+impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
     /// Starts recording a primary command buffer.
     #[inline]
     pub fn primary(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, Validated<VulkanError>>
-    {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
             AutoCommandBufferBuilder::begin(
                 allocator,
@@ -96,10 +89,10 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn primary_unchecked(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>, VulkanError> {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, VulkanError> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -113,19 +106,15 @@ where
     }
 }
 
-impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, A>
-where
-    A: CommandBufferAllocator,
-{
+impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
     /// Starts recording a secondary command buffer.
     #[inline]
     pub fn secondary(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, Validated<VulkanError>>
-    {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
             AutoCommandBufferBuilder::begin(
                 allocator,
@@ -143,11 +132,11 @@ where
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn secondary_unchecked(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>, VulkanError> {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, VulkanError> {
         AutoCommandBufferBuilder::begin_unchecked(
             allocator,
             queue_family_index,
@@ -161,21 +150,18 @@ where
     }
 }
 
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Actual constructor. Private.
     ///
     /// # Safety
     ///
     /// `begin_info.inheritance_info` must match `level`.
     unsafe fn begin(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<AutoCommandBufferBuilder<L, A>, Validated<VulkanError>> {
+    ) -> Result<AutoCommandBufferBuilder<L>, Validated<VulkanError>> {
         Self::validate_begin(allocator.device(), queue_family_index, level, &begin_info)?;
 
         unsafe {
@@ -203,7 +189,7 @@ where
 
     #[inline]
     unsafe fn begin_unchecked(
-        allocator: &A,
+        allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
@@ -244,8 +230,8 @@ where
         mut self,
     ) -> Result<
         (
-            UnsafeCommandBuffer<A>,
-            Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>>,
+            UnsafeCommandBuffer,
+            Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>>,
             CommandBufferResourcesUsage,
             SecondaryCommandBufferResourcesUsage,
         ),
@@ -327,12 +313,9 @@ where
     }
 }
 
-impl<A> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<A>, A>
-where
-    A: CommandBufferAllocator,
-{
+impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer<A>>, Validated<VulkanError>> {
+    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
                 problem: "a render pass instance is still active".into(),
@@ -365,12 +348,9 @@ where
     }
 }
 
-impl<A> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<A>, A>
-where
-    A: CommandBufferAllocator,
-{
+impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer<A>>, Validated<VulkanError>> {
+    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         if !self.builder_state.queries.is_empty() {
             return Err(Box::new(ValidationError {
                 problem: "a query is still active".into(),
@@ -401,15 +381,12 @@ where
     }
 }
 
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     pub(in crate::command_buffer) fn add_command(
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -425,7 +402,7 @@ where
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -441,7 +418,7 @@ where
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static,
+        record_func: impl Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -454,10 +431,7 @@ where
     }
 }
 
-unsafe impl<L, A> DeviceOwned for AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl<L> DeviceOwned for AutoCommandBufferBuilder<L> {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }

@@ -2,7 +2,6 @@ use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator,
         auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
@@ -44,10 +43,7 @@ macro_rules! vuids {
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using
@@ -105,7 +101,7 @@ where
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.dispatch_unchecked(group_counts);
             },
         );
@@ -181,7 +177,7 @@ where
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.dispatch_indirect_unchecked(&indirect_buffer);
             },
         );
@@ -358,7 +354,7 @@ where
         self.add_command(
             "draw",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
             },
         );
@@ -460,7 +456,7 @@ where
         self.add_command(
             "draw_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -675,7 +671,7 @@ where
         self.add_command(
             "draw_indexed",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.draw_indexed_unchecked(
                     index_count,
                     instance_count,
@@ -797,7 +793,7 @@ where
         self.add_command(
             "draw_indexed_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -2710,10 +2706,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn dispatch(
         &mut self,
         group_counts: [u32; 3],
@@ -2783,6 +2777,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn dispatch_indirect(
         &mut self,
         indirect_buffer: &Subbuffer<[DispatchIndirectCommand]>,
@@ -2857,6 +2852,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn draw(
         &mut self,
         vertex_count: u32,
@@ -2913,6 +2909,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn draw_indirect(
         &mut self,
         indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
@@ -3047,6 +3044,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn draw_indexed(
         &mut self,
         index_count: u32,
@@ -3119,6 +3117,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn draw_indexed_indirect(
         &mut self,
         indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
