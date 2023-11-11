@@ -276,7 +276,7 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
 
             // We have to make sure that we only reset the pool under this condition, because the
             // pool could still be in use by `VariableEntry`, in which case the count would be at
-            // last 2 (one for our reference and one in the `VariableEntry`), however there could
+            // least 2 (one for our reference and one in the `VariableEntry`), however there could
             // also be other references in other allocations, or the user could have created a
             // reference themself (which will most certainly cause a leak).
             if Arc::strong_count(&pool) == 1 {
