@@ -440,7 +440,7 @@ unsafe impl DeviceOwned for DescriptorPool {
 
 impl_id_counter!(DescriptorPool);
 
-/// Parameters to create a new `UnsafeDescriptorPool`.
+/// Parameters to create a new `DescriptorPool`.
 #[derive(Clone, Debug)]
 pub struct DescriptorPoolCreateInfo {
     /// Additional properties of the descriptor pool.
@@ -598,7 +598,7 @@ vulkan_bitflags! {
     ]), */
 }
 
-/// Parameters to allocate a new `UnsafeDescriptorSet` from an `UnsafeDescriptorPool`.
+/// Parameters to allocate a new `DescriptorPoolAlloc` from a `DescriptorPool`.
 #[derive(Clone, Debug)]
 pub struct DescriptorSetAllocateInfo {
     /// The descriptor set layout to create the set for.
