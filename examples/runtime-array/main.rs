@@ -6,8 +6,8 @@ use vulkano::{
         CopyBufferToImageInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, layout::DescriptorBindingFlags,
-        PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, layout::DescriptorBindingFlags, DescriptorSet,
+        WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
@@ -448,7 +448,7 @@ fn main() -> Result<(), impl Error> {
     };
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set = PersistentDescriptorSet::new_variable(
+    let set = DescriptorSet::new_variable(
         descriptor_set_allocator,
         layout.clone(),
         2,

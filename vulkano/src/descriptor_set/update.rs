@@ -1,6 +1,6 @@
 use super::{
     layout::{DescriptorSetLayout, DescriptorType},
-    sys::UnsafeDescriptorSet,
+    sys::RawDescriptorSet,
     DescriptorSet,
 };
 use crate::{
@@ -1581,7 +1581,7 @@ pub struct CopyDescriptorSet {
     /// The source descriptor set to copy from.
     ///
     /// There is no default value.
-    pub src_set: Arc<dyn DescriptorSet>,
+    pub src_set: Arc<DescriptorSet>,
 
     /// The binding number in the source descriptor set to copy from.
     ///
@@ -1612,7 +1612,7 @@ pub struct CopyDescriptorSet {
 impl CopyDescriptorSet {
     /// Returns a `CopyDescriptorSet` with the specified `src_set`.
     #[inline]
-    pub fn new(src_set: Arc<dyn DescriptorSet>) -> Self {
+    pub fn new(src_set: Arc<DescriptorSet>) -> Self {
         Self {
             src_set,
             src_binding: 0,
@@ -1624,10 +1624,7 @@ impl CopyDescriptorSet {
         }
     }
 
-    pub(crate) fn validate(
-        &self,
-        dst_set: &UnsafeDescriptorSet,
-    ) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(&self, dst_set: &RawDescriptorSet) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_set,
             src_binding,

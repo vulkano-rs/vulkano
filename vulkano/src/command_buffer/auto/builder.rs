@@ -39,7 +39,7 @@ use crate::{
     DeviceSize, Validated, ValidationError, VulkanError,
 };
 use ahash::HashMap;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry,
@@ -1730,10 +1730,10 @@ pub(in crate::command_buffer) enum SetOrPush {
 }
 
 impl SetOrPush {
-    pub(in crate::command_buffer) fn resources(&self) -> &DescriptorSetResources {
+    pub(in crate::command_buffer) fn resources(&self) -> SetOrPushResources<'_> {
         match self {
-            Self::Set(set) => set.as_ref().0.resources(),
-            Self::Push(resources) => resources,
+            Self::Set(set) => SetOrPushResources::Set(set.as_ref().0.resources()),
+            Self::Push(resources) => SetOrPushResources::Push(resources),
         }
     }
 
@@ -1742,6 +1742,22 @@ impl SetOrPush {
         match self {
             Self::Set(set) => set.as_ref().1,
             Self::Push(_) => &[],
+        }
+    }
+}
+
+pub(in crate::command_buffer) enum SetOrPushResources<'a> {
+    Set(RwLockReadGuard<'a, DescriptorSetResources>),
+    Push(&'a DescriptorSetResources),
+}
+
+impl std::ops::Deref for SetOrPushResources<'_> {
+    type Target = DescriptorSetResources;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Set(guard) => guard,
+            Self::Push(r) => r,
         }
     }
 }

@@ -15,7 +15,7 @@ use vulkano::{
         CopyBufferToImageInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -349,7 +349,7 @@ fn main() -> Result<(), impl Error> {
 
     // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the
     // layout.
-    let set = PersistentDescriptorSet::new(
+    let set = DescriptorSet::new(
         descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view(1, texture)],

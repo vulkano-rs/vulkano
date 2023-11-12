@@ -24,7 +24,7 @@ mod linux {
             CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
         },
         descriptor_set::{
-            allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+            allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
         },
         device::{
             physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -278,7 +278,7 @@ mod linux {
 
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
-        let set = PersistentDescriptorSet::new(
+        let set = DescriptorSet::new(
             descriptor_set_allocator,
             layout.clone(),
             [

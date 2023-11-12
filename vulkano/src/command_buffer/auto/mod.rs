@@ -326,7 +326,7 @@ mod tests {
                 DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
                 DescriptorType,
             },
-            PersistentDescriptorSet, WriteDescriptorSet,
+            DescriptorSet, WriteDescriptorSet,
         },
         device::{Device, DeviceCreateInfo, QueueCreateInfo},
         image::sampler::{Sampler, SamplerCreateInfo},
@@ -785,7 +785,7 @@ mod tests {
                 Default::default(),
             ));
 
-            let set = PersistentDescriptorSet::new(
+            let set = DescriptorSet::new(
                 ds_allocator.clone(),
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
@@ -856,8 +856,8 @@ mod tests {
             )
             .unwrap();
 
-            let set = PersistentDescriptorSet::new(
-                ds_allocator.clone(),
+            let set = DescriptorSet::new(
+                ds_allocator,
                 set_layout,
                 [WriteDescriptorSet::sampler(
                     0,

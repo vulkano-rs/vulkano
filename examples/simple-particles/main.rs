@@ -11,7 +11,7 @@ use vulkano::{
         CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -432,7 +432,7 @@ fn main() -> Result<(), impl Error> {
 
     // Create a new descriptor set for binding vertices as a storage buffer.
     use vulkano::pipeline::Pipeline; // Required to access the `layout` method of pipeline.
-    let descriptor_set = PersistentDescriptorSet::new(
+    let descriptor_set = DescriptorSet::new(
         descriptor_set_allocator.clone(),
         compute_pipeline
             .layout()
