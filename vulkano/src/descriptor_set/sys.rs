@@ -21,27 +21,27 @@ use std::{
     sync::Arc,
 };
 
-/// Low-level descriptor set.
+/// A raw descriptor set corresponding directly to a `VkDescriptorSet`.
 ///
-/// This descriptor set does not keep track of synchronization,
-/// nor does it store any information on what resources have been written to each descriptor.
+/// This descriptor set does not keep track of synchronization, nor does it store any information
+/// on what resources have been written to each descriptor.
 #[derive(Debug)]
-pub struct UnsafeDescriptorSet {
+pub struct RawDescriptorSet {
     allocation: ManuallyDrop<DescriptorSetAlloc>,
     allocator: Arc<dyn DescriptorSetAllocator>,
 }
 
-impl UnsafeDescriptorSet {
+impl RawDescriptorSet {
     /// Allocates a new descriptor set and returns it.
     #[inline]
     pub fn new(
         allocator: Arc<dyn DescriptorSetAllocator>,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<UnsafeDescriptorSet, Validated<VulkanError>> {
+    ) -> Result<RawDescriptorSet, Validated<VulkanError>> {
         let allocation = allocator.allocate(layout, variable_descriptor_count)?;
 
-        Ok(UnsafeDescriptorSet {
+        Ok(RawDescriptorSet {
             allocation: ManuallyDrop::new(allocation),
             allocator,
         })
@@ -207,7 +207,7 @@ impl UnsafeDescriptorSet {
     }
 }
 
-impl Drop for UnsafeDescriptorSet {
+impl Drop for RawDescriptorSet {
     #[inline]
     fn drop(&mut self) {
         let allocation = unsafe { ManuallyDrop::take(&mut self.allocation) };
@@ -215,7 +215,7 @@ impl Drop for UnsafeDescriptorSet {
     }
 }
 
-unsafe impl VulkanObject for UnsafeDescriptorSet {
+unsafe impl VulkanObject for RawDescriptorSet {
     type Handle = ash::vk::DescriptorSet;
 
     #[inline]
@@ -224,23 +224,23 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeDescriptorSet {
+unsafe impl DeviceOwned for RawDescriptorSet {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.allocation.inner.device()
     }
 }
 
-impl PartialEq for UnsafeDescriptorSet {
+impl PartialEq for RawDescriptorSet {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.allocation.inner == other.allocation.inner
     }
 }
 
-impl Eq for UnsafeDescriptorSet {}
+impl Eq for RawDescriptorSet {}
 
-impl Hash for UnsafeDescriptorSet {
+impl Hash for RawDescriptorSet {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.allocation.inner.hash(state);

@@ -1,7 +1,7 @@
 use crate::{
     descriptor_set::{
         layout::{DescriptorSetLayout, DescriptorSetLayoutCreateFlags, DescriptorType},
-        sys::UnsafeDescriptorSet,
+        sys::RawDescriptorSet,
     },
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
@@ -345,7 +345,7 @@ impl DescriptorPool {
     #[inline]
     pub unsafe fn free_descriptor_sets(
         &self,
-        descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
+        descriptor_sets: impl IntoIterator<Item = RawDescriptorSet>,
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_free_descriptor_sets()?;
 
@@ -371,7 +371,7 @@ impl DescriptorPool {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn free_descriptor_sets_unchecked(
         &self,
-        descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
+        descriptor_sets: impl IntoIterator<Item = RawDescriptorSet>,
     ) -> Result<(), VulkanError> {
         let sets: SmallVec<[_; 8]> = descriptor_sets.into_iter().map(|s| s.handle()).collect();
         if !sets.is_empty() {

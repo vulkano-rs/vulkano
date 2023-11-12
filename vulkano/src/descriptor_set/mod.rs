@@ -48,7 +48,7 @@
 //!   be used to allocate and free individual descriptor sets. This is represented with the
 //!   [`DescriptorPool`] type in vulkano.
 //! - A `VkDescriptorSet` contains the bindings to resources and is allocated from a pool. This is
-//!   represented with the [`UnsafeDescriptorSet`] type in vulkano.
+//!   represented with the [`RawDescriptorSet`] type in vulkano.
 //!
 //! In addition to this, vulkano defines the following:
 //!
@@ -58,13 +58,13 @@
 //!   descriptor pools.
 //! - The [`StandardDescriptorSetAllocator`] type is a default implementation of the
 //!   [`DescriptorSetAllocator`] trait.
-//! - The [`DescriptorSet`] type wraps around an `UnsafeDescriptorSet` a safe way. A Vulkan
-//!   descriptor set is inherently unsafe, so we need safe wrappers around them.
+//! - The [`DescriptorSet`] type wraps around an `RawDescriptorSet` a safe way. A Vulkan descriptor
+//!   set is inherently unsafe, so we need safe wrappers around them.
 //! - The [`DescriptorSetsCollection`] trait is implemented on collections of descriptor sets. It
 //!   is what you pass to the bind function.
 //!
 //! [`DescriptorPool`]: pool::DescriptorPool
-//! [`UnsafeDescriptorSet`]: sys::UnsafeDescriptorSet
+//! [`RawDescriptorSet`]: sys::RawDescriptorSet
 //! [`DescriptorSetAllocator`]: allocator::DescriptorSetAllocator
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
@@ -73,7 +73,7 @@ use self::{
     allocator::DescriptorSetAllocator,
     layout::DescriptorSetLayout,
     pool::{DescriptorPool, DescriptorPoolAlloc},
-    sys::UnsafeDescriptorSet,
+    sys::RawDescriptorSet,
 };
 pub use self::{
     collection::DescriptorSetsCollection,
@@ -112,7 +112,7 @@ mod update;
 /// Descriptor sets can be bound when recording a command buffer.
 #[derive(Debug)]
 pub struct DescriptorSet {
-    inner: UnsafeDescriptorSet,
+    inner: RawDescriptorSet,
     resources: RwLock<DescriptorSetResources>,
 }
 
@@ -136,7 +136,7 @@ impl DescriptorSet {
         descriptor_copies: impl IntoIterator<Item = CopyDescriptorSet>,
     ) -> Result<Arc<DescriptorSet>, Validated<VulkanError>> {
         let mut set = DescriptorSet {
-            inner: UnsafeDescriptorSet::new(allocator, &layout, variable_descriptor_count)?,
+            inner: RawDescriptorSet::new(allocator, &layout, variable_descriptor_count)?,
             resources: RwLock::new(DescriptorSetResources::new(
                 &layout,
                 variable_descriptor_count,
@@ -271,7 +271,7 @@ impl DescriptorSet {
     }
 
     unsafe fn update_inner(
-        inner: &UnsafeDescriptorSet,
+        inner: &RawDescriptorSet,
         resources: &mut DescriptorSetResources,
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],

@@ -1,6 +1,6 @@
 use super::{
     layout::{DescriptorSetLayout, DescriptorType},
-    sys::UnsafeDescriptorSet,
+    sys::RawDescriptorSet,
     DescriptorSet,
 };
 use crate::{
@@ -1624,10 +1624,7 @@ impl CopyDescriptorSet {
         }
     }
 
-    pub(crate) fn validate(
-        &self,
-        dst_set: &UnsafeDescriptorSet,
-    ) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(&self, dst_set: &RawDescriptorSet) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_set,
             src_binding,
