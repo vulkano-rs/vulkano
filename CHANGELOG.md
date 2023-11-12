@@ -20,7 +20,9 @@ Changes to `Surface`:
 - `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
 
 Changes to descriptor sets:
-- `PersistentDescriptorSet` now takes an `Arc<dyn DescriptorSetAllocator>` on construction, the type parameter for the descriptor set allocator was removed.
+- There is now only the single type `DescriptorSet` to represent descriptor sets. The `DescriptorSet` trait and `PersistentDescriptorSet` type were removed.
+- Renamed `UnsafeDescriptorSet` to `RawDescriptorSet`.
+- `DescriptorSet` now takes an `Arc<dyn DescriptorSetAllocator>` on construction, the type parameter for the descriptor set allocator was removed.
 
 Changes to descriptor set allocation:
 - `DescriptorSetAllocator` no longer has an `Alloc` associated type in order to make the trait object-safe.
@@ -31,6 +33,7 @@ Changes to descriptor set allocation:
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
 - Support for the `khr_timeline_semaphore` extension.
+- Ability to update existing descriptor sets.
 
 ### Bugs fixed
 
