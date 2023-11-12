@@ -19,6 +19,14 @@ Changes to `Surface`:
 - `Surface::required_extensions` now returns a result.
 - `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
 
+Changes to descriptor sets:
+- `PersistentDescriptorSet` now takes an `Arc<dyn DescriptorSetAllocator>` on construction, the type parameter for the descriptor set allocator was removed.
+
+Changes to descriptor set allocation:
+- `DescriptorSetAllocator` no longer has an `Alloc` associated type in order to make the trait object-safe.
+- There is now only the single type `DescriptorSetAlloc` to represent allocated descriptor sets. The `DescriptorSetAlloc` trait and `StandardDescriptorSetAlloc` type were removed.
+- `DescriptorSetAllocator` has a new required method `deallocate`.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
