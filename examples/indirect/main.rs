@@ -361,8 +361,10 @@ fn main() -> Result<(), impl Error> {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
@@ -453,7 +455,7 @@ fn main() -> Result<(), impl Error> {
                 // Pass the two buffers to the compute shader.
                 let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
                 let cs_desciptor_set = PersistentDescriptorSet::new(
-                    &descriptor_set_allocator,
+                    descriptor_set_allocator.clone(),
                     layout.clone(),
                     [
                         WriteDescriptorSet::buffer(0, vertices.clone()),

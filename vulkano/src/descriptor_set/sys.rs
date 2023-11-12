@@ -1,7 +1,7 @@
 //! Low-level descriptor set.
 
 use super::{
-    allocator::{DescriptorSetAlloc, DescriptorSetAllocator, StandardDescriptorSetAlloc},
+    allocator::{DescriptorSetAlloc, DescriptorSetAllocator},
     pool::DescriptorPool,
     CopyDescriptorSet,
 };
@@ -14,60 +14,61 @@ use crate::{
     Validated, ValidationError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{fmt::Debug, hash::Hash, sync::Arc};
+use std::{
+    fmt::Debug,
+    hash::{Hash, Hasher},
+    mem::ManuallyDrop,
+    sync::Arc,
+};
 
 /// Low-level descriptor set.
 ///
 /// This descriptor set does not keep track of synchronization,
 /// nor does it store any information on what resources have been written to each descriptor.
 #[derive(Debug)]
-pub struct UnsafeDescriptorSet<P = StandardDescriptorSetAlloc> {
-    alloc: P,
+pub struct UnsafeDescriptorSet {
+    allocation: ManuallyDrop<DescriptorSetAlloc>,
+    allocator: Arc<dyn DescriptorSetAllocator>,
 }
 
 impl UnsafeDescriptorSet {
     /// Allocates a new descriptor set and returns it.
     #[inline]
-    pub fn new<A>(
-        allocator: &A,
+    pub fn new(
+        allocator: Arc<dyn DescriptorSetAllocator>,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<UnsafeDescriptorSet<A::Alloc>, Validated<VulkanError>>
-    where
-        A: DescriptorSetAllocator + ?Sized,
-    {
+    ) -> Result<UnsafeDescriptorSet, Validated<VulkanError>> {
+        let allocation = allocator.allocate(layout, variable_descriptor_count)?;
+
         Ok(UnsafeDescriptorSet {
-            alloc: allocator.allocate(layout, variable_descriptor_count)?,
+            allocation: ManuallyDrop::new(allocation),
+            allocator,
         })
     }
-}
 
-impl<P> UnsafeDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
     /// Returns the allocation of this descriptor set.
     #[inline]
-    pub fn alloc(&self) -> &P {
-        &self.alloc
+    pub fn alloc(&self) -> &DescriptorSetAlloc {
+        &self.allocation
     }
 
     /// Returns the descriptor pool that the descriptor set was allocated from.
     #[inline]
     pub fn pool(&self) -> &DescriptorPool {
-        self.alloc.pool()
+        &self.allocation.pool
     }
 
     /// Returns the layout of this descriptor set.
     #[inline]
     pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
-        self.alloc.inner().layout()
+        self.allocation.inner.layout()
     }
 
     /// Returns the variable descriptor count that this descriptor set was allocated with.
     #[inline]
     pub fn variable_descriptor_count(&self) -> u32 {
-        self.alloc.inner().variable_descriptor_count()
+        self.allocation.inner.variable_descriptor_count()
     }
 
     /// Updates the descriptor set with new values.
@@ -205,46 +206,42 @@ where
     }
 }
 
-unsafe impl<P> VulkanObject for UnsafeDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+impl Drop for UnsafeDescriptorSet {
+    #[inline]
+    fn drop(&mut self) {
+        let allocation = unsafe { ManuallyDrop::take(&mut self.allocation) };
+        unsafe { self.allocator.deallocate(allocation) };
+    }
+}
+
+unsafe impl VulkanObject for UnsafeDescriptorSet {
     type Handle = ash::vk::DescriptorSet;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
-        self.alloc.inner().handle()
+        self.allocation.inner.handle()
     }
 }
 
-unsafe impl<P> DeviceOwned for UnsafeDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+unsafe impl DeviceOwned for UnsafeDescriptorSet {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.alloc.inner().device()
+        self.allocation.inner.device()
     }
 }
 
-impl<P> PartialEq for UnsafeDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+impl PartialEq for UnsafeDescriptorSet {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.alloc.inner() == other.alloc.inner()
+        self.allocation.inner == other.allocation.inner
     }
 }
 
-impl<P> Eq for UnsafeDescriptorSet<P> where P: DescriptorSetAlloc {}
+impl Eq for UnsafeDescriptorSet {}
 
-impl<P> Hash for UnsafeDescriptorSet<P>
-where
-    P: DescriptorSetAlloc,
-{
+impl Hash for UnsafeDescriptorSet {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.alloc.inner().hash(state);
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.allocation.inner.hash(state);
     }
 }

@@ -1,5 +1,4 @@
 use super::{
-    allocator::DescriptorSetAlloc,
     layout::{DescriptorSetLayout, DescriptorType},
     sys::UnsafeDescriptorSet,
     DescriptorSet,
@@ -1625,13 +1624,10 @@ impl CopyDescriptorSet {
         }
     }
 
-    pub(crate) fn validate<P>(
+    pub(crate) fn validate(
         &self,
-        dst_set: &UnsafeDescriptorSet<P>,
-    ) -> Result<(), Box<ValidationError>>
-    where
-        P: DescriptorSetAlloc,
-    {
+        dst_set: &UnsafeDescriptorSet,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref src_set,
             src_binding,

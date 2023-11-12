@@ -476,8 +476,10 @@ fn main() -> Result<(), impl Error> {
     };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // A byproduct of always using the same set of uniform buffers is that we can also create one
     // descriptor set for each, reusing them in the same way as the buffers.
@@ -485,7 +487,7 @@ fn main() -> Result<(), impl Error> {
         .iter()
         .map(|buffer| {
             PersistentDescriptorSet::new(
-                &descriptor_set_allocator,
+                descriptor_set_allocator.clone(),
                 pipeline.layout().set_layouts()[0].clone(),
                 [WriteDescriptorSet::buffer(0, buffer.clone())],
                 [],
@@ -498,7 +500,7 @@ fn main() -> Result<(), impl Error> {
     let sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear()).unwrap();
     let sampler_sets = textures.map(|texture| {
         PersistentDescriptorSet::new(
-            &descriptor_set_allocator,
+            descriptor_set_allocator.clone(),
             pipeline.layout().set_layouts()[1].clone(),
             [
                 WriteDescriptorSet::sampler(0, sampler.clone()),

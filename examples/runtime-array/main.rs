@@ -261,8 +261,10 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let mut uploads = AutoCommandBufferBuilder::primary(
@@ -447,7 +449,7 @@ fn main() -> Result<(), impl Error> {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new_variable(
-        &descriptor_set_allocator,
+        descriptor_set_allocator,
         layout.clone(),
         2,
         [

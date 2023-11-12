@@ -207,8 +207,10 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
-    let descriptor_set_allocator =
-        StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let mut uploads = AutoCommandBufferBuilder::primary(
@@ -348,7 +350,7 @@ fn main() -> Result<(), impl Error> {
     // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the
     // layout.
     let set = PersistentDescriptorSet::new(
-        &descriptor_set_allocator,
+        descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::image_view(1, texture)],
         [],

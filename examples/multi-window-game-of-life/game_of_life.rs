@@ -174,7 +174,7 @@ impl GameOfLifeComputePipeline {
         let pipeline_layout = self.compute_life_pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
+            self.descriptor_set_allocator.clone(),
             desc_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.image.clone()),
