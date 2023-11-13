@@ -8,7 +8,8 @@ use crate::{
     shader::{
         spirv::{Decoration, Dim, ExecutionModel, Id, Instruction, Spirv, StorageClass},
         DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, NumericType, ShaderInterface,
-        ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStage, SpecializationConstant,
+        ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStage, ShaderStages,
+        SpecializationConstant,
     },
     DeviceSize,
 };
@@ -41,7 +42,12 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)>
             stage,
             function_id,
         );
-        let push_constant_requirements = push_constant_requirements(spirv, stage);
+        let push_constant_requirements = push_constant_requirements(
+            &interface_variables.push_constant,
+            spirv,
+            stage,
+            function_id,
+        );
         let input_interface = shader_interface(
             spirv,
             interface,
@@ -77,6 +83,7 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)>
 #[derive(Clone, Debug, Default)]
 struct InterfaceVariables {
     descriptor_binding: HashMap<Id, DescriptorBindingVariable>,
+    push_constant: HashMap<Id, PushConstantRange>,
 }
 
 // See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface.
@@ -93,7 +100,7 @@ fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
     for instruction in spirv.iter_global() {
         if let Instruction::Variable {
             result_id,
-            result_type_id: _,
+            result_type_id,
             storage_class,
             ..
         } = instruction
@@ -105,6 +112,12 @@ fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
                     variables.descriptor_binding.insert(
                         *result_id,
                         descriptor_binding_requirements_of(spirv, *result_id),
+                    );
+                }
+                StorageClass::PushConstant => {
+                    variables.push_constant.insert(
+                        *result_id,
+                        push_constant_requirements_of(spirv, *result_type_id),
                     );
                 }
                 _ => (),
@@ -841,48 +854,110 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
     }
 }
 
+fn push_constant_requirements_of(spirv: &Spirv, pointer_type_id: Id) -> PushConstantRange {
+    let struct_type_id = match *spirv.id(pointer_type_id).instruction() {
+        Instruction::TypePointer {
+            ty,
+            storage_class: StorageClass::PushConstant,
+            ..
+        } => ty,
+        _ => unreachable!(),
+    };
+
+    assert!(
+        matches!(
+            spirv.id(struct_type_id).instruction(),
+            Instruction::TypeStruct { .. }
+        ),
+        "VUID-StandaloneSpirv-PushConstant-06808"
+    );
+    let start = offset_of_struct(spirv, struct_type_id);
+    let end =
+        size_of_type(spirv, struct_type_id).expect("Found runtime-sized push constants") as u32;
+
+    PushConstantRange {
+        stages: ShaderStages::default(),
+        offset: start,
+        size: end - start,
+    }
+}
+
 /// Extracts the `PushConstantRange` from `spirv`.
-fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushConstantRange> {
-    spirv
-        .iter_global()
-        // TODO: doesn't work with more than one entry point in the shader.
-        // We should really use the interface variables in Instruction::EntryPoint,
-        // but before SPIR-V 1.4 these do not contain push constants.
-        .find_map(|instruction| match *instruction {
-            Instruction::Variable {
-                result_type_id,
-                storage_class: StorageClass::PushConstant,
-                ..
-            } => Some(result_type_id),
-            _ => None,
-        })
-        .map(|pointer_type_id| {
-            let struct_type_id = match *spirv.id(pointer_type_id).instruction() {
-                Instruction::TypePointer {
-                    ty,
-                    storage_class: StorageClass::PushConstant,
+fn push_constant_requirements(
+    global: &HashMap<Id, PushConstantRange>,
+    spirv: &Spirv,
+    stage: ShaderStage,
+    function_id: Id,
+) -> Option<PushConstantRange> {
+    fn find_variables_used(
+        function_id: Id,
+        global: &HashMap<Id, PushConstantRange>,
+        spirv: &Spirv,
+        visited_fns: &mut HashSet<Id>,
+        variables: &mut HashSet<Id>,
+    ) {
+        visited_fns.insert(function_id);
+        let function_info = spirv.function(function_id);
+        for instruction in function_info.iter_instructions() {
+            match instruction {
+                Instruction::FunctionCall {
+                    function,
+                    arguments,
                     ..
-                } => ty,
-                _ => unreachable!(),
-            };
-
-            assert!(
-                matches!(
-                    spirv.id(struct_type_id).instruction(),
-                    Instruction::TypeStruct { .. }
-                ),
-                "VUID-StandaloneSpirv-PushConstant-06808"
-            );
-            let start = offset_of_struct(spirv, struct_type_id);
-            let end = size_of_type(spirv, struct_type_id)
-                .expect("Found runtime-sized push constants") as u32;
-
-            PushConstantRange {
-                stages: stage.into(),
-                offset: start,
-                size: end - start,
+                } => {
+                    for arg in arguments {
+                        if global.contains_key(arg) {
+                            variables.insert(*arg);
+                        }
+                    }
+                    if !visited_fns.contains(function) {
+                        find_variables_used(*function, global, spirv, visited_fns, variables);
+                    }
+                }
+                Instruction::AccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::InBoundsAccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::PtrAccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::InBoundsPtrAccessChain {
+                    base: variable_id, ..
+                }
+                | Instruction::Load {
+                    pointer: variable_id,
+                    ..
+                }
+                | Instruction::CopyMemory {
+                    source: variable_id,
+                    ..
+                }
+                | Instruction::CopyObject {
+                    result_id: variable_id,
+                    ..
+                } => {
+                    if global.contains_key(variable_id) {
+                        variables.insert(*variable_id);
+                    }
+                }
+                _ => (),
             }
-        })
+        }
+    }
+
+    let mut visited_fns = HashSet::default();
+    let mut variables = HashSet::default();
+    find_variables_used(function_id, global, spirv, &mut visited_fns, &mut variables);
+    assert!(
+        variables.len() <= 1,
+        "VUID-StandaloneSpirv-OpEntryPoint-06674"
+    );
+    let variable_id = variables.into_iter().next()?;
+    let mut push_constant_range = global.get(&variable_id).copied().unwrap();
+    push_constant_range.stages = stage.into();
+    Some(push_constant_range)
 }
 
 /// Extracts the `SpecializationConstant` map from `spirv`.
