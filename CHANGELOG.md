@@ -19,15 +19,27 @@ Changes to `Surface`:
 - `Surface::required_extensions` now returns a result.
 - `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
 
+Changes to descriptor sets:
+- There is now only the single type `DescriptorSet` to represent descriptor sets. The `DescriptorSet` trait and `PersistentDescriptorSet` type were removed.
+- Renamed `UnsafeDescriptorSet` to `RawDescriptorSet`.
+- `DescriptorSet` now takes an `Arc<dyn DescriptorSetAllocator>` on construction, the type parameter for the descriptor set allocator was removed.
+
+Changes to descriptor set allocation:
+- `DescriptorSetAllocator` no longer has an `Alloc` associated type in order to make the trait object-safe.
+- There is now only the single type `DescriptorSetAlloc` to represent allocated descriptor sets. The `DescriptorSetAlloc` trait and `StandardDescriptorSetAlloc` type were removed.
+- `DescriptorSetAllocator` has a new required method `deallocate`.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
 - Support for the `khr_timeline_semaphore` extension.
+- Ability to update existing descriptor sets.
 
 ### Bugs fixed
 
 - Incorrect assert condition in `PipelineLayout::is_compatible_with`.
 - `evaluate_spec_constant_op` panics with UConvert, SConvert, and FConvert.
+- [#2398](https://github.com/vulkano-rs/vulkano/issues/2398) Push constant reflection sometimes uses the wrong types.
 
 # Version 0.34.1 (2023-10-29)
 

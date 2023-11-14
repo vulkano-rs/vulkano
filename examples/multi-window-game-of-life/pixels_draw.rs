@@ -7,7 +7,7 @@ use vulkano::{
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     image::{
@@ -168,7 +168,7 @@ impl PixelsDrawPipeline {
         }
     }
 
-    fn create_image_sampler_nearest(&self, image: Arc<ImageView>) -> Arc<PersistentDescriptorSet> {
+    fn create_image_sampler_nearest(&self, image: Arc<ImageView>) -> Arc<DescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let sampler = Sampler::new(
             self.gfx_queue.device().clone(),
@@ -182,8 +182,8 @@ impl PixelsDrawPipeline {
         )
         .unwrap();
 
-        PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
+        DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
             layout.clone(),
             [
                 WriteDescriptorSet::sampler(0, sampler),

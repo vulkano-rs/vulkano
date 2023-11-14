@@ -845,28 +845,43 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushConstantRange> {
     spirv
         .iter_global()
+        // TODO: doesn't work with more than one entry point in the shader.
+        // We should really use the interface variables in Instruction::EntryPoint,
+        // but before SPIR-V 1.4 these do not contain push constants.
         .find_map(|instruction| match *instruction {
-            Instruction::TypePointer {
-                ty,
+            Instruction::Variable {
+                result_type_id,
                 storage_class: StorageClass::PushConstant,
                 ..
-            } => {
-                let id_info = spirv.id(ty);
-                assert!(matches!(
-                    id_info.instruction(),
-                    Instruction::TypeStruct { .. }
-                ));
-                let start = offset_of_struct(spirv, ty);
-                let end =
-                    size_of_type(spirv, ty).expect("Found runtime-sized push constants") as u32;
-
-                Some(PushConstantRange {
-                    stages: stage.into(),
-                    offset: start,
-                    size: end - start,
-                })
-            }
+            } => Some(result_type_id),
             _ => None,
+        })
+        .map(|pointer_type_id| {
+            let struct_type_id = match *spirv.id(pointer_type_id).instruction() {
+                Instruction::TypePointer {
+                    ty,
+                    storage_class: StorageClass::PushConstant,
+                    ..
+                } => ty,
+                _ => unreachable!(),
+            };
+
+            assert!(
+                matches!(
+                    spirv.id(struct_type_id).instruction(),
+                    Instruction::TypeStruct { .. }
+                ),
+                "VUID-StandaloneSpirv-PushConstant-06808"
+            );
+            let start = offset_of_struct(spirv, struct_type_id);
+            let end = size_of_type(spirv, struct_type_id)
+                .expect("Found runtime-sized push constants") as u32;
+
+            PushConstantRange {
+                stages: stage.into(),
+                offset: start,
+                size: end - start,
+            }
         })
 }
 

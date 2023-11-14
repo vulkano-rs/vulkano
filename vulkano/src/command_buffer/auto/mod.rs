@@ -312,7 +312,7 @@ mod tests {
                 DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
                 DescriptorType,
             },
-            PersistentDescriptorSet, WriteDescriptorSet,
+            DescriptorSet, WriteDescriptorSet,
         },
         device::{Device, DeviceCreateInfo, QueueCreateInfo},
         image::sampler::{Sampler, SamplerCreateInfo},
@@ -782,11 +782,13 @@ mod tests {
             )
             .unwrap();
 
-            let ds_allocator =
-                StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+            let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+                device.clone(),
+                Default::default(),
+            ));
 
-            let set = PersistentDescriptorSet::new(
-                &ds_allocator,
+            let set = DescriptorSet::new(
+                ds_allocator.clone(),
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
@@ -856,8 +858,8 @@ mod tests {
             )
             .unwrap();
 
-            let set = PersistentDescriptorSet::new(
-                &ds_allocator,
+            let set = DescriptorSet::new(
+                ds_allocator,
                 set_layout,
                 [WriteDescriptorSet::sampler(
                     0,
