@@ -552,9 +552,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
         let mut cbb = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -696,9 +699,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
         let mut cbb = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

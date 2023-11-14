@@ -155,8 +155,10 @@ fn main() {
         device.clone(),
         Default::default(),
     ));
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // We start by creating the buffer that will store the data.
     let data_buffer = Buffer::from_iter(
@@ -194,7 +196,7 @@ fn main() {
 
     // In order to execute our operation, we have to build a command buffer.
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )

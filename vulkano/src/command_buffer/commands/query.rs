@@ -1,7 +1,6 @@
 use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator,
         auto::{QueryState, Resource},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, ResourceInCommand,
@@ -14,10 +13,7 @@ use crate::{
 use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
@@ -101,7 +97,7 @@ where
         self.add_command(
             "begin_query",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.begin_query_unchecked(&query_pool, query, flags);
             },
         );
@@ -173,7 +169,7 @@ where
         self.add_command(
             "end_query",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.end_query_unchecked(&query_pool, query);
             },
         );
@@ -240,7 +236,7 @@ where
         self.add_command(
             "write_timestamp",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.write_timestamp_unchecked(&query_pool, query, stage);
             },
         );
@@ -323,7 +319,7 @@ where
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.copy_query_pool_results_unchecked(
                     &query_pool,
                     queries.clone(),
@@ -395,7 +391,7 @@ where
         self.add_command(
             "reset_query_pool",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.reset_query_pool_unchecked(&query_pool, queries.clone());
             },
         );
@@ -404,10 +400,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn begin_query(
         &mut self,
         query_pool: &QueryPool,
@@ -568,6 +562,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn end_query(
         &mut self,
         query_pool: &QueryPool,
@@ -624,6 +619,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn write_timestamp(
         &mut self,
         query_pool: &QueryPool,
@@ -883,6 +879,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn copy_query_pool_results<T>(
         &mut self,
         query_pool: &QueryPool,
@@ -1023,6 +1020,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn reset_query_pool(
         &mut self,
         query_pool: &QueryPool,

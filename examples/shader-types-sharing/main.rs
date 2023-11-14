@@ -180,8 +180,8 @@ fn main() {
         queue: Arc<Queue>,
         data_buffer: Subbuffer<[u32]>,
         parameters: shaders::Parameters,
-        command_buffer_allocator: &StandardCommandBufferAllocator,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     ) {
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
         let set = DescriptorSet::new(
@@ -224,9 +224,11 @@ fn main() {
     }
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
         device.clone(),
         Default::default(),
     ));
@@ -301,8 +303,8 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::Parameters { value: 2 },
-        &command_buffer_allocator,
         descriptor_set_allocator.clone(),
+        command_buffer_allocator.clone(),
     );
 
     // Then add 1 to each value.
@@ -311,8 +313,8 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::Parameters { value: 1 },
-        &command_buffer_allocator,
         descriptor_set_allocator.clone(),
+        command_buffer_allocator.clone(),
     );
 
     // Then multiply each value by 3.
@@ -321,8 +323,8 @@ fn main() {
         queue,
         data_buffer.clone(),
         shaders::Parameters { value: 3 },
-        &command_buffer_allocator,
         descriptor_set_allocator,
+        command_buffer_allocator,
     );
 
     let data_buffer_content = data_buffer.read().unwrap();

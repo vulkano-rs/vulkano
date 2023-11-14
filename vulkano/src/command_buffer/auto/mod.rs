@@ -62,7 +62,6 @@ pub(in crate::command_buffer) use self::builder::{
     RenderPassStateAttachments, RenderPassStateType, SetOrPush,
 };
 use super::{
-    allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
     sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
     CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
@@ -87,101 +86,86 @@ use std::{
 
 mod builder;
 
-pub struct PrimaryAutoCommandBuffer<A = StandardCommandBufferAllocator>
-where
-    A: CommandBufferAllocator,
-{
-    inner: UnsafeCommandBuffer<A>,
-    _keep_alive_objects:
-        Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>>,
+pub struct PrimaryAutoCommandBuffer {
+    inner: UnsafeCommandBuffer,
+    _keep_alive_objects: Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>>,
     resources_usage: CommandBufferResourcesUsage,
     state: Mutex<CommandBufferState>,
 }
 
-unsafe impl<A> VulkanObject for PrimaryAutoCommandBuffer<A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl VulkanObject for PrimaryAutoCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
+    #[inline]
     fn handle(&self) -> Self::Handle {
         self.inner.handle()
     }
 }
 
-unsafe impl<A> DeviceOwned for PrimaryAutoCommandBuffer<A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl DeviceOwned for PrimaryAutoCommandBuffer {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-unsafe impl<A> PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer<A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer {
+    #[inline]
     fn queue_family_index(&self) -> u32 {
         self.inner.queue_family_index()
     }
 
+    #[inline]
     fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
+    #[inline]
     fn state(&self) -> MutexGuard<'_, CommandBufferState> {
         self.state.lock()
     }
 
+    #[inline]
     fn resources_usage(&self) -> &CommandBufferResourcesUsage {
         &self.resources_usage
     }
 }
 
-pub struct SecondaryAutoCommandBuffer<A = StandardCommandBufferAllocator>
-where
-    A: CommandBufferAllocator,
-{
-    inner: UnsafeCommandBuffer<A>,
-    _keep_alive_objects:
-        Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder<A>) + Send + Sync + 'static>>,
+pub struct SecondaryAutoCommandBuffer {
+    inner: UnsafeCommandBuffer,
+    _keep_alive_objects: Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>>,
     resources_usage: SecondaryCommandBufferResourcesUsage,
     submit_state: SubmitState,
 }
 
-unsafe impl<A> VulkanObject for SecondaryAutoCommandBuffer<A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl VulkanObject for SecondaryAutoCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
+    #[inline]
     fn handle(&self) -> Self::Handle {
         self.inner.handle()
     }
 }
 
-unsafe impl<A> DeviceOwned for SecondaryAutoCommandBuffer<A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl DeviceOwned for SecondaryAutoCommandBuffer {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-unsafe impl<A> SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer<A>
-where
-    A: CommandBufferAllocator,
-{
+unsafe impl SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer {
+    #[inline]
     fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
+    #[inline]
     fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
         self.inner.inheritance_info().as_ref().unwrap()
     }
 
+    #[inline]
     fn lock_record(&self) -> Result<(), Box<ValidationError>> {
         match self.submit_state {
             SubmitState::OneTime {
@@ -218,6 +202,7 @@ where
         Ok(())
     }
 
+    #[inline]
     unsafe fn unlock(&self) {
         match self.submit_state {
             SubmitState::OneTime {
@@ -233,6 +218,7 @@ where
         };
     }
 
+    #[inline]
     fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
         &self.resources_usage
     }
@@ -341,10 +327,13 @@ mod tests {
     fn basic_creation() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
 
         AutoCommandBufferBuilder::primary(
-            &allocator,
+            allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -405,9 +394,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
         let mut cbb = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -443,17 +435,17 @@ mod tests {
     fn secondary_nonconcurrent_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
             device,
             StandardCommandBufferAllocatorCreateInfo {
                 secondary_buffer_count: 1,
                 ..Default::default()
             },
-        );
+        ));
 
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
-            &cb_allocator,
+            cb_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             Default::default(),
@@ -463,7 +455,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -479,7 +471,7 @@ mod tests {
 
         {
             let mut builder = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -488,7 +480,7 @@ mod tests {
             let cb1 = builder.build().unwrap();
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -525,9 +517,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
         let mut builder = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -580,9 +575,12 @@ mod tests {
         )
         .unwrap();
 
-        let cb_allocator = StandardCommandBufferAllocator::new(device, Default::default());
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device,
+            Default::default(),
+        ));
         let mut builder = AutoCommandBufferBuilder::primary(
-            &cb_allocator,
+            cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -607,15 +605,15 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = StandardCommandBufferAllocator::new(
+            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
                 device.clone(),
                 StandardCommandBufferAllocatorCreateInfo {
                     secondary_buffer_count: 1,
                     ..Default::default()
                 },
-            );
+            ));
             let cbb = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )
@@ -651,7 +649,7 @@ mod tests {
             let secondary = (0..2)
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
-                        &cb_allocator,
+                        cb_allocator.clone(),
                         queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
@@ -666,7 +664,7 @@ mod tests {
 
             {
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &cb_allocator,
+                    cb_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
                 )
@@ -689,7 +687,7 @@ mod tests {
 
             {
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &cb_allocator,
+                    cb_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
                 )
@@ -711,10 +709,12 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator =
-                StandardCommandBufferAllocator::new(device.clone(), Default::default());
+            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+                device.clone(),
+                Default::default(),
+            ));
             let mut sync = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )
@@ -748,10 +748,12 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator =
-                StandardCommandBufferAllocator::new(device.clone(), Default::default());
+            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+                device.clone(),
+                Default::default(),
+            ));
             let mut sync = AutoCommandBufferBuilder::primary(
-                &cb_allocator,
+                cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )

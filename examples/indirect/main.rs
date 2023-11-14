@@ -365,8 +365,10 @@ fn main() -> Result<(), impl Error> {
         device.clone(),
         Default::default(),
     ));
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     event_loop.run(move |event, elwt| {
         elwt.set_control_flow(ControlFlow::Poll);
@@ -466,7 +468,7 @@ fn main() -> Result<(), impl Error> {
                 .unwrap();
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &command_buffer_allocator,
+                    command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )

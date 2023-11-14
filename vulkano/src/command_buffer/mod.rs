@@ -58,38 +58,38 @@
 //! the moment when the execution will end on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::AutoCommandBufferBuilder;
-//! use vulkano::command_buffer::CommandBufferUsage;
-//! use vulkano::command_buffer::PrimaryCommandBufferAbstract;
-//! use vulkano::command_buffer::SubpassContents;
+//! use vulkano::command_buffer::{
+//!     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
+//!     SubpassContents,
+//! };
 //!
-//! # use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
-//!
-//! # #[derive(BufferContents, Vertex)]
-//! # #[repr(C)]
-//! # struct PosVertex {
-//! #     #[format(R32G32B32_SFLOAT)]
-//! #     position: [f32; 3]
-//! # };
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-//! # let vertex_buffer: vulkano::buffer::Subbuffer<[PosVertex]> = return;
+//! # let vertex_buffer: vulkano::buffer::Subbuffer<[u32]> = return;
 //! # let render_pass_begin_info: vulkano::command_buffer::RenderPassBeginInfo = return;
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
-//! # let command_buffer_allocator: vulkano::command_buffer::allocator::StandardCommandBufferAllocator = return;
+//! # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
+//! #
 //! let cb = AutoCommandBufferBuilder::primary(
-//!     &command_buffer_allocator,
+//!     command_buffer_allocator.clone(),
 //!     queue.queue_family_index(),
-//!     CommandBufferUsage::MultipleSubmit
-//! ).unwrap()
-//! .begin_render_pass(render_pass_begin_info, Default::default()).unwrap()
-//! .bind_pipeline_graphics(graphics_pipeline.clone()).unwrap()
-//! .bind_vertex_buffers(0, vertex_buffer.clone()).unwrap()
-//! .draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap()
-//! .end_render_pass(Default::default()).unwrap()
-//! .build().unwrap();
+//!     CommandBufferUsage::MultipleSubmit,
+//! )
+//! .unwrap()
+//! .begin_render_pass(render_pass_begin_info, Default::default())
+//! .unwrap()
+//! .bind_pipeline_graphics(graphics_pipeline.clone())
+//! .unwrap()
+//! .bind_vertex_buffers(0, vertex_buffer.clone())
+//! .unwrap()
+//! .draw(vertex_buffer.len() as u32, 1, 0, 0)
+//! .unwrap()
+//! .end_render_pass(Default::default())
+//! .unwrap()
+//! .build()
+//! .unwrap();
 //!
-//! let _future = cb.execute(queue.clone());
+//! let future = cb.execute(queue.clone());
 //! ```
 //!
 //! [`StandardCommandBufferAllocator`]: self::allocator::StandardCommandBufferAllocator

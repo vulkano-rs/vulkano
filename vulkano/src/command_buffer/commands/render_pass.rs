@@ -1,6 +1,5 @@
 use crate::{
     command_buffer::{
-        allocator::CommandBufferAllocator,
         auto::{
             BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateAttachments,
             RenderPassStateType, Resource,
@@ -25,10 +24,7 @@ use std::{cmp::min, ops::Range, sync::Arc};
 /// # Commands for render passes.
 ///
 /// These commands require a graphics queue.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
     /// You must call this or `begin_rendering` before you can record draw commands.
@@ -140,7 +136,7 @@ where
                     )
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.begin_render_pass_unchecked(&render_pass_begin_info, &subpass_begin_info);
             },
         );
@@ -242,7 +238,7 @@ where
         self.add_command(
             "next_subpass",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.next_subpass_unchecked(&subpass_end_info, &subpass_begin_info);
             },
         );
@@ -323,7 +319,7 @@ where
         self.add_render_pass_end(
             "end_render_pass",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.end_render_pass_unchecked(&subpass_end_info);
             },
         );
@@ -332,10 +328,7 @@ where
     }
 }
 
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Begins a render pass without a render pass object or framebuffer.
     ///
     /// You must call this or `begin_render_pass` before you can record draw commands.
@@ -564,7 +557,7 @@ where
                 .flatten()
             }))
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.begin_rendering_unchecked(&rendering_info);
             },
         );
@@ -631,7 +624,7 @@ where
         self.add_render_pass_end(
             "end_rendering",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.end_rendering_unchecked();
             },
         );
@@ -882,7 +875,7 @@ where
         self.add_command(
             "clear_attachments",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.clear_attachments_unchecked(&attachments, &rects);
             },
         );
@@ -891,10 +884,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,
         render_pass_begin_info: &RenderPassBeginInfo,
@@ -1315,6 +1306,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn next_subpass(
         &mut self,
         subpass_end_info: &SubpassEndInfo,
@@ -1408,6 +1400,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn end_render_pass(
         &mut self,
         subpass_end_info: &SubpassEndInfo,
@@ -1481,6 +1474,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn begin_rendering(
         &mut self,
         rendering_info: &RenderingInfo,
@@ -1653,6 +1647,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn end_rendering(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_rendering()?;
 
@@ -1690,6 +1685,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn clear_attachments(
         &mut self,
         attachments: &[ClearAttachment],

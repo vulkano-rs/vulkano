@@ -206,8 +206,10 @@ fn main() {
         device.clone(),
         Default::default(),
     ));
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     let image = Image::new(
         memory_allocator.clone(),
@@ -248,7 +250,7 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
+        command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )

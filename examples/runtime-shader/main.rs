@@ -284,8 +284,10 @@ fn main() -> Result<(), impl Error> {
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     event_loop.run(move |event, elwt| {
         elwt.set_control_flow(ControlFlow::Poll);
@@ -347,7 +349,7 @@ fn main() -> Result<(), impl Error> {
                 }
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    &command_buffer_allocator,
+                    command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::MultipleSubmit,
                 )

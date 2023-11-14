@@ -273,8 +273,10 @@ mod linux {
             device.clone(),
             Default::default(),
         ));
-        let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
 
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
@@ -388,7 +390,7 @@ mod linux {
                     }
 
                     let mut builder = AutoCommandBufferBuilder::primary(
-                        &command_buffer_allocator,
+                        command_buffer_allocator.clone(),
                         queue.queue_family_index(),
                         CommandBufferUsage::OneTimeSubmit,
                     )

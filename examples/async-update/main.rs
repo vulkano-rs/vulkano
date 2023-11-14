@@ -333,7 +333,7 @@ fn main() -> Result<(), impl Error> {
     // Initialize the textures.
     {
         let mut builder = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator.as_ref(),
+            command_buffer_allocator.clone(),
             graphics_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -589,7 +589,7 @@ fn main() -> Result<(), impl Error> {
                 }
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    command_buffer_allocator.as_ref(),
+                    command_buffer_allocator.clone(),
                     graphics_queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
@@ -763,7 +763,7 @@ fn run_worker(
             let texture = textures[!current_index as usize].clone();
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                command_buffer_allocator.as_ref(),
+                command_buffer_allocator.clone(),
                 transfer_queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
             )

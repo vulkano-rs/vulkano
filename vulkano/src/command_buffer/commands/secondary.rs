@@ -1,6 +1,5 @@
 use crate::{
     command_buffer::{
-        allocator::CommandBufferAllocator,
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
@@ -18,10 +17,7 @@ use std::{cmp::min, iter, ops::Deref, sync::Arc};
 ///
 /// These commands can be called on any queue that can execute the commands recorded in the
 /// secondary command buffer.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Executes a secondary command buffer.
     ///
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of
@@ -543,7 +539,7 @@ where
                     }))
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.execute_commands_locked(&command_buffers);
             },
         );
@@ -552,10 +548,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn execute_commands(
         &mut self,
         command_buffers: &[Arc<dyn SecondaryCommandBufferAbstract>],

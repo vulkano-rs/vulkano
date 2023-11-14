@@ -339,7 +339,7 @@ impl FrameSystem {
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.command_buffer_allocator.as_ref(),
+            self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )

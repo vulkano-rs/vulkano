@@ -1,8 +1,5 @@
 use crate::{
-    command_buffer::{
-        allocator::CommandBufferAllocator, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder,
-    },
+    command_buffer::{sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     pipeline::{
         graphics::{
@@ -22,10 +19,7 @@ use std::ops::RangeInclusive;
 /// # Commands to set dynamic state for pipelines.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     // Helper function for dynamic state setting.
     fn validate_graphics_pipeline_fixed_state(
         &self,
@@ -76,7 +70,7 @@ where
         self.add_command(
             "set_blend_constants",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_blend_constants_unchecked(constants);
             },
         );
@@ -133,7 +127,7 @@ where
         self.add_command(
             "set_color_write_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_color_write_enable_unchecked(&enables);
             },
         );
@@ -165,7 +159,7 @@ where
         self.add_command(
             "set_cull_mode",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_cull_mode_unchecked(cull_mode);
             },
         );
@@ -214,7 +208,7 @@ where
         self.add_command(
             "set_depth_bias",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_depth_bias_unchecked(constant_factor, clamp, slope_factor);
             },
         );
@@ -246,7 +240,7 @@ where
         self.add_command(
             "set_depth_bias_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_depth_bias_enable_unchecked(enable);
             },
         );
@@ -281,7 +275,7 @@ where
         self.add_command(
             "set_depth_bounds",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_depth_bounds_unchecked(bounds.clone());
             },
         );
@@ -316,7 +310,7 @@ where
         self.add_command(
             "set_depth_bounds_test_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_depth_bounds_test_enable_unchecked(enable);
             },
         );
@@ -351,7 +345,7 @@ where
         self.add_command(
             "set_depth_compare_op",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_depth_compare_op_unchecked(compare_op);
             },
         );
@@ -383,7 +377,7 @@ where
         self.add_command(
             "set_depth_test_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_depth_test_enable_unchecked(enable);
             },
         );
@@ -415,7 +409,7 @@ where
         self.add_command(
             "set_depth_write_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_depth_write_enable_unchecked(enable);
             },
         );
@@ -461,7 +455,7 @@ where
         self.add_command(
             "set_discard_rectangle",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_discard_rectangle_unchecked(first_rectangle, &rectangles);
             },
         );
@@ -490,7 +484,7 @@ where
         self.add_command(
             "set_front_face",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_front_face_unchecked(face);
             },
         );
@@ -527,7 +521,7 @@ where
         self.add_command(
             "set_line_stipple",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_line_stipple_unchecked(factor, pattern);
             },
         );
@@ -556,7 +550,7 @@ where
         self.add_command(
             "set_line_width",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_line_width_unchecked(line_width);
             },
         );
@@ -585,7 +579,7 @@ where
         self.add_command(
             "set_logic_op",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_logic_op_unchecked(logic_op);
             },
         );
@@ -617,7 +611,7 @@ where
         self.add_command(
             "set_patch_control_points",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_patch_control_points_unchecked(num);
             },
         );
@@ -652,7 +646,7 @@ where
         self.add_command(
             "set_primitive_restart_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_primitive_restart_enable_unchecked(enable);
             },
         );
@@ -690,7 +684,7 @@ where
         self.add_command(
             "set_primitive_topology",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_primitive_topology_unchecked(topology);
             },
         );
@@ -725,7 +719,7 @@ where
         self.add_command(
             "set_rasterizer_discard_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_rasterizer_discard_enable_unchecked(enable);
             },
         );
@@ -772,7 +766,7 @@ where
         self.add_command(
             "set_scissor",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_scissor_unchecked(first_scissor, &scissors);
             },
         );
@@ -810,7 +804,7 @@ where
         self.add_command(
             "set_scissor_with_count",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_scissor_with_count_unchecked(&scissors);
             },
         );
@@ -861,7 +855,7 @@ where
         self.add_command(
             "set_stencil_compare_mask",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_stencil_compare_mask_unchecked(faces, compare_mask);
             },
         );
@@ -933,7 +927,7 @@ where
         self.add_command(
             "set_stencil_op",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op);
             },
         );
@@ -984,7 +978,7 @@ where
         self.add_command(
             "set_stencil_reference",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_stencil_reference_unchecked(faces, reference);
             },
         );
@@ -1016,7 +1010,7 @@ where
         self.add_command(
             "set_stencil_test_enable",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_stencil_test_enable_unchecked(enable);
             },
         );
@@ -1067,7 +1061,7 @@ where
         self.add_command(
             "set_stencil_write_mask",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_stencil_write_mask_unchecked(faces, write_mask);
             },
         );
@@ -1113,7 +1107,7 @@ where
         self.add_command(
             "set_viewport",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_viewport_unchecked(first_viewport, &viewports);
             },
         );
@@ -1151,7 +1145,7 @@ where
         self.add_command(
             "set_viewport",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_viewport_with_count_unchecked(&viewports);
             },
         );
@@ -1160,10 +1154,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn set_blend_constants(
         &mut self,
         constants: [f32; 4],
@@ -1202,6 +1194,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_color_write_enable(
         &mut self,
         enables: &[bool],
@@ -1264,6 +1257,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_cull_mode(
         &mut self,
         cull_mode: CullMode,
@@ -1322,6 +1316,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bias(
         &mut self,
         constant_factor: f32,
@@ -1380,6 +1375,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bias_enable(
         &mut self,
         enable: bool,
@@ -1434,6 +1430,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bounds(
         &mut self,
         bounds: RangeInclusive<f32>,
@@ -1500,6 +1497,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_bounds_test_enable(
         &mut self,
         enable: bool,
@@ -1557,6 +1555,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_compare_op(
         &mut self,
         compare_op: CompareOp,
@@ -1621,6 +1620,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_test_enable(
         &mut self,
         enable: bool,
@@ -1677,6 +1677,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_depth_write_enable(
         &mut self,
         enable: bool,
@@ -1731,6 +1732,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_discard_rectangle(
         &mut self,
         first_rectangle: u32,
@@ -1809,6 +1811,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_front_face(
         &mut self,
         face: FrontFace,
@@ -1867,6 +1870,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_line_stipple(
         &mut self,
         factor: u32,
@@ -1925,6 +1929,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_line_width(
         &mut self,
         line_width: f32,
@@ -1971,6 +1976,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_logic_op(
         &mut self,
         logic_op: LogicOp,
@@ -2025,6 +2031,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_patch_control_points(
         &mut self,
         num: u32,
@@ -2095,6 +2102,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_primitive_restart_enable(
         &mut self,
         enable: bool,
@@ -2152,6 +2160,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_primitive_topology(
         &mut self,
         topology: PrimitiveTopology,
@@ -2264,6 +2273,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_rasterizer_discard_enable(
         &mut self,
         enable: bool,
@@ -2321,6 +2331,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_scissor(
         &mut self,
         first_scissor: u32,
@@ -2413,6 +2424,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_scissor_with_count(
         &mut self,
         scissors: &[Scissor],
@@ -2507,6 +2519,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_compare_mask(
         &mut self,
         faces: StencilFaces,
@@ -2556,6 +2569,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_op(
         &mut self,
         faces: StencilFaces,
@@ -2668,6 +2682,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_reference(
         &mut self,
         faces: StencilFaces,
@@ -2717,6 +2732,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_test_enable(
         &mut self,
         enable: bool,
@@ -2771,6 +2787,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_stencil_write_mask(
         &mut self,
         faces: StencilFaces,
@@ -2820,6 +2837,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_viewport(
         &mut self,
         first_viewport: u32,
@@ -2912,6 +2930,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn set_viewport_with_count(
         &mut self,
         viewports: &[Viewport],

@@ -1,8 +1,8 @@
 use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator, auto::Resource, sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, ResourceInCommand,
+        auto::Resource, sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder,
+        ResourceInCommand,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
@@ -21,10 +21,7 @@ use std::{
 };
 
 /// # Commands to transfer data between resources.
-impl<L, A> AutoCommandBufferBuilder<L, A>
-where
-    A: CommandBufferAllocator,
-{
+impl<L> AutoCommandBufferBuilder<L> {
     /// Copies data from a buffer to another buffer.
     ///
     /// # Panics
@@ -103,7 +100,7 @@ where
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.copy_buffer_unchecked(&copy_buffer_info);
             },
         );
@@ -206,7 +203,7 @@ where
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.copy_image_unchecked(&copy_image_info);
             },
         );
@@ -293,7 +290,7 @@ where
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.copy_buffer_to_image_unchecked(&copy_buffer_to_image_info);
             },
         );
@@ -380,7 +377,7 @@ where
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.copy_image_to_buffer_unchecked(&copy_image_to_buffer_info);
             },
         );
@@ -493,7 +490,7 @@ where
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.blit_image_unchecked(&blit_image_info);
             },
         );
@@ -585,7 +582,7 @@ where
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder<A>| {
+            move |out: &mut UnsafeCommandBufferBuilder| {
                 out.resolve_image_unchecked(&resolve_image_info);
             },
         );
@@ -594,10 +591,8 @@ where
     }
 }
 
-impl<A> UnsafeCommandBufferBuilder<A>
-where
-    A: CommandBufferAllocator,
-{
+impl UnsafeCommandBufferBuilder {
+    #[inline]
     pub unsafe fn copy_buffer(
         &mut self,
         copy_buffer_info: &CopyBufferInfo,
@@ -713,6 +708,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn copy_image(
         &mut self,
         copy_image_info: &CopyImageInfo,
@@ -1136,6 +1132,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn copy_buffer_to_image(
         &mut self,
         copy_buffer_to_image_info: &CopyBufferToImageInfo,
@@ -1478,6 +1475,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn copy_image_to_buffer(
         &mut self,
         copy_image_to_buffer_info: &CopyImageToBufferInfo,
@@ -1799,6 +1797,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn blit_image(
         &mut self,
         blit_image_info: &BlitImageInfo,
@@ -1971,6 +1970,7 @@ where
         self
     }
 
+    #[inline]
     pub unsafe fn resolve_image(
         &mut self,
         resolve_image_info: &ResolveImageInfo,
