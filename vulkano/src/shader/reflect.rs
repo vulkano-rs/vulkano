@@ -1432,7 +1432,7 @@ fn is_builtin(spirv: &Spirv, id: Id) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{HashMap, PushConstantRange, ShaderStages};
+    use super::{HashMap, PushConstantRange, ShaderStages, Version};
 
     #[test]
     fn push_constant_range() {
@@ -1492,7 +1492,7 @@ mod tests {
             OpFunctionEnd
         */
         const MODULE: [u32; 186] = [
-            119734787, 67072, 458752, 27, 0, 131089, 1, 393227, 1, 1280527431, 1685353262,
+            119734787, 65536, 458752, 27, 0, 131089, 1, 393227, 1, 1280527431, 1685353262,
             808793134, 0, 196622, 0, 1, 393231, 5, 2, 1852399981, 7562079, 3, 393231, 4, 4,
             1852399981, 7562847, 5, 393232, 2, 17, 1, 1, 1, 196624, 4, 7, 262149, 2, 1852399981,
             7562079, 262149, 6, 1752397136, 21315, 262150, 6, 0, 97, 262150, 6, 1, 98, 262149, 4,
@@ -1506,6 +1506,7 @@ mod tests {
             15, 262205, 12, 26, 25, 65789, 65592,
         ];
         let spirv = crate::shader::spirv::Spirv::new(&MODULE).unwrap();
+        assert_eq!(spirv.version(), Version::V1_0);
         let entry_points: HashMap<_, _> = super::entry_points(&spirv)
             .map(|(_, v)| (v.name.clone(), v))
             .collect();
@@ -1588,7 +1589,7 @@ mod tests {
             OpFunctionEnd
         */
         const MODULE: [u32; 186] = [
-            119734787, 67072, 458752, 27, 0, 131089, 1, 393227, 1, 1280527431, 1685353262,
+            119734787, 66560, 458752, 27, 0, 131089, 1, 393227, 1, 1280527431, 1685353262,
             808793134, 0, 196622, 0, 1, 393231, 5, 2, 1852399981, 7562079, 3, 393231, 4, 4,
             1852399981, 7562847, 5, 393232, 2, 17, 1, 1, 1, 196624, 4, 7, 262149, 2, 1852399981,
             7562079, 262149, 6, 1752397136, 21315, 262150, 6, 0, 97, 262150, 6, 1, 98, 262149, 4,
@@ -1602,6 +1603,7 @@ mod tests {
             15, 262205, 12, 26, 25, 65789, 65592,
         ];
         let spirv = crate::shader::spirv::Spirv::new(&MODULE).unwrap();
+        assert_eq!(spirv.version(), Version::V1_4);
         let entry_points: HashMap<_, _> = super::entry_points(&spirv)
             .map(|(_, v)| (v.name.clone(), v))
             .collect();
