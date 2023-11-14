@@ -15,9 +15,15 @@
 
 ### Breaking changes
 
-Changes to `Surface`:
-- `Surface::required_extensions` now returns a result.
-- `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
+Changes to command buffers:
+- `AutoCommandBufferBuilder` and `UnsafeCommandBufferBuilder` now take an `Arc<dyn CommandBufferAllocator>` on construction.
+- `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `UnsafeCommandBufferBuilder` and `UnsafeCommandBuffer` no longer have a type parameter for the type of allocator.
+
+Changes to command buffer allocation:
+- `CommandBufferAllocator` no longer has any associated types in order to make the trait object-safe.
+- There is now only the single `CommandBufferAlloc` type to represent allocated command buffers. The `CommandBufferAlloc` and `CommandBufferBuilderAlloc traits and `StandardCommandBufferAlloc` and `StandardCommandBufferBuilderAlloc` types were removed.
+- `CommandBufferAllocator::allocate` now returns a single `CommandBufferAlloc` on success and `Validated<VulkanError>` on failure.
+- `CommandBufferAllocator` now has a required method `deallocate`.
 
 Changes to descriptor sets:
 - There is now only the single type `DescriptorSet` to represent descriptor sets. The `DescriptorSet` trait and `PersistentDescriptorSet` type were removed.
@@ -28,6 +34,10 @@ Changes to descriptor set allocation:
 - `DescriptorSetAllocator` no longer has an `Alloc` associated type in order to make the trait object-safe.
 - There is now only the single type `DescriptorSetAlloc` to represent allocated descriptor sets. The `DescriptorSetAlloc` trait and `StandardDescriptorSetAlloc` type were removed.
 - `DescriptorSetAllocator` has a new required method `deallocate`.
+
+Changes to `Surface`:
+- `Surface::required_extensions` now returns a result.
+- `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
 
 ### Additions
 
