@@ -227,8 +227,8 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::ios::WindowExtIOS;
-    let layer = get_metal_layer_ios(window.ui_view());
-    Surface::from_ios(instance, layer, Some(window))
+    let metal_layer = get_metal_layer_ios(window.ui_view());
+    Surface::from_ios(instance, metal_layer.render_layer.0 as _, Some(window))
 }
 
 #[cfg(target_os = "windows")]

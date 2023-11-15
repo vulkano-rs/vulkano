@@ -23,8 +23,8 @@ pub fn create_surface_from_handle(
                 #[cfg(target_os = "ios")]
                 {
                     // Ensure the layer is CAMetalLayer
-                    let layer = get_metal_layer_ios(_h.ui_view);
-                    Surface::from_ios(instance, layer, Some(window))
+                    let metal_layer = get_metal_layer_ios(_h.ui_view);
+                    Surface::from_ios(instance, metal_layer.render_layer.0 as _, Some(window))
                 }
                 #[cfg(not(target_os = "ios"))]
                 {
@@ -35,8 +35,8 @@ pub fn create_surface_from_handle(
                 #[cfg(target_os = "macos")]
                 {
                     // Ensure the layer is CAMetalLayer
-                    let layer = get_metal_layer_macos(_h.ns_view);
-                    Surface::from_mac_os(instance, layer as *const c_void, Some(window))
+                    let metal_layer = get_metal_layer_macos(_h.ns_view);
+                    Surface::from_mac_os(instance, metal_layer as _, Some(window))
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
