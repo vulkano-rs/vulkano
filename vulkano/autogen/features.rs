@@ -257,11 +257,11 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         ///     ..Features::empty()
         /// };
         ///
-        /// if !physical_device.supported_features().is_superset_of(&minimal_features) {
+        /// if !physical_device.supported_features().contains(&minimal_features) {
         ///     panic!("The physical device is not good enough for this application.");
         /// }
         ///
-        /// assert!(optimal_features.is_superset_of(&minimal_features));
+        /// assert!(optimal_features.contains(&minimal_features));
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -296,13 +296,6 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 }
             }
 
-            /// Returns an `Features` object with none of the members set.
-            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
-            #[inline]
-            pub const fn none() -> Self {
-                Self::empty()
-            }
-
             /// Returns a `Features` object with all of the members set.
             #[cfg(test)]
             pub(crate) const fn all() -> Features {
@@ -322,13 +315,6 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             #[inline]
             pub const fn contains(&self, other: &Self) -> bool {
                 #(#contains_items)&&*
-            }
-
-            /// Returns whether all members in `other` are set in `self`.
-            #[deprecated(since = "0.31.0", note = "use `contains` instead")]
-            #[inline]
-            pub const fn is_superset_of(&self, other: &Self) -> bool {
-                self.contains(other)
             }
 
             /// Returns the union of `self` and `other`.

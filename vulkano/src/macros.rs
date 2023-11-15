@@ -26,13 +26,6 @@ macro_rules! vulkan_bitflags {
                 Self(0)
             }
 
-            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
-            #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
-            #[inline]
-            pub const fn none() -> Self {
-                Self::empty()
-            }
-
             #[doc = concat!("Returns a `", stringify!($ty), "` with all of the flags set.")]
             #[inline]
             pub const fn all() -> Self {
@@ -252,13 +245,6 @@ macro_rules! vulkan_bitflags {
             #[inline]
             pub const fn empty() -> Self {
                 Self(0)
-            }
-
-            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
-            #[doc = concat!("Returns a `", stringify!($ty), "` with none of the flags set.")]
-            #[inline]
-            pub const fn none() -> Self {
-                Self::empty()
             }
 
             const fn all_raw() -> $repr {
