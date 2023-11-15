@@ -80,10 +80,11 @@
 //! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
 //! let window = build_window(); // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
-//!     let hinstance: *const () = ptr::null(); // Windows-specific object
+//!     let hinstance: *mut std::ffi::c_void = ptr::null_mut(); // Windows-specific object
 //!     Surface::from_win32(
 //!         instance.clone(),
-//!         hinstance, window.hwnd(),
+//!         hinstance,
+//!         window.hwnd() as ash::vk::HWND,
 //!         Some(window),
 //!     ).unwrap()
 //! };
@@ -2459,8 +2460,8 @@ impl Win32Monitor {
     /// # Safety
     ///
     /// - `hmonitor` must be a valid handle as returned by the Win32 API.
-    pub unsafe fn new<T>(hmonitor: *const T) -> Self {
-        Self(hmonitor as _)
+    pub unsafe fn new<T>(hmonitor: ash::vk::HMONITOR) -> Self {
+        Self(hmonitor)
     }
 }
 
