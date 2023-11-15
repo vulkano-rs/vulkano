@@ -114,16 +114,16 @@ impl Surface {
             #[cfg(target_os = "macos")]
             (RawWindowHandle::AppKit(window), RawDisplayHandle::AppKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let layer = get_metal_layer_macos(window.ns_view.as_ptr() as *mut c_void);
+                let metal_layer = get_metal_layer_macos(window.ns_view.as_ptr() as *mut c_void);
 
-                Self::from_mac_os(instance, layer as *const (), None)
+                Self::from_mac_os(instance, metal_layer as *const c_void, None)
             }
             #[cfg(target_os = "ios")]
             (RawWindowHandle::UiKit(window), RawDisplayHandle::UiKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let layer = get_metal_layer_ios(window.ui_view.as_ptr() as *mut c_void);
+                let metal_layer = get_metal_layer_ios(window.ui_view.as_ptr() as *mut c_void);
 
-                Self::from_ios(instance, layer, None)
+                Self::from_ios(instance, metal_layer.render_layer.0 as *const c_void, None)
             }
             (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => {
                 Self::from_wayland(
@@ -737,21 +737,19 @@ impl Surface {
     /// - The object referred to by `metal_layer` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    #[cfg(target_os = "ios")]
     pub unsafe fn from_ios(
         instance: Arc<Instance>,
-        metal_layer: IOSMetalLayer,
+        view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_ios(&instance, &metal_layer)?;
+        Self::validate_from_ios(&instance, view)?;
 
-        Ok(Self::from_ios_unchecked(instance, metal_layer, object)?)
+        Ok(Self::from_ios_unchecked(instance, view, object)?)
     }
 
-    #[cfg(target_os = "ios")]
     fn validate_from_ios(
         instance: &Instance,
-        _metal_layer: &IOSMetalLayer,
+        _view: *const c_void,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().mvk_ios_surface {
             return Err(Box::new(ValidationError {
@@ -771,16 +769,15 @@ impl Surface {
         Ok(())
     }
 
-    #[cfg(target_os = "ios")]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_ios_unchecked(
         instance: Arc<Instance>,
-        metal_layer: IOSMetalLayer,
+        view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::IOSSurfaceCreateInfoMVK {
             flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
-            p_view: metal_layer.render_layer.0 as *const _,
+            p_view: view,
             ..Default::default()
         };
 

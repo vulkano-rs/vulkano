@@ -196,8 +196,8 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::macos::WindowExtMacOS;
-    let layer = get_metal_layer_macos(window.ns_view());
-    Surface::from_mac_os(instance, layer as *const (), Some(window))
+    let metal_layer = get_metal_layer_macos(window.ns_view());
+    Surface::from_mac_os(instance, metal_layer as *const c_void, Some(window))
 }
 
 #[cfg(target_os = "ios")]
@@ -240,8 +240,8 @@ unsafe fn winit_to_surface(
 
     Surface::from_win32(
         instance,
-        window.hinstance() as *const (),
-        window.hwnd() as *const (),
+        window.hinstance() as ash::vk::HINSTANCE,
+        window.hwnd() as ash::vk::HWND,
         Some(window),
     )
 }
@@ -255,5 +255,5 @@ use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
 /// Creates a `Win32Monitor` from a Winit monitor handle.
 #[inline]
 pub fn create_win32_monitor_from_winit(monitor_handle: &MonitorHandle) -> Win32Monitor {
-    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as *const ()) }
+    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as ash::vk::HMONITOR) }
 }
