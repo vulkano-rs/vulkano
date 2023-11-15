@@ -65,7 +65,7 @@ pub fn create_surface_from_handle(
                     RawDisplayHandle::Xlib(d) => d,
                     _ => panic!("Invalid RawDisplayHandle"),
                 };
-                Surface::from_xlib(instance, d.display, h.window, Some(window))
+                Surface::from_xlib(instance, d.display as _, h.window, Some(window))
             }
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),
@@ -132,7 +132,7 @@ pub unsafe fn create_surface_from_handle_ref(
                     RawDisplayHandle::Xlib(d) => d,
                     _ => panic!("Invalid RawDisplayHandle"),
                 };
-                Surface::from_xlib(instance, d.display, h.window, None)
+                Surface::from_xlib(instance, d.display as _, h.window, None)
             }
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),

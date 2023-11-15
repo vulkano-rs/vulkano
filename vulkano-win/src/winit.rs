@@ -141,7 +141,7 @@ unsafe fn winit_to_surface(
             if instance.enabled_extensions().khr_xlib_surface {
                 Surface::from_xlib(
                     instance,
-                    window.xlib_display().unwrap(),
+                    window.xlib_display().unwrap() as _,
                     window.xlib_window().unwrap() as _,
                     Some(window),
                 )
@@ -255,5 +255,5 @@ use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
 /// Creates a `Win32Monitor` from a Winit monitor handle.
 #[inline]
 pub fn create_win32_monitor_from_winit(monitor_handle: &MonitorHandle) -> Win32Monitor {
-    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as ash::vk::HMONITOR) }
+    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as _) }
 }
