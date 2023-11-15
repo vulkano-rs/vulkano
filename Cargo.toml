@@ -1,11 +1,11 @@
 [workspace]
 members = [
-	"examples/*",
-	"vulkano",
-	"vulkano-macros",
-	"vulkano-shaders",
-	"vulkano-util",
-	# "vulkano-win",
+    "examples/*",
+    "vulkano",
+    "vulkano-macros",
+    "vulkano-shaders",
+    "vulkano-util",
+    # "vulkano-win",
 ]
 resolver = "2"
 
