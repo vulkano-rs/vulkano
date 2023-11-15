@@ -2460,7 +2460,7 @@ impl Win32Monitor {
     /// # Safety
     ///
     /// - `hmonitor` must be a valid handle as returned by the Win32 API.
-    pub unsafe fn new<T>(hmonitor: ash::vk::HMONITOR) -> Self {
+    pub unsafe fn new(hmonitor: ash::vk::HMONITOR) -> Self {
         Self(hmonitor)
     }
 }
