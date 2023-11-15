@@ -85,7 +85,7 @@
 //! method on a format.
 
 use crate::{
-    device::{physical::PhysicalDevice, Device},
+    device::Device,
     image::{ImageAspects, ImageTiling},
     macros::vulkan_bitflags,
     shader::spirv::ImageFormat,
@@ -96,16 +96,6 @@ use crate::{
 include!(concat!(env!("OUT_DIR"), "/formats.rs"));
 
 impl Format {
-    /// Retrieves the properties of a format when used by a certain device.
-    #[deprecated(
-        since = "0.28.0",
-        note = "use PhysicalDevice::format_properties instead"
-    )]
-    #[inline]
-    pub fn properties(self, physical_device: PhysicalDevice) -> FormatProperties {
-        physical_device.format_properties(self).unwrap()
-    }
-
     /// Returns whether the format can be used with a storage image, without specifying
     /// the format in the shader, if the
     /// [`shader_storage_image_read_without_format`](crate::device::Features::shader_storage_image_read_without_format)

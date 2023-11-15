@@ -565,13 +565,6 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 }
             }
 
-            /// Returns an `Extensions` object with none of the members set.
-            #[deprecated(since = "0.31.0", note = "use `empty` instead")]
-            #[inline]
-            pub const fn none() -> Self {
-                Self::empty()
-            }
-
             /// Returns whether any members are set in both `self` and `other`.
             #[inline]
             pub const fn intersects(&self, other: &Self) -> bool {
@@ -582,13 +575,6 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             #[inline]
             pub const fn contains(&self, other: &Self) -> bool {
                 #(#contains_items)&&*
-            }
-
-            /// Returns whether all members in `other` are set in `self`.
-            #[deprecated(since = "0.31.0", note = "use `contains` instead")]
-            #[inline]
-            pub const fn is_superset_of(&self, other: &Self) -> bool {
-                self.contains(other)
             }
 
             /// Returns the union of `self` and `other`.
