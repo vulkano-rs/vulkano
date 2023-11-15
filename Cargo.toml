@@ -1,5 +1,12 @@
 [workspace]
-members = ["examples/*", "vulkano", "vulkano-macros", "vulkano-shaders", "vulkano-util", "vulkano-win"]
+members = [
+	"examples/*",
+	"vulkano",
+	"vulkano-macros",
+	"vulkano-shaders",
+	"vulkano-util",
+	"vulkano-win",
+]
 resolver = "2"
 
 [workspace.dependencies.vulkano]
