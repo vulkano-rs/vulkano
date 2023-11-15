@@ -197,7 +197,7 @@ unsafe fn winit_to_surface(
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::macos::WindowExtMacOS;
     let metal_layer = get_metal_layer_macos(window.ns_view());
-    Surface::from_mac_os(instance, metal_layer as *const c_void, Some(window))
+    Surface::from_mac_os(instance, metal_layer as _, Some(window))
 }
 
 #[cfg(target_os = "ios")]
@@ -240,8 +240,8 @@ unsafe fn winit_to_surface(
 
     Surface::from_win32(
         instance,
-        window.hinstance() as ash::vk::HINSTANCE,
-        window.hwnd() as ash::vk::HWND,
+        window.hinstance() as _,
+        window.hwnd() as _,
         Some(window),
     )
 }

@@ -93,7 +93,7 @@ pub unsafe fn create_surface_from_handle_ref(
                 {
                     // Ensure the layer is CAMetalLayer
                     let metal_layer = get_metal_layer_ios(_h.ui_view);
-                    Surface::from_ios(instance, metal_layer.render_layer.0 as *const c_void, None)
+                    Surface::from_ios(instance, metal_layer.render_layer.0 as _, None)
                 }
                 #[cfg(not(target_os = "ios"))]
                 {
@@ -105,7 +105,7 @@ pub unsafe fn create_surface_from_handle_ref(
                 {
                     // Ensure the layer is CAMetalLayer
                     let metal_layer = get_metal_layer_macos(_h.ns_view);
-                    Surface::from_mac_os(instance, layer as *const c_void, None)
+                    Surface::from_mac_os(instance, metal_layer as _, None)
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
