@@ -19,6 +19,7 @@ use smallvec::SmallVec;
 use std::{
     any::Any,
     error::Error,
+    ffi::c_void,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
@@ -104,48 +105,52 @@ impl Surface {
 
         match (window_handle.as_raw(), display_handle.as_raw()) {
             (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => {
-                Self::from_android(instance, window.a_native_window.as_ptr(), None)
+                Self::from_android(
+                    instance,
+                    window.a_native_window.as_ptr() as *mut ash::vk::ANativeWindow,
+                    None,
+                )
             }
             #[cfg(target_os = "macos")]
             (RawWindowHandle::AppKit(window), RawDisplayHandle::AppKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let layer = get_metal_layer_macos(window.ns_view.as_ptr());
+                let metal_layer = get_metal_layer_macos(window.ns_view.as_ptr() as *mut c_void);
 
-                Self::from_mac_os(instance, layer as *const (), None)
+                Self::from_mac_os(instance, metal_layer as *const c_void, None)
             }
             #[cfg(target_os = "ios")]
             (RawWindowHandle::UiKit(window), RawDisplayHandle::UiKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let layer = get_metal_layer_ios(window.ui_view.as_ptr());
+                let metal_layer = get_metal_layer_ios(window.ui_view.as_ptr() as *mut c_void);
 
-                Self::from_ios(instance, layer, None)
+                Self::from_ios(instance, metal_layer.render_layer.0 as *const c_void, None)
             }
             (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => {
                 Self::from_wayland(
                     instance,
-                    display.display.as_ptr(),
-                    window.surface.as_ptr(),
+                    display.display.as_ptr() as *mut ash::vk::wl_display,
+                    window.surface.as_ptr() as *mut ash::vk::wl_surface,
                     None,
                 )
             }
             (RawWindowHandle::Win32(window), RawDisplayHandle::Windows(_display)) => {
                 Self::from_win32(
                     instance,
-                    window.hinstance.unwrap().get() as *const (),
-                    window.hwnd.get() as *const (),
+                    window.hinstance.unwrap().get() as ash::vk::HINSTANCE,
+                    window.hwnd.get() as ash::vk::HWND,
                     None,
                 )
             }
             (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => Self::from_xcb(
                 instance,
-                display.connection.unwrap().as_ptr(),
-                window.window.get(),
+                display.connection.unwrap().as_ptr() as *mut ash::vk::xcb_connection_t,
+                window.window.get() as ash::vk::xcb_window_t,
                 None,
             ),
             (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => Self::from_xlib(
                 instance,
-                display.display.unwrap().as_ptr(),
-                window.window,
+                display.display.unwrap().as_ptr() as *mut ash::vk::Display,
+                window.window as ash::vk::Window,
                 None,
             ),
             _ => unimplemented!(
@@ -431,9 +436,9 @@ impl Surface {
     /// - `window` must be a valid Android `ANativeWindow` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_android<W>(
+    pub unsafe fn from_android(
         instance: Arc<Instance>,
-        window: *const W,
+        window: *mut ash::vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_android(&instance, window)?;
@@ -441,9 +446,9 @@ impl Surface {
         Ok(Self::from_android_unchecked(instance, window, object)?)
     }
 
-    fn validate_from_android<W>(
+    fn validate_from_android(
         instance: &Instance,
-        _window: *const W,
+        _window: *mut ash::vk::ANativeWindow,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_android_surface {
             return Err(Box::new(ValidationError {
@@ -461,14 +466,14 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_android_unchecked<W>(
+    pub unsafe fn from_android_unchecked(
         instance: Arc<Instance>,
-        window: *const W,
+        window: *mut ash::vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::AndroidSurfaceCreateInfoKHR {
             flags: ash::vk::AndroidSurfaceCreateFlagsKHR::empty(),
-            window: window as *mut _,
+            window,
             ..Default::default()
         };
 
@@ -502,10 +507,10 @@ impl Surface {
     /// - `surface` must be a valid DirectFB `IDirectFBSurface` handle.
     /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_directfb<D, S>(
+    pub unsafe fn from_directfb(
         instance: Arc<Instance>,
-        dfb: *const D,
-        surface: *const S,
+        dfb: *mut ash::vk::IDirectFB,
+        surface: *mut ash::vk::IDirectFBSurface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_directfb(&instance, dfb, surface)?;
@@ -515,10 +520,10 @@ impl Surface {
         )?)
     }
 
-    fn validate_from_directfb<D, S>(
+    fn validate_from_directfb(
         instance: &Instance,
-        _dfb: *const D,
-        _surface: *const S,
+        _dfb: *mut ash::vk::IDirectFB,
+        _surface: *mut ash::vk::IDirectFBSurface,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ext_directfb_surface {
             return Err(Box::new(ValidationError {
@@ -539,16 +544,16 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_directfb_unchecked<D, S>(
+    pub unsafe fn from_directfb_unchecked(
         instance: Arc<Instance>,
-        dfb: *const D,
-        surface: *const S,
+        dfb: *mut ash::vk::IDirectFB,
+        surface: *mut ash::vk::IDirectFBSurface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::DirectFBSurfaceCreateInfoEXT {
             flags: ash::vk::DirectFBSurfaceCreateFlagsEXT::empty(),
-            dfb: dfb as *mut _,
-            surface: surface as *mut _,
+            dfb,
+            surface,
             ..Default::default()
         };
 
@@ -732,21 +737,19 @@ impl Surface {
     /// - The object referred to by `metal_layer` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    #[cfg(target_os = "ios")]
     pub unsafe fn from_ios(
         instance: Arc<Instance>,
-        metal_layer: IOSMetalLayer,
+        view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_from_ios(&instance, &metal_layer)?;
+        Self::validate_from_ios(&instance, view)?;
 
-        Ok(Self::from_ios_unchecked(instance, metal_layer, object)?)
+        Ok(Self::from_ios_unchecked(instance, view, object)?)
     }
 
-    #[cfg(target_os = "ios")]
     fn validate_from_ios(
         instance: &Instance,
-        _metal_layer: &IOSMetalLayer,
+        _view: *const c_void,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().mvk_ios_surface {
             return Err(Box::new(ValidationError {
@@ -766,16 +769,15 @@ impl Surface {
         Ok(())
     }
 
-    #[cfg(target_os = "ios")]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_ios_unchecked(
         instance: Arc<Instance>,
-        metal_layer: IOSMetalLayer,
+        view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::IOSSurfaceCreateInfoMVK {
             flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
-            p_view: metal_layer.render_layer.0 as *const _,
+            p_view: view,
             ..Default::default()
         };
 
@@ -809,10 +811,9 @@ impl Surface {
     /// - The object referred to by `view` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    #[cfg(target_os = "macos")]
-    pub unsafe fn from_mac_os<V>(
+    pub unsafe fn from_mac_os(
         instance: Arc<Instance>,
-        view: *const V,
+        view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_mac_os(&instance, view)?;
@@ -820,10 +821,9 @@ impl Surface {
         Ok(Self::from_mac_os_unchecked(instance, view, object)?)
     }
 
-    #[cfg(target_os = "macos")]
-    fn validate_from_mac_os<V>(
+    fn validate_from_mac_os(
         instance: &Instance,
-        _view: *const V,
+        _view: *const c_void,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().mvk_macos_surface {
             return Err(Box::new(ValidationError {
@@ -843,16 +843,15 @@ impl Surface {
         Ok(())
     }
 
-    #[cfg(target_os = "macos")]
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_mac_os_unchecked<V>(
+    pub unsafe fn from_mac_os_unchecked(
         instance: Arc<Instance>,
-        view: *const V,
+        view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::MacOSSurfaceCreateInfoMVK {
             flags: ash::vk::MacOSSurfaceCreateFlagsMVK::empty(),
-            p_view: view as *const _,
+            p_view: view,
             ..Default::default()
         };
 
@@ -885,9 +884,9 @@ impl Surface {
     /// - `layer` must be a valid Metal `CAMetalLayer` handle.
     /// - The object referred to by `layer` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_metal<L>(
+    pub unsafe fn from_metal(
         instance: Arc<Instance>,
-        layer: *const L,
+        layer: *const ash::vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_metal(&instance, layer)?;
@@ -895,9 +894,9 @@ impl Surface {
         Ok(Self::from_metal_unchecked(instance, layer, object)?)
     }
 
-    fn validate_from_metal<L>(
+    fn validate_from_metal(
         instance: &Instance,
-        _layer: *const L,
+        _layer: *const ash::vk::CAMetalLayer,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ext_metal_surface {
             return Err(Box::new(ValidationError {
@@ -912,14 +911,14 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_metal_unchecked<L>(
+    pub unsafe fn from_metal_unchecked(
         instance: Arc<Instance>,
-        layer: *const L,
+        layer: *const ash::vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::MetalSurfaceCreateInfoEXT {
             flags: ash::vk::MetalSurfaceCreateFlagsEXT::empty(),
-            p_layer: layer as *const _,
+            p_layer: layer,
             ..Default::default()
         };
 
@@ -953,10 +952,10 @@ impl Surface {
     /// - `window` must be a valid QNX Screen `_screen_window` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_qnx_screen<C, W>(
+    pub unsafe fn from_qnx_screen(
         instance: Arc<Instance>,
-        context: *const C,
-        window: *const W,
+        context: *mut ash::vk::_screen_context,
+        window: *mut ash::vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_qnx_screen(&instance, context, window)?;
@@ -966,10 +965,10 @@ impl Surface {
         )?)
     }
 
-    fn validate_from_qnx_screen<C, W>(
+    fn validate_from_qnx_screen(
         instance: &Instance,
-        _context: *const C,
-        _window: *const W,
+        _context: *mut ash::vk::_screen_context,
+        _window: *mut ash::vk::_screen_window,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().qnx_screen_surface {
             return Err(Box::new(ValidationError {
@@ -990,16 +989,16 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_qnx_screen_unchecked<C, W>(
+    pub unsafe fn from_qnx_screen_unchecked(
         instance: Arc<Instance>,
-        context: *const C,
-        window: *const W,
+        context: *mut ash::vk::_screen_context,
+        window: *mut ash::vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::ScreenSurfaceCreateInfoQNX {
             flags: ash::vk::ScreenSurfaceCreateFlagsQNX::empty(),
-            context: context as *mut _,
-            window: window as *mut _,
+            context,
+            window,
             ..Default::default()
         };
 
@@ -1032,9 +1031,9 @@ impl Surface {
     /// - `window` must be a valid `nn::vi::NativeWindowHandle` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_vi<W>(
+    pub unsafe fn from_vi(
         instance: Arc<Instance>,
-        window: *const W,
+        window: *mut c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_vi(&instance, window)?;
@@ -1042,9 +1041,9 @@ impl Surface {
         Ok(Self::from_vi_unchecked(instance, window, object)?)
     }
 
-    fn validate_from_vi<W>(
+    fn validate_from_vi(
         instance: &Instance,
-        _window: *const W,
+        _window: *mut c_void,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().nn_vi_surface {
             return Err(Box::new(ValidationError {
@@ -1062,14 +1061,14 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_vi_unchecked<W>(
+    pub unsafe fn from_vi_unchecked(
         instance: Arc<Instance>,
-        window: *const W,
+        window: *mut c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::ViSurfaceCreateInfoNN {
             flags: ash::vk::ViSurfaceCreateFlagsNN::empty(),
-            window: window as *mut _,
+            window,
             ..Default::default()
         };
 
@@ -1105,10 +1104,10 @@ impl Surface {
     /// - `surface` must be a valid Wayland `wl_surface` handle.
     /// - The objects referred to by `display` and `surface` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_wayland<D, S>(
+    pub unsafe fn from_wayland(
         instance: Arc<Instance>,
-        display: *const D,
-        surface: *const S,
+        display: *mut ash::vk::wl_display,
+        surface: *mut ash::vk::wl_surface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_wayland(&instance, display, surface)?;
@@ -1118,10 +1117,10 @@ impl Surface {
         )?)
     }
 
-    fn validate_from_wayland<D, S>(
+    fn validate_from_wayland(
         instance: &Instance,
-        _display: *const D,
-        _surface: *const S,
+        _display: *mut ash::vk::wl_display,
+        _surface: *mut ash::vk::wl_surface,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_wayland_surface {
             return Err(Box::new(ValidationError {
@@ -1142,16 +1141,16 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_wayland_unchecked<D, S>(
+    pub unsafe fn from_wayland_unchecked(
         instance: Arc<Instance>,
-        display: *const D,
-        surface: *const S,
+        display: *mut ash::vk::wl_display,
+        surface: *mut ash::vk::wl_surface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::WaylandSurfaceCreateInfoKHR {
             flags: ash::vk::WaylandSurfaceCreateFlagsKHR::empty(),
-            display: display as *mut _,
-            surface: surface as *mut _,
+            display,
+            surface,
             ..Default::default()
         };
 
@@ -1187,10 +1186,10 @@ impl Surface {
     /// - `hwnd` must be a valid Win32 `HWND` handle.
     /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_win32<I, W>(
+    pub unsafe fn from_win32(
         instance: Arc<Instance>,
-        hinstance: *const I,
-        hwnd: *const W,
+        hinstance: ash::vk::HINSTANCE,
+        hwnd: ash::vk::HWND,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_win32(&instance, hinstance, hwnd)?;
@@ -1200,10 +1199,10 @@ impl Surface {
         )?)
     }
 
-    fn validate_from_win32<I, W>(
+    fn validate_from_win32(
         instance: &Instance,
-        _hinstance: *const I,
-        _hwnd: *const W,
+        _hinstance: ash::vk::HINSTANCE,
+        _hwnd: ash::vk::HWND,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_win32_surface {
             return Err(Box::new(ValidationError {
@@ -1224,16 +1223,16 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_win32_unchecked<I, W>(
+    pub unsafe fn from_win32_unchecked(
         instance: Arc<Instance>,
-        hinstance: *const I,
-        hwnd: *const W,
+        hinstance: ash::vk::HINSTANCE,
+        hwnd: ash::vk::HWND,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::Win32SurfaceCreateInfoKHR {
             flags: ash::vk::Win32SurfaceCreateFlagsKHR::empty(),
-            hinstance: hinstance as *mut _,
-            hwnd: hwnd as *mut _,
+            hinstance,
+            hwnd,
             ..Default::default()
         };
 
@@ -1269,9 +1268,9 @@ impl Surface {
     /// - `window` must be a valid X11 `xcb_window_t` handle.
     /// - The objects referred to by `connection` and `window` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_xcb<C>(
+    pub unsafe fn from_xcb(
         instance: Arc<Instance>,
-        connection: *const C,
+        connection: *mut ash::vk::xcb_connection_t,
         window: ash::vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
@@ -1282,9 +1281,9 @@ impl Surface {
         )?)
     }
 
-    fn validate_from_xcb<C>(
+    fn validate_from_xcb(
         instance: &Instance,
-        _connection: *const C,
+        _connection: *mut ash::vk::xcb_connection_t,
         _window: ash::vk::xcb_window_t,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_xcb_surface {
@@ -1306,15 +1305,15 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_xcb_unchecked<C>(
+    pub unsafe fn from_xcb_unchecked(
         instance: Arc<Instance>,
-        connection: *const C,
+        connection: *mut ash::vk::xcb_connection_t,
         window: ash::vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::XcbSurfaceCreateInfoKHR {
             flags: ash::vk::XcbSurfaceCreateFlagsKHR::empty(),
-            connection: connection as *mut _,
+            connection,
             window,
             ..Default::default()
         };
@@ -1351,9 +1350,9 @@ impl Surface {
     /// - `window` must be a valid Xlib `Window` handle.
     /// - The objects referred to by `display` and `window` must outlive the created `Surface`.
     ///   The `object` parameter can be used to ensure this.
-    pub unsafe fn from_xlib<D>(
+    pub unsafe fn from_xlib(
         instance: Arc<Instance>,
-        display: *const D,
+        display: *mut ash::vk::Display,
         window: ash::vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
@@ -1364,9 +1363,9 @@ impl Surface {
         )?)
     }
 
-    fn validate_from_xlib<D>(
+    fn validate_from_xlib(
         instance: &Instance,
-        _display: *const D,
+        _display: *mut ash::vk::Display,
         _window: ash::vk::Window,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().khr_xlib_surface {
@@ -1388,15 +1387,15 @@ impl Surface {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn from_xlib_unchecked<D>(
+    pub unsafe fn from_xlib_unchecked(
         instance: Arc<Instance>,
-        display: *const D,
+        display: *mut ash::vk::Display,
         window: ash::vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::XlibSurfaceCreateInfoKHR {
             flags: ash::vk::XlibSurfaceCreateFlagsKHR::empty(),
-            dpy: display as *mut _,
+            dpy: display,
             window,
             ..Default::default()
         };
@@ -1515,7 +1514,7 @@ impl_id_counter!(Surface);
 
 /// Get sublayer from iOS main view (ui_view). The sublayer is created as `CAMetalLayer`.
 #[cfg(target_os = "ios")]
-unsafe fn get_metal_layer_ios(ui_view: *mut std::ffi::c_void) -> IOSMetalLayer {
+unsafe fn get_metal_layer_ios(ui_view: *mut c_void) -> IOSMetalLayer {
     use core_graphics_types::{base::CGFloat, geometry::CGRect};
 
     let view: *mut Object = ui_view.cast();
@@ -1533,7 +1532,7 @@ unsafe fn get_metal_layer_ios(ui_view: *mut std::ffi::c_void) -> IOSMetalLayer {
 
 /// Get (and set) `CAMetalLayer` to `ns_view`. This is necessary to be able to render on Mac.
 #[cfg(target_os = "macos")]
-unsafe fn get_metal_layer_macos(ns_view: *mut std::ffi::c_void) -> *mut Object {
+unsafe fn get_metal_layer_macos(ns_view: *mut c_void) -> *mut Object {
     use core_graphics_types::base::CGFloat;
     use objc::runtime::YES;
     use objc::runtime::{BOOL, NO};
@@ -2392,7 +2391,7 @@ mod tests {
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_win32(instance, ptr::null::<u8>(), ptr::null::<u8>(), None) } {
+        match unsafe { Surface::from_win32(instance, ptr::null_mut(), ptr::null_mut(), None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2410,7 +2409,7 @@ mod tests {
     #[test]
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0, None) } {
+        match unsafe { Surface::from_xcb(instance, ptr::null_mut(), 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2428,7 +2427,7 @@ mod tests {
     #[test]
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0, None) } {
+        match unsafe { Surface::from_xlib(instance, ptr::null_mut(), 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2446,8 +2445,7 @@ mod tests {
     #[test]
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>(), None) }
-        {
+        match unsafe { Surface::from_wayland(instance, ptr::null_mut(), ptr::null_mut(), None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,
@@ -2465,7 +2463,7 @@ mod tests {
     #[test]
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_android(instance, ptr::null::<u8>(), None) } {
+        match unsafe { Surface::from_android(instance, ptr::null_mut(), None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,

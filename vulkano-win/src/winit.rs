@@ -141,7 +141,7 @@ unsafe fn winit_to_surface(
             if instance.enabled_extensions().khr_xlib_surface {
                 Surface::from_xlib(
                     instance,
-                    window.xlib_display().unwrap(),
+                    window.xlib_display().unwrap() as _,
                     window.xlib_window().unwrap() as _,
                     Some(window),
                 )
@@ -196,8 +196,8 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::macos::WindowExtMacOS;
-    let layer = get_metal_layer_macos(window.ns_view());
-    Surface::from_mac_os(instance, layer as *const (), Some(window))
+    let metal_layer = get_metal_layer_macos(window.ns_view());
+    Surface::from_mac_os(instance, metal_layer as _, Some(window))
 }
 
 #[cfg(target_os = "ios")]
@@ -227,8 +227,8 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::ios::WindowExtIOS;
-    let layer = get_metal_layer_ios(window.ui_view());
-    Surface::from_ios(instance, layer, Some(window))
+    let metal_layer = get_metal_layer_ios(window.ui_view());
+    Surface::from_ios(instance, metal_layer.render_layer.0 as _, Some(window))
 }
 
 #[cfg(target_os = "windows")]
@@ -240,8 +240,8 @@ unsafe fn winit_to_surface(
 
     Surface::from_win32(
         instance,
-        window.hinstance() as *const (),
-        window.hwnd() as *const (),
+        window.hinstance() as _,
+        window.hwnd() as _,
         Some(window),
     )
 }
@@ -255,5 +255,5 @@ use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
 /// Creates a `Win32Monitor` from a Winit monitor handle.
 #[inline]
 pub fn create_win32_monitor_from_winit(monitor_handle: &MonitorHandle) -> Win32Monitor {
-    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as *const ()) }
+    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as _) }
 }

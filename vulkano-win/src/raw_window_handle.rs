@@ -23,8 +23,8 @@ pub fn create_surface_from_handle(
                 #[cfg(target_os = "ios")]
                 {
                     // Ensure the layer is CAMetalLayer
-                    let layer = get_metal_layer_ios(_h.ui_view);
-                    Surface::from_ios(instance, layer, Some(window))
+                    let metal_layer = get_metal_layer_ios(_h.ui_view);
+                    Surface::from_ios(instance, metal_layer.render_layer.0 as _, Some(window))
                 }
                 #[cfg(not(target_os = "ios"))]
                 {
@@ -35,8 +35,8 @@ pub fn create_surface_from_handle(
                 #[cfg(target_os = "macos")]
                 {
                     // Ensure the layer is CAMetalLayer
-                    let layer = get_metal_layer_macos(_h.ns_view);
-                    Surface::from_mac_os(instance, layer as *const (), Some(window))
+                    let metal_layer = get_metal_layer_macos(_h.ns_view);
+                    Surface::from_mac_os(instance, metal_layer as _, Some(window))
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -65,7 +65,7 @@ pub fn create_surface_from_handle(
                     RawDisplayHandle::Xlib(d) => d,
                     _ => panic!("Invalid RawDisplayHandle"),
                 };
-                Surface::from_xlib(instance, d.display, h.window, Some(window))
+                Surface::from_xlib(instance, d.display as _, h.window, Some(window))
             }
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),
@@ -92,8 +92,8 @@ pub unsafe fn create_surface_from_handle_ref(
                 #[cfg(target_os = "ios")]
                 {
                     // Ensure the layer is CAMetalLayer
-                    let layer = get_metal_layer_ios(_h.ui_view);
-                    Surface::from_ios(instance, layer, None)
+                    let metal_layer = get_metal_layer_ios(_h.ui_view);
+                    Surface::from_ios(instance, metal_layer.render_layer.0 as _, None)
                 }
                 #[cfg(not(target_os = "ios"))]
                 {
@@ -104,8 +104,8 @@ pub unsafe fn create_surface_from_handle_ref(
                 #[cfg(target_os = "macos")]
                 {
                     // Ensure the layer is CAMetalLayer
-                    let layer = get_metal_layer_macos(_h.ns_view);
-                    Surface::from_mac_os(instance, layer as *const (), None)
+                    let metal_layer = get_metal_layer_macos(_h.ns_view);
+                    Surface::from_mac_os(instance, metal_layer as _, None)
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -132,7 +132,7 @@ pub unsafe fn create_surface_from_handle_ref(
                     RawDisplayHandle::Xlib(d) => d,
                     _ => panic!("Invalid RawDisplayHandle"),
                 };
-                Surface::from_xlib(instance, d.display, h.window, None)
+                Surface::from_xlib(instance, d.display as _, h.window, None)
             }
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),

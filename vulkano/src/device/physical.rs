@@ -425,20 +425,20 @@ impl PhysicalDevice {
     ///
     /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
     #[inline]
-    pub unsafe fn directfb_presentation_support<D>(
+    pub unsafe fn directfb_presentation_support(
         &self,
         queue_family_index: u32,
-        dfb: *const D,
+        dfb: *mut ash::vk::IDirectFB,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_directfb_presentation_support(queue_family_index, dfb)?;
 
         Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
     }
 
-    fn validate_directfb_presentation_support<D>(
+    fn validate_directfb_presentation_support(
         &self,
         queue_family_index: u32,
-        _dfb: *const D,
+        _dfb: *mut ash::vk::IDirectFB,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().ext_directfb_surface {
             return Err(Box::new(ValidationError {
@@ -469,17 +469,17 @@ impl PhysicalDevice {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
-    pub unsafe fn directfb_presentation_support_unchecked<D>(
+    pub unsafe fn directfb_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        dfb: *const D,
+        dfb: *mut ash::vk::IDirectFB,
     ) -> bool {
         let fns = self.instance.fns();
         (fns.ext_directfb_surface
             .get_physical_device_direct_fb_presentation_support_ext)(
             self.handle,
             queue_family_index,
-            dfb as *mut _,
+            dfb,
         ) != 0
     }
 
@@ -1678,20 +1678,20 @@ impl PhysicalDevice {
     /// # Safety
     ///
     /// - `window` must be a valid QNX Screen `_screen_window` handle.
-    pub unsafe fn qnx_screen_presentation_support<W>(
+    pub unsafe fn qnx_screen_presentation_support(
         &self,
         queue_family_index: u32,
-        window: *const W,
+        window: *mut ash::vk::_screen_window,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
 
         Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
     }
 
-    fn validate_qnx_screen_presentation_support<W>(
+    fn validate_qnx_screen_presentation_support(
         &self,
         queue_family_index: u32,
-        _window: *const W,
+        _window: *mut ash::vk::_screen_window,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().qnx_screen_surface {
             return Err(Box::new(ValidationError {
@@ -1721,17 +1721,17 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn qnx_screen_presentation_support_unchecked<W>(
+    pub unsafe fn qnx_screen_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        window: *const W,
+        window: *mut ash::vk::_screen_window,
     ) -> bool {
         let fns = self.instance.fns();
         (fns.qnx_screen_surface
             .get_physical_device_screen_presentation_support_qnx)(
             self.handle,
             queue_family_index,
-            window as *mut _,
+            window,
         ) != 0
     }
 
@@ -3016,20 +3016,20 @@ impl PhysicalDevice {
     /// # Safety
     ///
     /// - `display` must be a valid Wayland `wl_display` handle.
-    pub unsafe fn wayland_presentation_support<D>(
+    pub unsafe fn wayland_presentation_support(
         &self,
         queue_family_index: u32,
-        display: *const D,
+        display: *mut ash::vk::wl_display,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_wayland_presentation_support(queue_family_index, display)?;
 
         Ok(self.wayland_presentation_support_unchecked(queue_family_index, display))
     }
 
-    fn validate_wayland_presentation_support<D>(
+    fn validate_wayland_presentation_support(
         &self,
         queue_family_index: u32,
-        _display: *const D,
+        _display: *mut ash::vk::wl_display,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_wayland_surface {
             return Err(Box::new(ValidationError {
@@ -3059,17 +3059,17 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn wayland_presentation_support_unchecked<D>(
+    pub unsafe fn wayland_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        display: *const D,
+        display: *mut ash::vk::wl_display,
     ) -> bool {
         let fns = self.instance.fns();
         (fns.khr_wayland_surface
             .get_physical_device_wayland_presentation_support_khr)(
             self.handle,
             queue_family_index,
-            display as *mut _,
+            display,
         ) != 0
     }
 
@@ -3129,10 +3129,10 @@ impl PhysicalDevice {
     /// # Safety
     ///
     /// - `connection` must be a valid X11 `xcb_connection_t` handle.
-    pub unsafe fn xcb_presentation_support<C>(
+    pub unsafe fn xcb_presentation_support(
         &self,
         queue_family_index: u32,
-        connection: *const C,
+        connection: *mut ash::vk::xcb_connection_t,
         visual_id: ash::vk::xcb_visualid_t,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_xcb_presentation_support(queue_family_index, connection, visual_id)?;
@@ -3140,10 +3140,10 @@ impl PhysicalDevice {
         Ok(self.xcb_presentation_support_unchecked(queue_family_index, connection, visual_id))
     }
 
-    fn validate_xcb_presentation_support<C>(
+    fn validate_xcb_presentation_support(
         &self,
         queue_family_index: u32,
-        _connection: *const C,
+        _connection: *mut ash::vk::xcb_connection_t,
         _visual_id: ash::vk::xcb_visualid_t,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_xcb_surface {
@@ -3174,10 +3174,10 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn xcb_presentation_support_unchecked<C>(
+    pub unsafe fn xcb_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        connection: *const C,
+        connection: *mut ash::vk::xcb_connection_t,
         visual_id: ash::vk::VisualID,
     ) -> bool {
         let fns = self.instance.fns();
@@ -3185,7 +3185,7 @@ impl PhysicalDevice {
             .get_physical_device_xcb_presentation_support_khr)(
             self.handle,
             queue_family_index,
-            connection as *mut _,
+            connection,
             visual_id,
         ) != 0
     }
@@ -3196,10 +3196,10 @@ impl PhysicalDevice {
     /// # Safety
     ///
     /// - `display` must be a valid Xlib `Display` handle.
-    pub unsafe fn xlib_presentation_support<D>(
+    pub unsafe fn xlib_presentation_support(
         &self,
         queue_family_index: u32,
-        display: *const D,
+        display: *mut ash::vk::Display,
         visual_id: ash::vk::VisualID,
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_xlib_presentation_support(queue_family_index, display, visual_id)?;
@@ -3207,10 +3207,10 @@ impl PhysicalDevice {
         Ok(self.xlib_presentation_support_unchecked(queue_family_index, display, visual_id))
     }
 
-    fn validate_xlib_presentation_support<D>(
+    fn validate_xlib_presentation_support(
         &self,
         queue_family_index: u32,
-        _display: *const D,
+        _display: *mut ash::vk::Display,
         _visual_id: ash::vk::VisualID,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_xlib_surface {
@@ -3241,10 +3241,10 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn xlib_presentation_support_unchecked<D>(
+    pub unsafe fn xlib_presentation_support_unchecked(
         &self,
         queue_family_index: u32,
-        display: *const D,
+        display: *mut ash::vk::Display,
         visual_id: ash::vk::VisualID,
     ) -> bool {
         let fns = self.instance.fns();
@@ -3252,7 +3252,7 @@ impl PhysicalDevice {
             .get_physical_device_xlib_presentation_support_khr)(
             self.handle,
             queue_family_index,
-            display as *mut _,
+            display,
             visual_id,
         ) != 0
     }
