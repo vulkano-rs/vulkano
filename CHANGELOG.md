@@ -39,6 +39,9 @@ Changes to `Surface`:
 - `Surface::required_extensions` now returns a result.
 - `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
 
+Changes to surface creation and support functions:
+- Where handles to foreign window system objects are passed, Vulkano no longer takes a generic pointer, but takes the same pointer type that Ash does.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
