@@ -14,7 +14,7 @@ doc = false
 [dependencies]
 cgmath = { workspace = true }
 rand = { workspace = true }
-vulkano = { workspace = true }
+vulkano = { workspace = true, features = ["macros"]  }
 vulkano-shaders = { workspace = true }
 vulkano-util = { workspace = true }
 winit = { workspace = true }

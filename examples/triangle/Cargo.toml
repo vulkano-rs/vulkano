@@ -13,7 +13,7 @@ doc = false
 
 [dependencies]
 # The `vulkano` crate is the main crate that you must use to use Vulkan.
-vulkano = { workspace = true }
+vulkano = { workspace = true, features = ["macros"] }
 # Provides the `shader!` macro that is used to generate code for using shaders.
 vulkano-shaders = { workspace = true }
 # The Vulkan library doesn't provide any functionality to create and handle windows, as
