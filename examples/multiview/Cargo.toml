@@ -13,5 +13,5 @@ doc = false
 
 [dependencies]
 png = { workspace = true }
-vulkano = { workspace = true }
+vulkano = { workspace = true, features = ["macros"]  }
 vulkano-shaders = { workspace = true }

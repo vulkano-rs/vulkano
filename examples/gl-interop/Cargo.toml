@@ -13,7 +13,7 @@ doc = false
 
 [dependencies]
 glium = "0.32.1"
-vulkano = { workspace = true }
+vulkano = { workspace = true, features = ["macros"]  }
 vulkano-shaders = { workspace = true }
 winit = { workspace = true }
 # Glium has still not been updated to the latest winit version

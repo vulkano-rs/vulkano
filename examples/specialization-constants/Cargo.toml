@@ -12,5 +12,5 @@ bench = false
 doc = false
 
 [dependencies]
-vulkano = { workspace = true }
+vulkano = { workspace = true, features = ["macros"]  }
 vulkano-shaders = { workspace = true }
