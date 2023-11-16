@@ -71,7 +71,6 @@
 //! [the `shader` module documentation]: crate::shader
 
 pub use self::{subbuffer::*, sys::*, usage::*};
-use crate::memory::allocator::MemoryTypeFilter;
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
@@ -290,51 +289,6 @@ impl Buffer {
         }
 
         Ok(buffer)
-    }
-
-    /// Creates a staging buffer with the data `iter` and a device-local buffer with the same size.
-    /// Returns a tuple of [`Subbuffer`]s (staging, device-local) spanning the whole buffers.
-    /// Useful for passing into `copy_buffer` command as (source, destination).
-    pub fn pair_from_iter<T, I>(
-        allocator: Arc<dyn MemoryAllocator>,
-        iter: I,
-        usage: BufferUsage,
-    ) -> Result<(Subbuffer<[T]>, Subbuffer<[T]>), Validated<AllocateBufferError>>
-    where
-        T: BufferContents,
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let iter = iter.into_iter();
-
-        let device_local_buffer = Buffer::new_slice::<T>(
-            allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_DST | usage,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            iter.len() as DeviceSize,
-        )?;
-
-        let staging_buffer = Buffer::from_iter(
-            allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            iter,
-        )?;
-
-        Ok((staging_buffer, device_local_buffer))
     }
 
     /// Creates a new uninitialized `Buffer` for sized data. Returns a [`Subbuffer`] spanning the
