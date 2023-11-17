@@ -1934,9 +1934,8 @@ pub struct SwapchainCreateInfo {
     /// The default value is [`FullScreenExclusive::Default`].
     pub full_screen_exclusive: FullScreenExclusive,
 
-    /// For Win32 surfaces, if `full_screen_exclusive` is
-    /// [`FullScreenExclusive::ApplicationControlled`], this specifies the monitor on which
-    /// full-screen exclusivity should be used.
+    /// If `full_screen_exclusive` is not [`FullScreenExclusive::Default`], this specifies the
+    /// monitor on which full-screen exclusivity should be used.
     ///
     /// For this case, the value must be `Some`, and for all others it must be `None`.
     ///
