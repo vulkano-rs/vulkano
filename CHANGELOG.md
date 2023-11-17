@@ -53,6 +53,7 @@ Changes to surface creation and support functions:
 - Incorrect assert condition in `PipelineLayout::is_compatible_with`.
 - `evaluate_spec_constant_op` panics with UConvert, SConvert, and FConvert.
 - [#2398](https://github.com/vulkano-rs/vulkano/issues/2398) Push constant reflection sometimes uses the wrong types, and doesn't correctly reflect push constants with multiple entry points.
+- `surface_capabilities` demands that `win32_monitor` be `Some` or `None` in the wrong cases.
 
 # Version 0.34.1 (2023-10-29)
 
