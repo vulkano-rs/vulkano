@@ -575,7 +575,8 @@ impl Swapchain {
                         present_mode: (device.enabled_extensions().ext_swapchain_maintenance1)
                             .then_some(present_mode),
                         full_screen_exclusive,
-                        win32_monitor,
+                        win32_monitor: win32_monitor
+                            .filter(|_| full_screen_exclusive != FullScreenExclusive::Default),
                         ..Default::default()
                     },
                 )
@@ -597,7 +598,11 @@ impl Swapchain {
                         present_mode: (device.enabled_extensions().ext_swapchain_maintenance1)
                             .then_some(present_mode),
                         full_screen_exclusive,
-                        win32_monitor,
+                        win32_monitor: win32_monitor.filter(|_| {
+                            surface.api() == SurfaceApi::Win32
+                                && full_screen_exclusive
+                                    == FullScreenExclusive::ApplicationControlled
+                        }),
                         ..Default::default()
                     },
                 )
@@ -617,7 +622,11 @@ impl Swapchain {
                     surface,
                     SurfaceInfo {
                         full_screen_exclusive,
-                        win32_monitor,
+                        win32_monitor: win32_monitor.filter(|_| {
+                            surface.api() == SurfaceApi::Win32
+                                && full_screen_exclusive
+                                    == FullScreenExclusive::ApplicationControlled
+                        }),
                         ..Default::default()
                     },
                 )
@@ -951,33 +960,6 @@ impl Swapchain {
                 }));
             }
             */
-        }
-
-        if surface.api() == SurfaceApi::Win32
-            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
-        {
-            if win32_monitor.is_none() {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface` is a Win32 surface, and \
-                        `create_info.full_screen_exclusive` is \
-                        `FullScreenExclusive::ApplicationControlled`, but \
-                        `create_info.win32_monitor` is `None`"
-                        .into(),
-                    vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-02679"],
-                    ..Default::default()
-                }));
-            }
-        } else {
-            if win32_monitor.is_some() {
-                return Err(Box::new(ValidationError {
-                    problem: "`surface` is not a Win32 surface, or \
-                        `create_info.full_screen_exclusive` is not \
-                        `FullScreenExclusive::ApplicationControlled`, but \
-                        `create_info.win32_monitor` is `Some`"
-                        .into(),
-                    ..Default::default()
-                }));
-            }
         }
 
         Ok(())
@@ -1952,9 +1934,8 @@ pub struct SwapchainCreateInfo {
     /// The default value is [`FullScreenExclusive::Default`].
     pub full_screen_exclusive: FullScreenExclusive,
 
-    /// For Win32 surfaces, if `full_screen_exclusive` is
-    /// [`FullScreenExclusive::ApplicationControlled`], this specifies the monitor on which
-    /// full-screen exclusivity should be used.
+    /// If `full_screen_exclusive` is not [`FullScreenExclusive::Default`], this specifies the
+    /// monitor on which full-screen exclusivity should be used.
     ///
     /// For this case, the value must be `Some`, and for all others it must be `None`.
     ///
@@ -2011,7 +1992,7 @@ impl SwapchainCreateInfo {
             scaling_behavior,
             present_gravity,
             full_screen_exclusive,
-            win32_monitor: _,
+            win32_monitor,
             _ne: _,
         } = self;
 
@@ -2315,6 +2296,23 @@ impl SwapchainCreateInfo {
                         "VUID-VkSurfaceFullScreenExclusiveInfoEXT-fullScreenExclusive-parameter",
                     ])
                 })?;
+
+            if win32_monitor.is_none() {
+                return Err(Box::new(ValidationError {
+                    problem: "`full_screen_exclusive` is not `FullScreenExclusive::Default`, but \
+                        `win32_monitor` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkSwapchainCreateInfoKHR-pNext-02679"],
+                    ..Default::default()
+                }));
+            }
+        } else if win32_monitor.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`full_screen_exclusive` is `FullScreenExclusive::Default`, but \
+                    `win32_monitor` is `Some`"
+                    .into(),
+                ..Default::default()
+            }));
         }
 
         Ok(())
