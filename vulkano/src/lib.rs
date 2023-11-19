@@ -15,10 +15,15 @@
 //!
 //! 3. If you intend to show graphics to the user on a window or a screen, create a [`Surface`].
 //!    A `Surface` is created from a window identifier or handle, that is specific to the display or
-//!    windowing system being used. You just need to install `raw-window-handle` crate too and then
-//!    use your favorite windowing crate to get the raw window handles.
-//!    Note: there is multiple versions of `raw-window-handle` which can be incompatible.
-//!    if you're using winit, you may want to use `rwh-X` feature to fix compatibility issues.
+//!    windowing system being used. Vulkano uses `raw-window-handle` to abstract over the different
+//!    windowing systems.
+//!    Note: that you have to make sure that the `raw-window-handle` that your windowing library
+//!    uses is compatible with the `raw-window-handle` that Vulkano uses.
+//!    For example, if you use a `winit` version that uses a different version from the one vulkano
+//!    uses, you can add one of the [features](https://docs.rs/crate/winit/latest/features) that
+//!    starts with `rwh` to `winit`.
+//!    Currently, vulkano is compatible with `rwh_06`.
+//!    
 //!
 //! 4. [Enumerate the physical devices] that are available on the `Instance`, and choose one that
 //!    is suitable for your program. A [`PhysicalDevice`] represents a Vulkan-capable device that
