@@ -174,12 +174,33 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
                 }
             },
         );
+        let result_type_id_items = members.iter().filter_map(
+            |InstructionMember {
+                 name,
+                 has_result_type_id,
+                 ..
+             }| {
+                if *has_result_type_id {
+                    Some(quote! { Self::#name { result_type_id, .. } })
+                } else {
+                    None
+                }
+            },
+        );
 
         quote! {
             /// Returns the `Id` that is assigned by this instruction, if any.
             pub fn result_id(&self) -> Option<Id> {
                 match self {
                     #(#result_id_items)|* => Some(*result_id),
+                    _ => None
+                }
+            }
+
+            /// Returns the `Id` of the type of `result_id`, if any.
+            pub fn result_type_id(&self) -> Option<Id> {
+                match self {
+                    #(#result_type_id_items)|* => Some(*result_type_id),
                     _ => None
                 }
             }
@@ -325,6 +346,19 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                 }
             },
         );
+        let from_items = members.iter().map(
+            |KindEnumMember {
+                 name,
+                 value,
+                 parameters,
+             }| {
+                if parameters.is_empty() {
+                    quote! { #name: value & #value != 0, }
+                } else {
+                    quote! { #name: None, }
+                }
+            },
+        );
         let parse_items = members.iter().map(
             |KindEnumMember {
                  name,
@@ -356,7 +390,7 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
         );
 
         quote! {
-            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
             #[allow(non_camel_case_types)]
             pub struct #name {
                 #(#members_items)*
@@ -370,6 +404,14 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                     Ok(Self {
                         #(#parse_items)*
                     })
+                }
+            }
+
+            impl From<u32> for #name {
+                fn from(value: u32) -> Self {
+                    Self {
+                        #(#from_items)*
+                    }
                 }
             }
         }
@@ -447,11 +489,11 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
     let enum_items = enums.iter().map(|(name, members)| {
         let members_items = members.iter().map(
             |KindEnumMember {
-                 name, parameters, ..
+                 name, value, parameters, ..
              }| {
                 if parameters.is_empty() {
                     quote! {
-                        #name,
+                        #name = #value,
                     }
                 } else {
                     let params = parameters.iter().map(|OperandMember { name, ty, .. }| {
@@ -460,11 +502,17 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                     quote! {
                         #name {
                             #(#params)*
-                        },
+                        } = #value,
                     }
                 }
             },
         );
+        let try_from_items = members
+            .iter()
+            .filter(|member| member.parameters.is_empty())
+            .map(|KindEnumMember { name, value, .. }| {
+                quote! { #value => Ok(Self::#name), }
+            });
         let parse_items = members.iter().map(
             |KindEnumMember {
                  name,
@@ -495,14 +543,14 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
         let name_string = name.to_string();
 
         let derives = match name_string.as_str() {
-            "ExecutionModel" => quote! { #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)] },
             "Decoration" => quote! { #[derive(Clone, Debug, PartialEq)] },
-            _ => quote! { #[derive(Clone, Copy, Debug, PartialEq, Eq)] },
+            _ => quote! { #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] },
         };
 
         quote! {
             #derives
             #[allow(non_camel_case_types)]
+            #[repr(u32)]
             pub enum #name {
                 #(#members_items)*
             }
@@ -514,6 +562,17 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
                         #(#parse_items)*
                         value => return Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),
                     })
+                }
+            }
+
+            impl TryFrom<u32> for #name {
+                type Error = ();
+
+                fn try_from(val: u32) -> Result<Self, Self::Error> {
+                    match val {
+                        #(#try_from_items)*
+                        _ => Err(()),
+                    }
                 }
             }
         }

@@ -528,7 +528,8 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         })?;
 
         for &capability in spirv
-            .iter_capability()
+            .capabilities()
+            .iter()
             .filter_map(|instruction| match instruction {
                 Instruction::Capability { capability } => Some(capability),
                 _ => None,
@@ -538,7 +539,8 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         }
 
         for extension in spirv
-            .iter_extension()
+            .extensions()
+            .iter()
             .filter_map(|instruction| match instruction {
                 Instruction::Extension { name } => Some(name.as_str()),
                 _ => None,
