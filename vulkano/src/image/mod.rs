@@ -115,6 +115,7 @@ pub struct Image {
 
 /// The type of backing memory that an image can have.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ImageMemory {
     /// The image is backed by normal memory, bound with [`bind_memory`].
     ///
@@ -131,6 +132,9 @@ pub enum ImageMemory {
         swapchain: Arc<Swapchain>,
         image_index: u32,
     },
+
+    /// The image is backed by external memory not managed by vulkano.
+    External,
 }
 
 impl Image {
@@ -505,7 +509,7 @@ impl Image {
 
     pub(crate) unsafe fn layout_initialized(&self) {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse(..) | ImageMemory::External => {
                 self.is_layout_initialized.store(true, Ordering::Release);
             }
             ImageMemory::Swapchain {
@@ -519,7 +523,7 @@ impl Image {
 
     pub(crate) fn is_layout_initialized(&self) -> bool {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse(..) | ImageMemory::External => {
                 self.is_layout_initialized.load(Ordering::Acquire)
             }
             ImageMemory::Swapchain {
