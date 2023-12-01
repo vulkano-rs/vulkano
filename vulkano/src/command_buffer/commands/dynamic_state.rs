@@ -7,6 +7,10 @@ use crate::{
             depth_stencil::{CompareOp, StencilFaces, StencilOp, StencilOps},
             input_assembly::PrimitiveTopology,
             rasterization::{CullMode, DepthBiasState, FrontFace, LineStipple},
+            vertex_input::{
+                VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
+                VertexInputState,
+            },
             viewport::{Scissor, Viewport},
         },
         DynamicState,
@@ -1063,6 +1067,46 @@ impl<L> AutoCommandBufferBuilder<L> {
             Default::default(),
             move |out: &mut UnsafeCommandBufferBuilder| {
                 out.set_stencil_write_mask_unchecked(faces, write_mask);
+            },
+        );
+
+        self
+    }
+
+    /// Sets the dynamic vertex input for future draw calls.
+    #[inline]
+    pub fn set_vertex_input(
+        &mut self,
+        vertex_input_state: VertexInputState,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_vertex_input(&vertex_input_state)?;
+
+        unsafe { Ok(self.set_vertex_input_unchecked(vertex_input_state)) }
+    }
+
+    fn validate_set_vertex_input(
+        &self,
+        vertex_input_state: &VertexInputState,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_vertex_input(vertex_input_state)?;
+
+        self.validate_graphics_pipeline_fixed_state(DynamicState::VertexInput)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_vertex_input_unchecked(
+        &mut self,
+        vertex_input_state: VertexInputState,
+    ) -> &mut Self {
+        self.builder_state.vertex_input = Some(vertex_input_state.clone());
+
+        self.add_command(
+            "set_vertex_input",
+            Default::default(),
+            move |out: &mut UnsafeCommandBufferBuilder| {
+                out.set_vertex_input_unchecked(&vertex_input_state);
             },
         );
 
@@ -2833,6 +2877,121 @@ impl UnsafeCommandBufferBuilder {
     ) -> &mut Self {
         let fns = self.device().fns();
         (fns.v1_0.cmd_set_stencil_write_mask)(self.handle(), faces.into(), write_mask);
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn set_vertex_input(
+        &mut self,
+        vertex_input_state: &VertexInputState,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_vertex_input(vertex_input_state)?;
+
+        Ok(self.set_vertex_input_unchecked(vertex_input_state))
+    }
+
+    fn validate_set_vertex_input(
+        &self,
+        vertex_input_state: &VertexInputState,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.device().enabled_features().vertex_input_dynamic_state
+            || self.device().enabled_features().shader_object)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::Feature("vertex_input_dynamic_state")]),
+                    RequiresAllOf(&[Requires::Feature("shader_object")]),
+                ]),
+                vuids: &["VUID-vkCmdSetVertexInputEXT-None-08546"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetVertexInputEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        vertex_input_state
+            .validate(self.device())
+            .map_err(|err| err.add_context("vertex_input_state"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_vertex_input_unchecked(
+        &mut self,
+        vertex_input_state: &VertexInputState,
+    ) -> &mut Self {
+        let mut vertex_binding_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
+        let mut vertex_attribute_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
+
+        let VertexInputState {
+            bindings,
+            attributes,
+            _ne: _,
+        } = vertex_input_state;
+
+        vertex_binding_descriptions_vk.extend(bindings.iter().map(|(&binding, binding_desc)| {
+            let &VertexInputBindingDescription {
+                stride,
+                input_rate,
+                _ne: _,
+            } = binding_desc;
+
+            let divisor = match input_rate {
+                // VUID-VkVertexInputBindingDescription2EXT-divisor-06227
+                VertexInputRate::Vertex => 1,
+                VertexInputRate::Instance { divisor } => divisor,
+            };
+
+            ash::vk::VertexInputBindingDescription2EXT {
+                binding,
+                stride,
+                input_rate: input_rate.into(),
+                divisor,
+                ..Default::default()
+            }
+        }));
+
+        vertex_attribute_descriptions_vk.extend(attributes.iter().map(
+            |(&location, attribute_desc)| {
+                let &VertexInputAttributeDescription {
+                    binding,
+                    format,
+                    offset,
+                    _ne: _,
+                } = attribute_desc;
+
+                ash::vk::VertexInputAttributeDescription2EXT {
+                    location,
+                    binding,
+                    format: format.into(),
+                    offset,
+                    ..Default::default()
+                }
+            },
+        ));
+
+        let fns = self.device().fns();
+        (fns.ext_vertex_input_dynamic_state.cmd_set_vertex_input_ext)(
+            self.handle(),
+            vertex_binding_descriptions_vk.len() as u32,
+            vertex_binding_descriptions_vk.as_ptr(),
+            vertex_attribute_descriptions_vk.len() as u32,
+            vertex_attribute_descriptions_vk.as_ptr(),
+        );
 
         self
     }

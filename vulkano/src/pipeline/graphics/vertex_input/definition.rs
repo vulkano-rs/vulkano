@@ -27,6 +27,7 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
                 VertexInputBindingDescription {
                     stride: buffer.stride,
                     input_rate: buffer.input_rate,
+                    ..Default::default()
                 },
             )
         });
@@ -91,6 +92,7 @@ unsafe impl VertexDefinition for &[VertexBufferDescription] {
                         binding,
                         format: infos.format,
                         offset: offset as u32,
+                        ..Default::default()
                     },
                 ));
                 offset += block_size;

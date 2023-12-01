@@ -16,8 +16,9 @@ use crate::{
     image::{sampler::Sampler, view::ImageView, ImageAspects, ImageLayout, SampleCount},
     pipeline::{
         graphics::{
-            input_assembly::PrimitiveTopology, subpass::PipelineSubpassType,
-            vertex_input::VertexInputRate,
+            input_assembly::PrimitiveTopology,
+            subpass::PipelineSubpassType,
+            vertex_input::{self, RequiredVertexInputsVUIDs, VertexInputRate},
         },
         DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
     },
@@ -270,7 +271,13 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        for (&binding_num, binding_desc) in &pipeline.vertex_input_state().bindings {
+        let vertex_input_state = pipeline
+            .dynamic_state()
+            .contains(&DynamicState::VertexInput)
+            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
+            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+
+        for (&binding_num, binding_desc) in &vertex_input_state.bindings {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
 
             // Per spec:
@@ -604,7 +611,13 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        for (&binding_num, binding_desc) in &pipeline.vertex_input_state().bindings {
+        let vertex_input_state = pipeline
+            .dynamic_state()
+            .contains(&DynamicState::VertexInput)
+            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
+            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+
+        for (&binding_num, binding_desc) in &vertex_input_state.bindings {
             let vertex_buffer = &self.builder_state.vertex_buffers[&binding_num];
 
             // Per spec:
@@ -2148,7 +2161,45 @@ impl<L> AutoCommandBufferBuilder<L> {
                         }));
                     }
                 }
-                // DynamicState::VertexInput => todo!(),
+                DynamicState::VertexInput => {
+                    if let Some(vertex_input_state) = &self.builder_state.vertex_input {
+                        vertex_input::validate_required_vertex_inputs(
+                            &vertex_input_state.attributes,
+                            pipeline.required_vertex_inputs().unwrap(),
+                            RequiredVertexInputsVUIDs {
+                                not_present: vuids!(vuid_type, "Input-07939"),
+                                numeric_type: vuids!(vuid_type, "Input-08734"),
+                                requires32: vuids!(vuid_type, "format-08936"),
+                                requires64: vuids!(vuid_type, "format-08937"),
+                                requires_second_half: vuids!(vuid_type, "None-09203"),
+                            },
+                        )
+                        .map_err(|mut err| {
+                            err.problem = format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::VertexInput` dynamic state, but \
+                                the dynamic vertex input does not meet the requirements of the \
+                                vertex shader in the pipeline: {}",
+                                err.problem,
+                            )
+                            .into();
+                            err
+                        })?;
+                    } else {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            )
+                            .into(),
+                            vuids: vuids!(vuid_type, "None-04914"),
+                            ..Default::default()
+                        }));
+                    }
+                }
                 // DynamicState::VertexInputBindingStride => todo!(),
                 DynamicState::Viewport => {
                     let viewport_state = pipeline.viewport_state().unwrap();
@@ -2437,9 +2488,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         vuid_type: VUIDType,
         pipeline: &GraphicsPipeline,
     ) -> Result<(), Box<ValidationError>> {
-        let vertex_input = pipeline.vertex_input_state();
+        let vertex_input_state = pipeline
+            .dynamic_state()
+            .contains(&DynamicState::VertexInput)
+            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
+            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
 
-        for &binding_num in vertex_input.bindings.keys() {
+        for &binding_num in vertex_input_state.bindings.keys() {
             if !self.builder_state.vertex_buffers.contains_key(&binding_num) {
                 return Err(Box::new(ValidationError {
                     problem: format!(
@@ -2663,20 +2718,24 @@ impl<L> AutoCommandBufferBuilder<L> {
         used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &GraphicsPipeline,
     ) {
-        used_resources.extend(pipeline.vertex_input_state().bindings.iter().map(
-            |(&binding, _)| {
-                let vertex_buffer = &self.builder_state.vertex_buffers[&binding];
-                (
-                    ResourceInCommand::VertexBuffer { binding }.into(),
-                    Resource::Buffer {
-                        buffer: vertex_buffer.clone(),
-                        range: 0..vertex_buffer.size(), // TODO:
-                        memory_access:
-                            PipelineStageAccessFlags::VertexAttributeInput_VertexAttributeRead,
-                    },
-                )
-            },
-        ));
+        let vertex_input_state = pipeline
+            .dynamic_state()
+            .contains(&DynamicState::VertexInput)
+            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
+            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+
+        used_resources.extend(vertex_input_state.bindings.iter().map(|(&binding, _)| {
+            let vertex_buffer = &self.builder_state.vertex_buffers[&binding];
+            (
+                ResourceInCommand::VertexBuffer { binding }.into(),
+                Resource::Buffer {
+                    buffer: vertex_buffer.clone(),
+                    range: 0..vertex_buffer.size(), // TODO:
+                    memory_access:
+                        PipelineStageAccessFlags::VertexAttributeInput_VertexAttributeRead,
+                },
+            )
+        }));
     }
 
     fn add_index_buffer_resources(&self, used_resources: &mut Vec<(ResourceUseRef2, Resource)>) {

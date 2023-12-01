@@ -1444,6 +1444,17 @@ fn is_builtin(spirv: &Spirv, id: Id) -> bool {
     }
 }
 
+pub(crate) fn get_constant(spirv: &Spirv, id: Id) -> Option<u64> {
+    match spirv.id(id).instruction() {
+        Instruction::Constant { value, .. } => match value.len() {
+            1 => Some(value[0] as u64),
+            2 => Some(value[0] as u64 | (value[1] as u64) << 32),
+            _ => panic!("constant {} is larger than 64 bits", id),
+        },
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{HashMap, PushConstantRange, ShaderStages, Version};
