@@ -1251,12 +1251,15 @@ vulkan_enum! {
         RequiresAllOf([DeviceExtension(ext_line_rasterization)]),
     ]),
 
-    /* TODO: enable
-    // TODO: document
+    /// The `Option` variant of
+    /// [`GraphicsPipelineCreateInfo::vertex_input_state`](crate::pipeline::graphics::GraphicsPipelineCreateInfo::vertex_input_state).
+    ///
+    /// Set with
+    /// [`set_vertex_input`](crate::command_buffer::AutoCommandBufferBuilder::set_vertex_input).
     VertexInput = VERTEX_INPUT_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_vertex_input_dynamic_state)]),
-    ]), */
+    ]),
 
     /// The value of
     /// [`TessellationState::patch_control_points`](crate::pipeline::graphics::tessellation::TessellationState::patch_control_points).

@@ -56,7 +56,7 @@ use self::{
     rasterization::RasterizationState,
     subpass::PipelineSubpassType,
     tessellation::TessellationState,
-    vertex_input::VertexInputState,
+    vertex_input::{RequiredVertexInputsVUIDs, VertexInputLocationRequirements, VertexInputState},
     viewport::ViewportState,
 };
 use super::{
@@ -75,7 +75,9 @@ use crate::{
         rasterization::{CullMode, DepthBiasState},
         subpass::PipelineRenderingCreateInfo,
         tessellation::TessellationDomainOrigin,
-        vertex_input::VertexInputRate,
+        vertex_input::{
+            VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
+        },
     },
     shader::{
         spirv::{ExecutionMode, ExecutionModel, Instruction},
@@ -116,11 +118,7 @@ pub struct GraphicsPipeline {
     flags: PipelineCreateFlags,
     // TODO: replace () with an object that describes the shaders in some way.
     shaders: HashMap<ShaderStage, ()>,
-    descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
-    num_used_descriptor_sets: u32,
-    fragment_tests_stages: Option<FragmentTestsStages>,
-
-    vertex_input_state: VertexInputState,
+    vertex_input_state: Option<VertexInputState>,
     input_assembly_state: InputAssemblyState,
     tessellation_state: Option<TessellationState>,
     viewport_state: Option<ViewportState>,
@@ -134,7 +132,12 @@ pub struct GraphicsPipeline {
 
     discard_rectangle_state: Option<DiscardRectangleState>,
 
+    descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
+    num_used_descriptor_sets: u32,
     fixed_state: HashSet<DynamicState>,
+    fragment_tests_stages: Option<FragmentTestsStages>,
+    // Note: this is only `Some` if `vertex_input_state` is `None`.
+    required_vertex_inputs: Option<HashMap<u32, VertexInputLocationRequirements>>,
 }
 
 impl GraphicsPipeline {
@@ -305,19 +308,36 @@ impl GraphicsPipeline {
             } = vertex_input_state;
 
             vertex_binding_descriptions_vk.extend(bindings.iter().map(
-                |(&binding, binding_desc)| ash::vk::VertexInputBindingDescription {
-                    binding,
-                    stride: binding_desc.stride,
-                    input_rate: binding_desc.input_rate.into(),
+                |(&binding, binding_desc)| {
+                    let &VertexInputBindingDescription {
+                        stride,
+                        input_rate,
+                        _ne: _,
+                    } = binding_desc;
+
+                    ash::vk::VertexInputBindingDescription {
+                        binding,
+                        stride,
+                        input_rate: input_rate.into(),
+                    }
                 },
             ));
 
             vertex_attribute_descriptions_vk.extend(attributes.iter().map(
-                |(&location, attribute_desc)| ash::vk::VertexInputAttributeDescription {
-                    location,
-                    binding: attribute_desc.binding,
-                    format: attribute_desc.format.into(),
-                    offset: attribute_desc.offset,
+                |(&location, attribute_desc)| {
+                    let &VertexInputAttributeDescription {
+                        binding,
+                        format,
+                        offset,
+                        _ne: _,
+                    } = attribute_desc;
+
+                    ash::vk::VertexInputAttributeDescription {
+                        location,
+                        binding,
+                        format: format.into(),
+                        offset,
+                    }
                 },
             ));
 
@@ -902,6 +922,7 @@ impl GraphicsPipeline {
             DescriptorBindingRequirements,
         > = HashMap::default();
         let mut fragment_tests_stages = None;
+        let mut required_vertex_inputs = None;
 
         for stage in &stages {
             let &PipelineShaderStageCreateInfo {
@@ -915,22 +936,33 @@ impl GraphicsPipeline {
             let spirv = entry_point.module().spirv();
             let entry_point_function = spirv.function(entry_point.id());
 
-            if matches!(entry_point_info.execution_model, ExecutionModel::Fragment) {
-                fragment_tests_stages = Some(FragmentTestsStages::Late);
+            match entry_point_info.execution_model {
+                ExecutionModel::Vertex => {
+                    if vertex_input_state.is_none() {
+                        required_vertex_inputs = Some(vertex_input::required_vertex_inputs(
+                            entry_point.module().spirv(),
+                            entry_point.id(),
+                        ));
+                    }
+                }
+                ExecutionModel::Fragment => {
+                    fragment_tests_stages = Some(FragmentTestsStages::Late);
 
-                for instruction in entry_point_function.execution_modes() {
-                    if let Instruction::ExecutionMode { mode, .. } = *instruction {
-                        match mode {
-                            ExecutionMode::EarlyFragmentTests => {
-                                fragment_tests_stages = Some(FragmentTestsStages::Early);
+                    for instruction in entry_point_function.execution_modes() {
+                        if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                            match mode {
+                                ExecutionMode::EarlyFragmentTests => {
+                                    fragment_tests_stages = Some(FragmentTestsStages::Early);
+                                }
+                                ExecutionMode::EarlyAndLateFragmentTestsAMD => {
+                                    fragment_tests_stages = Some(FragmentTestsStages::EarlyAndLate);
+                                }
+                                _ => (),
                             }
-                            ExecutionMode::EarlyAndLateFragmentTestsAMD => {
-                                fragment_tests_stages = Some(FragmentTestsStages::EarlyAndLate);
-                            }
-                            _ => (),
                         }
                     }
                 }
+                _ => (),
             }
 
             for (&loc, reqs) in &entry_point_info.descriptor_binding_requirements {
@@ -1022,11 +1054,7 @@ impl GraphicsPipeline {
 
             flags,
             shaders,
-            descriptor_binding_requirements,
-            num_used_descriptor_sets,
-            fragment_tests_stages,
-
-            vertex_input_state: vertex_input_state.unwrap(), // Can be None if there's a mesh shader, but we don't support that yet
+            vertex_input_state,
             input_assembly_state: input_assembly_state.unwrap(), // Can be None if there's a mesh shader, but we don't support that yet
             tessellation_state,
             viewport_state,
@@ -1040,7 +1068,11 @@ impl GraphicsPipeline {
 
             discard_rectangle_state,
 
+            descriptor_binding_requirements,
+            num_used_descriptor_sets,
             fixed_state,
+            fragment_tests_stages,
+            required_vertex_inputs,
         })
     }
 
@@ -1070,8 +1102,8 @@ impl GraphicsPipeline {
 
     /// Returns the vertex input state used to create this pipeline.
     #[inline]
-    pub fn vertex_input_state(&self) -> &VertexInputState {
-        &self.vertex_input_state
+    pub fn vertex_input_state(&self) -> Option<&VertexInputState> {
+        self.vertex_input_state.as_ref()
     }
 
     /// Returns the input assembly state used to create this pipeline.
@@ -1144,6 +1176,14 @@ impl GraphicsPipeline {
     #[inline]
     pub(crate) fn fixed_state(&self) -> &HashSet<DynamicState> {
         &self.fixed_state
+    }
+
+    /// Returns the required vertex inputs.
+    #[inline]
+    pub(crate) fn required_vertex_inputs(
+        &self,
+    ) -> Option<&HashMap<u32, VertexInputLocationRequirements>> {
+        self.required_vertex_inputs.as_ref()
     }
 }
 
@@ -1643,11 +1683,14 @@ impl GraphicsPipelineCreateInfo {
             _ => (),
         }
 
-        match (vertex_input_state.is_some(), need_vertex_input_state) {
+        match (
+            vertex_input_state.is_some(),
+            need_vertex_input_state && !dynamic_state.contains(&DynamicState::VertexInput),
+        ) {
             (true, false) => {
                 return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        vertex input state, but \
+                    problem: "the pipeline is not being created with vertex input state, or \
+                        `dynamic_state` includes `DynamicState::VertexInput`, but \
                         `vertex_input_state` is `Some`"
                         .into(),
                     ..Default::default()
@@ -1655,8 +1698,8 @@ impl GraphicsPipelineCreateInfo {
             }
             (false, true) => {
                 return Err(Box::new(ValidationError {
-                    problem: "the pipeline is being created with \
-                        vertex input state, but \
+                    problem: "the pipeline is being created with vertex input state, and \
+                        `dynamic_state` does not include `DynamicState::VertexInput`, but \
                         `vertex_input_state` is `None`"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02097"],
@@ -2357,54 +2400,34 @@ impl GraphicsPipelineCreateInfo {
         */
 
         if let (Some(vertex_stage), Some(vertex_input_state)) = (vertex_stage, vertex_input_state) {
-            for element in vertex_stage.entry_point.info().input_interface.elements() {
-                assert!(!element.ty.is_64bit); // TODO: implement
-                let location_range =
-                    element.location..element.location + element.ty.num_locations();
+            let required_vertex_inputs = vertex_input::required_vertex_inputs(
+                vertex_stage.entry_point.module().spirv(),
+                vertex_stage.entry_point.id(),
+            );
 
-                for location in location_range {
-                    let attribute_desc = match vertex_input_state.attributes.get(&location) {
-                        Some(attribute_desc) => attribute_desc,
-                        None => {
-                            return Err(Box::new(ValidationError {
-                                problem: format!(
-                                    "the vertex shader has an input variable with location {0}, but \
-                                    `vertex_input_state.attributes` does not contain {0}",
-                                    location,
-                                )
-                                .into(),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-Input-07905"],
-                                ..Default::default()
-                            }));
-                        }
-                    };
-
-                    // TODO: Check component assignments too. Multiple variables can occupy the
-                    // same location but in different components.
-
-                    let shader_type = element.ty.base_type;
-                    let attribute_type = attribute_desc
-                        .format
-                        .numeric_format_color()
-                        .unwrap()
-                        .numeric_type();
-
-                    // VUID?
-                    if shader_type != attribute_type {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "`vertex_input_state.attributes[{}].format` has a different \
-                                numeric type than the vertex shader input variable with \
-                                location {0}",
-                                location,
-                            )
-                            .into(),
-                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-Input-07905"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-            }
+            vertex_input::validate_required_vertex_inputs(
+                &vertex_input_state.attributes,
+                &required_vertex_inputs,
+                RequiredVertexInputsVUIDs {
+                    not_present: &["VUID-VkGraphicsPipelineCreateInfo-Input-07904"],
+                    numeric_type: &["VUID-VkGraphicsPipelineCreateInfo-Input-08733"],
+                    requires32: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08929"],
+                    requires64: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08930"],
+                    requires_second_half: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-09198",
+                    ],
+                },
+            )
+            .map_err(|mut err| {
+                err.problem = format!(
+                    "{}: {}",
+                    "`vertex_input_state` does not meet the requirements \
+                    of the vertex shader in `stages`",
+                    err.problem,
+                )
+                .into();
+                err
+            })?;
         }
 
         if let (Some(_), Some(_)) = (tessellation_control_stage, tessellation_evaluation_stage) {

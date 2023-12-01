@@ -99,10 +99,15 @@ pub use self::{
 };
 use crate::{
     device::Device,
-    format::{Format, FormatFeatures},
+    format::{Format, FormatFeatures, NumericType},
+    shader::{
+        reflect::get_constant,
+        spirv::{Decoration, Id, Instruction, Spirv, StorageClass},
+    },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
+use std::collections::hash_map::Entry;
 
 mod buffers;
 mod collection;
@@ -185,15 +190,33 @@ impl VertexInputState {
                 problem: "the length exceeds the `max_vertex_input_bindings` limit".into(),
                 vuids: &[
                     "VUID-VkPipelineVertexInputStateCreateInfo-vertexBindingDescriptionCount-00613",
+                    "VUID-vkCmdSetVertexInputEXT-vertexBindingDescriptionCount-04791",
                 ],
                 ..Default::default()
             }));
         }
 
         // VUID-VkPipelineVertexInputStateCreateInfo-pVertexBindingDescriptions-00616
+        // VUID-vkCmdSetVertexInputEXT-pVertexBindingDescriptions-04794
         // Ensured by HashMap.
 
         for (&binding, binding_desc) in bindings {
+            if binding >= properties.max_vertex_input_bindings {
+                return Err(Box::new(ValidationError {
+                    context: format!("bindings[{}]", binding).into(),
+                    problem: format!(
+                        "the binding {} exceeds the `max_vertex_input_bindings` limit",
+                        binding
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkVertexInputBindingDescription-binding-00618",
+                        "VUID-VkVertexInputBindingDescription2EXT-binding-04796",
+                    ],
+                    ..Default::default()
+                }));
+            }
+
             binding_desc
                 .validate(device)
                 .map_err(|err| err.add_context(format!("bindings[{}]", binding)))?;
@@ -205,12 +228,29 @@ impl VertexInputState {
                 problem: "the length exceeds the `max_vertex_input_attributes` limit".into(),
                 vuids: &[
                     "VUID-VkPipelineVertexInputStateCreateInfo-vertexAttributeDescriptionCount-00614",
+                    "VUID-vkCmdSetVertexInputEXT-vertexAttributeDescriptionCount-04792",
                 ],
                 ..Default::default()
             }));
         }
 
         for (&location, attribute_desc) in attributes {
+            if location >= properties.max_vertex_input_attributes {
+                return Err(Box::new(ValidationError {
+                    context: format!("attributes[{}]", location).into(),
+                    problem: format!(
+                        "the location {} exceeds the `max_vertex_input_attributes` limit",
+                        location
+                    )
+                    .into(),
+                    vuids: &[
+                        "VUID-VkVertexInputAttributeDescription-location-00620",
+                        "VUID-VkVertexInputAttributeDescription2EXT-location-06228",
+                    ],
+                    ..Default::default()
+                }));
+            }
+
             attribute_desc
                 .validate(device)
                 .map_err(|err| err.add_context(format!("attributes[{}]", location)))?;
@@ -219,20 +259,8 @@ impl VertexInputState {
                 binding,
                 format,
                 offset,
+                _ne: _,
             } = attribute_desc;
-
-            if location > properties.max_vertex_input_attributes {
-                return Err(Box::new(ValidationError {
-                    context: "attributes".into(),
-                    problem: format!(
-                        "the location {} exceeds the `max_vertex_input_attributes` limit",
-                        location
-                    )
-                    .into(),
-                    vuids: &["VUID-VkVertexInputAttributeDescription-location-00620"],
-                    ..Default::default()
-                }));
-            }
 
             let binding_desc = bindings.get(&binding).ok_or_else(|| {
                 Box::new(ValidationError {
@@ -241,7 +269,10 @@ impl VertexInputState {
                         binding
                     )
                     .into(),
-                    vuids: &["VUID-VkPipelineVertexInputStateCreateInfo-binding-00615"],
+                    vuids: &[
+                        "VUID-VkPipelineVertexInputStateCreateInfo-binding-00615",
+                        "VUID-vkCmdSetVertexInputEXT-binding-04793",
+                    ],
                     ..Default::default()
                 })
             })?;
@@ -263,7 +294,10 @@ impl VertexInputState {
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                         "vertex_attribute_access_beyond_stride",
                     )])]),
-                    vuids: &["VUID-VkVertexInputAttributeDescription-vertexAttributeAccessBeyondStride-04457"],
+                    vuids: &[
+                        "VUID-VkVertexInputAttributeDescription-vertexAttributeAccessBeyondStride-04457",
+                        "VUID-VkVertexInputAttributeDescription2EXT-vertexAttributeAccessBeyondStride-04806",
+                    ],
                     ..Default::default()
                 }));
             }
@@ -285,7 +319,10 @@ impl VertexInputState {
                         location - 1, location,
                     )
                     .into(),
-                    vuids: &["VUID-VkPipelineVertexInputStateCreateInfo-pVertexAttributeDescriptions-00617"],
+                    vuids: &[
+                        "VUID-VkPipelineVertexInputStateCreateInfo-pVertexAttributeDescriptions-00617",
+                        "VUID-vkCmdSetVertexInputEXT-pVertexAttributeDescriptions-04795",
+                    ],
                     ..Default::default()
                 }));
             }
@@ -312,15 +349,36 @@ pub struct VertexInputBindingDescription {
     /// The number of bytes from the start of one element in the vertex buffer to the start of the
     /// next element. This can be simply the size of the data in each element, but larger strides
     /// are possible.
+    ///
+    /// The default value is `0`, which must be overridden.
     pub stride: u32,
 
     /// How often the vertex input should advance to the next element.
+    ///
+    /// The default value is [`VertexInputRate::Vertex`].
     pub input_rate: VertexInputRate,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for VertexInputBindingDescription {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            stride: 0,
+            input_rate: VertexInputRate::Vertex,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl VertexInputBindingDescription {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self { stride, input_rate } = self;
+        let &Self {
+            stride,
+            input_rate,
+            _ne: _,
+        } = self;
 
         let properties = device.physical_device().properties();
 
@@ -328,7 +386,10 @@ impl VertexInputBindingDescription {
             return Err(Box::new(ValidationError {
                 context: "stride".into(),
                 problem: "exceeds the `max_vertex_input_binding_stride` limit".into(),
-                vuids: &["VUID-VkVertexInputBindingDescription-stride-00619"],
+                vuids: &[
+                    "VUID-VkVertexInputBindingDescription-stride-00619",
+                    "VUID-VkVertexInputBindingDescription2EXT-stride-04797",
+                ],
                 ..Default::default()
             }));
         }
@@ -364,7 +425,10 @@ impl VertexInputBindingDescription {
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                                 "vertex_attribute_instance_rate_divisor",
                             )])]),
-                        vuids: &["VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateDivisor-02229"],
+                        vuids: &[
+                            "VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateDivisor-02229",
+                            "VUID-VkVertexInputBindingDescription2EXT-divisor-04799",
+                        ],
                     }));
                 }
 
@@ -380,7 +444,10 @@ impl VertexInputBindingDescription {
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                                 "vertex_attribute_instance_rate_zero_divisor",
                             )])]),
-                        vuids: &["VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateZeroDivisor-02228"],
+                        vuids: &[
+                            "VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateZeroDivisor-02228",
+                            "VUID-VkVertexInputBindingDescription2EXT-divisor-04798",
+                        ],
                     }));
                 }
 
@@ -390,7 +457,10 @@ impl VertexInputBindingDescription {
                         problem: "is `VertexInputRate::Instance`, and \
                             its `divisor` value exceeds the `max_vertex_attrib_divisor` limit"
                             .into(),
-                        vuids: &["VUID-VkVertexInputBindingDivisorDescriptionEXT-divisor-01870"],
+                        vuids: &[
+                            "VUID-VkVertexInputBindingDivisorDescriptionEXT-divisor-01870",
+                            "VUID-VkVertexInputBindingDescription2EXT-divisor-06226",
+                        ],
                         ..Default::default()
                     }));
                 }
@@ -406,9 +476,13 @@ impl VertexInputBindingDescription {
 #[derive(Clone, Copy, Debug)]
 pub struct VertexInputAttributeDescription {
     /// The vertex buffer binding number that this attribute should take its data from.
+    ///
+    /// The default value is `0`.
     pub binding: u32,
 
     /// The size and type of the vertex data.
+    ///
+    /// The default value is [`Format::UNDEFINED`], which must be overridden.
     pub format: Format,
 
     /// Number of bytes between the start of a vertex buffer element and the location of attribute.
@@ -418,7 +492,23 @@ pub struct VertexInputAttributeDescription {
     /// `binding`, the
     /// [`vertex_attribute_access_beyond_stride`](crate::device::Features::vertex_attribute_access_beyond_stride)
     /// feature must be enabled on the device.
+    ///
+    /// The default value is `0`.
     pub offset: u32,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for VertexInputAttributeDescription {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            binding: 0,
+            format: Format::UNDEFINED,
+            offset: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl VertexInputAttributeDescription {
@@ -427,20 +517,26 @@ impl VertexInputAttributeDescription {
             binding,
             format,
             offset,
+            _ne: _,
         } = self;
 
         let properties = device.physical_device().properties();
 
         format.validate_device(device).map_err(|err| {
-            err.add_context("format")
-                .set_vuids(&["VUID-VkVertexInputAttributeDescription-format-parameter"])
+            err.add_context("format").set_vuids(&[
+                "VUID-VkVertexInputAttributeDescription-format-parameter",
+                "VUID-VkVertexInputAttributeDescription2EXT-format-parameter",
+            ])
         })?;
 
         if binding > properties.max_vertex_input_bindings {
             return Err(Box::new(ValidationError {
                 context: "binding".into(),
                 problem: "exceeds the `max_vertex_input_bindings` limit".into(),
-                vuids: &["VUID-VkVertexInputAttributeDescription-binding-00621"],
+                vuids: &[
+                    "VUID-VkVertexInputAttributeDescription-binding-00621",
+                    "VUID-VkVertexInputAttributeDescription2EXT-binding-06229",
+                ],
                 ..Default::default()
             }));
         }
@@ -449,7 +545,10 @@ impl VertexInputAttributeDescription {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
                 problem: "exceeds the `max_vertex_input_attribute_offset` limit".into(),
-                vuids: &["VUID-VkVertexInputAttributeDescription-offset-00622"],
+                vuids: &[
+                    "VUID-VkVertexInputAttributeDescription-offset-00622",
+                    "VUID-VkVertexInputAttributeDescription2EXT-offset-06230",
+                ],
                 ..Default::default()
             }));
         }
@@ -466,7 +565,10 @@ impl VertexInputAttributeDescription {
                 context: "format".into(),
                 problem: "the format features do not include `FormatFeatures::VERTEX_BUFFER`"
                     .into(),
-                vuids: &["VUID-VkVertexInputAttributeDescription-format-00623"],
+                vuids: &[
+                    "VUID-VkVertexInputAttributeDescription-format-00623",
+                    "VUID-VkVertexInputAttributeDescription2EXT-format-04805",
+                ],
                 ..Default::default()
             }));
         }
@@ -503,4 +605,403 @@ impl From<VertexInputRate> for ash::vk::VertexInputRate {
             VertexInputRate::Instance { .. } => ash::vk::VertexInputRate::INSTANCE,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct VertexInputLocationRequirements {
+    pub(crate) numeric_type: NumericType,
+    pub(crate) width: VertexInputLocationWidth,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum VertexInputLocationWidth {
+    /// The shader requires a 32-bit or smaller value at this location.
+    Requires32,
+
+    /// The shader requires a 64-bit value at this location.
+    /// The boolean indicates whether the shader requires a format that fills the second half
+    /// of the location.
+    Requires64 { requires_second_half: bool },
+}
+
+pub(crate) fn required_vertex_inputs(
+    spirv: &Spirv,
+    entry_point_id: Id,
+) -> HashMap<u32, VertexInputLocationRequirements> {
+    let interface = match spirv.function(entry_point_id).entry_point() {
+        Some(Instruction::EntryPoint { interface, .. }) => interface,
+        _ => unreachable!(),
+    };
+
+    let mut required_vertex_inputs = HashMap::default();
+
+    for &variable_id in interface {
+        let variable_id_info = spirv.id(variable_id);
+        let pointer_type_id = match *variable_id_info.instruction() {
+            Instruction::Variable {
+                result_type_id,
+                storage_class: StorageClass::Input,
+                ..
+            } => result_type_id,
+            _ => continue,
+        };
+        let pointer_type_id_info = spirv.id(pointer_type_id);
+        let type_id = match *pointer_type_id_info.instruction() {
+            Instruction::TypePointer { ty, .. } => ty,
+            _ => unreachable!(),
+        };
+
+        let mut variable_location = None;
+        let mut variable_component = 0;
+
+        for instruction in variable_id_info.decorations() {
+            if let Instruction::Decorate { ref decoration, .. } = *instruction {
+                match *decoration {
+                    Decoration::Location { location } => variable_location = Some(location),
+                    Decoration::Component { component } => variable_component = component,
+                    _ => (),
+                }
+            }
+        }
+
+        if let Some(variable_location) = variable_location {
+            add_type_location(
+                &mut required_vertex_inputs,
+                spirv,
+                variable_location,
+                variable_component,
+                type_id,
+            );
+        } else {
+            let block_type_id_info = spirv.id(type_id);
+            let member_types = match block_type_id_info.instruction() {
+                Instruction::TypeStruct { member_types, .. } => member_types,
+                _ => continue,
+            };
+
+            for (&type_id, member_info) in member_types.iter().zip(block_type_id_info.members()) {
+                let mut member_location = None;
+                let mut member_component = 0;
+
+                for instruction in member_info.decorations() {
+                    if let Instruction::MemberDecorate { ref decoration, .. } = *instruction {
+                        match *decoration {
+                            Decoration::Location { location } => member_location = Some(location),
+                            Decoration::Component { component } => member_component = component,
+                            _ => (),
+                        }
+                    }
+                }
+
+                if let Some(member_location) = member_location {
+                    add_type_location(
+                        &mut required_vertex_inputs,
+                        spirv,
+                        member_location,
+                        member_component,
+                        type_id,
+                    );
+                }
+            }
+        }
+    }
+
+    required_vertex_inputs
+}
+
+fn add_type_location(
+    required_vertex_inputs: &mut HashMap<u32, VertexInputLocationRequirements>,
+    spirv: &Spirv,
+    mut location: u32,
+    mut component: u32,
+    type_id: Id,
+) -> (u32, u32) {
+    debug_assert!(component < 4);
+
+    let mut add_scalar = |numeric_type: NumericType, width: u32| -> (u32, u32) {
+        if width > 32 {
+            debug_assert!(component & 1 == 0);
+            let half_index = component as usize / 2;
+
+            match required_vertex_inputs.entry(location) {
+                Entry::Occupied(mut entry) => {
+                    let requirements = entry.get_mut();
+                    debug_assert_eq!(requirements.numeric_type, numeric_type);
+
+                    match &mut requirements.width {
+                        VertexInputLocationWidth::Requires32 => unreachable!(),
+                        VertexInputLocationWidth::Requires64 {
+                            requires_second_half,
+                        } => {
+                            if component == 2 {
+                                debug_assert!(!*requires_second_half);
+                                *requires_second_half = true;
+                            }
+                        }
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    let mut required_halves = [false; 2];
+                    required_halves[half_index] = true;
+                    entry.insert(VertexInputLocationRequirements {
+                        numeric_type,
+                        width: VertexInputLocationWidth::Requires64 {
+                            requires_second_half: component == 2,
+                        },
+                    });
+                }
+            }
+
+            (1, 2)
+        } else {
+            match required_vertex_inputs.entry(location) {
+                Entry::Occupied(entry) => {
+                    let requirements = *entry.get();
+                    debug_assert_eq!(requirements.numeric_type, numeric_type);
+                    debug_assert_eq!(requirements.width, VertexInputLocationWidth::Requires32);
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(VertexInputLocationRequirements {
+                        numeric_type,
+                        width: VertexInputLocationWidth::Requires32,
+                    });
+                }
+            }
+
+            (1, 1)
+        }
+    };
+
+    match *spirv.id(type_id).instruction() {
+        Instruction::TypeInt {
+            width, signedness, ..
+        } => {
+            let numeric_type = if signedness == 1 {
+                NumericType::Int
+            } else {
+                NumericType::Uint
+            };
+
+            add_scalar(numeric_type, width)
+        }
+        Instruction::TypeFloat { width, .. } => add_scalar(NumericType::Float, width),
+        Instruction::TypeVector {
+            component_type,
+            component_count,
+            ..
+        } => {
+            let mut total_locations_added = 1;
+
+            for _ in 0..component_count {
+                // Overflow into next location
+                if component == 4 {
+                    component = 0;
+                    location += 1;
+                    total_locations_added += 1;
+                } else {
+                    debug_assert!(component < 4);
+                }
+
+                let (_, components_added) = add_type_location(
+                    required_vertex_inputs,
+                    spirv,
+                    location,
+                    component,
+                    component_type,
+                );
+                component += components_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        Instruction::TypeMatrix {
+            column_type,
+            column_count,
+            ..
+        } => {
+            let mut total_locations_added = 0;
+
+            for _ in 0..column_count {
+                let (locations_added, _) = add_type_location(
+                    required_vertex_inputs,
+                    spirv,
+                    location,
+                    component,
+                    column_type,
+                );
+                location += locations_added;
+                total_locations_added += locations_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        Instruction::TypeArray {
+            element_type,
+            length,
+            ..
+        } => {
+            let length = get_constant(spirv, length).unwrap();
+            let mut total_locations_added = 0;
+
+            for _ in 0..length {
+                let (locations_added, _) = add_type_location(
+                    required_vertex_inputs,
+                    spirv,
+                    location,
+                    component,
+                    element_type,
+                );
+                location += locations_added;
+                total_locations_added += locations_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        Instruction::TypeStruct {
+            ref member_types, ..
+        } => {
+            let mut total_locations_added = 0;
+
+            for &member_type in member_types {
+                let (locations_added, _) = add_type_location(
+                    required_vertex_inputs,
+                    spirv,
+                    location,
+                    component,
+                    member_type,
+                );
+                location += locations_added;
+                total_locations_added += locations_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        _ => unimplemented!(),
+    }
+}
+
+pub(crate) struct RequiredVertexInputsVUIDs {
+    pub(crate) not_present: &'static [&'static str],
+    pub(crate) numeric_type: &'static [&'static str],
+    pub(crate) requires32: &'static [&'static str],
+    pub(crate) requires64: &'static [&'static str],
+    pub(crate) requires_second_half: &'static [&'static str],
+}
+
+pub(crate) fn validate_required_vertex_inputs(
+    attribute_descs: &HashMap<u32, VertexInputAttributeDescription>,
+    required_vertex_inputs: &HashMap<u32, VertexInputLocationRequirements>,
+    vuids: RequiredVertexInputsVUIDs,
+) -> Result<(), Box<ValidationError>> {
+    for (&location, location_info) in required_vertex_inputs {
+        let (is_previous, attribute_desc) = (attribute_descs.get(&location).map(|d| (false, d)))
+            .or_else(|| {
+                // If the previous location has at least three 64-bit components,
+                // then it extends into the current location, so try that instead.
+                location.checked_sub(1).and_then(|location| {
+                    attribute_descs
+                        .get(&location)
+                        .filter(|attribute_desc| {
+                            attribute_desc
+                                .format
+                                .components()
+                                .starts_with(&[64, 64, 64])
+                        })
+                        .map(|d| (true, d))
+                })
+            })
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: format!(
+                        "the vertex shader has an input variable with location {0}, but \
+                        the vertex input attributes do not contain {0}",
+                        location,
+                    )
+                    .into(),
+                    vuids: vuids.not_present,
+                    ..Default::default()
+                })
+            })?;
+
+        let attribute_numeric_type = attribute_desc
+            .format
+            .numeric_format_color()
+            .unwrap()
+            .numeric_type();
+
+        if attribute_numeric_type != location_info.numeric_type {
+            return Err(Box::new(ValidationError {
+                problem: format!(
+                    "the numeric type of the format of vertex input attribute {0} ({1:?}) \
+                    does not equal the numeric type of the vertex shader input variable with \
+                    location {0} ({2:?})",
+                    location, attribute_numeric_type, location_info.numeric_type,
+                )
+                .into(),
+                vuids: vuids.numeric_type,
+                ..Default::default()
+            }));
+        }
+
+        let attribute_components = attribute_desc.format.components();
+
+        // 64-bit in the shader must match with 64-bit in the attribute.
+        match location_info.width {
+            VertexInputLocationWidth::Requires32 => {
+                if attribute_components[0] > 32 {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "the vertex shader input variable location {0} requires a non-64-bit \
+                            format, but the format of vertex input attribute {0} is 64-bit",
+                            location,
+                        )
+                        .into(),
+                        vuids: vuids.requires32,
+                        ..Default::default()
+                    }));
+                }
+            }
+            VertexInputLocationWidth::Requires64 {
+                requires_second_half,
+            } => {
+                if attribute_components[0] <= 32 {
+                    return Err(Box::new(ValidationError {
+                        problem: format!(
+                            "the vertex shader input variable location {0} requires a 64-bit \
+                            format, but the format of vertex input attribute {0} is not 64-bit",
+                            location,
+                        )
+                        .into(),
+                        vuids: vuids.requires64,
+                        ..Default::default()
+                    }));
+                }
+
+                // For 64-bit values, there are no default values for missing components.
+                // If the shader uses the 64-bit value in the second half of the location, then
+                // the attribute must provide it.
+                if requires_second_half {
+                    let second_half_attribute_component = if is_previous { 3 } else { 1 };
+
+                    if attribute_components[second_half_attribute_component] != 64 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the vertex shader input variable location {0} requires a format \
+                                with at least {1} 64-bit components, but the format of \
+                                vertex input attribute {0} contains only {2} components",
+                                location,
+                                second_half_attribute_component + 1,
+                                attribute_components.into_iter().filter(|&c| c != 0).count(),
+                            )
+                            .into(),
+                            vuids: vuids.requires_second_half,
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

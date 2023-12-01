@@ -13,10 +13,10 @@ use crate::{
         graphics::vertex_input::VertexBuffersCollection, ComputePipeline, GraphicsPipeline,
         PipelineBindPoint, PipelineLayout,
     },
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{cmp::min, ffi::c_void, mem::size_of, sync::Arc};
+use std::{cmp::min, ffi::c_void, mem::size_of, ptr, sync::Arc};
 
 /// # Commands to bind or push state for pipeline execution commands.
 ///
@@ -954,19 +954,58 @@ impl UnsafeCommandBufferBuilder {
             return self;
         }
 
-        let (buffers_vk, offsets_vk): (SmallVec<[_; 2]>, SmallVec<[_; 2]>) = vertex_buffers
-            .iter()
-            .map(|buffer| (buffer.buffer().handle(), buffer.offset()))
-            .unzip();
+        let device = self.device();
 
-        let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_vertex_buffers)(
-            self.handle(),
-            first_binding,
-            buffers_vk.len() as u32,
-            buffers_vk.as_ptr(),
-            offsets_vk.as_ptr(),
-        );
+        if device.api_version() >= Version::V1_3
+            || device.enabled_extensions().ext_extended_dynamic_state
+            || device.enabled_extensions().ext_shader_object
+        {
+            let mut buffers_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
+            let mut offsets_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
+            let mut sizes_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
+
+            for buffer in vertex_buffers {
+                buffers_vk.push(buffer.buffer().handle());
+                offsets_vk.push(buffer.offset());
+                sizes_vk.push(buffer.size());
+            }
+
+            let fns = self.device().fns();
+            let cmd_bind_vertex_buffers2 = if device.api_version() >= Version::V1_3 {
+                fns.v1_3.cmd_bind_vertex_buffers2
+            } else if device.enabled_extensions().ext_extended_dynamic_state {
+                fns.ext_extended_dynamic_state.cmd_bind_vertex_buffers2_ext
+            } else {
+                fns.ext_shader_object.cmd_bind_vertex_buffers2_ext
+            };
+
+            cmd_bind_vertex_buffers2(
+                self.handle(),
+                first_binding,
+                buffers_vk.len() as u32,
+                buffers_vk.as_ptr(),
+                offsets_vk.as_ptr(),
+                sizes_vk.as_ptr(),
+                ptr::null(),
+            )
+        } else {
+            let mut buffers_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
+            let mut offsets_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
+
+            for buffer in vertex_buffers {
+                buffers_vk.push(buffer.buffer().handle());
+                offsets_vk.push(buffer.offset());
+            }
+
+            let fns = self.device().fns();
+            (fns.v1_0.cmd_bind_vertex_buffers)(
+                self.handle(),
+                first_binding,
+                buffers_vk.len() as u32,
+                buffers_vk.as_ptr(),
+                offsets_vk.as_ptr(),
+            );
+        }
 
         self
     }
