@@ -60,6 +60,7 @@ Changes to vertex input:
 - [#2398](https://github.com/vulkano-rs/vulkano/issues/2398) Push constant reflection sometimes uses the wrong types, and doesn't correctly reflect push constants with multiple entry points.
 - `surface_capabilities` demands that `win32_monitor` be `Some` or `None` in the wrong cases.
 - Improved and more accurate validation of vertex input.
+- [#1738](https://github.com/vulkano-rs/vulkano/issues/1738): Validation of shader interface matching is insufficient.
 
 # Version 0.34.1 (2023-10-29)
 
