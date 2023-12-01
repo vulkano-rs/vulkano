@@ -451,7 +451,7 @@ impl PipelineShaderStageCreateInfo {
         let mut clip_distance_array_size = 0;
         let mut cull_distance_array_size = 0;
 
-        for instruction in spirv.iter_decoration() {
+        for instruction in spirv.decorations() {
             if let Instruction::Decorate {
                 target,
                 decoration: Decoration::BuiltIn { built_in },
@@ -556,7 +556,7 @@ impl PipelineShaderStageCreateInfo {
             }));
         }
 
-        for instruction in entry_point_function.iter_execution_mode() {
+        for instruction in entry_point_function.execution_modes() {
             if let Instruction::ExecutionMode {
                 mode: ExecutionMode::OutputVertices { vertex_count },
                 ..
@@ -617,7 +617,8 @@ impl PipelineShaderStageCreateInfo {
         }
 
         let local_size = (spirv
-            .iter_decoration()
+            .decorations()
+            .iter()
             .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     target,
@@ -647,7 +648,8 @@ impl PipelineShaderStageCreateInfo {
             }))
         .or_else(|| {
             entry_point_function
-                .iter_execution_mode()
+                .execution_modes()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::ExecutionMode {
                         mode:

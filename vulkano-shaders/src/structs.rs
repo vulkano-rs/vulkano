@@ -94,7 +94,8 @@ pub(super) fn write_structs(
 
     for (struct_id, member_type_ids) in shader
         .spirv
-        .iter_global()
+        .types()
+        .iter()
         .filter_map(|instruction| match *instruction {
             Instruction::TypeStruct {
                 result_id,
@@ -130,10 +131,10 @@ pub(super) fn write_structs(
 }
 
 fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
-    for member_info in shader.spirv.id(struct_id).iter_members() {
+    for member_info in shader.spirv.id(struct_id).members() {
         let mut offset_found = false;
 
-        for instruction in member_info.iter_decoration() {
+        for instruction in member_info.decorations() {
             match instruction {
                 Instruction::MemberDecorate {
                     decoration: Decoration::BuiltIn { .. },
@@ -616,7 +617,8 @@ impl TypeArray {
                 shader
                     .spirv
                     .id(array_id)
-                    .iter_decoration()
+                    .decorations()
+                    .iter()
                     .filter_map(|instruction| match *instruction {
                         Instruction::Decorate {
                             decoration: Decoration::ArrayStride { array_stride },
@@ -680,7 +682,8 @@ impl TypeStruct {
         let id_info = shader.spirv.id(struct_id);
 
         let ident = id_info
-            .iter_name()
+            .names()
+            .iter()
             .find_map(|instruction| match instruction {
                 Instruction::Name { name, .. } => Some(Ident::new(name, Span::call_site())),
                 _ => None,
@@ -689,13 +692,12 @@ impl TypeStruct {
 
         let mut members = Vec::<Member>::with_capacity(member_type_ids.len());
 
-        for (member_index, (&member_id, member_info)) in member_type_ids
-            .iter()
-            .zip(id_info.iter_members())
-            .enumerate()
+        for (member_index, (&member_id, member_info)) in
+            member_type_ids.iter().zip(id_info.members()).enumerate()
         {
             let ident = member_info
-                .iter_name()
+                .names()
+                .iter()
                 .find_map(|instruction| match instruction {
                     Instruction::MemberName { name, .. } => {
                         Some(Ident::new(name, Span::call_site()))
@@ -717,7 +719,7 @@ impl TypeStruct {
 
                 if let Type::Matrix(matrix) = ty {
                     let mut strides =
-                        member_info.iter_decoration().filter_map(
+                        member_info.decorations().iter().filter_map(
                             |instruction| match *instruction {
                                 Instruction::MemberDecorate {
                                     decoration: Decoration::MatrixStride { matrix_stride },
@@ -748,7 +750,7 @@ impl TypeStruct {
                         );
                     }
 
-                    let mut majornessess = member_info.iter_decoration().filter_map(
+                    let mut majornessess = member_info.decorations().iter().filter_map(
                         |instruction| match *instruction {
                             Instruction::MemberDecorate {
                                 decoration: Decoration::ColMajor,
@@ -785,7 +787,8 @@ impl TypeStruct {
             }
 
             let offset = member_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::MemberDecorate {
                         decoration: Decoration::Offset { byte_offset },

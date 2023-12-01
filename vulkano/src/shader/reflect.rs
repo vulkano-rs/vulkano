@@ -22,7 +22,7 @@ use std::borrow::Cow;
 pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)> + '_ {
     let interface_variables = interface_variables(spirv);
 
-    spirv.iter_entry_point().filter_map(move |instruction| {
+    spirv.entry_points().iter().filter_map(move |instruction| {
         let (execution_model, function_id, entry_point_name, interface) = match *instruction {
             Instruction::EntryPoint {
                 execution_model,
@@ -97,7 +97,7 @@ struct DescriptorBindingVariable {
 fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
     let mut variables = InterfaceVariables::default();
 
-    for instruction in spirv.iter_global() {
+    for instruction in spirv.global_variables() {
         if let Instruction::Variable {
             result_id,
             result_type_id,
@@ -213,7 +213,7 @@ fn inspect_entry_point(
 
             self.inspected_functions.insert(function);
 
-            for instruction in self.spirv.function(function).iter_instructions() {
+            for instruction in self.spirv.function(function).instructions() {
                 let stage = self.stage;
 
                 match *instruction {
@@ -635,7 +635,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
         next_type_id = match *id_info.instruction() {
             Instruction::TypeStruct { .. } => {
-                let decoration_block = id_info.iter_decoration().any(|instruction| {
+                let decoration_block = id_info.decorations().iter().any(|instruction| {
                     matches!(
                         instruction,
                         Instruction::Decorate {
@@ -645,7 +645,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                     )
                 });
 
-                let decoration_buffer_block = id_info.iter_decoration().any(|instruction| {
+                let decoration_buffer_block = id_info.decorations().iter().any(|instruction| {
                     matches!(
                         instruction,
                         Instruction::Decorate {
@@ -813,7 +813,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
             _ => {
                 let name = variable_id_info
-                    .iter_name()
+                    .names()
+                    .iter()
                     .find_map(|instruction| match *instruction {
                         Instruction::Name { ref name, .. } => Some(name.as_str()),
                         _ => None,
@@ -831,7 +832,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
 
     DescriptorBindingVariable {
         set: variable_id_info
-            .iter_decoration()
+            .decorations()
+            .iter()
             .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::DescriptorSet { descriptor_set },
@@ -841,7 +843,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
             })
             .unwrap(),
         binding: variable_id_info
-            .iter_decoration()
+            .decorations()
+            .iter()
             .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::Binding { binding_point },
@@ -898,7 +901,7 @@ fn push_constant_requirements(
     ) {
         visited_fns.insert(function_id);
         let function_info = spirv.function(function_id);
-        for instruction in function_info.iter_instructions() {
+        for instruction in function_info.instructions() {
             match instruction {
                 Instruction::FunctionCall {
                     function,
@@ -980,7 +983,8 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
     let get_constant_id = |result_id| {
         spirv
             .id(result_id)
-            .iter_decoration()
+            .decorations()
+            .iter()
             .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration:
@@ -994,7 +998,8 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
     };
 
     spirv
-        .iter_global()
+        .constants()
+        .iter()
         .filter_map(|instruction| match *instruction {
             Instruction::SpecConstantFalse { result_id, .. } => get_constant_id(result_id)
                 .map(|constant_id| (constant_id, SpecializationConstant::Bool(false))),
@@ -1087,14 +1092,16 @@ fn shader_interface(
             let id_info = spirv.id(result_id);
 
             let name = id_info
-                .iter_name()
+                .names()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::Name { ref name, .. } => Some(Cow::Owned(name.clone())),
                     _ => None,
                 });
 
             let location = id_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::Location { location },
@@ -1109,7 +1116,8 @@ fn shader_interface(
                     )
                 });
             let component = id_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::Component { component },
@@ -1119,7 +1127,8 @@ fn shader_interface(
                 })
                 .unwrap_or(0);
             let index = id_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::Index { index },
@@ -1198,7 +1207,8 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
         }
         Instruction::TypeArray { length, .. } => {
             let stride = id_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::ArrayStride { array_stride },
@@ -1226,9 +1236,9 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
         } => {
             let mut end_of_struct = 0;
 
-            for (&member, member_info) in member_types.iter().zip(id_info.iter_members()) {
+            for (&member, member_info) in member_types.iter().zip(id_info.members()) {
                 // Built-ins have an unknown size.
-                if member_info.iter_decoration().any(|instruction| {
+                if member_info.decorations().iter().any(|instruction| {
                     matches!(
                         instruction,
                         Instruction::MemberDecorate {
@@ -1243,15 +1253,15 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
                 // Some structs don't have `Offset` decorations, in the case they are used as local
                 // variables only. Ignoring these.
                 let offset =
-                    member_info
-                        .iter_decoration()
-                        .find_map(|instruction| match *instruction {
+                    member_info.decorations().iter().find_map(
+                        |instruction| match *instruction {
                             Instruction::MemberDecorate {
                                 decoration: Decoration::Offset { byte_offset },
                                 ..
                             } => Some(byte_offset),
                             _ => None,
-                        })?;
+                        },
+                    )?;
                 let size = size_of_type(spirv, member)?;
                 end_of_struct = end_of_struct.max(offset as DeviceSize + size);
             }
@@ -1266,10 +1276,12 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
 fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
     spirv
         .id(id)
-        .iter_members()
+        .members()
+        .iter()
         .filter_map(|member_info| {
             member_info
-                .iter_decoration()
+                .decorations()
+                .iter()
                 .find_map(|instruction| match *instruction {
                     Instruction::MemberDecorate {
                         decoration: Decoration::Offset { byte_offset },
@@ -1355,7 +1367,8 @@ fn shader_interface_type_of(
             } else {
                 let mut ty = shader_interface_type_of(spirv, element_type, false);
                 let num_elements = spirv
-                    .iter_global()
+                    .constants()
+                    .iter()
                     .find_map(|instruction| match *instruction {
                         Instruction::Constant {
                             result_id,
@@ -1384,7 +1397,7 @@ fn shader_interface_type_of(
 fn is_builtin(spirv: &Spirv, id: Id) -> bool {
     let id_info = spirv.id(id);
 
-    if id_info.iter_decoration().any(|instruction| {
+    if id_info.decorations().iter().any(|instruction| {
         matches!(
             instruction,
             Instruction::Decorate {
@@ -1397,8 +1410,9 @@ fn is_builtin(spirv: &Spirv, id: Id) -> bool {
     }
 
     if id_info
-        .iter_members()
-        .flat_map(|member_info| member_info.iter_decoration())
+        .members()
+        .iter()
+        .flat_map(|member_info| member_info.decorations())
         .any(|instruction| {
             matches!(
                 instruction,

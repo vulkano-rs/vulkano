@@ -918,7 +918,7 @@ impl GraphicsPipeline {
             if matches!(entry_point_info.execution_model, ExecutionModel::Fragment) {
                 fragment_tests_stages = Some(FragmentTestsStages::Late);
 
-                for instruction in entry_point_function.iter_execution_mode() {
+                for instruction in entry_point_function.execution_modes() {
                     if let Instruction::ExecutionMode { mode, .. } = *instruction {
                         match mode {
                             ExecutionMode::EarlyFragmentTests => {
@@ -2431,7 +2431,8 @@ impl GraphicsPipelineCreateInfo {
             let entry_point_function = spirv.function(geometry_stage.entry_point.id());
 
             let input = entry_point_function
-                .iter_execution_mode()
+                .execution_modes()
+                .iter()
                 .find_map(|instruction| {
                     if let Instruction::ExecutionMode { mode, .. } = *instruction {
                         match mode {
