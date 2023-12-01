@@ -42,11 +42,16 @@ Changes to `Surface`:
 Changes to surface creation and support functions:
 - Where handles to foreign window system objects are passed, Vulkano no longer takes a generic pointer, but takes the same pointer type that Ash does.
 
+Changes to vertex input:
+- `VertexInputBindingDescription` and `VertexInputAttributeDescription` are now non-exhaustive, and must be created with the `Default` trait.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
 - Support for the `khr_timeline_semaphore` extension.
 - Ability to update existing descriptor sets.
+- Support for the `ext_vertex_input_dynamic_state` extension.
+- Support for 64-bit values in vertex input.
 
 ### Bugs fixed
 
@@ -54,6 +59,7 @@ Changes to surface creation and support functions:
 - `evaluate_spec_constant_op` panics with UConvert, SConvert, and FConvert.
 - [#2398](https://github.com/vulkano-rs/vulkano/issues/2398) Push constant reflection sometimes uses the wrong types, and doesn't correctly reflect push constants with multiple entry points.
 - `surface_capabilities` demands that `win32_monitor` be `Some` or `None` in the wrong cases.
+- Improved and more accurate validation of vertex input.
 
 # Version 0.34.1 (2023-10-29)
 
