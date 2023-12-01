@@ -1115,65 +1115,6 @@ impl ShaderInterface {
     pub fn elements(&self) -> &[ShaderInterfaceEntry] {
         self.elements.as_ref()
     }
-
-    /// Checks whether the interface is potentially compatible with another one.
-    ///
-    /// Returns `Ok` if the two interfaces are compatible.
-    #[inline]
-    pub fn matches(&self, other: &ShaderInterface) -> Result<(), Box<ValidationError>> {
-        if self.elements().len() != other.elements().len() {
-            return Err(Box::new(ValidationError {
-                problem: "the number of elements in the shader interfaces are not equal".into(),
-                ..Default::default()
-            }));
-        }
-
-        for a in self.elements() {
-            let location_range = a.location..a.location + a.ty.num_locations();
-            for loc in location_range {
-                let b = match other
-                    .elements()
-                    .iter()
-                    .find(|e| loc >= e.location && loc < e.location + e.ty.num_locations())
-                {
-                    None => {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "the second shader is missing an interface element at location {}",
-                                loc
-                            )
-                            .into(),
-                            ..Default::default()
-                        }));
-                    }
-                    Some(b) => b,
-                };
-
-                if a.ty != b.ty {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "the interface element at location {} does not have the same type \
-                            in both shaders",
-                            loc
-                        )
-                        .into(),
-                        ..Default::default()
-                    }));
-                }
-
-                // TODO: enforce this?
-                /*match (a.name, b.name) {
-                    (Some(ref an), Some(ref bn)) => if an != bn { return false },
-                    _ => ()
-                };*/
-            }
-        }
-
-        // NOTE: since we check that the number of elements is the same, we don't need to iterate
-        // over b's elements.
-
-        Ok(())
-    }
 }
 
 /// Entry of a shader interface definition.

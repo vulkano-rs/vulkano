@@ -60,8 +60,8 @@ use self::{
     viewport::ViewportState,
 };
 use super::{
-    cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
-    PipelineLayout, PipelineShaderStageCreateInfo,
+    cache::PipelineCache, shader::validate_interfaces_compatible, DynamicState, Pipeline,
+    PipelineBindPoint, PipelineCreateFlags, PipelineLayout, PipelineShaderStageCreateInfo,
 };
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -1996,29 +1996,50 @@ impl GraphicsPipelineCreateInfo {
         .flatten()
         .collect();
 
-        // TODO: this check is too strict; the output only has to be a superset, any variables
-        // not used in the input of the next shader are just ignored.
         for (output, input) in ordered_stages.iter().zip(ordered_stages.iter().skip(1)) {
-            if let Err(err) = (input.entry_point.info().input_interface)
-                .matches(&output.entry_point.info().output_interface)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "stages".into(),
-                    problem: format!(
-                        "the output interface of the `ShaderStage::{:?}` stage does not \
-                        match the input interface of the `ShaderStage::{:?}` stage: {}",
-                        ShaderStage::from(output.entry_point.info().execution_model),
-                        ShaderStage::from(input.entry_point.info().execution_model),
-                        err
-                    )
-                    .into(),
-                    vuids: &[
-                        "VUID-VkGraphicsPipelineCreateInfo-pStages-00742",
-                        "VUID-VkGraphicsPipelineCreateInfo-None-04889",
-                    ],
-                    ..Default::default()
-                }));
-            }
+            let out_spirv = output.entry_point.module().spirv();
+            let (out_execution_model, out_interface) =
+                match out_spirv.function(output.entry_point.id()).entry_point() {
+                    Some(&Instruction::EntryPoint {
+                        execution_model,
+                        ref interface,
+                        ..
+                    }) => (execution_model, interface),
+                    _ => unreachable!(),
+                };
+
+            let in_spirv = input.entry_point.module().spirv();
+            let (in_execution_model, in_interface) =
+                match in_spirv.function(input.entry_point.id()).entry_point() {
+                    Some(&Instruction::EntryPoint {
+                        execution_model,
+                        ref interface,
+                        ..
+                    }) => (execution_model, interface),
+                    _ => unreachable!(),
+                };
+
+            validate_interfaces_compatible(
+                out_spirv,
+                out_execution_model,
+                out_interface,
+                in_spirv,
+                in_execution_model,
+                in_interface,
+                device.enabled_features().maintenance4,
+            )
+            .map_err(|mut err| {
+                err.context = "stages".into();
+                err.problem = format!(
+                    "the output interface of the `{:?}` stage is not compatible with \
+                    the input interface of the `{:?}` stage: {}",
+                    ShaderStage::from(out_execution_model),
+                    ShaderStage::from(in_execution_model),
+                    err.problem
+                )
+                .into();
+                err
+            })?;
         }
 
         // VUID-VkGraphicsPipelineCreateInfo-layout-01688
