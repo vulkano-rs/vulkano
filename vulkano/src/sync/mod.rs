@@ -95,6 +95,7 @@ pub(crate) enum CurrentAccess {
 pub enum HostAccessError {
     AccessConflict(AccessConflict),
     Invalidate(VulkanError),
+    Unmanaged,
     NotHostMapped,
     OutOfMappedRange,
 }
@@ -115,6 +116,7 @@ impl Display for HostAccessError {
             Self::AccessConflict(_) => {
                 write!(f, "the resource is already in use in a conflicting way")
             }
+            Self::Unmanaged => write!(f, "the resource is not managed by vulkano"),
             HostAccessError::Invalidate(_) => write!(f, "invalidating the device memory failed"),
             HostAccessError::NotHostMapped => {
                 write!(f, "the device memory is not current host-mapped")

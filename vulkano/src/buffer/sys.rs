@@ -140,7 +140,6 @@ impl RawBuffer {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
-    /// - `handle` must refer to a buffer that has not yet had memory bound to it.
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
@@ -266,7 +265,11 @@ impl RawBuffer {
     }
 
     /// Binds device memory to this buffer.
-    pub fn bind_memory(
+    ///
+    /// # Safety
+    ///
+    /// The buffer must not already have memory bound to it.
+    pub unsafe fn bind_memory(
         self,
         allocation: ResourceMemory,
     ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, ResourceMemory)> {
@@ -276,6 +279,15 @@ impl RawBuffer {
 
         unsafe { self.bind_memory_unchecked(allocation) }
             .map_err(|(err, buffer, allocation)| (err.into(), buffer, allocation))
+    }
+
+    /// Assume this buffer has memory bound to it.
+    ///
+    /// # Safety
+    ///
+    /// This buffer must have memory bound to it.
+    pub unsafe fn assume_bound(self) -> Buffer {
+        Buffer::from_raw(self, BufferMemory::External)
     }
 
     fn validate_bind_memory(

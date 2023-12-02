@@ -203,6 +203,7 @@ pub struct Buffer {
 
 /// The type of backing memory that a buffer can have.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum BufferMemory {
     /// The buffer is backed by normal memory, bound with [`bind_memory`].
     ///
@@ -213,6 +214,9 @@ pub enum BufferMemory {
     ///
     /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
     Sparse,
+
+    /// The buffer is backed by memory not managed by vulkano.
+    External,
 }
 
 impl Buffer {
