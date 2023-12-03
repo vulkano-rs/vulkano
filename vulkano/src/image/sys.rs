@@ -275,6 +275,23 @@ impl RawImage {
         Self::from_handle_with_destruction(device, handle, create_info, true)
     }
 
+    /// Creates a new `RawImage` from a raw object handle.
+    /// Unlike `from_handle`, the created `RawImage` will not destroy the inner image when dropped.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    /// - caller must ensure the handle will not be destroyed for the lifetime of returned `RawImage`.
+    #[inline]
+    pub unsafe fn from_handle_borrowed(
+        device: Arc<Device>,
+        handle: ash::vk::Image,
+        create_info: ImageCreateInfo,
+    ) -> Result<Self, VulkanError> {
+        Self::from_handle_with_destruction(device, handle, create_info, false)
+    }
+
     pub(super) unsafe fn from_handle_with_destruction(
         device: Arc<Device>,
         handle: ash::vk::Image,
