@@ -40,6 +40,7 @@ pub struct RawBuffer {
     external_memory_handle_types: ExternalMemoryHandleTypes,
 
     memory_requirements: MemoryRequirements,
+    needs_destruction: bool,
 }
 
 impl RawBuffer {
@@ -147,6 +148,32 @@ impl RawBuffer {
         handle: ash::vk::Buffer,
         create_info: BufferCreateInfo,
     ) -> Self {
+        Self::from_handle_with_destruction(device, handle, create_info, true)
+    }
+
+    /// Creates a new `RawBuffer` from a raw object handle.
+    /// Unlike `from_handle`, the created `RawBuffer` does not destroy the inner buffer when dropped.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    /// - caller must ensure that the handle will not be destroyed for the lifetime of returned `RawBuffer`.
+    #[inline]
+    pub unsafe fn from_handle_borrowed(
+        device: Arc<Device>,
+        handle: ash::vk::Buffer,
+        create_info: BufferCreateInfo,
+    ) -> Self {
+        Self::from_handle_with_destruction(device, handle, create_info, false)
+    }
+
+    unsafe fn from_handle_with_destruction(
+        device: Arc<Device>,
+        handle: ash::vk::Buffer,
+        create_info: BufferCreateInfo,
+        needs_destruction: bool,
+    ) -> Self {
         let BufferCreateInfo {
             flags,
             size,
@@ -194,6 +221,7 @@ impl RawBuffer {
             sharing,
             external_memory_handle_types,
             memory_requirements,
+            needs_destruction,
         }
     }
 
@@ -589,9 +617,11 @@ impl RawBuffer {
 impl Drop for RawBuffer {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_buffer)(self.device.handle(), self.handle, ptr::null());
+        if self.needs_destruction {
+            unsafe {
+                let fns = self.device.fns();
+                (fns.v1_0.destroy_buffer)(self.device.handle(), self.handle, ptr::null());
+            }
         }
     }
 }
