@@ -22,10 +22,10 @@
 //!
 //! There are two levels of command buffers:
 //!
-//! - [`PrimaryCommandBufferAbstract`] can be executed on a queue, and is the main command buffer
-//!   type. It cannot be executed within another command buffer.
-//! - [`SecondaryCommandBufferAbstract`] can only be executed within a primary command buffer,
-//!   not directly on a queue.
+//! - [`PrimaryAutoCommandBuffer`] can be executed on a queue, and is the main command buffer type.
+//!   It cannot be executed within another command buffer.
+//! - [`SecondaryAutoCommandBuffer`] can only be executed within a primary command buffer, not
+//!   directly on a queue.
 //!
 //! Using secondary command buffers, there is slightly more overhead than using primary command
 //! buffers alone, but there are also advantages. A single command buffer cannot be recorded
@@ -39,28 +39,21 @@
 //! # Recording a command buffer
 //!
 //! To record a new command buffer, the most direct way is to create a new
-//! [`AutoCommandBufferBuilder`]. You can then call methods on this object to record new commands to
-//! the command buffer. When you are done recording, you call [`build`] to finalise the command
-//! buffer and turn it into either a [`PrimaryCommandBufferAbstract`] or a
-//! [`SecondaryCommandBufferAbstract`].
-//!
-// //! Using the standard `CommandBufferBuilder`, you must enter synchronization commands such as
-// //! [pipeline barriers], to ensure that there are no races and memory access hazards. This can be
-// //! difficult to do manually, so Vulkano also provides an alternative builder,
-// //! [`AutoCommandBufferBuilder`]. Using this builder, you do not have to worry about managing
-// //! synchronization, but the end result may not be quite as efficient.
+//! [`AutoCommandBufferBuilder`]. You can then call methods on this object to record new commands
+//! to the command buffer. When you are done recording, you call [`build`] to finalise the command
+//! buffer and turn it into either a [`PrimaryAutoCommandBuffer`] or a
+//! [`SecondaryAutoCommandBuffer`].
 //!
 //! # Submitting a primary command buffer
 //!
-//! Once primary a command buffer is recorded and built, you can use the
-//! [`PrimaryCommandBufferAbstract`] trait to submit the command buffer to a queue. Submitting a
-//! command buffer returns an object that implements the [`GpuFuture`] trait and that represents
-//! the moment when the execution will end on the GPU.
+//! Once a primary command buffer is recorded and built, you can submit the
+//! [`PrimaryAutoCommandBuffer`] to a queue. Submitting a command buffer returns an object that
+//! implements the [`GpuFuture`] trait and that represents the moment when the execution will end
+//! on the GPU.
 //!
 //! ```
 //! use vulkano::command_buffer::{
-//!     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
-//!     SubpassContents,
+//!     AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents,
 //! };
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
