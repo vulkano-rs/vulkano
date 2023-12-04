@@ -64,8 +64,8 @@ pub(in crate::command_buffer) use self::builder::{
 use super::{
     sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
-    SecondaryCommandBufferAbstract, SecondaryCommandBufferResourcesUsage, SecondaryResourceUseRef,
+    CommandBufferUsage, ResourceInCommand, SecondaryCommandBufferResourcesUsage,
+    SecondaryResourceUseRef,
 };
 use crate::{
     buffer::Subbuffer,
@@ -109,24 +109,32 @@ unsafe impl DeviceOwned for PrimaryAutoCommandBuffer {
     }
 }
 
-unsafe impl PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer {
+impl Debug for PrimaryAutoCommandBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        f.debug_struct("PrimaryAutoCommandBuffer")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PrimaryAutoCommandBuffer {
+    /// Returns the queue family index of this command buffer.
     #[inline]
-    fn queue_family_index(&self) -> u32 {
+    pub fn queue_family_index(&self) -> u32 {
         self.inner.queue_family_index()
     }
 
+    /// Returns the usage of this command buffer.
     #[inline]
-    fn usage(&self) -> CommandBufferUsage {
+    pub fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
-    #[inline]
-    fn state(&self) -> MutexGuard<'_, CommandBufferState> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, CommandBufferState> {
         self.state.lock()
     }
 
-    #[inline]
-    fn resources_usage(&self) -> &CommandBufferResourcesUsage {
+    pub(crate) fn resources_usage(&self) -> &CommandBufferResourcesUsage {
         &self.resources_usage
     }
 }
@@ -154,19 +162,34 @@ unsafe impl DeviceOwned for SecondaryAutoCommandBuffer {
     }
 }
 
-unsafe impl SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer {
+impl Debug for SecondaryAutoCommandBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        f.debug_struct("SecondaryAutoCommandBuffer")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SecondaryAutoCommandBuffer {
+    /// Returns the usage of this command buffer.
     #[inline]
-    fn usage(&self) -> CommandBufferUsage {
+    pub fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
+    /// Returns a `CommandBufferInheritance` value describing the properties that the command
+    /// buffer inherits from its parent primary command buffer.
     #[inline]
-    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+    pub fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
         self.inner.inheritance_info().as_ref().unwrap()
     }
 
+    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
+    /// and if so locks it.
+    ///
+    /// If you call this function, then you should call `unlock` afterwards.
     #[inline]
-    fn lock_record(&self) -> Result<(), Box<ValidationError>> {
+    pub fn lock_record(&self) -> Result<(), Box<ValidationError>> {
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -202,8 +225,13 @@ unsafe impl SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer {
         Ok(())
     }
 
+    /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
+    ///
+    /// # Safety
+    ///
+    /// Must not be called if you haven't called `lock_record` before.
     #[inline]
-    unsafe fn unlock(&self) {
+    pub unsafe fn unlock(&self) {
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -218,8 +246,7 @@ unsafe impl SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer {
         };
     }
 
-    #[inline]
-    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
+    pub(crate) fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
         &self.resources_usage
     }
 }
@@ -304,7 +331,6 @@ mod tests {
         command_buffer::{
             allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
             AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
-            PrimaryCommandBufferAbstract,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,

@@ -105,10 +105,7 @@ pub use self::{
         acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
         query::*, render_pass::*, secondary::*, sync::*,
     },
-    traits::{
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
-        SecondaryCommandBufferAbstract,
-    },
+    traits::{CommandBufferExecError, CommandBufferExecFuture},
 };
 use crate::{
     buffer::{Buffer, Subbuffer},
@@ -801,7 +798,7 @@ pub struct CommandBufferSubmitInfo {
     /// The command buffer to execute.
     ///
     /// There is no default value.
-    pub command_buffer: Arc<dyn PrimaryCommandBufferAbstract>,
+    pub command_buffer: Arc<PrimaryAutoCommandBuffer>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -809,7 +806,7 @@ pub struct CommandBufferSubmitInfo {
 impl CommandBufferSubmitInfo {
     /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
+    pub fn new(command_buffer: Arc<PrimaryAutoCommandBuffer>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),

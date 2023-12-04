@@ -1,8 +1,4 @@
-use super::{
-    CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferSubmitInfo, CommandBufferUsage, SecondaryCommandBufferResourcesUsage,
-    SemaphoreSubmitInfo, SubmitInfo,
-};
+use super::{CommandBufferSubmitInfo, PrimaryAutoCommandBuffer, SemaphoreSubmitInfo, SubmitInfo};
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
@@ -15,9 +11,9 @@ use crate::{
         },
         PipelineStages,
     },
-    DeviceSize, SafeDeref, Validated, ValidationError, VulkanError, VulkanObject,
+    DeviceSize, Validated, VulkanError, VulkanObject,
 };
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::Mutex;
 use std::{
     borrow::Cow,
     error::Error,
@@ -30,15 +26,7 @@ use std::{
     thread,
 };
 
-pub unsafe trait PrimaryCommandBufferAbstract:
-    VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
-{
-    /// Returns the queue family index of this command buffer.
-    fn queue_family_index(&self) -> u32;
-
-    /// Returns the usage of this command buffer.
-    fn usage(&self) -> CommandBufferUsage;
-
+impl PrimaryAutoCommandBuffer {
     /// Executes this command buffer on a queue.
     ///
     /// This function returns an object that implements the [`GpuFuture`] trait. See the
@@ -62,7 +50,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     ///
     /// - Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
-    fn execute(
+    pub fn execute(
         self: Arc<Self>,
         queue: Arc<Queue>,
     ) -> Result<CommandBufferExecFuture<NowFuture>, CommandBufferExecError>
@@ -99,7 +87,7 @@ pub unsafe trait PrimaryCommandBufferAbstract:
     /// # Panics
     ///
     /// - Panics if the device of the command buffer is not the same as the device of the future.
-    fn execute_after<F>(
+    pub fn execute_after<F>(
         self: Arc<Self>,
         future: F,
         queue: Arc<Queue>,
@@ -122,93 +110,6 @@ pub unsafe trait PrimaryCommandBufferAbstract:
             finished: AtomicBool::new(false),
         })
     }
-
-    #[doc(hidden)]
-    fn state(&self) -> MutexGuard<'_, CommandBufferState>;
-
-    #[doc(hidden)]
-    fn resources_usage(&self) -> &CommandBufferResourcesUsage;
-}
-
-impl Debug for dyn PrimaryCommandBufferAbstract {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        Debug::fmt(&self.handle(), f)
-    }
-}
-
-unsafe impl<T> PrimaryCommandBufferAbstract for T
-where
-    T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
-    T::Target: PrimaryCommandBufferAbstract,
-{
-    fn queue_family_index(&self) -> u32 {
-        (**self).queue_family_index()
-    }
-
-    fn usage(&self) -> CommandBufferUsage {
-        (**self).usage()
-    }
-
-    fn state(&self) -> MutexGuard<'_, CommandBufferState> {
-        (**self).state()
-    }
-
-    fn resources_usage(&self) -> &CommandBufferResourcesUsage {
-        (**self).resources_usage()
-    }
-}
-
-pub unsafe trait SecondaryCommandBufferAbstract:
-    VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
-{
-    /// Returns the usage of this command buffer.
-    fn usage(&self) -> CommandBufferUsage;
-
-    /// Returns a `CommandBufferInheritance` value describing the properties that the command
-    /// buffer inherits from its parent primary command buffer.
-    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo;
-
-    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
-    /// and if so locks it.
-    ///
-    /// If you call this function, then you should call `unlock` afterwards.
-    fn lock_record(&self) -> Result<(), Box<ValidationError>>;
-
-    /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
-    ///
-    /// # Safety
-    ///
-    /// Must not be called if you haven't called `lock_record` before.
-    unsafe fn unlock(&self);
-
-    #[doc(hidden)]
-    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage;
-}
-
-unsafe impl<T> SecondaryCommandBufferAbstract for T
-where
-    T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
-    T::Target: SecondaryCommandBufferAbstract,
-{
-    fn usage(&self) -> CommandBufferUsage {
-        (**self).usage()
-    }
-
-    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
-        (**self).inheritance_info()
-    }
-
-    fn lock_record(&self) -> Result<(), Box<ValidationError>> {
-        (**self).lock_record()
-    }
-
-    unsafe fn unlock(&self) {
-        (**self).unlock();
-    }
-
-    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
-        (**self).resources_usage()
-    }
 }
 
 /// Represents a command buffer being executed by the GPU and the moment when the execution
@@ -220,7 +121,7 @@ where
     F: GpuFuture,
 {
     previous: F,
-    command_buffer: Arc<dyn PrimaryCommandBufferAbstract>,
+    command_buffer: Arc<PrimaryAutoCommandBuffer>,
     queue: Arc<Queue>,
     // True if the command buffer has already been submitted.
     // If flush is called multiple times, we want to block so that only one flushing is executed.
