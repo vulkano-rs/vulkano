@@ -97,17 +97,14 @@ pub use self::{
     impl_vertex::VertexMember,
     vertex::{Vertex, VertexBufferDescription, VertexMemberInfo},
 };
+use super::color_blend::ColorComponents;
 use crate::{
     device::Device,
-    format::{Format, FormatFeatures, NumericType},
-    shader::{
-        reflect::get_constant,
-        spirv::{Decoration, Id, Instruction, Spirv, StorageClass},
-    },
+    format::{Format, FormatFeatures},
+    pipeline::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
-use std::collections::hash_map::Entry;
 
 mod buffers;
 mod collection;
@@ -325,6 +322,125 @@ impl VertexInputState {
                     ],
                     ..Default::default()
                 }));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_required_vertex_inputs(
+        &self,
+        vertex_shader_inputs: &HashMap<u32, ShaderInterfaceLocationInfo>,
+        vuids: RequiredVertexInputsVUIDs,
+    ) -> Result<(), Box<ValidationError>> {
+        for (&location, location_info) in vertex_shader_inputs {
+            let (is_previous, attribute_desc) =
+                (self.attributes.get(&location).map(|d| (false, d)))
+                    .or_else(|| {
+                        // If the previous location has at least three 64-bit components,
+                        // then it extends into the current location, so try that instead.
+                        location.checked_sub(1).and_then(|location| {
+                            self.attributes
+                                .get(&location)
+                                .filter(|attribute_desc| {
+                                    attribute_desc
+                                        .format
+                                        .components()
+                                        .starts_with(&[64, 64, 64])
+                                })
+                                .map(|d| (true, d))
+                        })
+                    })
+                    .ok_or_else(|| {
+                        Box::new(ValidationError {
+                            problem: format!(
+                                "the vertex shader has an input variable with location {0}, but \
+                                the vertex input attributes do not contain {0}",
+                                location,
+                            )
+                            .into(),
+                            vuids: vuids.not_present,
+                            ..Default::default()
+                        })
+                    })?;
+
+            let attribute_numeric_type = attribute_desc
+                .format
+                .numeric_format_color()
+                .unwrap()
+                .numeric_type();
+
+            if attribute_numeric_type != location_info.numeric_type {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "the numeric type of the format of vertex input attribute {0} ({1:?}) \
+                        does not equal the numeric type of the vertex shader input variable with \
+                        location {0} ({2:?})",
+                        location, attribute_numeric_type, location_info.numeric_type,
+                    )
+                    .into(),
+                    vuids: vuids.numeric_type,
+                    ..Default::default()
+                }));
+            }
+
+            let attribute_components = attribute_desc.format.components();
+
+            // 64-bit in the shader must match with 64-bit in the attribute.
+            match location_info.width {
+                ShaderInterfaceLocationWidth::Bits32 => {
+                    if attribute_components[0] > 32 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the vertex shader input variable location {0} requires a non-64-bit \
+                                format, but the format of vertex input attribute {0} is 64-bit",
+                                location,
+                            )
+                            .into(),
+                            vuids: vuids.requires32,
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ShaderInterfaceLocationWidth::Bits64 => {
+                    if attribute_components[0] <= 32 {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the vertex shader input variable location {0} requires a 64-bit \
+                                format, but the format of vertex input attribute {0} is not 64-bit",
+                                location,
+                            )
+                            .into(),
+                            vuids: vuids.requires64,
+                            ..Default::default()
+                        }));
+                    }
+
+                    // For 64-bit values, there are no default values for missing components.
+                    // If the shader uses the 64-bit value in the second half of the location, then
+                    // the attribute must provide it.
+                    if location_info.components[0]
+                        .intersects(ColorComponents::B | ColorComponents::A)
+                    {
+                        let second_half_attribute_component = if is_previous { 3 } else { 1 };
+
+                        if attribute_components[second_half_attribute_component] != 64 {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "the vertex shader input variable location {0} requires a format \
+                                    with at least {1} 64-bit components, but the format of \
+                                    vertex input attribute {0} contains only {2} components",
+                                    location,
+                                    second_half_attribute_component + 1,
+                                    attribute_components.into_iter().filter(|&c| c != 0).count(),
+                                )
+                                .into(),
+                                vuids: vuids.requires_second_half,
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                }
             }
         }
 
@@ -607,401 +723,10 @@ impl From<VertexInputRate> for ash::vk::VertexInputRate {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct VertexInputLocationRequirements {
-    pub(crate) numeric_type: NumericType,
-    pub(crate) width: VertexInputLocationWidth,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum VertexInputLocationWidth {
-    /// The shader requires a 32-bit or smaller value at this location.
-    Requires32,
-
-    /// The shader requires a 64-bit value at this location.
-    /// The boolean indicates whether the shader requires a format that fills the second half
-    /// of the location.
-    Requires64 { requires_second_half: bool },
-}
-
-pub(crate) fn required_vertex_inputs(
-    spirv: &Spirv,
-    entry_point_id: Id,
-) -> HashMap<u32, VertexInputLocationRequirements> {
-    let interface = match spirv.function(entry_point_id).entry_point() {
-        Some(Instruction::EntryPoint { interface, .. }) => interface,
-        _ => unreachable!(),
-    };
-
-    let mut required_vertex_inputs = HashMap::default();
-
-    for &variable_id in interface {
-        let variable_id_info = spirv.id(variable_id);
-        let pointer_type_id = match *variable_id_info.instruction() {
-            Instruction::Variable {
-                result_type_id,
-                storage_class: StorageClass::Input,
-                ..
-            } => result_type_id,
-            _ => continue,
-        };
-        let pointer_type_id_info = spirv.id(pointer_type_id);
-        let type_id = match *pointer_type_id_info.instruction() {
-            Instruction::TypePointer { ty, .. } => ty,
-            _ => unreachable!(),
-        };
-
-        let mut variable_location = None;
-        let mut variable_component = 0;
-
-        for instruction in variable_id_info.decorations() {
-            if let Instruction::Decorate { ref decoration, .. } = *instruction {
-                match *decoration {
-                    Decoration::Location { location } => variable_location = Some(location),
-                    Decoration::Component { component } => variable_component = component,
-                    _ => (),
-                }
-            }
-        }
-
-        if let Some(variable_location) = variable_location {
-            add_type_location(
-                &mut required_vertex_inputs,
-                spirv,
-                variable_location,
-                variable_component,
-                type_id,
-            );
-        } else {
-            let block_type_id_info = spirv.id(type_id);
-            let member_types = match block_type_id_info.instruction() {
-                Instruction::TypeStruct { member_types, .. } => member_types,
-                _ => continue,
-            };
-
-            for (&type_id, member_info) in member_types.iter().zip(block_type_id_info.members()) {
-                let mut member_location = None;
-                let mut member_component = 0;
-
-                for instruction in member_info.decorations() {
-                    if let Instruction::MemberDecorate { ref decoration, .. } = *instruction {
-                        match *decoration {
-                            Decoration::Location { location } => member_location = Some(location),
-                            Decoration::Component { component } => member_component = component,
-                            _ => (),
-                        }
-                    }
-                }
-
-                if let Some(member_location) = member_location {
-                    add_type_location(
-                        &mut required_vertex_inputs,
-                        spirv,
-                        member_location,
-                        member_component,
-                        type_id,
-                    );
-                }
-            }
-        }
-    }
-
-    required_vertex_inputs
-}
-
-fn add_type_location(
-    required_vertex_inputs: &mut HashMap<u32, VertexInputLocationRequirements>,
-    spirv: &Spirv,
-    mut location: u32,
-    mut component: u32,
-    type_id: Id,
-) -> (u32, u32) {
-    debug_assert!(component < 4);
-
-    let mut add_scalar = |numeric_type: NumericType, width: u32| -> (u32, u32) {
-        if width > 32 {
-            debug_assert!(component & 1 == 0);
-            let half_index = component as usize / 2;
-
-            match required_vertex_inputs.entry(location) {
-                Entry::Occupied(mut entry) => {
-                    let requirements = entry.get_mut();
-                    debug_assert_eq!(requirements.numeric_type, numeric_type);
-
-                    match &mut requirements.width {
-                        VertexInputLocationWidth::Requires32 => unreachable!(),
-                        VertexInputLocationWidth::Requires64 {
-                            requires_second_half,
-                        } => {
-                            if component == 2 {
-                                debug_assert!(!*requires_second_half);
-                                *requires_second_half = true;
-                            }
-                        }
-                    }
-                }
-                Entry::Vacant(entry) => {
-                    let mut required_halves = [false; 2];
-                    required_halves[half_index] = true;
-                    entry.insert(VertexInputLocationRequirements {
-                        numeric_type,
-                        width: VertexInputLocationWidth::Requires64 {
-                            requires_second_half: component == 2,
-                        },
-                    });
-                }
-            }
-
-            (1, 2)
-        } else {
-            match required_vertex_inputs.entry(location) {
-                Entry::Occupied(entry) => {
-                    let requirements = *entry.get();
-                    debug_assert_eq!(requirements.numeric_type, numeric_type);
-                    debug_assert_eq!(requirements.width, VertexInputLocationWidth::Requires32);
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(VertexInputLocationRequirements {
-                        numeric_type,
-                        width: VertexInputLocationWidth::Requires32,
-                    });
-                }
-            }
-
-            (1, 1)
-        }
-    };
-
-    match *spirv.id(type_id).instruction() {
-        Instruction::TypeInt {
-            width, signedness, ..
-        } => {
-            let numeric_type = if signedness == 1 {
-                NumericType::Int
-            } else {
-                NumericType::Uint
-            };
-
-            add_scalar(numeric_type, width)
-        }
-        Instruction::TypeFloat { width, .. } => add_scalar(NumericType::Float, width),
-        Instruction::TypeVector {
-            component_type,
-            component_count,
-            ..
-        } => {
-            let mut total_locations_added = 1;
-
-            for _ in 0..component_count {
-                // Overflow into next location
-                if component == 4 {
-                    component = 0;
-                    location += 1;
-                    total_locations_added += 1;
-                } else {
-                    debug_assert!(component < 4);
-                }
-
-                let (_, components_added) = add_type_location(
-                    required_vertex_inputs,
-                    spirv,
-                    location,
-                    component,
-                    component_type,
-                );
-                component += components_added;
-            }
-
-            (total_locations_added, 0)
-        }
-        Instruction::TypeMatrix {
-            column_type,
-            column_count,
-            ..
-        } => {
-            let mut total_locations_added = 0;
-
-            for _ in 0..column_count {
-                let (locations_added, _) = add_type_location(
-                    required_vertex_inputs,
-                    spirv,
-                    location,
-                    component,
-                    column_type,
-                );
-                location += locations_added;
-                total_locations_added += locations_added;
-            }
-
-            (total_locations_added, 0)
-        }
-        Instruction::TypeArray {
-            element_type,
-            length,
-            ..
-        } => {
-            let length = get_constant(spirv, length).unwrap();
-            let mut total_locations_added = 0;
-
-            for _ in 0..length {
-                let (locations_added, _) = add_type_location(
-                    required_vertex_inputs,
-                    spirv,
-                    location,
-                    component,
-                    element_type,
-                );
-                location += locations_added;
-                total_locations_added += locations_added;
-            }
-
-            (total_locations_added, 0)
-        }
-        Instruction::TypeStruct {
-            ref member_types, ..
-        } => {
-            let mut total_locations_added = 0;
-
-            for &member_type in member_types {
-                let (locations_added, _) = add_type_location(
-                    required_vertex_inputs,
-                    spirv,
-                    location,
-                    component,
-                    member_type,
-                );
-                location += locations_added;
-                total_locations_added += locations_added;
-            }
-
-            (total_locations_added, 0)
-        }
-        _ => unimplemented!(),
-    }
-}
-
 pub(crate) struct RequiredVertexInputsVUIDs {
     pub(crate) not_present: &'static [&'static str],
     pub(crate) numeric_type: &'static [&'static str],
     pub(crate) requires32: &'static [&'static str],
     pub(crate) requires64: &'static [&'static str],
     pub(crate) requires_second_half: &'static [&'static str],
-}
-
-pub(crate) fn validate_required_vertex_inputs(
-    attribute_descs: &HashMap<u32, VertexInputAttributeDescription>,
-    required_vertex_inputs: &HashMap<u32, VertexInputLocationRequirements>,
-    vuids: RequiredVertexInputsVUIDs,
-) -> Result<(), Box<ValidationError>> {
-    for (&location, location_info) in required_vertex_inputs {
-        let (is_previous, attribute_desc) = (attribute_descs.get(&location).map(|d| (false, d)))
-            .or_else(|| {
-                // If the previous location has at least three 64-bit components,
-                // then it extends into the current location, so try that instead.
-                location.checked_sub(1).and_then(|location| {
-                    attribute_descs
-                        .get(&location)
-                        .filter(|attribute_desc| {
-                            attribute_desc
-                                .format
-                                .components()
-                                .starts_with(&[64, 64, 64])
-                        })
-                        .map(|d| (true, d))
-                })
-            })
-            .ok_or_else(|| {
-                Box::new(ValidationError {
-                    problem: format!(
-                        "the vertex shader has an input variable with location {0}, but \
-                        the vertex input attributes do not contain {0}",
-                        location,
-                    )
-                    .into(),
-                    vuids: vuids.not_present,
-                    ..Default::default()
-                })
-            })?;
-
-        let attribute_numeric_type = attribute_desc
-            .format
-            .numeric_format_color()
-            .unwrap()
-            .numeric_type();
-
-        if attribute_numeric_type != location_info.numeric_type {
-            return Err(Box::new(ValidationError {
-                problem: format!(
-                    "the numeric type of the format of vertex input attribute {0} ({1:?}) \
-                    does not equal the numeric type of the vertex shader input variable with \
-                    location {0} ({2:?})",
-                    location, attribute_numeric_type, location_info.numeric_type,
-                )
-                .into(),
-                vuids: vuids.numeric_type,
-                ..Default::default()
-            }));
-        }
-
-        let attribute_components = attribute_desc.format.components();
-
-        // 64-bit in the shader must match with 64-bit in the attribute.
-        match location_info.width {
-            VertexInputLocationWidth::Requires32 => {
-                if attribute_components[0] > 32 {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "the vertex shader input variable location {0} requires a non-64-bit \
-                            format, but the format of vertex input attribute {0} is 64-bit",
-                            location,
-                        )
-                        .into(),
-                        vuids: vuids.requires32,
-                        ..Default::default()
-                    }));
-                }
-            }
-            VertexInputLocationWidth::Requires64 {
-                requires_second_half,
-            } => {
-                if attribute_components[0] <= 32 {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "the vertex shader input variable location {0} requires a 64-bit \
-                            format, but the format of vertex input attribute {0} is not 64-bit",
-                            location,
-                        )
-                        .into(),
-                        vuids: vuids.requires64,
-                        ..Default::default()
-                    }));
-                }
-
-                // For 64-bit values, there are no default values for missing components.
-                // If the shader uses the 64-bit value in the second half of the location, then
-                // the attribute must provide it.
-                if requires_second_half {
-                    let second_half_attribute_component = if is_previous { 3 } else { 1 };
-
-                    if attribute_components[second_half_attribute_component] != 64 {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "the vertex shader input variable location {0} requires a format \
-                                with at least {1} 64-bit components, but the format of \
-                                vertex input attribute {0} contains only {2} components",
-                                location,
-                                second_half_attribute_component + 1,
-                                attribute_components.into_iter().filter(|&c| c != 0).count(),
-                            )
-                            .into(),
-                            vuids: vuids.requires_second_half,
-                            ..Default::default()
-                        }));
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
