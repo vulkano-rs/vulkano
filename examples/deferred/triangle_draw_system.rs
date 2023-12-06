@@ -9,7 +9,7 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
-            color_blend::{ColorBlendAttachmentState, ColorBlendState, ColorComponents},
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
             depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
@@ -107,12 +107,7 @@ impl TriangleDrawSystem {
                     multisample_state: Some(MultisampleState::default()),
                     color_blend_state: Some(ColorBlendState::with_attachment_states(
                         subpass.num_color_attachments(),
-                        ColorBlendAttachmentState {
-                            // Don't write the alpha component, as it's not used and
-                            // the fragment shader doesn't output it.
-                            color_write_mask: ColorComponents::all() - ColorComponents::A,
-                            ..ColorBlendAttachmentState::default()
-                        },
+                        ColorBlendAttachmentState::default(),
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.clone().into()),
@@ -194,11 +189,11 @@ mod fs {
             #version 450
 
             layout(location = 0) out vec4 f_color;
-            layout(location = 1) out vec3 f_normal;
+            layout(location = 1) out vec4 f_normal;
 
             void main() {
                 f_color = vec4(1.0, 1.0, 1.0, 1.0);
-                f_normal = vec3(0.0, 0.0, 1.0);
+                f_normal = vec4(0.0, 0.0, 1.0, 0.0);
             }
         ",
     }
