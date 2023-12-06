@@ -8,7 +8,7 @@ use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBufferAbstract,
+        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryAutoCommandBuffer,
         SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
@@ -487,7 +487,7 @@ pub struct DrawPass<'f, 's: 'f> {
 
 impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Appends a command that executes a secondary command buffer that performs drawing.
-    pub fn execute(&mut self, command_buffer: Arc<dyn SecondaryCommandBufferAbstract>) {
+    pub fn execute(&mut self, command_buffer: Arc<SecondaryAutoCommandBuffer>) {
         self.frame
             .command_buffer_builder
             .as_mut()

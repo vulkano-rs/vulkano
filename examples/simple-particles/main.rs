@@ -8,7 +8,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
+        CopyBufferInfo, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,

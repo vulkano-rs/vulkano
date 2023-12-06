@@ -4,7 +4,7 @@ use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
         BufferImageCopy, ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
-        CopyImageInfo, ImageBlit, ImageCopy, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
+        CopyImageInfo, ImageBlit, ImageCopy, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,

@@ -78,9 +78,7 @@ const MAX_ARENAS: usize = 32;
 ///         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
 ///         BufferUsage,
 ///     },
-///     command_buffer::{
-///         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
-///     },
+///     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
 ///     memory::allocator::MemoryTypeFilter,
 ///     sync::GpuFuture,
 /// };
