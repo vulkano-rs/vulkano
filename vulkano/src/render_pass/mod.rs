@@ -23,7 +23,6 @@ use crate::{
     image::{ImageAspects, ImageLayout, SampleCount},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum, vulkan_enum},
-    shader::ShaderInterface,
     sync::{AccessFlags, DependencyFlags, MemoryBarrier, PipelineStages},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
@@ -591,40 +590,6 @@ impl RenderPass {
 
         true
     }
-
-    /// Returns `true` if the subpass of this description is compatible with the shader's fragment
-    /// output definition.
-    pub fn is_compatible_with_shader(
-        &self,
-        subpass: u32,
-        shader_interface: &ShaderInterface,
-    ) -> bool {
-        let subpass_descr = match self.subpasses.get(subpass as usize) {
-            Some(s) => s,
-            None => return false,
-        };
-
-        for element in shader_interface.elements() {
-            assert!(!element.ty.is_64bit); // TODO: implement
-            let location_range = element.location..element.location + element.ty.num_locations();
-
-            for location in location_range {
-                let attachment_id = match subpass_descr.color_attachments.get(location as usize) {
-                    Some(Some(attachment_ref)) => attachment_ref.attachment,
-                    _ => return false,
-                };
-
-                let _attachment_desc = &self.attachments[attachment_id as usize];
-
-                // FIXME: compare formats depending on the number of components and data type
-                /*if attachment_desc.format != element.format {
-                    return false;
-                }*/
-            }
-        }
-
-        true
-    }
 }
 
 impl Drop for RenderPass {
@@ -740,14 +705,6 @@ impl Subpass {
             })
             .next()
             .map(|attachment_desc| attachment_desc.samples)
-    }
-
-    /// Returns `true` if this subpass is compatible with the fragment output definition.
-    // TODO: return proper error
-    #[inline]
-    pub fn is_compatible_with(&self, shader_interface: &ShaderInterface) -> bool {
-        self.render_pass
-            .is_compatible_with_shader(self.subpass_id, shader_interface)
     }
 }
 
