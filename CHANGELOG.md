@@ -18,6 +18,7 @@
 Changes to command buffers:
 - `AutoCommandBufferBuilder` and `UnsafeCommandBufferBuilder` now take an `Arc<dyn CommandBufferAllocator>` on construction.
 - `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `UnsafeCommandBufferBuilder` and `UnsafeCommandBuffer` no longer have a type parameter for the type of allocator.
+- The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
 
 Changes to command buffer allocation:
 - `CommandBufferAllocator` no longer has any associated types in order to make the trait object-safe.
