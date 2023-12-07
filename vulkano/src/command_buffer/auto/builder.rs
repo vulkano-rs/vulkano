@@ -51,6 +51,11 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
+/// A command buffer in the recording state.
+///
+/// Unlike [`RawCommandRecorder`], this type does resource tracking and inserts pipeline barriers
+/// automatically.
+///
 /// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
 /// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
 pub struct CommandRecorder<L> {
