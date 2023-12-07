@@ -39,7 +39,7 @@ macro_rules! vulkan_bitflags {
                 )*
             }
 
-            /// Returns the number of flags set in self.
+            /// Returns the number of flags set in `self`.
             #[inline]
             pub const fn count(self) -> u32 {
                 self.0.count_ones()
