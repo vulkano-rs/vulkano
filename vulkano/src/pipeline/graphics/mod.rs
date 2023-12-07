@@ -2446,7 +2446,7 @@ impl GraphicsPipelineCreateInfo {
                     err.problem = format!(
                         "{}: {}",
                         "`vertex_input_state` does not meet the requirements \
-                    of the vertex shader in `stages`",
+                        of the vertex shader in `stages`",
                         err.problem,
                     )
                     .into();
