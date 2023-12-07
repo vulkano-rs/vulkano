@@ -650,7 +650,7 @@ fn main() -> Result<(), impl Error> {
                     .unwrap();
 
                 // Finish building the command buffer by calling `build`.
-                let command_buffer = builder.finish().unwrap();
+                let command_buffer = builder.end().unwrap();
 
                 let future = previous_frame_end
                     .take()

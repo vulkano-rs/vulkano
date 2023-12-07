@@ -182,7 +182,7 @@ pub mod view;
 ///         device_local_buffer.clone(),
 ///     ))
 ///     .unwrap();
-/// let cb = cbb.finish().unwrap();
+/// let cb = cbb.end().unwrap();
 ///
 /// // Execute the copy command and wait for completion before proceeding.
 /// cb.execute(queue.clone())

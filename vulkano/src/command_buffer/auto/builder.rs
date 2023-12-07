@@ -293,7 +293,7 @@ impl<L> CommandRecorder<L> {
         debug_assert!(barriers.is_empty());
 
         Ok((
-            self.inner.finish()?,
+            self.inner.end()?,
             self.commands
                 .into_iter()
                 .map(|(_, record_func)| record_func)
@@ -305,8 +305,8 @@ impl<L> CommandRecorder<L> {
 }
 
 impl CommandRecorder<PrimaryAutoCommandBuffer> {
-    /// Builds the command buffer.
-    pub fn finish(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+    /// Ends the recording, returning a command buffer which can be submitted.
+    pub fn end(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
                 problem: "a render pass instance is still active".into(),
@@ -340,8 +340,8 @@ impl CommandRecorder<PrimaryAutoCommandBuffer> {
 }
 
 impl CommandRecorder<SecondaryAutoCommandBuffer> {
-    /// Builds the command buffer.
-    pub fn finish(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+    /// Ends the recording, returning a command buffer which can be submitted.
+    pub fn end(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         if !self.builder_state.queries.is_empty() {
             return Err(Box::new(ValidationError {
                 problem: "a query is still active".into(),

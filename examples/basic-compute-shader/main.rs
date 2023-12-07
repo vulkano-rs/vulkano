@@ -222,7 +222,7 @@ fn main() {
         .unwrap();
 
     // Finish building the command buffer by calling `build`.
-    let command_buffer = builder.finish().unwrap();
+    let command_buffer = builder.end().unwrap();
 
     // Let's execute this command buffer now.
     let future = sync::now(device)

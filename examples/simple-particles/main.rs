@@ -397,7 +397,7 @@ fn main() -> Result<(), impl Error> {
             device_local_buffer.clone(),
         ))
         .unwrap();
-        let cb = cbb.finish().unwrap();
+        let cb = cbb.end().unwrap();
 
         // Execute copy and wait for copy to complete before proceeding.
         cb.execute(queue.clone())
@@ -622,7 +622,7 @@ fn main() -> Result<(), impl Error> {
                     .unwrap()
                     .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = builder.finish().unwrap();
+                let command_buffer = builder.end().unwrap();
 
                 let future = previous_future
                     .join(acquire_future)

@@ -212,7 +212,7 @@ fn main() {
             .unwrap()
             .dispatch([1024, 1, 1])
             .unwrap();
-        let command_buffer = builder.finish().unwrap();
+        let command_buffer = builder.end().unwrap();
 
         let future = sync::now(queue.device().clone())
             .then_execute(queue.clone(), command_buffer)

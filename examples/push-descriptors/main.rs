@@ -339,7 +339,7 @@ fn main() -> Result<(), impl Error> {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(
         uploads
-            .finish()
+            .end()
             .unwrap()
             .execute(queue.clone())
             .unwrap()
@@ -446,7 +446,7 @@ fn main() -> Result<(), impl Error> {
                     .unwrap()
                     .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = builder.finish().unwrap();
+                let command_buffer = builder.end().unwrap();
 
                 let future = previous_frame_end
                     .take()

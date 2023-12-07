@@ -172,7 +172,7 @@ impl FractalComputePipeline {
             .unwrap()
             .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
             .unwrap();
-        let command_buffer = builder.finish().unwrap();
+        let command_buffer = builder.end().unwrap();
         let finished = command_buffer.execute(self.queue.clone()).unwrap();
         finished.then_signal_fence_and_flush().unwrap().boxed()
     }

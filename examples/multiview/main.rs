@@ -386,7 +386,7 @@ fn main() {
         })
         .unwrap();
 
-    let command_buffer = builder.finish().unwrap();
+    let command_buffer = builder.end().unwrap();
 
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

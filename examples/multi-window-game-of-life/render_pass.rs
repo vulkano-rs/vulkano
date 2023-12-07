@@ -111,7 +111,7 @@ impl RenderPassPlaceOverFrame {
             .unwrap();
 
         // Build the command buffer.
-        let command_buffer = command_buffer_builder.finish().unwrap();
+        let command_buffer = command_buffer_builder.end().unwrap();
 
         // Execute primary command buffer.
         let after_future = before_future

@@ -496,7 +496,7 @@ fn main() -> Result<(), impl Error> {
                         .unwrap();
                 }
 
-                let command_buffer = builder.finish().unwrap();
+                let command_buffer = builder.end().unwrap();
 
                 let future = previous_frame_end
                     .take()

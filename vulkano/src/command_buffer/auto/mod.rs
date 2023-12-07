@@ -443,7 +443,7 @@ mod tests {
         })
         .unwrap();
 
-        let cb = cbb.finish().unwrap();
+        let cb = cbb.end().unwrap();
 
         let future = cb
             .execute(queue)
@@ -477,7 +477,7 @@ mod tests {
             Default::default(),
         )
         .unwrap();
-        let secondary = builder.finish().unwrap();
+        let secondary = builder.end().unwrap();
 
         {
             let mut builder = CommandRecorder::primary(
@@ -503,7 +503,7 @@ mod tests {
             )
             .unwrap();
             builder.execute_commands(secondary.clone()).unwrap();
-            let cb1 = builder.finish().unwrap();
+            let cb1 = builder.end().unwrap();
 
             let mut builder = CommandRecorder::primary(
                 cb_allocator,
@@ -567,7 +567,7 @@ mod tests {
             })
             .unwrap();
 
-        let cb = builder.finish().unwrap();
+        let cb = builder.end().unwrap();
 
         let future = cb
             .execute(queue)
@@ -662,7 +662,7 @@ mod tests {
             )
             .unwrap();
 
-            cbb.finish()
+            cbb.end()
                 .unwrap()
                 .execute(queue.clone())
                 .unwrap()
@@ -684,7 +684,7 @@ mod tests {
                     builder
                         .fill_buffer(buffer.clone().into_slice(), 42)
                         .unwrap();
-                    builder.finish().unwrap()
+                    builder.end().unwrap()
                 })
                 .collect::<Vec<_>>();
 
@@ -701,7 +701,7 @@ mod tests {
                     builder.execute_commands_unchecked([secondary as _].into_iter().collect());
                 });
 
-                let _primary = builder.finish().unwrap();
+                let _primary = builder.end().unwrap();
                 /*
                 let names = primary._commands.iter().map(|c| c.name).collect::<Vec<_>>();
 

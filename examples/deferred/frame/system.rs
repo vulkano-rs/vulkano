@@ -445,12 +445,7 @@ impl<'a> Frame<'a> {
                     .unwrap()
                     .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = self
-                    .command_buffer_builder
-                    .take()
-                    .unwrap()
-                    .finish()
-                    .unwrap();
+                let command_buffer = self.command_buffer_builder.take().unwrap().end().unwrap();
 
                 // Extract `before_main_cb_future` and append the command buffer execution to it.
                 let after_main_cb = self

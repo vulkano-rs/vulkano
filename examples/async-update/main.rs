@@ -342,7 +342,7 @@ fn main() -> Result<(), impl Error> {
                 .clear_color_image(ClearColorImageInfo::image(texture.clone()))
                 .unwrap();
         }
-        let command_buffer = builder.finish().unwrap();
+        let command_buffer = builder.end().unwrap();
 
         // This waits for the queue to become idle, which is fine for startup initializations.
         let _ = command_buffer.execute(graphics_queue.clone()).unwrap();
@@ -627,7 +627,7 @@ fn main() -> Result<(), impl Error> {
                     .unwrap()
                     .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = builder.finish().unwrap();
+                let command_buffer = builder.end().unwrap();
 
                 acquire_future.wait(None).unwrap();
                 previous_frame_end.as_mut().unwrap().cleanup_finished();
@@ -796,7 +796,7 @@ fn run_worker(
                     )
                 })
                 .unwrap();
-            let command_buffer = builder.finish().unwrap();
+            let command_buffer = builder.end().unwrap();
 
             // We swap the texture index to use after a write, but there is no guarantee that other
             // tasks have actually moved on to using the new texture. What could happen then, if

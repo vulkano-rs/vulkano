@@ -76,7 +76,7 @@
 //! .unwrap()
 //! .end_render_pass(Default::default())
 //! .unwrap()
-//! .finish()
+//! .end()
 //! .unwrap();
 //!
 //! let future = cb.execute(queue.clone());

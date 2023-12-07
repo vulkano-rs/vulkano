@@ -242,7 +242,7 @@ impl PixelsDrawPipeline {
             .unwrap()
             .draw_indexed(self.indices.len() as u32, 1, 0, 0, 0)
             .unwrap();
-        builder.finish().unwrap()
+        builder.end().unwrap()
     }
 }
 

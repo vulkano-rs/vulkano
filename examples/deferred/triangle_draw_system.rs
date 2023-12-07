@@ -156,7 +156,7 @@ impl TriangleDrawSystem {
             .unwrap()
             .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
-        builder.finish().unwrap()
+        builder.end().unwrap()
     }
 }
 

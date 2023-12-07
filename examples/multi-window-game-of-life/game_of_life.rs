@@ -148,7 +148,7 @@ impl GameOfLifeComputePipeline {
         // Then color based on the next state.
         self.dispatch(&mut builder, life_color, dead_color, 1);
 
-        let command_buffer = builder.finish().unwrap();
+        let command_buffer = builder.end().unwrap();
         let finished = before_future
             .then_execute(self.compute_queue.clone(), command_buffer)
             .unwrap();

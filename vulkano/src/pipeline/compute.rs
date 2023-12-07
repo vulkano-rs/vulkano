@@ -573,7 +573,7 @@ mod tests {
             .unwrap()
             .dispatch([1, 1, 1])
             .unwrap();
-        let cb = cbb.finish().unwrap();
+        let cb = cbb.end().unwrap();
 
         let future = now(device)
             .then_execute(queue, cb)
@@ -720,7 +720,7 @@ mod tests {
             .unwrap()
             .dispatch([128, 1, 1])
             .unwrap();
-        let cb = cbb.finish().unwrap();
+        let cb = cbb.end().unwrap();
 
         let future = now(device)
             .then_execute(queue, cb)
