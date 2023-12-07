@@ -62,7 +62,7 @@ pub(in crate::command_buffer) use self::builder::{
     RenderPassStateAttachments, RenderPassStateType, SetOrPush,
 };
 use super::{
-    sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
+    sys::{RawCommandBuffer, RawCommandRecorder},
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
     CommandBufferUsage, ResourceInCommand, SecondaryCommandBufferResourcesUsage,
     SecondaryResourceUseRef,
@@ -87,8 +87,8 @@ use std::{
 mod builder;
 
 pub struct PrimaryAutoCommandBuffer {
-    inner: UnsafeCommandBuffer,
-    _keep_alive_objects: Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>>,
+    inner: RawCommandBuffer,
+    _keep_alive_objects: Vec<Box<dyn Fn(&mut RawCommandRecorder) + Send + Sync + 'static>>,
     resources_usage: CommandBufferResourcesUsage,
     state: Mutex<CommandBufferState>,
 }
@@ -140,8 +140,8 @@ impl PrimaryAutoCommandBuffer {
 }
 
 pub struct SecondaryAutoCommandBuffer {
-    inner: UnsafeCommandBuffer,
-    _keep_alive_objects: Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>>,
+    inner: RawCommandBuffer,
+    _keep_alive_objects: Vec<Box<dyn Fn(&mut RawCommandRecorder) + Send + Sync + 'static>>,
     resources_usage: SecondaryCommandBufferResourcesUsage,
     submit_state: SubmitState,
 }

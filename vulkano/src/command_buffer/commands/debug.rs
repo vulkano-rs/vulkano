@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::{sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder},
+    command_buffer::{sys::RawCommandRecorder, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
@@ -39,7 +39,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "begin_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.begin_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -75,7 +75,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "end_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.end_debug_utils_label_unchecked();
             },
         );
@@ -110,7 +110,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "insert_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.insert_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -119,7 +119,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn begin_debug_utils_label(
         &mut self,

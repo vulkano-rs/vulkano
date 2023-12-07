@@ -1,8 +1,7 @@
 use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
-        auto::Resource, sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder,
-        ResourceInCommand,
+        auto::Resource, sys::RawCommandRecorder, AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
@@ -100,7 +99,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_buffer_unchecked(&copy_buffer_info);
             },
         );
@@ -203,7 +202,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_image_unchecked(&copy_image_info);
             },
         );
@@ -290,7 +289,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_buffer_to_image_unchecked(&copy_buffer_to_image_info);
             },
         );
@@ -377,7 +376,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_image_to_buffer_unchecked(&copy_image_to_buffer_info);
             },
         );
@@ -490,7 +489,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.blit_image_unchecked(&blit_image_info);
             },
         );
@@ -582,7 +581,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.resolve_image_unchecked(&resolve_image_info);
             },
         );
@@ -591,7 +590,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn copy_buffer(
         &mut self,

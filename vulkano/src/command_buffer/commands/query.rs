@@ -2,7 +2,7 @@ use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         auto::{QueryState, Resource},
-        sys::UnsafeCommandBufferBuilder,
+        sys::RawCommandRecorder,
         AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
@@ -97,7 +97,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "begin_query",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.begin_query_unchecked(&query_pool, query, flags);
             },
         );
@@ -169,7 +169,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "end_query",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.end_query_unchecked(&query_pool, query);
             },
         );
@@ -236,7 +236,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "write_timestamp",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.write_timestamp_unchecked(&query_pool, query, stage);
             },
         );
@@ -319,7 +319,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_query_pool_results_unchecked(
                     &query_pool,
                     queries.clone(),
@@ -391,7 +391,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "reset_query_pool",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.reset_query_pool_unchecked(&query_pool, queries.clone());
             },
         );
@@ -400,7 +400,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn begin_query(
         &mut self,

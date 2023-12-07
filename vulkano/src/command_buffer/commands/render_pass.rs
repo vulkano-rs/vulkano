@@ -4,7 +4,7 @@ use crate::{
             BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateAttachments,
             RenderPassStateType, Resource,
         },
-        sys::UnsafeCommandBufferBuilder,
+        sys::RawCommandRecorder,
         AutoCommandBufferBuilder, CommandBufferLevel, ResourceInCommand, SubpassContents,
     },
     device::{Device, DeviceOwned, QueueFlags},
@@ -136,7 +136,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     )
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.begin_render_pass_unchecked(&render_pass_begin_info, &subpass_begin_info);
             },
         );
@@ -238,7 +238,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "next_subpass",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.next_subpass_unchecked(&subpass_end_info, &subpass_begin_info);
             },
         );
@@ -319,7 +319,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_render_pass_end(
             "end_render_pass",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.end_render_pass_unchecked(&subpass_end_info);
             },
         );
@@ -557,7 +557,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 .flatten()
             }))
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.begin_rendering_unchecked(&rendering_info);
             },
         );
@@ -624,7 +624,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_render_pass_end(
             "end_rendering",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.end_rendering_unchecked();
             },
         );
@@ -875,7 +875,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "clear_attachments",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.clear_attachments_unchecked(&attachments, &rects);
             },
         );
@@ -884,7 +884,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,

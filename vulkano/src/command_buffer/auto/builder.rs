@@ -6,7 +6,7 @@ use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
-        sys::{CommandBufferBeginInfo, UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
+        sys::{CommandBufferBeginInfo, RawCommandBuffer, RawCommandRecorder},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferImageRangeUsage,
         CommandBufferImageUsage, CommandBufferInheritanceInfo,
         CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferResourcesUsage,
@@ -56,10 +56,10 @@ use std::{
 /// will not implement `Send` and `Sync` either. Once a command buffer is built, however, it *does*
 /// implement `Send` and `Sync`.
 pub struct AutoCommandBufferBuilder<L> {
-    pub(in crate::command_buffer) inner: UnsafeCommandBufferBuilder,
+    pub(in crate::command_buffer) inner: RawCommandRecorder,
     commands: Vec<(
         CommandInfo,
-        Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>,
+        Box<dyn Fn(&mut RawCommandRecorder) + Send + Sync + 'static>,
     )>,
     pub(in crate::command_buffer) builder_state: CommandBufferBuilderState,
     _data: PhantomData<L>,
@@ -209,8 +209,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             }
         }
 
-        let inner =
-            UnsafeCommandBufferBuilder::new(allocator, queue_family_index, level, begin_info)?;
+        let inner = RawCommandRecorder::new(allocator, queue_family_index, level, begin_info)?;
 
         Ok(AutoCommandBufferBuilder {
             inner,
@@ -224,8 +223,8 @@ impl<L> AutoCommandBufferBuilder<L> {
         mut self,
     ) -> Result<
         (
-            UnsafeCommandBuffer,
-            Vec<Box<dyn Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static>>,
+            RawCommandBuffer,
+            Vec<Box<dyn Fn(&mut RawCommandRecorder) + Send + Sync + 'static>>,
             CommandBufferResourcesUsage,
             SecondaryCommandBufferResourcesUsage,
         ),
@@ -296,7 +295,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         debug_assert!(barriers.is_empty());
 
         Ok((
-            self.inner.build()?,
+            self.inner.finish()?,
             self.commands
                 .into_iter()
                 .map(|(_, record_func)| record_func)
@@ -380,7 +379,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RawCommandRecorder) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -396,7 +395,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RawCommandRecorder) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -412,7 +411,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut UnsafeCommandBufferBuilder) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RawCommandRecorder) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {

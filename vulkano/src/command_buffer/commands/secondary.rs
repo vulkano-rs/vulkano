@@ -1,7 +1,7 @@
 use crate::{
     command_buffer::{
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
-        sys::UnsafeCommandBufferBuilder,
+        sys::RawCommandRecorder,
         AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
         ResourceInCommand, SecondaryAutoCommandBuffer, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
@@ -539,7 +539,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     }))
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.execute_commands_locked(&command_buffers);
             },
         );
@@ -548,7 +548,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn execute_commands(
         &mut self,

@@ -1,6 +1,6 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, IndexBuffer, Subbuffer},
-    command_buffer::{auto::SetOrPush, sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder},
+    command_buffer::{auto::SetOrPush, sys::RawCommandRecorder, AutoCommandBufferBuilder},
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
         DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
@@ -95,7 +95,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "bind_descriptor_sets",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.bind_descriptor_sets_unchecked(
                     pipeline_bind_point,
                     &pipeline_layout,
@@ -138,7 +138,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "bind_index_buffer",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.bind_index_buffer_unchecked(&index_buffer);
             },
         );
@@ -174,7 +174,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "bind_pipeline_compute",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.bind_pipeline_compute_unchecked(&pipeline);
             },
         );
@@ -217,7 +217,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "bind_pipeline_graphics",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.bind_pipeline_graphics_unchecked(&pipeline);
             },
         );
@@ -265,7 +265,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "bind_vertex_buffers",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.bind_vertex_buffers_unchecked(first_binding, &vertex_buffers);
             },
         );
@@ -329,7 +329,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "push_constants",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.push_constants_unchecked(&pipeline_layout, offset, &push_constants);
             },
         );
@@ -414,7 +414,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "push_descriptor_set",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.push_descriptor_set_unchecked(
                     pipeline_bind_point,
                     &pipeline_layout,
@@ -428,7 +428,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn bind_descriptor_sets(
         &mut self,

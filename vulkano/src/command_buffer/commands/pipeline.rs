@@ -3,7 +3,7 @@ use crate::{
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
-        sys::UnsafeCommandBufferBuilder,
+        sys::RawCommandRecorder,
         AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
         DrawIndirectCommand, ResourceInCommand, SubpassContents,
     },
@@ -102,7 +102,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.dispatch_unchecked(group_counts);
             },
         );
@@ -178,7 +178,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.dispatch_indirect_unchecked(&indirect_buffer);
             },
         );
@@ -361,7 +361,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
             },
         );
@@ -463,7 +463,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -684,7 +684,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw_indexed",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.draw_indexed_unchecked(
                     index_count,
                     instance_count,
@@ -806,7 +806,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw_indexed_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -2766,7 +2766,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn dispatch(
         &mut self,

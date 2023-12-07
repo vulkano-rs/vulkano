@@ -1,8 +1,7 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
-        auto::Resource, sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder,
-        ResourceInCommand,
+        auto::Resource, sys::RawCommandRecorder, AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures},
@@ -74,7 +73,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     )]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.clear_color_image_unchecked(&clear_info);
             },
         );
@@ -140,7 +139,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     )]
                 })
                 .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.clear_depth_stencil_image_unchecked(&clear_info);
             },
         );
@@ -198,7 +197,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.fill_buffer_unchecked(&dst_buffer, data);
             },
         );
@@ -264,7 +263,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.update_buffer_unchecked(&dst_buffer, &data);
             },
         );
@@ -273,7 +272,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn clear_color_image(
         &mut self,

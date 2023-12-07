@@ -12,7 +12,7 @@ use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         auto::{Resource, ResourceUseRef2},
-        sys::UnsafeCommandBufferBuilder,
+        sys::RawCommandRecorder,
         AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
@@ -119,7 +119,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "build_acceleration_structure",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.build_acceleration_structure_unchecked(&info, &build_range_infos);
             },
         );
@@ -251,7 +251,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "build_acceleration_structure_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.build_acceleration_structure_indirect_unchecked(
                     &info,
                     &indirect_buffer,
@@ -340,7 +340,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_acceleration_structure_unchecked(&info);
             },
         );
@@ -424,7 +424,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_acceleration_structure_to_memory_unchecked(&info);
             },
         );
@@ -511,7 +511,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.copy_memory_to_acceleration_structure_unchecked(&info);
             },
         );
@@ -607,7 +607,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                     },
                 )
             }).collect(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawCommandRecorder| {
                 out.write_acceleration_structures_properties_unchecked(
                     &acceleration_structures,
                     &query_pool,
@@ -794,7 +794,7 @@ fn add_indirect_buffer_resources(
     ));
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawCommandRecorder {
     #[inline]
     pub unsafe fn build_acceleration_structure(
         &mut self,

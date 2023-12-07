@@ -10,9 +10,9 @@
 //! An event can also be signaled from the host, by calling the [`set`] method directly on the
 //! [`Event`].
 //!
-//! [`set_event`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::set_event
-//! [pipeline barrier]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::pipeline_barrier
-//! [`wait_events`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::wait_events
+//! [`set_event`]: crate::command_buffer::sys::RawCommandRecorder::set_event
+//! [pipeline barrier]: crate::command_buffer::sys::RawCommandRecorder::pipeline_barrier
+//! [`wait_events`]: crate::command_buffer::sys::RawCommandRecorder::wait_events
 //! [`set`]: Event::set
 
 use crate::{
@@ -230,7 +230,7 @@ impl Event {
     /// - There must be an execution dependency between `reset` and the execution of any \
     /// [`wait_events`] command that includes this event in its `events` parameter.
     ///
-    /// [`wait_events`]: crate::command_buffer::sys::UnsafeCommandBufferBuilder::wait_events
+    /// [`wait_events`]: crate::command_buffer::sys::RawCommandRecorder::wait_events
     #[inline]
     pub unsafe fn reset(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
