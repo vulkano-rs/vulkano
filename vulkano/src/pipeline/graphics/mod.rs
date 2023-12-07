@@ -56,12 +56,13 @@ use self::{
     rasterization::RasterizationState,
     subpass::PipelineSubpassType,
     tessellation::TessellationState,
-    vertex_input::{RequiredVertexInputsVUIDs, VertexInputLocationRequirements, VertexInputState},
+    vertex_input::{RequiredVertexInputsVUIDs, VertexInputState},
     viewport::ViewportState,
 };
 use super::{
     cache::PipelineCache, shader::validate_interfaces_compatible, DynamicState, Pipeline,
     PipelineBindPoint, PipelineCreateFlags, PipelineLayout, PipelineShaderStageCreateInfo,
+    ShaderInterfaceLocationInfo,
 };
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -80,7 +81,7 @@ use crate::{
         },
     },
     shader::{
-        spirv::{ExecutionMode, ExecutionModel, Instruction},
+        spirv::{ExecutionMode, ExecutionModel, Instruction, StorageClass},
         DescriptorBindingRequirements, ShaderStage, ShaderStages,
     },
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
@@ -137,7 +138,7 @@ pub struct GraphicsPipeline {
     fixed_state: HashSet<DynamicState>,
     fragment_tests_stages: Option<FragmentTestsStages>,
     // Note: this is only `Some` if `vertex_input_state` is `None`.
-    required_vertex_inputs: Option<HashMap<u32, VertexInputLocationRequirements>>,
+    required_vertex_inputs: Option<HashMap<u32, ShaderInterfaceLocationInfo>>,
 }
 
 impl GraphicsPipeline {
@@ -939,9 +940,10 @@ impl GraphicsPipeline {
             match entry_point_info.execution_model {
                 ExecutionModel::Vertex => {
                     if vertex_input_state.is_none() {
-                        required_vertex_inputs = Some(vertex_input::required_vertex_inputs(
+                        required_vertex_inputs = Some(super::shader_interface_location_info(
                             entry_point.module().spirv(),
                             entry_point.id(),
+                            StorageClass::Input,
                         ));
                     }
                 }
@@ -1182,7 +1184,7 @@ impl GraphicsPipeline {
     #[inline]
     pub(crate) fn required_vertex_inputs(
         &self,
-    ) -> Option<&HashMap<u32, VertexInputLocationRequirements>> {
+    ) -> Option<&HashMap<u32, ShaderInterfaceLocationInfo>> {
         self.required_vertex_inputs.as_ref()
     }
 }
@@ -2421,34 +2423,35 @@ impl GraphicsPipelineCreateInfo {
         */
 
         if let (Some(vertex_stage), Some(vertex_input_state)) = (vertex_stage, vertex_input_state) {
-            let required_vertex_inputs = vertex_input::required_vertex_inputs(
+            let required_vertex_inputs = super::shader_interface_location_info(
                 vertex_stage.entry_point.module().spirv(),
                 vertex_stage.entry_point.id(),
+                StorageClass::Input,
             );
 
-            vertex_input::validate_required_vertex_inputs(
-                &vertex_input_state.attributes,
-                &required_vertex_inputs,
-                RequiredVertexInputsVUIDs {
-                    not_present: &["VUID-VkGraphicsPipelineCreateInfo-Input-07904"],
-                    numeric_type: &["VUID-VkGraphicsPipelineCreateInfo-Input-08733"],
-                    requires32: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08929"],
-                    requires64: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08930"],
-                    requires_second_half: &[
-                        "VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-09198",
-                    ],
-                },
-            )
-            .map_err(|mut err| {
-                err.problem = format!(
-                    "{}: {}",
-                    "`vertex_input_state` does not meet the requirements \
-                    of the vertex shader in `stages`",
-                    err.problem,
+            vertex_input_state
+                .validate_required_vertex_inputs(
+                    &required_vertex_inputs,
+                    RequiredVertexInputsVUIDs {
+                        not_present: &["VUID-VkGraphicsPipelineCreateInfo-Input-07904"],
+                        numeric_type: &["VUID-VkGraphicsPipelineCreateInfo-Input-08733"],
+                        requires32: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08929"],
+                        requires64: &["VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-08930"],
+                        requires_second_half: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-09198",
+                        ],
+                    },
                 )
-                .into();
-                err
-            })?;
+                .map_err(|mut err| {
+                    err.problem = format!(
+                        "{}: {}",
+                        "`vertex_input_state` does not meet the requirements \
+                        of the vertex shader in `stages`",
+                        err.problem,
+                    )
+                    .into();
+                    err
+                })?;
         }
 
         if let (Some(_), Some(_)) = (tessellation_control_stage, tessellation_evaluation_stage) {
@@ -2508,25 +2511,27 @@ impl GraphicsPipelineCreateInfo {
             }
         }
 
-        if let (Some(fragment_stage), Some(subpass)) = (fragment_stage, subpass) {
-            let entry_point_info = fragment_stage.entry_point.info();
+        if let (Some(fragment_stage), Some(color_blend_state), Some(subpass)) =
+            (fragment_stage, color_blend_state, subpass)
+        {
+            let fragment_shader_outputs = super::shader_interface_location_info(
+                fragment_stage.entry_point.module().spirv(),
+                fragment_stage.entry_point.id(),
+                StorageClass::Output,
+            );
 
-            // Check that the subpass can accept the output of the fragment shader.
-            match subpass {
-                PipelineSubpassType::BeginRenderPass(subpass) => {
-                    if !subpass.is_compatible_with(&entry_point_info.output_interface) {
-                        return Err(Box::new(ValidationError {
-                            problem: "`subpass` is not compatible with the \
-                                output interface of the fragment shader"
-                                .into(),
-                            ..Default::default()
-                        }));
-                    }
-                }
-                PipelineSubpassType::BeginRendering(_) => {
-                    // TODO:
-                }
-            }
+            color_blend_state
+                .validate_required_fragment_outputs(subpass, &fragment_shader_outputs)
+                .map_err(|mut err| {
+                    err.problem = format!(
+                        "{}: {}",
+                        "the fragment shader in `stages` does not meet the requirements of \
+                        `color_blend_state` and `subpass`",
+                        err.problem,
+                    )
+                    .into();
+                    err
+                })?;
 
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-pStages-01565

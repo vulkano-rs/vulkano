@@ -1,7 +1,10 @@
 use crate::{
     device::Device,
+    format::NumericType,
     macros::vulkan_bitflags,
+    pipeline::graphics::color_blend::ColorComponents,
     shader::{
+        reflect::get_constant,
         spirv::{
             BuiltIn, Decoration, ExecutionMode, ExecutionModel, Id, Instruction, Spirv,
             StorageClass,
@@ -11,6 +14,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
+use std::collections::hash_map::Entry;
 
 /// Specifies a single shader stage when creating a pipeline.
 #[derive(Clone, Debug)]
@@ -933,53 +937,6 @@ fn get_variables_by_location<'a>(
     variables_by_location
 }
 
-fn strip_array(
-    spirv: &Spirv,
-    storage_class: StorageClass,
-    execution_model: ExecutionModel,
-    variable_id: Id,
-    pointed_type_id: Id,
-) -> Id {
-    let variable_decorations = spirv.id(variable_id).decorations();
-    let variable_has_decoration = |has_decoration: Decoration| -> bool {
-        variable_decorations.iter().any(|instruction| {
-            matches!(
-                instruction,
-                Instruction::Decorate {
-                    decoration,
-                    ..
-                } if *decoration == has_decoration
-            )
-        })
-    };
-
-    let must_strip_array = match storage_class {
-        StorageClass::Input => match execution_model {
-            ExecutionModel::TessellationControl | ExecutionModel::TessellationEvaluation => {
-                !variable_has_decoration(Decoration::Patch)
-            }
-            ExecutionModel::Geometry => true,
-            ExecutionModel::Fragment => variable_has_decoration(Decoration::PerVertexKHR),
-            _ => false,
-        },
-        StorageClass::Output => match execution_model {
-            ExecutionModel::TessellationControl => !variable_has_decoration(Decoration::Patch),
-            ExecutionModel::MeshNV => !variable_has_decoration(Decoration::PerTaskNV),
-            _ => false,
-        },
-        _ => unreachable!(),
-    };
-
-    if must_strip_array {
-        match spirv.id(pointed_type_id).instruction() {
-            &Instruction::TypeArray { element_type, .. } => element_type,
-            _ => pointed_type_id,
-        }
-    } else {
-        pointed_type_id
-    }
-}
-
 fn are_interface_types_compatible(
     out_spirv: &Spirv,
     out_type_id: Id,
@@ -1362,5 +1319,308 @@ fn decoration_filter_variable(instruction: &Instruction) -> bool {
                 | Decoration::RelaxedPrecision
         ),
         _ => false,
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ShaderInterfaceLocationInfo {
+    pub(crate) numeric_type: NumericType,
+    pub(crate) width: ShaderInterfaceLocationWidth,
+    pub(crate) components: [ColorComponents; 2], // Index 0 and 1
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShaderInterfaceLocationWidth {
+    Bits32,
+    Bits64,
+}
+
+impl From<u32> for ShaderInterfaceLocationWidth {
+    #[inline]
+    fn from(value: u32) -> Self {
+        if value > 32 {
+            Self::Bits64
+        } else {
+            Self::Bits32
+        }
+    }
+}
+
+pub(crate) fn shader_interface_location_info(
+    spirv: &Spirv,
+    entry_point_id: Id,
+    filter_storage_class: StorageClass,
+) -> HashMap<u32, ShaderInterfaceLocationInfo> {
+    fn add_type(
+        locations: &mut HashMap<u32, ShaderInterfaceLocationInfo>,
+        spirv: &Spirv,
+        mut location: u32,
+        mut component: u32,
+        index: u32,
+        type_id: Id,
+    ) -> (u32, u32) {
+        debug_assert!(component < 4);
+
+        let mut add_scalar = |numeric_type: NumericType, width: u32| -> (u32, u32) {
+            let width = ShaderInterfaceLocationWidth::from(width);
+            let components_to_add = match width {
+                ShaderInterfaceLocationWidth::Bits32 => {
+                    ColorComponents::from_index(component as usize)
+                }
+                ShaderInterfaceLocationWidth::Bits64 => {
+                    debug_assert!(component & 1 == 0);
+                    ColorComponents::from_index(component as usize)
+                        | ColorComponents::from_index(component as usize + 1)
+                }
+            };
+
+            let location_info = match locations.entry(location) {
+                Entry::Occupied(entry) => {
+                    let location_info = entry.into_mut();
+                    debug_assert_eq!(location_info.numeric_type, numeric_type);
+                    debug_assert_eq!(location_info.width, width);
+                    location_info
+                }
+                Entry::Vacant(entry) => entry.insert(ShaderInterfaceLocationInfo {
+                    numeric_type,
+                    width,
+                    components: [ColorComponents::empty(); 2],
+                }),
+            };
+
+            let components = &mut location_info.components[index as usize];
+            debug_assert!(!components.intersects(components_to_add));
+            *components |= components_to_add;
+
+            (components_to_add.count(), 1)
+        };
+
+        match *spirv.id(type_id).instruction() {
+            Instruction::TypeInt {
+                width, signedness, ..
+            } => {
+                let numeric_type = if signedness == 1 {
+                    NumericType::Int
+                } else {
+                    NumericType::Uint
+                };
+
+                add_scalar(numeric_type, width)
+            }
+            Instruction::TypeFloat { width, .. } => add_scalar(NumericType::Float, width),
+            Instruction::TypeVector {
+                component_type,
+                component_count,
+                ..
+            } => {
+                let mut total_locations_added = 1;
+
+                for _ in 0..component_count {
+                    // Overflow into next location
+                    if component == 4 {
+                        component = 0;
+                        location += 1;
+                        total_locations_added += 1;
+                    } else {
+                        debug_assert!(component < 4);
+                    }
+
+                    let (_, components_added) =
+                        add_type(locations, spirv, location, component, index, component_type);
+                    component += components_added;
+                }
+
+                (total_locations_added, 0)
+            }
+            Instruction::TypeMatrix {
+                column_type,
+                column_count,
+                ..
+            } => {
+                let mut total_locations_added = 0;
+
+                for _ in 0..column_count {
+                    let (locations_added, _) =
+                        add_type(locations, spirv, location, component, index, column_type);
+                    location += locations_added;
+                    total_locations_added += locations_added;
+                }
+
+                (total_locations_added, 0)
+            }
+            Instruction::TypeArray {
+                element_type,
+                length,
+                ..
+            } => {
+                let length = get_constant(spirv, length).unwrap();
+                let mut total_locations_added = 0;
+
+                for _ in 0..length {
+                    let (locations_added, _) =
+                        add_type(locations, spirv, location, component, index, element_type);
+                    location += locations_added;
+                    total_locations_added += locations_added;
+                }
+
+                (total_locations_added, 0)
+            }
+            Instruction::TypeStruct {
+                ref member_types, ..
+            } => {
+                let mut total_locations_added = 0;
+
+                for &member_type in member_types {
+                    let (locations_added, _) =
+                        add_type(locations, spirv, location, component, index, member_type);
+                    location += locations_added;
+                    total_locations_added += locations_added;
+                }
+
+                (total_locations_added, 0)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    let (execution_model, interface) = match spirv.function(entry_point_id).entry_point() {
+        Some(&Instruction::EntryPoint {
+            execution_model,
+            ref interface,
+            ..
+        }) => (execution_model, interface),
+        _ => unreachable!(),
+    };
+
+    let mut locations = HashMap::default();
+
+    for &variable_id in interface {
+        let variable_id_info = spirv.id(variable_id);
+        let (pointer_type_id, storage_class) = match *variable_id_info.instruction() {
+            Instruction::Variable {
+                result_type_id,
+                storage_class,
+                ..
+            } if storage_class == filter_storage_class => (result_type_id, storage_class),
+            _ => continue,
+        };
+        let pointer_type_id_info = spirv.id(pointer_type_id);
+        let type_id = match *pointer_type_id_info.instruction() {
+            Instruction::TypePointer { ty, .. } => {
+                strip_array(spirv, storage_class, execution_model, variable_id, ty)
+            }
+            _ => unreachable!(),
+        };
+
+        let mut variable_location = None;
+        let mut variable_component = 0;
+        let mut variable_index = 0;
+
+        for instruction in variable_id_info.decorations() {
+            if let Instruction::Decorate { ref decoration, .. } = *instruction {
+                match *decoration {
+                    Decoration::Location { location } => variable_location = Some(location),
+                    Decoration::Component { component } => variable_component = component,
+                    Decoration::Index { index } => variable_index = index,
+                    _ => (),
+                }
+            }
+        }
+
+        if let Some(variable_location) = variable_location {
+            add_type(
+                &mut locations,
+                spirv,
+                variable_location,
+                variable_component,
+                variable_index,
+                type_id,
+            );
+        } else {
+            let block_type_id_info = spirv.id(type_id);
+            let member_types = match block_type_id_info.instruction() {
+                Instruction::TypeStruct { member_types, .. } => member_types,
+                _ => continue,
+            };
+
+            for (&type_id, member_info) in member_types.iter().zip(block_type_id_info.members()) {
+                let mut member_location = None;
+                let mut member_component = 0;
+                let mut member_index = 0;
+
+                for instruction in member_info.decorations() {
+                    if let Instruction::MemberDecorate { ref decoration, .. } = *instruction {
+                        match *decoration {
+                            Decoration::Location { location } => member_location = Some(location),
+                            Decoration::Component { component } => member_component = component,
+                            Decoration::Index { index } => member_index = index,
+                            _ => (),
+                        }
+                    }
+                }
+
+                if let Some(member_location) = member_location {
+                    add_type(
+                        &mut locations,
+                        spirv,
+                        member_location,
+                        member_component,
+                        member_index,
+                        type_id,
+                    );
+                }
+            }
+        }
+    }
+
+    locations
+}
+
+fn strip_array(
+    spirv: &Spirv,
+    storage_class: StorageClass,
+    execution_model: ExecutionModel,
+    variable_id: Id,
+    pointed_type_id: Id,
+) -> Id {
+    let variable_decorations = spirv.id(variable_id).decorations();
+    let variable_has_decoration = |has_decoration: Decoration| -> bool {
+        variable_decorations.iter().any(|instruction| {
+            matches!(
+                instruction,
+                Instruction::Decorate {
+                    decoration,
+                    ..
+                } if *decoration == has_decoration
+            )
+        })
+    };
+
+    let must_strip_array = match storage_class {
+        StorageClass::Output => match execution_model {
+            ExecutionModel::TaskEXT | ExecutionModel::MeshEXT | ExecutionModel::MeshNV => true,
+            ExecutionModel::TessellationControl => !variable_has_decoration(Decoration::Patch),
+            ExecutionModel::TaskNV => !variable_has_decoration(Decoration::PerTaskNV),
+            _ => false,
+        },
+        StorageClass::Input => match execution_model {
+            ExecutionModel::Geometry | ExecutionModel::MeshEXT => true,
+            ExecutionModel::TessellationControl | ExecutionModel::TessellationEvaluation => {
+                !variable_has_decoration(Decoration::Patch)
+            }
+            ExecutionModel::Fragment => variable_has_decoration(Decoration::PerVertexKHR),
+            ExecutionModel::MeshNV => !variable_has_decoration(Decoration::PerTaskNV),
+            _ => false,
+        },
+        _ => unreachable!(),
+    };
+
+    if must_strip_array {
+        match spirv.id(pointed_type_id).instruction() {
+            &Instruction::TypeArray { element_type, .. } => element_type,
+            _ => pointed_type_id,
+        }
+    } else {
+        pointed_type_id
     }
 }

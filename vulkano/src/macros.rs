@@ -39,6 +39,12 @@ macro_rules! vulkan_bitflags {
                 )*
             }
 
+            /// Returns the number of flags set in `self`.
+            #[inline]
+            pub const fn count(self) -> u32 {
+                self.0.count_ones()
+            }
+
             /// Returns whether no flags are set in `self`.
             #[inline]
             pub const fn is_empty(self) -> bool {
