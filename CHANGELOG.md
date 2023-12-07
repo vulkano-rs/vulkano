@@ -46,6 +46,9 @@ Changes to surface creation and support functions:
 Changes to vertex input:
 - `VertexInputBindingDescription` and `VertexInputAttributeDescription` are now non-exhaustive, and must be created with the `Default` trait.
 
+Changes to render passes:
+- The `is_compatible_with_shader` methods of `RenderPass` and `Subpass` are removed.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
@@ -62,6 +65,7 @@ Changes to vertex input:
 - `surface_capabilities` demands that `win32_monitor` be `Some` or `None` in the wrong cases.
 - Improved and more accurate validation of vertex input.
 - [#1738](https://github.com/vulkano-rs/vulkano/issues/1738): Validation of shader interface matching is insufficient.
+- Improved and more accurate validation of fragment output.
 
 # Version 0.34.1 (2023-10-29)
 
