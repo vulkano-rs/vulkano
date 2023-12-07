@@ -8,7 +8,7 @@ use std::{iter::repeat, mem::size_of, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorBufferInfo,
@@ -236,7 +236,7 @@ fn main() {
     .unwrap();
 
     // Build the command buffer, using different offsets for each call.
-    let mut builder = AutoCommandBufferBuilder::primary(
+    let mut builder = CommandRecorder::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
@@ -274,7 +274,7 @@ fn main() {
         .unwrap()
         .dispatch([12, 1, 1])
         .unwrap();
-    let command_buffer = builder.build().unwrap();
+    let command_buffer = builder.finish().unwrap();
 
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

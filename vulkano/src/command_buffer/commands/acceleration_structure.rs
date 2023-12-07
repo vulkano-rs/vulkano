@@ -13,7 +13,7 @@ use crate::{
     command_buffer::{
         auto::{Resource, ResourceUseRef2},
         sys::RawCommandRecorder,
-        AutoCommandBufferBuilder, ResourceInCommand,
+        CommandRecorder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
     query::{QueryPool, QueryType},
@@ -24,7 +24,7 @@ use smallvec::SmallVec;
 use std::{mem::size_of, sync::Arc};
 
 /// # Commands to do operations on acceleration structures.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Builds or updates an acceleration structure.
     ///
     /// # Safety

@@ -3,7 +3,7 @@ use crate::{
     command_buffer::{
         auto::{QueryState, Resource},
         sys::RawCommandRecorder,
-        AutoCommandBufferBuilder, ResourceInCommand,
+        CommandRecorder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
@@ -13,7 +13,7 @@ use crate::{
 use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.

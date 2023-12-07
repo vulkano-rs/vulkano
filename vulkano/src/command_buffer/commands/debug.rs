@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::{sys::RawCommandRecorder, AutoCommandBufferBuilder},
+    command_buffer::{sys::RawCommandRecorder, CommandRecorder},
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
@@ -11,7 +11,7 @@ use std::ffi::CString;
 /// These commands all require the [`ext_debug_utils`] extension to be enabled on the instance.
 ///
 /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Opens a command buffer debug label region.
     pub fn begin_debug_utils_label(
         &mut self,

@@ -2,7 +2,7 @@ use crate::{
     command_buffer::{
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
         sys::RawCommandRecorder,
-        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
+        CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandRecorder,
         ResourceInCommand, SecondaryAutoCommandBuffer, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
@@ -17,7 +17,7 @@ use std::{cmp::min, iter, ops::Deref, sync::Arc};
 ///
 /// These commands can be called on any queue that can execute the commands recorded in the
 /// secondary command buffer.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Executes a secondary command buffer.
     ///
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of

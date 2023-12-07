@@ -20,7 +20,7 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -192,7 +192,7 @@ fn main() {
         )
         .unwrap();
 
-        let mut builder = AutoCommandBufferBuilder::primary(
+        let mut builder = CommandRecorder::primary(
             command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -212,7 +212,7 @@ fn main() {
             .unwrap()
             .dispatch([1024, 1, 1])
             .unwrap();
-        let command_buffer = builder.build().unwrap();
+        let command_buffer = builder.finish().unwrap();
 
         let future = sync::now(queue.device().clone())
             .then_execute(queue.clone(), command_buffer)

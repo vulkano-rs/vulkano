@@ -2,8 +2,8 @@ use std::{error::Error, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
-        BufferImageCopy, ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
+        allocator::StandardCommandBufferAllocator, BlitImageInfo, BufferImageCopy,
+        ClearColorImageInfo, CommandBufferUsage, CommandRecorder, CopyBufferToImageInfo,
         CopyImageInfo, ImageBlit, ImageCopy, RenderPassBeginInfo,
     },
     descriptor_set::{
@@ -210,7 +210,7 @@ fn main() -> Result<(), impl Error> {
         Default::default(),
     ));
 
-    let mut uploads = AutoCommandBufferBuilder::primary(
+    let mut uploads = CommandRecorder::primary(
         command_buffer_allocator.clone(),
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
@@ -404,7 +404,7 @@ fn main() -> Result<(), impl Error> {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(
         uploads
-            .build()
+            .finish()
             .unwrap()
             .execute(queue.clone())
             .unwrap()
@@ -470,7 +470,7 @@ fn main() -> Result<(), impl Error> {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = AutoCommandBufferBuilder::primary(
+                let mut builder = CommandRecorder::primary(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
@@ -504,7 +504,7 @@ fn main() -> Result<(), impl Error> {
                     .unwrap()
                     .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = builder.build().unwrap();
+                let command_buffer = builder.finish().unwrap();
 
                 let future = previous_frame_end
                     .take()

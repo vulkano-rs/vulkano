@@ -51,11 +51,9 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
-/// Note that command buffers allocated from `StandardCommandBufferAllocator` don't implement
-/// the `Send` and `Sync` traits. If you use this allocator, then the `AutoCommandBufferBuilder`
-/// will not implement `Send` and `Sync` either. Once a command buffer is built, however, it *does*
-/// implement `Send` and `Sync`.
-pub struct AutoCommandBufferBuilder<L> {
+/// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
+/// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
+pub struct CommandRecorder<L> {
     pub(in crate::command_buffer) inner: RawCommandRecorder,
     commands: Vec<(
         CommandInfo,
@@ -65,16 +63,16 @@ pub struct AutoCommandBufferBuilder<L> {
     _data: PhantomData<L>,
 }
 
-impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
+impl CommandRecorder<PrimaryAutoCommandBuffer> {
     /// Starts recording a primary command buffer.
     #[inline]
     pub fn primary(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+    ) -> Result<CommandRecorder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
-            AutoCommandBufferBuilder::begin(
+            CommandRecorder::begin(
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Primary,
@@ -93,8 +91,8 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
-        AutoCommandBufferBuilder::begin_unchecked(
+    ) -> Result<CommandRecorder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+        CommandRecorder::begin_unchecked(
             allocator,
             queue_family_index,
             CommandBufferLevel::Primary,
@@ -107,7 +105,7 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
     }
 }
 
-impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
+impl CommandRecorder<SecondaryAutoCommandBuffer> {
     /// Starts recording a secondary command buffer.
     #[inline]
     pub fn secondary(
@@ -115,9 +113,9 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+    ) -> Result<CommandRecorder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
-            AutoCommandBufferBuilder::begin(
+            CommandRecorder::begin(
                 allocator,
                 queue_family_index,
                 CommandBufferLevel::Secondary,
@@ -137,8 +135,8 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
-        AutoCommandBufferBuilder::begin_unchecked(
+    ) -> Result<CommandRecorder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+        CommandRecorder::begin_unchecked(
             allocator,
             queue_family_index,
             CommandBufferLevel::Secondary,
@@ -151,7 +149,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
     }
 }
 
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Actual constructor. Private.
     ///
     /// # Safety
@@ -162,7 +160,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<AutoCommandBufferBuilder<L>, Validated<VulkanError>> {
+    ) -> Result<CommandRecorder<L>, Validated<VulkanError>> {
         Self::validate_begin(allocator.device(), queue_family_index, level, &begin_info)?;
 
         unsafe { Self::begin_unchecked(allocator, queue_family_index, level, begin_info) }
@@ -211,7 +209,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         let inner = RawCommandRecorder::new(allocator, queue_family_index, level, begin_info)?;
 
-        Ok(AutoCommandBufferBuilder {
+        Ok(CommandRecorder {
             inner,
             commands: Vec::new(),
             builder_state,
@@ -306,9 +304,9 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
+impl CommandRecorder<PrimaryAutoCommandBuffer> {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+    pub fn finish(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         if self.builder_state.render_pass.is_some() {
             return Err(Box::new(ValidationError {
                 problem: "a render pass instance is still active".into(),
@@ -341,9 +339,9 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
     }
 }
 
-impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
+impl CommandRecorder<SecondaryAutoCommandBuffer> {
     /// Builds the command buffer.
-    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+    pub fn finish(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         if !self.builder_state.queries.is_empty() {
             return Err(Box::new(ValidationError {
                 problem: "a query is still active".into(),
@@ -374,7 +372,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
     }
 }
 
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     pub(in crate::command_buffer) fn add_command(
         &mut self,
         name: &'static str,
@@ -424,7 +422,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-unsafe impl<L> DeviceOwned for AutoCommandBufferBuilder<L> {
+unsafe impl<L> DeviceOwned for CommandRecorder<L> {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }

@@ -5,7 +5,7 @@ use crate::{
             RenderPassStateType, Resource,
         },
         sys::RawCommandRecorder,
-        AutoCommandBufferBuilder, CommandBufferLevel, ResourceInCommand, SubpassContents,
+        CommandBufferLevel, CommandRecorder, ResourceInCommand, SubpassContents,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, NumericType},
@@ -24,7 +24,7 @@ use std::{cmp::min, ops::Range, sync::Arc};
 /// # Commands for render passes.
 ///
 /// These commands require a graphics queue.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
     /// You must call this or `begin_rendering` before you can record draw commands.
@@ -328,7 +328,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Begins a render pass without a render pass object or framebuffer.
     ///
     /// You must call this or `begin_render_pass` before you can record draw commands.
@@ -3124,7 +3124,7 @@ impl RenderingAttachmentResolveInfo {
 
 /// Clear attachment type, used in [`clear_attachments`] command.
 ///
-/// [`clear_attachments`]: crate::command_buffer::AutoCommandBufferBuilder::clear_attachments
+/// [`clear_attachments`]: crate::command_buffer::CommandRecorder::clear_attachments
 #[derive(Clone, Copy, Debug)]
 pub enum ClearAttachment {
     /// Clear the color attachment at the specified index, with the specified clear value.
@@ -3210,7 +3210,7 @@ impl From<ClearAttachment> for ash::vk::ClearAttachment {
 
 /// Specifies the clear region for the [`clear_attachments`] command.
 ///
-/// [`clear_attachments`]: crate::command_buffer::AutoCommandBufferBuilder::clear_attachments
+/// [`clear_attachments`]: crate::command_buffer::CommandRecorder::clear_attachments
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClearRect {
     /// The rectangle offset.

@@ -311,42 +311,42 @@ vulkan_enum! {
     /// [`ViewportState::viewports`](crate::pipeline::graphics::viewport::ViewportState::viewports).
     ///
     /// Set with
-    /// [`set_viewport`](crate::command_buffer::AutoCommandBufferBuilder::set_viewport).
+    /// [`set_viewport`](crate::command_buffer::CommandRecorder::set_viewport).
     Viewport = VIEWPORT,
 
     /// The elements, but not the count, of
     /// [`ViewportState::scissors`](crate::pipeline::graphics::viewport::ViewportState::scissors).
     ///
     /// Set with
-    /// [`set_scissor`](crate::command_buffer::AutoCommandBufferBuilder::set_scissor).
+    /// [`set_scissor`](crate::command_buffer::CommandRecorder::set_scissor).
     Scissor = SCISSOR,
 
     /// The value of
     /// [`RasterizationState::line_width`](crate::pipeline::graphics::rasterization::RasterizationState::line_width).
     ///
     /// Set with
-    /// [`set_line_width`](crate::command_buffer::AutoCommandBufferBuilder::set_line_width).
+    /// [`set_line_width`](crate::command_buffer::CommandRecorder::set_line_width).
     LineWidth = LINE_WIDTH,
 
     /// The value of
     /// [`RasterizationState::depth_bias`](crate::pipeline::graphics::rasterization::RasterizationState::depth_bias).
     ///
     /// Set with
-    /// [`set_depth_bias`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bias).
+    /// [`set_depth_bias`](crate::command_buffer::CommandRecorder::set_depth_bias).
     DepthBias = DEPTH_BIAS,
 
     /// The value of
     /// [`ColorBlendState::blend_constants`](crate::pipeline::graphics::color_blend::ColorBlendState::blend_constants).
     ///
     /// Set with
-    /// [`set_blend_constants`](crate::command_buffer::AutoCommandBufferBuilder::set_blend_constants).
+    /// [`set_blend_constants`](crate::command_buffer::CommandRecorder::set_blend_constants).
     BlendConstants = BLEND_CONSTANTS,
 
     /// The value, but not the `Option` variant, of
     /// [`DepthStencilState::depth_bounds`](crate::pipeline::graphics::depth_stencil::DepthStencilState::depth_bounds).
     ///
     /// Set with
-    /// [`set_depth_bounds`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bounds).
+    /// [`set_depth_bounds`](crate::command_buffer::CommandRecorder::set_depth_bounds).
     DepthBounds = DEPTH_BOUNDS,
 
     /// The value of
@@ -354,7 +354,7 @@ vulkan_enum! {
     /// for both the front and back face.
     ///
     /// Set with
-    /// [`set_stencil_compare_mask`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_compare_mask).
+    /// [`set_stencil_compare_mask`](crate::command_buffer::CommandRecorder::set_stencil_compare_mask).
     StencilCompareMask = STENCIL_COMPARE_MASK,
 
     /// The value of
@@ -362,7 +362,7 @@ vulkan_enum! {
     /// for both the front and back face.
     ///
     /// Set with
-    /// [`set_stencil_write_mask`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_write_mask).
+    /// [`set_stencil_write_mask`](crate::command_buffer::CommandRecorder::set_stencil_write_mask).
     StencilWriteMask = STENCIL_WRITE_MASK,
 
     /// The value of
@@ -370,14 +370,14 @@ vulkan_enum! {
     /// for both the front and back face.
     ///
     /// Set with
-    /// [`set_stencil_reference`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_reference).
+    /// [`set_stencil_reference`](crate::command_buffer::CommandRecorder::set_stencil_reference).
     StencilReference = STENCIL_REFERENCE,
 
     /// The value of
     /// [`RasterizationState::cull_mode`](crate::pipeline::graphics::rasterization::RasterizationState::cull_mode).
     ///
     /// Set with
-    /// [`set_cull_mode`](crate::command_buffer::AutoCommandBufferBuilder::set_cull_mode).
+    /// [`set_cull_mode`](crate::command_buffer::CommandRecorder::set_cull_mode).
     CullMode = CULL_MODE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -388,7 +388,7 @@ vulkan_enum! {
     /// [`RasterizationState::front_face`](crate::pipeline::graphics::rasterization::RasterizationState::front_face).
     ///
     /// Set with
-    /// [`set_front_face`](crate::command_buffer::AutoCommandBufferBuilder::set_front_face).
+    /// [`set_front_face`](crate::command_buffer::CommandRecorder::set_front_face).
     FrontFace = FRONT_FACE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -399,7 +399,7 @@ vulkan_enum! {
     /// [`InputAssemblyState::topology`](crate::pipeline::graphics::input_assembly::InputAssemblyState::topology).
     ///
     /// Set with
-    /// [`set_primitive_topology`](crate::command_buffer::AutoCommandBufferBuilder::set_primitive_topology).
+    /// [`set_primitive_topology`](crate::command_buffer::CommandRecorder::set_primitive_topology).
     PrimitiveTopology = PRIMITIVE_TOPOLOGY
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -410,7 +410,7 @@ vulkan_enum! {
     /// [`ViewportState::viewports`](crate::pipeline::graphics::viewport::ViewportState::viewports).
     ///
     /// Set with
-    /// [`set_viewport_with_count`](crate::command_buffer::AutoCommandBufferBuilder::set_viewport_with_count).
+    /// [`set_viewport_with_count`](crate::command_buffer::CommandRecorder::set_viewport_with_count).
     ViewportWithCount = VIEWPORT_WITH_COUNT
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -421,7 +421,7 @@ vulkan_enum! {
     /// [`ViewportState::scissors`](crate::pipeline::graphics::viewport::ViewportState::scissors).
     ///
     /// Set with
-    /// [`set_scissor_with_count`](crate::command_buffer::AutoCommandBufferBuilder::set_scissor_with_count).
+    /// [`set_scissor_with_count`](crate::command_buffer::CommandRecorder::set_scissor_with_count).
     ScissorWithCount = SCISSOR_WITH_COUNT
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -440,7 +440,7 @@ vulkan_enum! {
     /// [`DepthStencilState::depth`](crate::pipeline::graphics::depth_stencil::DepthStencilState::depth).
     ///
     /// Set with
-    /// [`set_depth_test_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_test_enable).
+    /// [`set_depth_test_enable`](crate::command_buffer::CommandRecorder::set_depth_test_enable).
     DepthTestEnable = DEPTH_TEST_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -451,7 +451,7 @@ vulkan_enum! {
     /// [`DepthState::write_enable`](crate::pipeline::graphics::depth_stencil::DepthState::write_enable).
     ///
     /// Set with
-    /// [`set_depth_write_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_write_enable).
+    /// [`set_depth_write_enable`](crate::command_buffer::CommandRecorder::set_depth_write_enable).
     DepthWriteEnable = DEPTH_WRITE_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -462,7 +462,7 @@ vulkan_enum! {
     /// [`DepthState::compare_op`](crate::pipeline::graphics::depth_stencil::DepthState::compare_op).
     ///
     /// Set with
-    /// [`set_depth_compare_op`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_compare_op).
+    /// [`set_depth_compare_op`](crate::command_buffer::CommandRecorder::set_depth_compare_op).
     DepthCompareOp = DEPTH_COMPARE_OP
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -473,7 +473,7 @@ vulkan_enum! {
     /// [`DepthStencilState::depth_bounds`](crate::pipeline::graphics::depth_stencil::DepthStencilState::depth_bounds).
     ///
     /// Set with
-    /// [`set_depth_bounds_test_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bounds_test_enable).
+    /// [`set_depth_bounds_test_enable`](crate::command_buffer::CommandRecorder::set_depth_bounds_test_enable).
     DepthBoundsTestEnable = DEPTH_BOUNDS_TEST_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -484,7 +484,7 @@ vulkan_enum! {
     /// [`DepthStencilState::stencil`](crate::pipeline::graphics::depth_stencil::DepthStencilState::stencil).
     ///
     /// Set with
-    /// [`set_stencil_test_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_test_enable).
+    /// [`set_stencil_test_enable`](crate::command_buffer::CommandRecorder::set_stencil_test_enable).
     StencilTestEnable = STENCIL_TEST_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -496,7 +496,7 @@ vulkan_enum! {
     /// for both the front and back face.
     ///
     /// Set with
-    /// [`set_stencil_op`](crate::command_buffer::AutoCommandBufferBuilder::set_stencil_op).
+    /// [`set_stencil_op`](crate::command_buffer::CommandRecorder::set_stencil_op).
     StencilOp = STENCIL_OP
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -507,7 +507,7 @@ vulkan_enum! {
     /// [`RasterizationState::rasterizer_discard_enable`](crate::pipeline::graphics::rasterization::RasterizationState::rasterizer_discard_enable).
     ///
     /// Set with
-    /// [`set_rasterizer_discard_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_rasterizer_discard_enable).
+    /// [`set_rasterizer_discard_enable`](crate::command_buffer::CommandRecorder::set_rasterizer_discard_enable).
     RasterizerDiscardEnable = RASTERIZER_DISCARD_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -518,7 +518,7 @@ vulkan_enum! {
     /// [`RasterizationState::depth_bias`](crate::pipeline::graphics::rasterization::RasterizationState::depth_bias).
     ///
     /// Set with
-    /// [`set_depth_bias_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_depth_bias_enable).
+    /// [`set_depth_bias_enable`](crate::command_buffer::CommandRecorder::set_depth_bias_enable).
     DepthBiasEnable = DEPTH_BIAS_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -529,7 +529,7 @@ vulkan_enum! {
     /// [`InputAssemblyState::primitive_restart_enable`](crate::pipeline::graphics::input_assembly::InputAssemblyState::primitive_restart_enable).
     ///
     /// Set with
-    /// [`set_primitive_restart_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_primitive_restart_enable).
+    /// [`set_primitive_restart_enable`](crate::command_buffer::CommandRecorder::set_primitive_restart_enable).
     PrimitiveRestartEnable = PRIMITIVE_RESTART_ENABLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_3)]),
@@ -547,7 +547,7 @@ vulkan_enum! {
     /// [`DiscardRectangleState::rectangles`](crate::pipeline::graphics::discard_rectangle::DiscardRectangleState::rectangles).
     ///
     /// Set with
-    /// [`set_discard_rectangle`](crate::command_buffer::AutoCommandBufferBuilder::set_discard_rectangle).
+    /// [`set_discard_rectangle`](crate::command_buffer::CommandRecorder::set_discard_rectangle).
     DiscardRectangle = DISCARD_RECTANGLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_discard_rectangles)]),
@@ -599,7 +599,7 @@ vulkan_enum! {
     /// [`RasterizationState::line_stipple`](crate::pipeline::graphics::rasterization::RasterizationState::line_stipple).
     ///
     /// Set with
-    /// [`set_line_stipple`](crate::command_buffer::AutoCommandBufferBuilder::set_line_stipple).
+    /// [`set_line_stipple`](crate::command_buffer::CommandRecorder::set_line_stipple).
     LineStipple = LINE_STIPPLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_line_rasterization)]),
@@ -609,7 +609,7 @@ vulkan_enum! {
     /// [`GraphicsPipelineCreateInfo::vertex_input_state`](crate::pipeline::graphics::GraphicsPipelineCreateInfo::vertex_input_state).
     ///
     /// Set with
-    /// [`set_vertex_input`](crate::command_buffer::AutoCommandBufferBuilder::set_vertex_input).
+    /// [`set_vertex_input`](crate::command_buffer::CommandRecorder::set_vertex_input).
     VertexInput = VERTEX_INPUT_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_vertex_input_dynamic_state)]),
@@ -619,7 +619,7 @@ vulkan_enum! {
     /// [`TessellationState::patch_control_points`](crate::pipeline::graphics::tessellation::TessellationState::patch_control_points).
     ///
     /// Set with
-    /// [`set_patch_control_points`](crate::command_buffer::AutoCommandBufferBuilder::set_patch_control_points).
+    /// [`set_patch_control_points`](crate::command_buffer::CommandRecorder::set_patch_control_points).
     PatchControlPoints = PATCH_CONTROL_POINTS_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
@@ -629,7 +629,7 @@ vulkan_enum! {
     /// [`ColorBlendState::logic_op`](crate::pipeline::graphics::color_blend::ColorBlendState::logic_op).
     ///
     /// Set with
-    /// [`set_logic_op`](crate::command_buffer::AutoCommandBufferBuilder::set_logic_op).
+    /// [`set_logic_op`](crate::command_buffer::CommandRecorder::set_logic_op).
     LogicOp = LOGIC_OP_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state2)]),
@@ -640,7 +640,7 @@ vulkan_enum! {
     /// for every attachment.
     ///
     /// Set with
-    /// [`set_color_write_enable`](crate::command_buffer::AutoCommandBufferBuilder::set_color_write_enable).
+    /// [`set_color_write_enable`](crate::command_buffer::CommandRecorder::set_color_write_enable).
     ColorWriteEnable = COLOR_WRITE_ENABLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_color_write_enable)]),

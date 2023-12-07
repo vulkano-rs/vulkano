@@ -149,7 +149,7 @@ impl QueryPool {
     ///
     /// [`self.ty().result_len()`]: QueryType::result_len
     /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
-    /// [`copy_query_pool_results`]: crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results
+    /// [`copy_query_pool_results`]: crate::command_buffer::CommandRecorder::copy_query_pool_results
     #[inline]
     pub fn get_results<T>(
         &self,
@@ -404,16 +404,16 @@ pub enum QueryType {
     ///
     /// Used with the [`begin_query`] and [`end_query`] commands.
     ///
-    /// [`begin_query`]: crate::command_buffer::AutoCommandBufferBuilder::begin_query
-    /// [`end_query`]: crate::command_buffer::AutoCommandBufferBuilder::end_query
+    /// [`begin_query`]: crate::command_buffer::CommandRecorder::begin_query
+    /// [`end_query`]: crate::command_buffer::CommandRecorder::end_query
     Occlusion = ash::vk::QueryType::OCCLUSION.as_raw(),
 
     /// Tracks statistics on pipeline invocations and their input data.
     ///
     /// Used with the [`begin_query`] and [`end_query`] commands.
     ///
-    /// [`begin_query`]: crate::command_buffer::AutoCommandBufferBuilder::begin_query
-    /// [`end_query`]: crate::command_buffer::AutoCommandBufferBuilder::end_query
+    /// [`begin_query`]: crate::command_buffer::CommandRecorder::begin_query
+    /// [`end_query`]: crate::command_buffer::CommandRecorder::end_query
     PipelineStatistics(QueryPipelineStatisticFlags) =
         ash::vk::QueryType::PIPELINE_STATISTICS.as_raw(),
 
@@ -421,7 +421,7 @@ pub enum QueryType {
     ///
     /// Used with the [`write_timestamp`] command.
     ///
-    /// [`write_timestamp`]: crate::command_buffer::AutoCommandBufferBuilder::write_timestamp
+    /// [`write_timestamp`]: crate::command_buffer::CommandRecorder::write_timestamp
     Timestamp = ash::vk::QueryType::TIMESTAMP.as_raw(),
 
     /// Queries the size of data resulting from a
@@ -430,7 +430,7 @@ pub enum QueryType {
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
     /// [`CopyAccelerationStructureMode::Compact`]: crate::acceleration_structure::CopyAccelerationStructureMode::Compact
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::CommandRecorder::write_acceleration_structures_properties
     AccelerationStructureCompactedSize =
         ash::vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR.as_raw(),
 
@@ -440,7 +440,7 @@ pub enum QueryType {
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
     /// [`CopyAccelerationStructureMode::Serialize`]: crate::acceleration_structure::CopyAccelerationStructureMode::Serialize
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::CommandRecorder::write_acceleration_structures_properties
     AccelerationStructureSerializationSize =
         ash::vk::QueryType::ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR.as_raw(),
 
@@ -451,7 +451,7 @@ pub enum QueryType {
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
     /// [`CopyAccelerationStructureMode::Serialize`]: crate::acceleration_structure::CopyAccelerationStructureMode::Serialize
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::CommandRecorder::write_acceleration_structures_properties
     AccelerationStructureSerializationBottomLevelPointers =
         ash::vk::QueryType::ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR.as_raw(),
 
@@ -459,7 +459,7 @@ pub enum QueryType {
     ///
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::CommandRecorder::write_acceleration_structures_properties
     AccelerationStructureSize = ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR.as_raw(),
 }
 

@@ -330,7 +330,7 @@ mod tests {
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
             allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-            AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
+            BufferCopy, CommandBufferUsage, CommandRecorder, CopyBufferInfoTyped,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,
@@ -358,7 +358,7 @@ mod tests {
             Default::default(),
         ));
 
-        AutoCommandBufferBuilder::primary(
+        CommandRecorder::primary(
             allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
@@ -424,7 +424,7 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut cbb = AutoCommandBufferBuilder::primary(
+        let mut cbb = CommandRecorder::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -443,7 +443,7 @@ mod tests {
         })
         .unwrap();
 
-        let cb = cbb.build().unwrap();
+        let cb = cbb.finish().unwrap();
 
         let future = cb
             .execute(queue)
@@ -470,17 +470,17 @@ mod tests {
         ));
 
         // Make a secondary CB that doesn't support simultaneous use.
-        let builder = AutoCommandBufferBuilder::secondary(
+        let builder = CommandRecorder::secondary(
             cb_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             Default::default(),
         )
         .unwrap();
-        let secondary = builder.build().unwrap();
+        let secondary = builder.finish().unwrap();
 
         {
-            let mut builder = AutoCommandBufferBuilder::primary(
+            let mut builder = CommandRecorder::primary(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
@@ -496,16 +496,16 @@ mod tests {
         }
 
         {
-            let mut builder = AutoCommandBufferBuilder::primary(
+            let mut builder = CommandRecorder::primary(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
             .unwrap();
             builder.execute_commands(secondary.clone()).unwrap();
-            let cb1 = builder.build().unwrap();
+            let cb1 = builder.finish().unwrap();
 
-            let mut builder = AutoCommandBufferBuilder::primary(
+            let mut builder = CommandRecorder::primary(
                 cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
@@ -547,7 +547,7 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut builder = AutoCommandBufferBuilder::primary(
+        let mut builder = CommandRecorder::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -567,7 +567,7 @@ mod tests {
             })
             .unwrap();
 
-        let cb = builder.build().unwrap();
+        let cb = builder.finish().unwrap();
 
         let future = cb
             .execute(queue)
@@ -605,7 +605,7 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut builder = AutoCommandBufferBuilder::primary(
+        let mut builder = CommandRecorder::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -638,7 +638,7 @@ mod tests {
                     ..Default::default()
                 },
             ));
-            let cbb = AutoCommandBufferBuilder::primary(
+            let cbb = CommandRecorder::primary(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
@@ -662,7 +662,7 @@ mod tests {
             )
             .unwrap();
 
-            cbb.build()
+            cbb.finish()
                 .unwrap()
                 .execute(queue.clone())
                 .unwrap()
@@ -674,7 +674,7 @@ mod tests {
             // Two secondary command buffers that both write to the buffer
             let secondary = (0..2)
                 .map(|_| {
-                    let mut builder = AutoCommandBufferBuilder::secondary(
+                    let mut builder = CommandRecorder::secondary(
                         cb_allocator.clone(),
                         queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
@@ -684,12 +684,12 @@ mod tests {
                     builder
                         .fill_buffer(buffer.clone().into_slice(), 42)
                         .unwrap();
-                    builder.build().unwrap()
+                    builder.finish().unwrap()
                 })
                 .collect::<Vec<_>>();
 
             {
-                let mut builder = AutoCommandBufferBuilder::primary(
+                let mut builder = CommandRecorder::primary(
                     cb_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
@@ -701,7 +701,7 @@ mod tests {
                     builder.execute_commands_unchecked([secondary as _].into_iter().collect());
                 });
 
-                let _primary = builder.build().unwrap();
+                let _primary = builder.finish().unwrap();
                 /*
                 let names = primary._commands.iter().map(|c| c.name).collect::<Vec<_>>();
 
@@ -712,7 +712,7 @@ mod tests {
             }
 
             {
-                let mut builder = AutoCommandBufferBuilder::primary(
+                let mut builder = CommandRecorder::primary(
                     cb_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
@@ -739,7 +739,7 @@ mod tests {
                 device.clone(),
                 Default::default(),
             ));
-            let mut sync = AutoCommandBufferBuilder::primary(
+            let mut sync = CommandRecorder::primary(
                 cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
@@ -778,7 +778,7 @@ mod tests {
                 device.clone(),
                 Default::default(),
             ));
-            let mut sync = AutoCommandBufferBuilder::primary(
+            let mut sync = CommandRecorder::primary(
                 cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,

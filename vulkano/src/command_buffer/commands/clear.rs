@@ -1,8 +1,6 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
-    command_buffer::{
-        auto::Resource, sys::RawCommandRecorder, AutoCommandBufferBuilder, ResourceInCommand,
-    },
+    command_buffer::{auto::Resource, sys::RawCommandRecorder, CommandRecorder, ResourceInCommand},
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures},
     image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage},
@@ -14,7 +12,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{mem::size_of_val, sync::Arc};
 
 /// # Commands to fill resources with new data.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Clears a color image with a specific value.
     pub fn clear_color_image(
         &mut self,

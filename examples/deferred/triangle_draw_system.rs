@@ -2,8 +2,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBufferInheritanceInfo,
+        CommandBufferUsage, CommandRecorder, SecondaryAutoCommandBuffer,
     },
     device::Queue,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
@@ -128,7 +128,7 @@ impl TriangleDrawSystem {
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
     pub fn draw(&self, viewport_dimensions: [u32; 2]) -> Arc<SecondaryAutoCommandBuffer> {
-        let mut builder = AutoCommandBufferBuilder::secondary(
+        let mut builder = CommandRecorder::secondary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
@@ -156,7 +156,7 @@ impl TriangleDrawSystem {
             .unwrap()
             .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
-        builder.build().unwrap()
+        builder.finish().unwrap()
     }
 }
 

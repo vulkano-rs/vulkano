@@ -1,8 +1,6 @@
 use crate::{
     buffer::{BufferUsage, Subbuffer},
-    command_buffer::{
-        auto::Resource, sys::RawCommandRecorder, AutoCommandBufferBuilder, ResourceInCommand,
-    },
+    command_buffer::{auto::Resource, sys::RawCommandRecorder, CommandRecorder, ResourceInCommand},
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
     image::{
@@ -20,7 +18,7 @@ use std::{
 };
 
 /// # Commands to transfer data between resources.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Copies data from a buffer to another buffer.
     ///
     /// # Panics

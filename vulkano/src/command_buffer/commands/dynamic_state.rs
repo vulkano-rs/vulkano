@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::{sys::RawCommandRecorder, AutoCommandBufferBuilder},
+    command_buffer::{sys::RawCommandRecorder, CommandRecorder},
     device::{DeviceOwned, QueueFlags},
     pipeline::{
         graphics::{
@@ -23,7 +23,7 @@ use std::ops::RangeInclusive;
 /// # Commands to set dynamic state for pipelines.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     // Helper function for dynamic state setting.
     fn validate_graphics_pipeline_fixed_state(
         &self,

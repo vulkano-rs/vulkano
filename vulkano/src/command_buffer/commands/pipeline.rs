@@ -4,8 +4,8 @@ use crate::{
     command_buffer::{
         auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
         sys::RawCommandRecorder,
-        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-        DrawIndirectCommand, ResourceInCommand, SubpassContents,
+        CommandRecorder, DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
+        ResourceInCommand, SubpassContents,
     },
     descriptor_set::{
         layout::DescriptorType, DescriptorBindingResources, DescriptorBufferInfo,
@@ -44,7 +44,7 @@ macro_rules! vuids {
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> CommandRecorder<L> {
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using
