@@ -43,7 +43,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, BufferImageCopy, ClearColorImageInfo,
-        CommandBufferUsage, CommandRecorder, CopyBufferToImageInfo, RenderPassBeginInfo,
+        CommandBufferUsage, CopyBufferToImageInfo, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -331,7 +331,7 @@ fn main() -> Result<(), impl Error> {
 
     // Initialize the textures.
     {
-        let mut builder = CommandRecorder::primary(
+        let mut builder = RecordingCommandBuffer::primary(
             command_buffer_allocator.clone(),
             graphics_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -587,7 +587,7 @@ fn main() -> Result<(), impl Error> {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = CommandRecorder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     command_buffer_allocator.clone(),
                     graphics_queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
@@ -761,7 +761,7 @@ fn run_worker(
             // Write to the texture that's currently not in use for rendering.
             let texture = textures[!current_index as usize].clone();
 
-            let mut builder = CommandRecorder::primary(
+            let mut builder = RecordingCommandBuffer::primary(
                 command_buffer_allocator.clone(),
                 transfer_queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,

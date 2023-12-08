@@ -7,8 +7,8 @@ use std::{error::Error, sync::Arc, time::SystemTime};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
-        CopyBufferInfo, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyBufferInfo,
+        RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -386,7 +386,7 @@ fn main() -> Result<(), impl Error> {
         .unwrap();
 
         // Create one-time command to copy between the buffers.
-        let mut cbb = CommandRecorder::primary(
+        let mut cbb = RecordingCommandBuffer::primary(
             command_buffer_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -581,7 +581,7 @@ fn main() -> Result<(), impl Error> {
                     None => sync::now(device.clone()).boxed(),
                 };
 
-                let mut builder = CommandRecorder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,

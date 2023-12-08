@@ -16,7 +16,7 @@ use std::{error::Error, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
         RenderingAttachmentInfo, RenderingInfo,
     },
     device::{
@@ -597,7 +597,7 @@ fn main() -> Result<(), impl Error> {
                 //
                 // Note that we have to pass a queue family when we create the command buffer. The
                 // command buffer will only be executable on that given queue family.
-                let mut builder = CommandRecorder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,

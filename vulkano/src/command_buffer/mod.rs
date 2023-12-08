@@ -38,10 +38,11 @@
 //!
 //! # Recording a command buffer
 //!
-//! To record a new command buffer, the most direct way is to create a new [`CommandRecorder`].
-//! You can then call methods on this object to record new commands to the command buffer. When you
-//! are done recording, you call [`finish`] to finalise the command buffer and turn it into either
-//! a [`PrimaryAutoCommandBuffer`] or a [`SecondaryAutoCommandBuffer`].
+//! To record a new command buffer, the most direct way is to create a new
+//! [`RecordingCommandBuffer`]. You can then call methods on this object to record new commands to
+//! the command buffer. When you are done recording, you call [`end`] to finalise the command
+//! buffer and turn it into either a [`PrimaryAutoCommandBuffer`] or a
+//! [`SecondaryAutoCommandBuffer`].
 //!
 //! # Submitting a primary command buffer
 //!
@@ -51,7 +52,7 @@
 //! on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::{CommandBufferUsage, CommandRecorder, SubpassContents};
+//! use vulkano::command_buffer::{CommandBufferUsage, RecordingCommandBuffer, SubpassContents};
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
@@ -60,7 +61,7 @@
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! #
-//! let cb = CommandRecorder::primary(
+//! let cb = RecordingCommandBuffer::primary(
 //!     command_buffer_allocator.clone(),
 //!     queue.queue_family_index(),
 //!     CommandBufferUsage::MultipleSubmit,
@@ -85,12 +86,11 @@
 //! [`StandardCommandBufferAllocator`]: self::allocator::StandardCommandBufferAllocator
 //! [`CommandBufferAllocator`]: self::allocator::CommandBufferAllocator
 //! [inherit]: CommandBufferInheritanceInfo
-//! [`finish`]: CommandRecorder::finish
-//! [pipeline barriers]: CommandBufferBuilder::pipeline_barrier
+//! [`end`]: RecordingCommandBuffer::end
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
 pub use self::{
-    auto::{CommandRecorder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
+    auto::{PrimaryAutoCommandBuffer, RecordingCommandBuffer, SecondaryAutoCommandBuffer},
     commands::{
         acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
         query::*, render_pass::*, secondary::*, sync::*,

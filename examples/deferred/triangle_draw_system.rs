@@ -3,7 +3,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferInheritanceInfo,
-        CommandBufferUsage, CommandRecorder, SecondaryAutoCommandBuffer,
+        CommandBufferUsage, RecordingCommandBuffer, SecondaryAutoCommandBuffer,
     },
     device::Queue,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
@@ -128,7 +128,7 @@ impl TriangleDrawSystem {
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
     pub fn draw(&self, viewport_dimensions: [u32; 2]) -> Arc<SecondaryAutoCommandBuffer> {
-        let mut builder = CommandRecorder::secondary(
+        let mut builder = RecordingCommandBuffer::secondary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,

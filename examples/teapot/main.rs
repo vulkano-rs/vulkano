@@ -7,7 +7,7 @@ use vulkano::{
         Buffer, BufferCreateInfo, BufferUsage,
     },
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
         RenderPassBeginInfo,
     },
     descriptor_set::{
@@ -365,7 +365,7 @@ fn main() -> Result<(), impl Error> {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = CommandRecorder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,

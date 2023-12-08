@@ -20,7 +20,7 @@ mod linux {
     use vulkano::{
         buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
+            allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
             RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
         },
         descriptor_set::{
@@ -389,7 +389,7 @@ mod linux {
                         recreate_swapchain = true;
                     }
 
-                    let mut builder = CommandRecorder::primary(
+                    let mut builder = RecordingCommandBuffer::primary(
                         command_buffer_allocator.clone(),
                         queue.queue_family_index(),
                         CommandBufferUsage::OneTimeSubmit,

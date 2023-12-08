@@ -62,7 +62,7 @@ pub(in crate::command_buffer) use self::builder::{
     RenderPassStateAttachments, RenderPassStateType, SetOrPush,
 };
 use super::{
-    sys::{RawCommandBuffer, RawCommandRecorder},
+    sys::{RawCommandBuffer, RawRecordingCommandBuffer},
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
     CommandBufferUsage, ResourceInCommand, SecondaryCommandBufferResourcesUsage,
     SecondaryResourceUseRef,
@@ -88,7 +88,7 @@ mod builder;
 
 pub struct PrimaryAutoCommandBuffer {
     inner: RawCommandBuffer,
-    _keep_alive_objects: Vec<Box<dyn Fn(&mut RawCommandRecorder) + Send + Sync + 'static>>,
+    _keep_alive_objects: Vec<Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>>,
     resources_usage: CommandBufferResourcesUsage,
     state: Mutex<CommandBufferState>,
 }
@@ -141,7 +141,7 @@ impl PrimaryAutoCommandBuffer {
 
 pub struct SecondaryAutoCommandBuffer {
     inner: RawCommandBuffer,
-    _keep_alive_objects: Vec<Box<dyn Fn(&mut RawCommandRecorder) + Send + Sync + 'static>>,
+    _keep_alive_objects: Vec<Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>>,
     resources_usage: SecondaryCommandBufferResourcesUsage,
     submit_state: SubmitState,
 }
@@ -330,7 +330,7 @@ mod tests {
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
             allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-            BufferCopy, CommandBufferUsage, CommandRecorder, CopyBufferInfoTyped,
+            BufferCopy, CommandBufferUsage, CopyBufferInfoTyped, RecordingCommandBuffer,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,
@@ -358,7 +358,7 @@ mod tests {
             Default::default(),
         ));
 
-        CommandRecorder::primary(
+        RecordingCommandBuffer::primary(
             allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
@@ -424,7 +424,7 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut cbb = CommandRecorder::primary(
+        let mut cbb = RecordingCommandBuffer::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -470,7 +470,7 @@ mod tests {
         ));
 
         // Make a secondary CB that doesn't support simultaneous use.
-        let builder = CommandRecorder::secondary(
+        let builder = RecordingCommandBuffer::secondary(
             cb_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
@@ -480,7 +480,7 @@ mod tests {
         let secondary = builder.end().unwrap();
 
         {
-            let mut builder = CommandRecorder::primary(
+            let mut builder = RecordingCommandBuffer::primary(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
@@ -496,7 +496,7 @@ mod tests {
         }
 
         {
-            let mut builder = CommandRecorder::primary(
+            let mut builder = RecordingCommandBuffer::primary(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
@@ -505,7 +505,7 @@ mod tests {
             builder.execute_commands(secondary.clone()).unwrap();
             let cb1 = builder.end().unwrap();
 
-            let mut builder = CommandRecorder::primary(
+            let mut builder = RecordingCommandBuffer::primary(
                 cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
@@ -547,7 +547,7 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut builder = CommandRecorder::primary(
+        let mut builder = RecordingCommandBuffer::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -605,7 +605,7 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut builder = CommandRecorder::primary(
+        let mut builder = RecordingCommandBuffer::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -638,7 +638,7 @@ mod tests {
                     ..Default::default()
                 },
             ));
-            let cbb = CommandRecorder::primary(
+            let cbb = RecordingCommandBuffer::primary(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
                 CommandBufferUsage::OneTimeSubmit,
@@ -674,7 +674,7 @@ mod tests {
             // Two secondary command buffers that both write to the buffer
             let secondary = (0..2)
                 .map(|_| {
-                    let mut builder = CommandRecorder::secondary(
+                    let mut builder = RecordingCommandBuffer::secondary(
                         cb_allocator.clone(),
                         queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
@@ -689,7 +689,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             {
-                let mut builder = CommandRecorder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     cb_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
@@ -712,7 +712,7 @@ mod tests {
             }
 
             {
-                let mut builder = CommandRecorder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     cb_allocator,
                     queue.queue_family_index(),
                     CommandBufferUsage::SimultaneousUse,
@@ -739,7 +739,7 @@ mod tests {
                 device.clone(),
                 Default::default(),
             ));
-            let mut sync = CommandRecorder::primary(
+            let mut sync = RecordingCommandBuffer::primary(
                 cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
@@ -778,7 +778,7 @@ mod tests {
                 device.clone(),
                 Default::default(),
             ));
-            let mut sync = CommandRecorder::primary(
+            let mut sync = RecordingCommandBuffer::primary(
                 cb_allocator,
                 queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,

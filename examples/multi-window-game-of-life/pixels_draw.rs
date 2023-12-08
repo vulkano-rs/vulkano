@@ -4,7 +4,7 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferInheritanceInfo,
-        CommandBufferUsage, CommandRecorder, SecondaryAutoCommandBuffer,
+        CommandBufferUsage, RecordingCommandBuffer, SecondaryAutoCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -200,7 +200,7 @@ impl PixelsDrawPipeline {
         viewport_dimensions: [u32; 2],
         image: Arc<ImageView>,
     ) -> Arc<SecondaryAutoCommandBuffer> {
-        let mut builder = CommandRecorder::secondary(
+        let mut builder = RecordingCommandBuffer::secondary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,

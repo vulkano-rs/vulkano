@@ -445,7 +445,7 @@ mod tests {
     use crate::{
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
+            allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -556,7 +556,7 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let mut cbb = CommandRecorder::primary(
+        let mut cbb = RecordingCommandBuffer::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -703,7 +703,7 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let mut cbb = CommandRecorder::primary(
+        let mut cbb = RecordingCommandBuffer::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,

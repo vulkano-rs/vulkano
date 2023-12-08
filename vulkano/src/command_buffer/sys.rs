@@ -21,7 +21,10 @@ use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
 /// recorded commands are unsafe and it is the user's duty to make sure that data races are
 /// protected against using manual synchronization and all resources used by the recorded commands
 /// outlive the command buffer.
-pub struct RawCommandRecorder {
+///
+/// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
+/// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
+pub struct RawRecordingCommandBuffer {
     allocation: ManuallyDrop<CommandBufferAlloc>,
     allocator: Arc<dyn CommandBufferAllocator>,
     queue_family_index: u32,
@@ -30,7 +33,7 @@ pub struct RawCommandRecorder {
     pub(super) usage: CommandBufferUsage,
 }
 
-impl RawCommandRecorder {
+impl RawRecordingCommandBuffer {
     /// Allocates and begins recording a new command buffer.
     ///
     /// # Safety
@@ -155,7 +158,7 @@ impl RawCommandRecorder {
                 .map_err(VulkanError::from)?;
         }
 
-        Ok(RawCommandRecorder {
+        Ok(RawRecordingCommandBuffer {
             allocation: ManuallyDrop::new(allocation),
             allocator,
             inheritance_info,
@@ -206,7 +209,7 @@ impl RawCommandRecorder {
     }
 }
 
-impl Drop for RawCommandRecorder {
+impl Drop for RawRecordingCommandBuffer {
     #[inline]
     fn drop(&mut self) {
         let allocation = unsafe { ManuallyDrop::take(&mut self.allocation) };
@@ -214,7 +217,7 @@ impl Drop for RawCommandRecorder {
     }
 }
 
-unsafe impl VulkanObject for RawCommandRecorder {
+unsafe impl VulkanObject for RawRecordingCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -223,16 +226,16 @@ unsafe impl VulkanObject for RawCommandRecorder {
     }
 }
 
-unsafe impl DeviceOwned for RawCommandRecorder {
+unsafe impl DeviceOwned for RawRecordingCommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.allocation.inner.device()
     }
 }
 
-impl Debug for RawCommandRecorder {
+impl Debug for RawRecordingCommandBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RawCommandRecorder")
+        f.debug_struct("RawRecordingCommandBuffer")
             .field("handle", &self.level())
             .field("level", &self.level())
             .field("usage", &self.usage)
@@ -293,10 +296,10 @@ impl CommandBufferBeginInfo {
 /// A raw command buffer that has finished recording.
 #[derive(Debug)]
 pub struct RawCommandBuffer {
-    inner: RawCommandRecorder,
+    inner: RawRecordingCommandBuffer,
 }
 
-// `RawCommandRecorder` is `!Send + !Sync` so that the implementation of
+// `RawRecordingCommandBuffer` is `!Send + !Sync` so that the implementation of
 // `CommandBufferAllocator::allocate` can assume that a command buffer in the recording state
 // doesn't leave the thread it was allocated on. However, as the safety contract states,
 // `CommandBufferAllocator::deallocate` must acccount for the possibility that a command buffer is

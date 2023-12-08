@@ -12,8 +12,8 @@ use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         auto::{Resource, ResourceUseRef2},
-        sys::RawCommandRecorder,
-        CommandRecorder, ResourceInCommand,
+        sys::RawRecordingCommandBuffer,
+        RecordingCommandBuffer, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
     query::{QueryPool, QueryType},
@@ -24,7 +24,7 @@ use smallvec::SmallVec;
 use std::{mem::size_of, sync::Arc};
 
 /// # Commands to do operations on acceleration structures.
-impl<L> CommandRecorder<L> {
+impl<L> RecordingCommandBuffer<L> {
     /// Builds or updates an acceleration structure.
     ///
     /// # Safety
@@ -119,7 +119,7 @@ impl<L> CommandRecorder<L> {
         self.add_command(
             "build_acceleration_structure",
             used_resources,
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.build_acceleration_structure_unchecked(&info, &build_range_infos);
             },
         );
@@ -251,7 +251,7 @@ impl<L> CommandRecorder<L> {
         self.add_command(
             "build_acceleration_structure_indirect",
             used_resources,
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.build_acceleration_structure_indirect_unchecked(
                     &info,
                     &indirect_buffer,
@@ -340,7 +340,7 @@ impl<L> CommandRecorder<L> {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.copy_acceleration_structure_unchecked(&info);
             },
         );
@@ -424,7 +424,7 @@ impl<L> CommandRecorder<L> {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.copy_acceleration_structure_to_memory_unchecked(&info);
             },
         );
@@ -511,7 +511,7 @@ impl<L> CommandRecorder<L> {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.copy_memory_to_acceleration_structure_unchecked(&info);
             },
         );
@@ -607,7 +607,7 @@ impl<L> CommandRecorder<L> {
                     },
                 )
             }).collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.write_acceleration_structures_properties_unchecked(
                     &acceleration_structures,
                     &query_pool,
@@ -794,7 +794,7 @@ fn add_indirect_buffer_resources(
     ));
 }
 
-impl RawCommandRecorder {
+impl RawRecordingCommandBuffer {
     #[inline]
     pub unsafe fn build_acceleration_structure(
         &mut self,

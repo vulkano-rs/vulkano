@@ -8,8 +8,8 @@ use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
-        CopyImageToBufferInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyImageToBufferInfo,
+        RecordingCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -249,7 +249,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut builder = CommandRecorder::primary(
+    let mut builder = RecordingCommandBuffer::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,

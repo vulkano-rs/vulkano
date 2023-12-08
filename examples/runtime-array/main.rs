@@ -2,8 +2,8 @@ use std::{error::Error, io::Cursor, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CommandRecorder,
-        CopyBufferToImageInfo, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyBufferToImageInfo,
+        RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, layout::DescriptorBindingFlags, DescriptorSet,
@@ -270,7 +270,7 @@ fn main() -> Result<(), impl Error> {
         Default::default(),
     ));
 
-    let mut uploads = CommandRecorder::primary(
+    let mut uploads = RecordingCommandBuffer::primary(
         command_buffer_allocator.clone(),
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
@@ -539,7 +539,7 @@ fn main() -> Result<(), impl Error> {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = CommandRecorder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,

@@ -78,7 +78,7 @@ const MAX_ARENAS: usize = 32;
 ///         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
 ///         BufferUsage,
 ///     },
-///     command_buffer::{CommandBufferUsage, CommandRecorder},
+///     command_buffer::{CommandBufferUsage, RecordingCommandBuffer},
 ///     memory::allocator::MemoryTypeFilter,
 ///     sync::GpuFuture,
 /// };
@@ -105,7 +105,7 @@ const MAX_ARENAS: usize = 32;
 ///     *subbuffer.write().unwrap() = data;
 ///
 ///     // You can then use `subbuffer` as if it was an entirely separate buffer.
-///     CommandRecorder::primary(
+///     RecordingCommandBuffer::primary(
 ///         command_buffer_allocator.clone(),
 ///         queue.queue_family_index(),
 ///         CommandBufferUsage::OneTimeSubmit,

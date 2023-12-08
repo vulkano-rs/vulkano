@@ -1,6 +1,8 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
-    command_buffer::{auto::Resource, sys::RawCommandRecorder, CommandRecorder, ResourceInCommand},
+    command_buffer::{
+        auto::Resource, sys::RawRecordingCommandBuffer, RecordingCommandBuffer, ResourceInCommand,
+    },
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures},
     image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage},
@@ -12,7 +14,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{mem::size_of_val, sync::Arc};
 
 /// # Commands to fill resources with new data.
-impl<L> CommandRecorder<L> {
+impl<L> RecordingCommandBuffer<L> {
     /// Clears a color image with a specific value.
     pub fn clear_color_image(
         &mut self,
@@ -71,7 +73,7 @@ impl<L> CommandRecorder<L> {
                     )]
                 })
                 .collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.clear_color_image_unchecked(&clear_info);
             },
         );
@@ -137,7 +139,7 @@ impl<L> CommandRecorder<L> {
                     )]
                 })
                 .collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.clear_depth_stencil_image_unchecked(&clear_info);
             },
         );
@@ -195,7 +197,7 @@ impl<L> CommandRecorder<L> {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.fill_buffer_unchecked(&dst_buffer, data);
             },
         );
@@ -261,7 +263,7 @@ impl<L> CommandRecorder<L> {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut RawCommandRecorder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.update_buffer_unchecked(&dst_buffer, &data);
             },
         );
@@ -270,7 +272,7 @@ impl<L> CommandRecorder<L> {
     }
 }
 
-impl RawCommandRecorder {
+impl RawRecordingCommandBuffer {
     #[inline]
     pub unsafe fn clear_color_image(
         &mut self,

@@ -121,7 +121,7 @@ pub mod view;
 /// ```
 /// use vulkano::{
 ///     buffer::{BufferUsage, Buffer, BufferCreateInfo},
-///     command_buffer::{CommandBufferUsage, CommandRecorder, CopyBufferInfo},
+///     command_buffer::{CommandBufferUsage, CopyBufferInfo, RecordingCommandBuffer},
 ///     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
 ///     sync::GpuFuture,
 ///     DeviceSize,
@@ -171,7 +171,7 @@ pub mod view;
 /// .unwrap();
 ///
 /// // Create a one-time command to copy between the buffers.
-/// let mut cbb = CommandRecorder::primary(
+/// let mut cbb = RecordingCommandBuffer::primary(
 ///     command_buffer_allocator.clone(),
 ///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
