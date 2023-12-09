@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::{sys::UnsafeCommandBufferBuilder, AutoCommandBufferBuilder},
+    command_buffer::{sys::RawRecordingCommandBuffer, RecordingCommandBuffer},
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
@@ -11,7 +11,7 @@ use std::ffi::CString;
 /// These commands all require the [`ext_debug_utils`] extension to be enabled on the instance.
 ///
 /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> RecordingCommandBuffer<L> {
     /// Opens a command buffer debug label region.
     pub fn begin_debug_utils_label(
         &mut self,
@@ -39,7 +39,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "begin_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.begin_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -75,7 +75,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "end_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.end_debug_utils_label_unchecked();
             },
         );
@@ -110,7 +110,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "insert_debug_utils_label",
             Default::default(),
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.insert_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -119,7 +119,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawRecordingCommandBuffer {
     #[inline]
     pub unsafe fn begin_debug_utils_label(
         &mut self,

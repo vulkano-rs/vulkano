@@ -14,14 +14,17 @@ use crate::{
 use smallvec::SmallVec;
 use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
 
-/// Command buffer being built.
+/// A raw command buffer in the recording state.
 ///
-/// # Safety
+/// This type corresponds directly to a `VkCommandBuffer` after it has been allocated and started
+/// recording. It doesn't keep track of synchronization or resource lifetimes. As such, all
+/// recorded commands are unsafe and it is the user's duty to make sure that data races are
+/// protected against using manual synchronization and all resources used by the recorded commands
+/// outlive the command buffer.
 ///
-/// - All submitted commands must be valid and follow the requirements of the Vulkan specification.
-/// - Any resources used by submitted commands must outlive the returned builder and its created
-///   command buffer. They must be protected against data races through manual synchronization.
-pub struct UnsafeCommandBufferBuilder {
+/// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
+/// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
+pub struct RawRecordingCommandBuffer {
     allocation: ManuallyDrop<CommandBufferAlloc>,
     allocator: Arc<dyn CommandBufferAllocator>,
     queue_family_index: u32,
@@ -30,8 +33,8 @@ pub struct UnsafeCommandBufferBuilder {
     pub(super) usage: CommandBufferUsage,
 }
 
-impl UnsafeCommandBufferBuilder {
-    /// Creates a new builder, for recording commands.
+impl RawRecordingCommandBuffer {
+    /// Allocates and begins recording a new command buffer.
     ///
     /// # Safety
     ///
@@ -155,7 +158,7 @@ impl UnsafeCommandBufferBuilder {
                 .map_err(VulkanError::from)?;
         }
 
-        Ok(UnsafeCommandBufferBuilder {
+        Ok(RawRecordingCommandBuffer {
             allocation: ManuallyDrop::new(allocation),
             allocator,
             inheritance_info,
@@ -164,9 +167,9 @@ impl UnsafeCommandBufferBuilder {
         })
     }
 
-    /// Turns the builder into an actual command buffer.
+    /// Ends the recording, returning a command buffer which can be submitted.
     #[inline]
-    pub fn build(self) -> Result<UnsafeCommandBuffer, VulkanError> {
+    pub fn end(self) -> Result<RawCommandBuffer, VulkanError> {
         unsafe {
             let fns = self.device().fns();
             (fns.v1_0.end_command_buffer)(self.handle())
@@ -174,7 +177,7 @@ impl UnsafeCommandBufferBuilder {
                 .map_err(VulkanError::from)?;
         }
 
-        Ok(UnsafeCommandBuffer { inner: self })
+        Ok(RawCommandBuffer { inner: self })
     }
 
     /// Returns the queue family index that this command buffer was created for.
@@ -206,7 +209,7 @@ impl UnsafeCommandBufferBuilder {
     }
 }
 
-impl Drop for UnsafeCommandBufferBuilder {
+impl Drop for RawRecordingCommandBuffer {
     #[inline]
     fn drop(&mut self) {
         let allocation = unsafe { ManuallyDrop::take(&mut self.allocation) };
@@ -214,7 +217,7 @@ impl Drop for UnsafeCommandBufferBuilder {
     }
 }
 
-unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
+unsafe impl VulkanObject for RawRecordingCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -223,16 +226,16 @@ unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeCommandBufferBuilder {
+unsafe impl DeviceOwned for RawRecordingCommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.allocation.inner.device()
     }
 }
 
-impl Debug for UnsafeCommandBufferBuilder {
+impl Debug for RawRecordingCommandBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("UnsafeCommandBufferBuilder")
+        f.debug_struct("RawRecordingCommandBuffer")
             .field("handle", &self.level())
             .field("level", &self.level())
             .field("usage", &self.usage)
@@ -290,27 +293,22 @@ impl CommandBufferBeginInfo {
     }
 }
 
-/// Command buffer that has been built.
-///
-/// # Safety
-///
-/// The command buffer must not outlive the command pool that it was created from,
-/// nor the resources used by the recorded commands.
+/// A raw command buffer that has finished recording.
 #[derive(Debug)]
-pub struct UnsafeCommandBuffer {
-    inner: UnsafeCommandBufferBuilder,
+pub struct RawCommandBuffer {
+    inner: RawRecordingCommandBuffer,
 }
 
-// `UnsafeCommandBufferBuilder` is `!Send + !Sync` so that the implementation of
+// `RawRecordingCommandBuffer` is `!Send + !Sync` so that the implementation of
 // `CommandBufferAllocator::allocate` can assume that a command buffer in the recording state
 // doesn't leave the thread it was allocated on. However, as the safety contract states,
 // `CommandBufferAllocator::deallocate` must acccount for the possibility that a command buffer is
 // moved between threads after the recording is finished, and thus deallocated from another thread.
 // That's why this is sound.
-unsafe impl Send for UnsafeCommandBuffer {}
-unsafe impl Sync for UnsafeCommandBuffer {}
+unsafe impl Send for RawCommandBuffer {}
+unsafe impl Sync for RawCommandBuffer {}
 
-impl UnsafeCommandBuffer {
+impl RawCommandBuffer {
     /// Returns the queue family index that this command buffer was created for.
     #[inline]
     pub fn queue_family_index(&self) -> u32 {
@@ -336,7 +334,7 @@ impl UnsafeCommandBuffer {
     }
 }
 
-unsafe impl VulkanObject for UnsafeCommandBuffer {
+unsafe impl VulkanObject for RawCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -345,7 +343,7 @@ unsafe impl VulkanObject for UnsafeCommandBuffer {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeCommandBuffer {
+unsafe impl DeviceOwned for RawCommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.allocation.inner.device()

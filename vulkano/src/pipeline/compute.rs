@@ -445,7 +445,7 @@ mod tests {
     use crate::{
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+            allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -556,7 +556,7 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let mut cbb = AutoCommandBufferBuilder::primary(
+        let mut cbb = RecordingCommandBuffer::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -573,7 +573,7 @@ mod tests {
             .unwrap()
             .dispatch([1, 1, 1])
             .unwrap();
-        let cb = cbb.build().unwrap();
+        let cb = cbb.end().unwrap();
 
         let future = now(device)
             .then_execute(queue, cb)
@@ -703,7 +703,7 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let mut cbb = AutoCommandBufferBuilder::primary(
+        let mut cbb = RecordingCommandBuffer::primary(
             cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -720,7 +720,7 @@ mod tests {
             .unwrap()
             .dispatch([128, 1, 1])
             .unwrap();
-        let cb = cbb.build().unwrap();
+        let cb = cbb.end().unwrap();
 
         let future = now(device)
             .then_execute(queue, cb)

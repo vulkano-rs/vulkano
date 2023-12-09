@@ -76,9 +76,7 @@
 //!
 //! An input binding is a definition of a Vulkan buffer that contains the actual data from which
 //! each input attribute is to be read. The buffer itself is referred to as a "vertex buffer", and
-//! is set during drawing with the
-//! [`bind_vertex_buffers`](crate::command_buffer::AutoCommandBufferBuilder::bind_vertex_buffers)
-//! command.
+//! is set during drawing with the [`bind_vertex_buffers`] command.
 //!
 //! The data in a vertex buffer is typically arranged into an array, where each array element
 //! contains the data for a single vertex shader invocation. When deciding which element read from
@@ -88,6 +86,8 @@
 //! it advances to the next element for each new instance number. Different bindings can have
 //! different input rates, and it's also possible to have multiple bindings with the same input
 //! rate.
+//!
+//! [`bind_vertex_buffers`]: crate::command_buffer::RecordingCommandBuffer::bind_vertex_buffers
 
 #[allow(deprecated)]
 pub use self::{

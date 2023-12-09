@@ -3,9 +3,9 @@ use crate::{
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
-        sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-        DrawIndirectCommand, ResourceInCommand, SubpassContents,
+        sys::RawRecordingCommandBuffer,
+        DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
+        RecordingCommandBuffer, ResourceInCommand, SubpassContents,
     },
     descriptor_set::{
         layout::DescriptorType, DescriptorBindingResources, DescriptorBufferInfo,
@@ -44,7 +44,7 @@ macro_rules! vuids {
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl<L> AutoCommandBufferBuilder<L> {
+impl<L> RecordingCommandBuffer<L> {
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using
@@ -102,7 +102,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.dispatch_unchecked(group_counts);
             },
         );
@@ -178,7 +178,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.dispatch_indirect_unchecked(&indirect_buffer);
             },
         );
@@ -361,7 +361,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
             },
         );
@@ -463,7 +463,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -684,7 +684,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw_indexed",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indexed_unchecked(
                     index_count,
                     instance_count,
@@ -806,7 +806,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "draw_indexed_indirect",
             used_resources,
-            move |out: &mut UnsafeCommandBufferBuilder| {
+            move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -2766,7 +2766,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     }
 }
 
-impl UnsafeCommandBufferBuilder {
+impl RawRecordingCommandBuffer {
     #[inline]
     pub unsafe fn dispatch(
         &mut self,

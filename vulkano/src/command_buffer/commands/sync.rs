@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::sys::UnsafeCommandBufferBuilder,
+    command_buffer::sys::RawRecordingCommandBuffer,
     device::{DeviceOwned, QueueFlags},
     sync::{
         event::Event, BufferMemoryBarrier, DependencyFlags, DependencyInfo, ImageMemoryBarrier,
@@ -10,7 +10,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{ptr, sync::Arc};
 
-impl UnsafeCommandBufferBuilder {
+impl RawRecordingCommandBuffer {
     #[inline]
     pub unsafe fn pipeline_barrier(
         &mut self,

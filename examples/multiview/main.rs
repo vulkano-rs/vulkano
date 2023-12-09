@@ -7,8 +7,8 @@ use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
-        CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, BufferImageCopy, CommandBufferUsage,
+        CopyImageToBufferInfo, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
@@ -330,7 +330,7 @@ fn main() {
     let buffer1 = create_buffer();
     let buffer2 = create_buffer();
 
-    let mut builder = AutoCommandBufferBuilder::primary(
+    let mut builder = RecordingCommandBuffer::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
@@ -386,7 +386,7 @@ fn main() {
         })
         .unwrap();
 
-    let command_buffer = builder.build().unwrap();
+    let command_buffer = builder.end().unwrap();
 
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

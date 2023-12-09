@@ -7,8 +7,8 @@ use std::{error::Error, sync::Arc, time::SystemTime};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyBufferInfo, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyBufferInfo,
+        RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -386,7 +386,7 @@ fn main() -> Result<(), impl Error> {
         .unwrap();
 
         // Create one-time command to copy between the buffers.
-        let mut cbb = AutoCommandBufferBuilder::primary(
+        let mut cbb = RecordingCommandBuffer::primary(
             command_buffer_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -397,7 +397,7 @@ fn main() -> Result<(), impl Error> {
             device_local_buffer.clone(),
         ))
         .unwrap();
-        let cb = cbb.build().unwrap();
+        let cb = cbb.end().unwrap();
 
         // Execute copy and wait for copy to complete before proceeding.
         cb.execute(queue.clone())
@@ -581,7 +581,7 @@ fn main() -> Result<(), impl Error> {
                     None => sync::now(device.clone()).boxed(),
                 };
 
-                let mut builder = AutoCommandBufferBuilder::primary(
+                let mut builder = RecordingCommandBuffer::primary(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
@@ -622,7 +622,7 @@ fn main() -> Result<(), impl Error> {
                     .unwrap()
                     .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = builder.build().unwrap();
+                let command_buffer = builder.end().unwrap();
 
                 let future = previous_future
                     .join(acquire_future)
