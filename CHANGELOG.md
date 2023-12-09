@@ -16,8 +16,11 @@
 ### Breaking changes
 
 Changes to command buffers:
-- `AutoCommandBufferBuilder` and `UnsafeCommandBufferBuilder` now take an `Arc<dyn CommandBufferAllocator>` on construction.
-- `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `UnsafeCommandBufferBuilder` and `UnsafeCommandBuffer` no longer have a type parameter for the type of allocator.
+- Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
+- Renamed `UnsafeCommandBufferBuilder` to `RawRecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
+- Renamed `UnsafeCommandBuffer` to `RawCommandBuffer`.
+- `RecordingCommandBuffer` and `RawRecordingCommandBuffer` now take an `Arc<dyn CommandBufferAllocator>` on construction.
+- `RecordingCommandBuffer`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
 
 Changes to command buffer allocation:
