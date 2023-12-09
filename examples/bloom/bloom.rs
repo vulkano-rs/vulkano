@@ -1,5 +1,5 @@
 use crate::{App, RenderContext};
-use std::{slice, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     image::{mip_level_extent, Image},
     pipeline::{
@@ -80,7 +80,8 @@ impl Task for BloomTask {
             PipelineBindPoint::Compute,
             &rcx.pipeline_layout,
             0,
-            slice::from_ref(&rcx.descriptor_set),
+            &[&rcx.descriptor_set],
+            &[],
         )?;
 
         let bloom_image = tcx.image(self.bloom_image_id)?.image();
@@ -141,7 +142,7 @@ impl Task for BloomTask {
         }
 
         cbf.destroy_object(bloom_image.clone());
-        cbf.destroy_object(rcx.descriptor_set.as_ref().0.clone());
+        cbf.destroy_object(rcx.descriptor_set.clone());
 
         Ok(())
     }

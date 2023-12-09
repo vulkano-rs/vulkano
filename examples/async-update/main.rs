@@ -843,14 +843,12 @@ impl Task for RenderTask {
             0,
             &[
                 // Bind the uniform buffer designated for this frame.
-                self.uniform_buffer_sets[frame_index as usize]
-                    .clone()
-                    .into(),
+                self.uniform_buffer_sets[frame_index as usize].as_raw(),
                 // Bind the currently most up-to-date texture.
                 self.sampler_sets[self.current_texture_index.load(Ordering::Relaxed) as usize]
-                    .clone()
-                    .into(),
+                    .as_raw(),
             ],
+            &[],
         )?;
         cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
 
