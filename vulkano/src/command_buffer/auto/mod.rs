@@ -171,6 +171,12 @@ impl Debug for SecondaryAutoCommandBuffer {
 }
 
 impl SecondaryAutoCommandBuffer {
+    /// Returns the inner raw command buffer.
+    #[inline]
+    pub fn inner(&self) -> &RawCommandBuffer {
+        &self.inner
+    }
+
     /// Returns the usage of this command buffer.
     #[inline]
     pub fn usage(&self) -> CommandBufferUsage {
