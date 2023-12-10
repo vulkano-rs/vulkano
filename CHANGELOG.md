@@ -22,6 +22,7 @@ Changes to command buffers:
 - `RecordingCommandBuffer` and `RawRecordingCommandBuffer` now take an `Arc<dyn CommandBufferAllocator>` on construction.
 - `RecordingCommandBuffer`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
+- `RawRecordingCommandBuffer::execute_commands` now takes `&RawCommandBuffer`s as argument.
 
 Changes to command buffer allocation:
 - `CommandBufferAllocator` no longer has any associated types in order to make the trait object-safe.
