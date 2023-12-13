@@ -3,8 +3,9 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferInheritanceInfo,
-        CommandBufferUsage, RecordingCommandBuffer, SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
+        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
+        RecordingCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -195,17 +196,17 @@ impl PixelsDrawPipeline {
     }
 
     /// Draws input `image` over a quad of size -1.0 to 1.0.
-    pub fn draw(
-        &self,
-        viewport_dimensions: [u32; 2],
-        image: Arc<ImageView>,
-    ) -> Arc<SecondaryAutoCommandBuffer> {
-        let mut builder = RecordingCommandBuffer::secondary(
+    pub fn draw(&self, viewport_dimensions: [u32; 2], image: Arc<ImageView>) -> Arc<CommandBuffer> {
+        let mut builder = RecordingCommandBuffer::new(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-            CommandBufferInheritanceInfo {
-                render_pass: Some(self.subpass.clone().into()),
+            CommandBufferLevel::Secondary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::MultipleSubmit,
+                inheritance_info: Some(CommandBufferInheritanceInfo {
+                    render_pass: Some(self.subpass.clone().into()),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         )

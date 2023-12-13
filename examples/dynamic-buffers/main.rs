@@ -8,7 +8,8 @@ use std::{iter::repeat, mem::size_of, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+        CommandBufferUsage, RecordingCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorBufferInfo,
@@ -236,10 +237,14 @@ fn main() {
     .unwrap();
 
     // Build the command buffer, using different offsets for each call.
-    let mut builder = RecordingCommandBuffer::primary(
+    let mut builder = RecordingCommandBuffer::new(
         command_buffer_allocator,
         queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
+        CommandBufferLevel::Primary,
+        CommandBufferBeginInfo {
+            usage: CommandBufferUsage::OneTimeSubmit,
+            ..Default::default()
+        },
     )
     .unwrap();
 

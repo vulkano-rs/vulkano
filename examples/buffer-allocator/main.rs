@@ -11,8 +11,8 @@ use vulkano::{
         BufferContents, BufferUsage,
     },
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
-        RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+        CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -369,10 +369,14 @@ fn main() -> Result<(), impl Error> {
                 let buffer = buffer_allocator.allocate_slice(data.len() as _).unwrap();
                 buffer.write().unwrap().copy_from_slice(&data);
 
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = RecordingCommandBuffer::new(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
-                    CommandBufferUsage::OneTimeSubmit,
+                    CommandBufferLevel::Primary,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::OneTimeSubmit,
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
                 builder

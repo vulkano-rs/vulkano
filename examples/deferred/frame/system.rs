@@ -7,9 +7,9 @@ use cgmath::{Matrix4, SquareMatrix, Vector3};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        RecordingCommandBuffer, RenderPassBeginInfo, SecondaryAutoCommandBuffer, SubpassBeginInfo,
-        SubpassContents,
+        allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
+        CommandBufferLevel, CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
+        SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
@@ -338,10 +338,14 @@ impl FrameSystem {
         .unwrap();
 
         // Start the command buffer builder that will be filled throughout the frame handling.
-        let mut command_buffer_builder = RecordingCommandBuffer::primary(
+        let mut command_buffer_builder = RecordingCommandBuffer::new(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
+            CommandBufferLevel::Primary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::OneTimeSubmit,
+                ..Default::default()
+            },
         )
         .unwrap();
         command_buffer_builder
@@ -394,7 +398,7 @@ pub struct Frame<'a> {
     // Framebuffer that was used when starting the render pass.
     framebuffer: Arc<Framebuffer>,
     // The command buffer builder that will be built during the lifetime of this object.
-    command_buffer_builder: Option<RecordingCommandBuffer<PrimaryAutoCommandBuffer>>,
+    command_buffer_builder: Option<RecordingCommandBuffer>,
     // Matrix that was passed to `frame()`.
     world_to_framebuffer: Matrix4<f32>,
 }
@@ -487,7 +491,7 @@ pub struct DrawPass<'f, 's: 'f> {
 
 impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Appends a command that executes a secondary command buffer that performs drawing.
-    pub fn execute(&mut self, command_buffer: Arc<SecondaryAutoCommandBuffer>) {
+    pub fn execute(&mut self, command_buffer: Arc<CommandBuffer>) {
         self.frame
             .command_buffer_builder
             .as_mut()

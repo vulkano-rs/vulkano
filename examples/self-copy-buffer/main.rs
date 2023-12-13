@@ -6,8 +6,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, BufferCopy, CommandBufferUsage,
-        CopyBufferInfoTyped, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, BufferCopy, CommandBufferBeginInfo,
+        CommandBufferLevel, CommandBufferUsage, CopyBufferInfoTyped, RecordingCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -162,10 +162,14 @@ fn main() {
     )
     .unwrap();
 
-    let mut builder = RecordingCommandBuffer::primary(
+    let mut builder = RecordingCommandBuffer::new(
         command_buffer_allocator,
         queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
+        CommandBufferLevel::Primary,
+        CommandBufferBeginInfo {
+            usage: CommandBufferUsage::OneTimeSubmit,
+            ..Default::default()
+        },
     )
     .unwrap();
     builder

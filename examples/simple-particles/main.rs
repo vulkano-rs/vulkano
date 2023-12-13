@@ -7,8 +7,8 @@ use std::{error::Error, sync::Arc, time::SystemTime};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyBufferInfo,
-        RecordingCommandBuffer, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+        CommandBufferUsage, CopyBufferInfo, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -386,10 +386,14 @@ fn main() -> Result<(), impl Error> {
         .unwrap();
 
         // Create one-time command to copy between the buffers.
-        let mut cbb = RecordingCommandBuffer::primary(
+        let mut cbb = RecordingCommandBuffer::new(
             command_buffer_allocator.clone(),
             queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
+            CommandBufferLevel::Primary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::OneTimeSubmit,
+                ..Default::default()
+            },
         )
         .unwrap();
         cbb.copy_buffer(CopyBufferInfo::buffers(
@@ -581,10 +585,14 @@ fn main() -> Result<(), impl Error> {
                     None => sync::now(device.clone()).boxed(),
                 };
 
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = RecordingCommandBuffer::new(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
-                    CommandBufferUsage::OneTimeSubmit,
+                    CommandBufferLevel::Primary,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::OneTimeSubmit,
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
                 builder
