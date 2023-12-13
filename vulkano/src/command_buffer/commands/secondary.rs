@@ -2,8 +2,8 @@ use crate::{
     command_buffer::{
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
         sys::{RawCommandBuffer, RawRecordingCommandBuffer},
-        CommandBufferInheritanceRenderPassType, CommandBufferLevel, RecordingCommandBuffer,
-        ResourceInCommand, SecondaryAutoCommandBuffer, SecondaryCommandBufferBufferUsage,
+        CommandBuffer, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
+        RecordingCommandBuffer, ResourceInCommand, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
@@ -17,7 +17,7 @@ use std::{cmp::min, iter, sync::Arc};
 ///
 /// These commands can be called on any queue that can execute the commands recorded in the
 /// secondary command buffer.
-impl<L> RecordingCommandBuffer<L> {
+impl RecordingCommandBuffer {
     /// Executes a secondary command buffer.
     ///
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of
@@ -25,7 +25,7 @@ impl<L> RecordingCommandBuffer<L> {
     /// with `Flags::OneTimeSubmit` will set `self`'s flags to `Flags::OneTimeSubmit` also.
     pub fn execute_commands(
         &mut self,
-        command_buffer: Arc<SecondaryAutoCommandBuffer>,
+        command_buffer: Arc<CommandBuffer>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffer = DropUnlockCommandBuffer::new(command_buffer)?;
         self.validate_execute_commands(iter::once(&**command_buffer))?;
@@ -41,7 +41,7 @@ impl<L> RecordingCommandBuffer<L> {
     // TODO ^ would be nice if this just worked without errors
     pub fn execute_commands_from_vec(
         &mut self,
-        command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
+        command_buffers: Vec<Arc<CommandBuffer>>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffers: SmallVec<[_; 4]> = command_buffers
             .into_iter()
@@ -55,7 +55,7 @@ impl<L> RecordingCommandBuffer<L> {
 
     fn validate_execute_commands<'a>(
         &self,
-        command_buffers: impl Iterator<Item = &'a SecondaryAutoCommandBuffer> + Clone,
+        command_buffers: impl Iterator<Item = &'a CommandBuffer> + Clone,
     ) -> Result<(), Box<ValidationError>> {
         self.inner
             .validate_execute_commands(command_buffers.clone().map(|cb| cb.inner()))?;
@@ -89,17 +89,16 @@ impl<L> RecordingCommandBuffer<L> {
         }
 
         for (command_buffer_index, command_buffer) in command_buffers.enumerate() {
+            let inheritance_info = command_buffer.inheritance_info().unwrap();
+
             if let Some(render_pass_state) = &self.builder_state.render_pass {
-                let inheritance_render_pass = command_buffer
-                    .inheritance_info()
-                    .render_pass
-                    .as_ref()
-                    .ok_or_else(|| {
+                let inheritance_render_pass =
+                    inheritance_info.render_pass.as_ref().ok_or_else(|| {
                         Box::new(ValidationError {
                             problem: format!(
                                 "a render pass instance is active, but \
-                            `command_buffers[{}].inheritance_info().render_pass` is `None`",
-                                command_buffer_index
+                                `command_buffers[{}].inheritance_info().render_pass` is `None`",
+                                command_buffer_index,
                             )
                             .into(),
                             vuids: &["VUID-vkCmdExecuteCommands-pCommandBuffers-00096"],
@@ -375,7 +374,7 @@ impl<L> RecordingCommandBuffer<L> {
                 // VUID-vkCmdExecuteCommands-pCommandBuffers-06535
                 // VUID-vkCmdExecuteCommands-pCommandBuffers-06536
             } else {
-                if command_buffer.inheritance_info().render_pass.is_some() {
+                if inheritance_info.render_pass.is_some() {
                     return Err(Box::new(ValidationError {
                         context: format!(
                             "command_buffers[{}].inheritance_info().render_pass",
@@ -392,10 +391,8 @@ impl<L> RecordingCommandBuffer<L> {
             for state in self.builder_state.queries.values() {
                 match state.query_pool.query_type() {
                     QueryType::Occlusion => {
-                        let inherited_flags = command_buffer
-                            .inheritance_info()
-                            .occlusion_query
-                            .ok_or_else(|| {
+                        let inherited_flags =
+                            inheritance_info.occlusion_query.ok_or_else(|| {
                                 Box::new(ValidationError {
                                     context: format!(
                                         "command_buffers[{}].inheritance_info().occlusion_query",
@@ -426,8 +423,7 @@ impl<L> RecordingCommandBuffer<L> {
                         }
                     }
                     &QueryType::PipelineStatistics(state_flags) => {
-                        let inherited_flags =
-                            command_buffer.inheritance_info().query_statistics_flags;
+                        let inherited_flags = inheritance_info.query_statistics_flags;
 
                         if !inherited_flags.contains(state_flags) {
                             return Err(Box::new(ValidationError {
@@ -461,7 +457,7 @@ impl<L> RecordingCommandBuffer<L> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn execute_commands_unchecked(
         &mut self,
-        command_buffers: SmallVec<[Arc<SecondaryAutoCommandBuffer>; 4]>,
+        command_buffers: SmallVec<[Arc<CommandBuffer>; 4]>,
     ) -> &mut Self {
         self.execute_commands_locked(
             command_buffers
@@ -487,7 +483,7 @@ impl<L> RecordingCommandBuffer<L> {
                 .flat_map(|(index, command_buffer)| {
                     let index = index as u32;
                     let SecondaryCommandBufferResourcesUsage { buffers, images } =
-                        command_buffer.resources_usage();
+                        command_buffer.secondary_resources_usage();
 
                     (buffers.iter().map(move |usage| {
                         let &SecondaryCommandBufferBufferUsage {
@@ -672,22 +668,23 @@ impl RawRecordingCommandBuffer {
     }
 }
 
-struct DropUnlockCommandBuffer(Arc<SecondaryAutoCommandBuffer>);
+struct DropUnlockCommandBuffer(Arc<CommandBuffer>);
 
 impl DropUnlockCommandBuffer {
-    fn new(command_buffer: Arc<SecondaryAutoCommandBuffer>) -> Result<Self, Box<ValidationError>> {
+    fn new(command_buffer: Arc<CommandBuffer>) -> Result<Self, Box<ValidationError>> {
         command_buffer.lock_record()?;
         Ok(Self(command_buffer))
     }
 }
 
 impl std::ops::Deref for DropUnlockCommandBuffer {
-    type Target = Arc<SecondaryAutoCommandBuffer>;
+    type Target = Arc<CommandBuffer>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
+
 unsafe impl SafeDeref for DropUnlockCommandBuffer {}
 
 impl Drop for DropUnlockCommandBuffer {

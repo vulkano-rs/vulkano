@@ -39,7 +39,6 @@ impl RawRecordingCommandBuffer {
     /// # Safety
     ///
     /// - `begin_info` must be valid.
-    #[inline]
     pub unsafe fn new(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,

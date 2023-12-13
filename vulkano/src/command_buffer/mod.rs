@@ -90,11 +90,12 @@
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
 pub use self::{
-    auto::{PrimaryAutoCommandBuffer, RecordingCommandBuffer, SecondaryAutoCommandBuffer},
+    auto::{CommandBuffer, RecordingCommandBuffer},
     commands::{
         acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
         query::*, render_pass::*, secondary::*, sync::*,
     },
+    sys::CommandBufferBeginInfo,
     traits::{CommandBufferExecError, CommandBufferExecFuture},
 };
 use crate::{
@@ -788,7 +789,7 @@ pub struct CommandBufferSubmitInfo {
     /// The command buffer to execute.
     ///
     /// There is no default value.
-    pub command_buffer: Arc<PrimaryAutoCommandBuffer>,
+    pub command_buffer: Arc<CommandBuffer>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -796,7 +797,7 @@ pub struct CommandBufferSubmitInfo {
 impl CommandBufferSubmitInfo {
     /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<PrimaryAutoCommandBuffer>) -> Self {
+    pub fn new(command_buffer: Arc<CommandBuffer>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),
@@ -811,6 +812,15 @@ impl CommandBufferSubmitInfo {
 
         // VUID?
         assert_eq!(device, command_buffer.device().as_ref());
+
+        if self.command_buffer.level() != CommandBufferLevel::Primary {
+            return Err(Box::new(ValidationError {
+                context: "command_buffer".into(),
+                problem: "is not a primary command buffer".into(),
+                vuids: &["VUID-VkCommandBufferSubmitInfo-commandBuffer-03890"],
+                ..Default::default()
+            }));
+        }
 
         Ok(())
     }

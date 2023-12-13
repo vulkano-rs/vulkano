@@ -44,7 +44,7 @@ macro_rules! vuids {
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl<L> RecordingCommandBuffer<L> {
+impl RecordingCommandBuffer {
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using

@@ -14,7 +14,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{mem::size_of_val, sync::Arc};
 
 /// # Commands to fill resources with new data.
-impl<L> RecordingCommandBuffer<L> {
+impl RecordingCommandBuffer {
     /// Clears a color image with a specific value.
     pub fn clear_color_image(
         &mut self,

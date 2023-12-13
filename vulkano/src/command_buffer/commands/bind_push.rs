@@ -21,7 +21,7 @@ use std::{cmp::min, ffi::c_void, mem::size_of, ptr, sync::Arc};
 /// # Commands to bind or push state for pipeline execution commands.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L> RecordingCommandBuffer<L> {
+impl RecordingCommandBuffer {
     /// Binds descriptor sets for future dispatch or draw calls.
     pub fn bind_descriptor_sets(
         &mut self,

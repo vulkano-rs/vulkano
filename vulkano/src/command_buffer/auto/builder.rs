@@ -1,18 +1,16 @@
 use super::{
-    CommandInfo, PrimaryAutoCommandBuffer, RenderPassCommand, Resource, ResourceUseRef2,
-    SubmitState,
+    CommandBuffer, CommandInfo, RenderPassCommand, Resource, ResourceUseRef2, SubmitState,
 };
 use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
-        sys::{CommandBufferBeginInfo, RawCommandBuffer, RawRecordingCommandBuffer},
+        sys::{CommandBufferBeginInfo, RawRecordingCommandBuffer},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferImageRangeUsage,
         CommandBufferImageUsage, CommandBufferInheritanceInfo,
         CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferResourcesUsage,
-        CommandBufferUsage, RenderingInfo, ResourceUseRef, SecondaryAutoCommandBuffer,
-        SecondaryCommandBufferBufferUsage, SecondaryCommandBufferImageUsage,
-        SecondaryCommandBufferResourcesUsage, SubpassContents,
+        CommandBufferUsage, RenderingInfo, ResourceUseRef, SecondaryCommandBufferBufferUsage,
+        SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
@@ -45,7 +43,6 @@ use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry,
     fmt::Debug,
-    marker::PhantomData,
     mem::take,
     ops::{Range, RangeInclusive},
     sync::{atomic::AtomicBool, Arc},
@@ -58,125 +55,44 @@ use std::{
 ///
 /// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
 /// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
-pub struct RecordingCommandBuffer<L> {
+pub struct RecordingCommandBuffer {
     pub(in crate::command_buffer) inner: RawRecordingCommandBuffer,
     commands: Vec<(
         CommandInfo,
         Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>,
     )>,
     pub(in crate::command_buffer) builder_state: CommandBufferBuilderState,
-    _data: PhantomData<L>,
 }
 
-impl RecordingCommandBuffer<PrimaryAutoCommandBuffer> {
-    /// Starts recording a primary command buffer.
+impl RecordingCommandBuffer {
+    /// Allocates and begins recording a new command buffer.
     #[inline]
-    pub fn primary(
-        allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
-        usage: CommandBufferUsage,
-    ) -> Result<RecordingCommandBuffer<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
-        unsafe {
-            RecordingCommandBuffer::begin(
-                allocator,
-                queue_family_index,
-                CommandBufferLevel::Primary,
-                CommandBufferBeginInfo {
-                    usage,
-                    inheritance_info: None,
-                    _ne: crate::NonExhaustive(()),
-                },
-            )
-        }
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
-    pub unsafe fn primary_unchecked(
-        allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
-        usage: CommandBufferUsage,
-    ) -> Result<RecordingCommandBuffer<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
-        RecordingCommandBuffer::begin_unchecked(
-            allocator,
-            queue_family_index,
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage,
-                inheritance_info: None,
-                _ne: crate::NonExhaustive(()),
-            },
-        )
-    }
-}
-
-impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
-    /// Starts recording a secondary command buffer.
-    #[inline]
-    pub fn secondary(
-        allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
-        usage: CommandBufferUsage,
-        inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<RecordingCommandBuffer<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
-        unsafe {
-            RecordingCommandBuffer::begin(
-                allocator,
-                queue_family_index,
-                CommandBufferLevel::Secondary,
-                CommandBufferBeginInfo {
-                    usage,
-                    inheritance_info: Some(inheritance_info),
-                    _ne: crate::NonExhaustive(()),
-                },
-            )
-        }
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
-    pub unsafe fn secondary_unchecked(
-        allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
-        usage: CommandBufferUsage,
-        inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<RecordingCommandBuffer<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
-        RecordingCommandBuffer::begin_unchecked(
-            allocator,
-            queue_family_index,
-            CommandBufferLevel::Secondary,
-            CommandBufferBeginInfo {
-                usage,
-                inheritance_info: Some(inheritance_info),
-                _ne: crate::NonExhaustive(()),
-            },
-        )
-    }
-}
-
-impl<L> RecordingCommandBuffer<L> {
-    /// Actual constructor. Private.
-    ///
-    /// # Safety
-    ///
-    /// `begin_info.inheritance_info` must match `level`.
-    unsafe fn begin(
+    pub fn new(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<RecordingCommandBuffer<L>, Validated<VulkanError>> {
-        Self::validate_begin(allocator.device(), queue_family_index, level, &begin_info)?;
+    ) -> Result<RecordingCommandBuffer, Validated<VulkanError>> {
+        Self::validate_new(allocator.device(), queue_family_index, level, &begin_info)?;
 
-        unsafe { Self::begin_unchecked(allocator, queue_family_index, level, begin_info) }
+        unsafe { Self::new_unchecked(allocator, queue_family_index, level, begin_info) }
     }
 
-    fn validate_begin(
+    fn validate_new(
         device: &Device,
         _queue_family_index: u32,
-        _level: CommandBufferLevel,
+        level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), Box<ValidationError>> {
+        if level == CommandBufferLevel::Secondary && begin_info.inheritance_info.is_none() {
+            return Err(Box::new(ValidationError {
+                context: "begin_info.inheritance_info".into(),
+                problem: "is `None` while `level` is `CommandBufferLevel::Secondary`".into(),
+                vuids: &["VUID-vkBeginCommandBuffer-commandBuffer-00051"],
+                ..Default::default()
+            }));
+        }
+
         begin_info
             .validate(device)
             .map_err(|err| err.add_context("begin_info"))?;
@@ -184,8 +100,8 @@ impl<L> RecordingCommandBuffer<L> {
         Ok(())
     }
 
-    #[inline]
-    unsafe fn begin_unchecked(
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,
@@ -219,21 +135,42 @@ impl<L> RecordingCommandBuffer<L> {
             inner,
             commands: Vec::new(),
             builder_state,
-            _data: PhantomData,
         })
     }
 
-    unsafe fn end_unchecked(
-        mut self,
-    ) -> Result<
-        (
-            RawCommandBuffer,
-            Vec<Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>>,
-            CommandBufferResourcesUsage,
-            SecondaryCommandBufferResourcesUsage,
-        ),
-        Validated<VulkanError>,
-    > {
+    /// Ends the recording, returning a command buffer which can be submitted.
+    #[inline]
+    pub fn end(self) -> Result<Arc<CommandBuffer>, Validated<VulkanError>> {
+        self.validate_end()?;
+
+        unsafe { self.end_unchecked() }
+    }
+
+    fn validate_end(&self) -> Result<(), Box<ValidationError>> {
+        if self.level() == CommandBufferLevel::Primary && self.builder_state.render_pass.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "a render pass instance is still active".into(),
+                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00060"],
+                ..Default::default()
+            }));
+        }
+
+        if !self.builder_state.queries.is_empty() {
+            return Err(Box::new(ValidationError {
+                problem: "a query is still active".into(),
+                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
+                ..Default::default()
+            }));
+        }
+
+        // TODO:
+        // VUID-vkEndCommandBuffer-commandBuffer-01815
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn end_unchecked(mut self) -> Result<Arc<CommandBuffer>, Validated<VulkanError>> {
         let mut auto_sync_state = AutoSyncState::new(
             self.device().clone(),
             self.inner.level(),
@@ -298,65 +235,6 @@ impl<L> RecordingCommandBuffer<L> {
 
         debug_assert!(barriers.is_empty());
 
-        Ok((
-            self.inner.end()?,
-            self.commands
-                .into_iter()
-                .map(|(_, record_func)| record_func)
-                .collect(),
-            resources_usage,
-            secondary_resources_usage,
-        ))
-    }
-}
-
-impl RecordingCommandBuffer<PrimaryAutoCommandBuffer> {
-    /// Ends the recording, returning a command buffer which can be submitted.
-    pub fn end(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
-        if self.builder_state.render_pass.is_some() {
-            return Err(Box::new(ValidationError {
-                problem: "a render pass instance is still active".into(),
-                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00060"],
-                ..Default::default()
-            })
-            .into());
-        }
-
-        if !self.builder_state.queries.is_empty() {
-            return Err(Box::new(ValidationError {
-                problem: "a query is still active".into(),
-                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
-                ..Default::default()
-            })
-            .into());
-        }
-
-        // TODO:
-        // VUID-vkEndCommandBuffer-commandBuffer-01815
-
-        let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked()? };
-
-        Ok(Arc::new(PrimaryAutoCommandBuffer {
-            inner,
-            _keep_alive_objects: keep_alive_objects,
-            resources_usage,
-            state: Mutex::new(Default::default()),
-        }))
-    }
-}
-
-impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
-    /// Ends the recording, returning a command buffer which can be submitted.
-    pub fn end(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
-        if !self.builder_state.queries.is_empty() {
-            return Err(Box::new(ValidationError {
-                problem: "a query is still active".into(),
-                vuids: &["VUID-vkEndCommandBuffer-commandBuffer-00061"],
-                ..Default::default()
-            })
-            .into());
-        }
-
         let submit_state = match self.inner.usage() {
             CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {
                 in_use: AtomicBool::new(false),
@@ -367,18 +245,28 @@ impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
             },
         };
 
-        let (inner, keep_alive_objects, _, resources_usage) = unsafe { self.end_unchecked()? };
-
-        Ok(Arc::new(SecondaryAutoCommandBuffer {
-            inner,
-            _keep_alive_objects: keep_alive_objects,
+        Ok(Arc::new(CommandBuffer {
+            inner: self.inner.end()?,
+            _keep_alive_objects: self
+                .commands
+                .into_iter()
+                .map(|(_, record_func)| record_func)
+                .collect(),
             resources_usage,
+            secondary_resources_usage,
+            state: Mutex::new(Default::default()),
             submit_state,
         }))
     }
+
+    /// Returns the level of the command buffer.
+    #[inline]
+    pub fn level(&self) -> CommandBufferLevel {
+        self.inner.level()
+    }
 }
 
-impl<L> RecordingCommandBuffer<L> {
+impl RecordingCommandBuffer {
     pub(in crate::command_buffer) fn add_command(
         &mut self,
         name: &'static str,
@@ -428,7 +316,8 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-unsafe impl<L> DeviceOwned for RecordingCommandBuffer<L> {
+unsafe impl DeviceOwned for RecordingCommandBuffer {
+    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
