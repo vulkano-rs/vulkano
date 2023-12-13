@@ -35,11 +35,46 @@ pub struct RawRecordingCommandBuffer {
 
 impl RawRecordingCommandBuffer {
     /// Allocates and begins recording a new command buffer.
-    ///
-    /// # Safety
-    ///
-    /// - `begin_info` must be valid.
-    pub unsafe fn new(
+    #[inline]
+    pub fn new(
+        allocator: Arc<dyn CommandBufferAllocator>,
+        queue_family_index: u32,
+        level: CommandBufferLevel,
+        begin_info: CommandBufferBeginInfo,
+    ) -> Result<Self, Validated<VulkanError>> {
+        Self::validate_new(allocator.device(), queue_family_index, level, &begin_info)?;
+
+        unsafe { Self::new_unchecked(allocator, queue_family_index, level, begin_info) }
+    }
+
+    pub(super) fn validate_new(
+        device: &Device,
+        _queue_family_index: u32,
+        level: CommandBufferLevel,
+        begin_info: &CommandBufferBeginInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        // VUID-vkBeginCommandBuffer-commandBuffer-00049
+        // VUID-vkBeginCommandBuffer-commandBuffer-00050
+        // Guaranteed by `CommandBufferAllocator`.
+
+        if level == CommandBufferLevel::Secondary && begin_info.inheritance_info.is_none() {
+            return Err(Box::new(ValidationError {
+                context: "begin_info.inheritance_info".into(),
+                problem: "is `None` while `level` is `CommandBufferLevel::Secondary`".into(),
+                vuids: &["VUID-vkBeginCommandBuffer-commandBuffer-00051"],
+                ..Default::default()
+            }));
+        }
+
+        begin_info
+            .validate(device)
+            .map_err(|err| err.add_context("begin_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         level: CommandBufferLevel,

@@ -80,22 +80,11 @@ impl RecordingCommandBuffer {
 
     fn validate_new(
         device: &Device,
-        _queue_family_index: u32,
+        queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), Box<ValidationError>> {
-        if level == CommandBufferLevel::Secondary && begin_info.inheritance_info.is_none() {
-            return Err(Box::new(ValidationError {
-                context: "begin_info.inheritance_info".into(),
-                problem: "is `None` while `level` is `CommandBufferLevel::Secondary`".into(),
-                vuids: &["VUID-vkBeginCommandBuffer-commandBuffer-00051"],
-                ..Default::default()
-            }));
-        }
-
-        begin_info
-            .validate(device)
-            .map_err(|err| err.add_context("begin_info"))?;
+        RawRecordingCommandBuffer::validate_new(device, queue_family_index, level, begin_info)?;
 
         Ok(())
     }
@@ -128,8 +117,12 @@ impl RecordingCommandBuffer {
             }
         }
 
-        let inner =
-            RawRecordingCommandBuffer::new(allocator, queue_family_index, level, begin_info)?;
+        let inner = RawRecordingCommandBuffer::new_unchecked(
+            allocator,
+            queue_family_index,
+            level,
+            begin_info,
+        )?;
 
         Ok(RecordingCommandBuffer {
             inner,
