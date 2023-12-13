@@ -305,9 +305,11 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
         // the first place, the size of the pool for that level must have been non-zero.
         let buffer_reserve = pool.buffer_reserve[level as usize].as_ref().unwrap();
 
+        let res = buffer_reserve.push(allocation.inner);
+
         // This cannot happen because every allocation is (supposed to be) returned to the pool
         // whence it came, so there must be enough room for it.
-        debug_assert!(buffer_reserve.push(allocation.inner).is_ok());
+        debug_assert!(res.is_ok());
 
         // We have to make sure that we only reset the pool under this condition, because there
         // could be other references in other allocations.
