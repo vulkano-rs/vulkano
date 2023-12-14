@@ -26,7 +26,7 @@ Changes to command buffers:
 
 Changes to command buffer allocation:
 - `CommandBufferAllocator` no longer has any associated types in order to make the trait object-safe.
-- There is now only the single `CommandBufferAlloc` type to represent allocated command buffers. The `CommandBufferAlloc` and `CommandBufferBuilderAlloc traits and `StandardCommandBufferAlloc` and `StandardCommandBufferBuilderAlloc` types were removed.
+- There is now only the single `CommandBufferAlloc` type to represent allocated command buffers. The `CommandBufferAlloc` and `CommandBufferBuilderAlloc` traits and `StandardCommandBufferAlloc` and `StandardCommandBufferBuilderAlloc` types were removed.
 - `CommandBufferAllocator::allocate` now returns a single `CommandBufferAlloc` on success and `Validated<VulkanError>` on failure.
 - `CommandBufferAllocator` now has a required method `deallocate`.
 
