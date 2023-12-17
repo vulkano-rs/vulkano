@@ -151,14 +151,15 @@ impl RawBuffer {
         Self::from_handle_with_destruction(device, handle, create_info, true)
     }
 
-    /// Creates a new `RawBuffer` from a raw object handle.
-    /// Unlike `from_handle`, the created `RawBuffer` does not destroy the inner buffer when dropped.
+    /// Creates a new `RawBuffer` from a raw object handle. Unlike `from_handle`, the created
+    /// `RawBuffer` does not destroy the inner buffer when dropped.
     ///
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
-    /// - caller must ensure that the handle will not be destroyed for the lifetime of returned `RawBuffer`.
+    /// - Caller must ensure that the handle will not be destroyed for the lifetime of returned
+    ///   `RawBuffer`.
     #[inline]
     pub unsafe fn from_handle_borrowed(
         device: Arc<Device>,
@@ -296,7 +297,7 @@ impl RawBuffer {
     ///
     /// # Safety
     ///
-    /// The buffer must not already have memory bound to it.
+    /// - The buffer must not already have memory bound to it.
     pub unsafe fn bind_memory(
         self,
         allocation: ResourceMemory,
@@ -313,7 +314,7 @@ impl RawBuffer {
     ///
     /// # Safety
     ///
-    /// This buffer must have memory bound to it.
+    /// - The buffer must have memory bound to it.
     pub unsafe fn assume_bound(self) -> Buffer {
         Buffer::from_raw(self, BufferMemory::External)
     }

@@ -291,8 +291,8 @@ where
     /// non-coherent atom size, so in this case one would be at offset 0 and the other at offset
     /// 64. [`SubbufferAllocator`] does this automatically.
     ///
-    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created from
-    /// [`RawBuffer::assume_bound`]), then it can't be read from using this function.
+    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
+    /// from [`RawBuffer::assume_bound`]), then it can't be read from using this function.
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`invalidate_range`]: crate::memory::ResourceMemory::invalidate_range
@@ -382,8 +382,8 @@ where
     /// in this case one would be at offset 0 and the other at offset 64. [`SubbufferAllocator`]
     /// does this automatically.
     ///
-    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created from
-    /// [`RawBuffer::assume_bound`]), then it can't be written to using this function.
+    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
+    /// from [`RawBuffer::assume_bound`]), then it can't be written to using this function.
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`flush_range`]: crate::memory::ResourceMemory::flush_range
