@@ -308,7 +308,7 @@ where
             let arena = self.arena.as_ref().unwrap();
             let allocation = match arena.buffer.memory() {
                 BufferMemory::Normal(a) => a,
-                BufferMemory::Sparse => unreachable!(),
+                BufferMemory::Sparse | BufferMemory::External => unreachable!(),
             };
             let arena_offset = allocation.offset();
             let atom_size = allocation.atom_size().unwrap_or(DeviceAlignment::MIN);

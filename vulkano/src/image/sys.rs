@@ -265,7 +265,6 @@ impl RawImage {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
-    /// - `handle` must refer to an image that has not yet had memory bound to it.
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
@@ -274,6 +273,24 @@ impl RawImage {
         create_info: ImageCreateInfo,
     ) -> Result<Self, VulkanError> {
         Self::from_handle_with_destruction(device, handle, create_info, true)
+    }
+
+    /// Creates a new `RawImage` from a raw object handle. Unlike `from_handle`, the created
+    /// `RawImage` will not destroy the inner image when dropped.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    /// - Caller must ensure the handle will not be destroyed for the lifetime of returned
+    ///   `RawImage`.
+    #[inline]
+    pub unsafe fn from_handle_borrowed(
+        device: Arc<Device>,
+        handle: ash::vk::Image,
+        create_info: ImageCreateInfo,
+    ) -> Result<Self, VulkanError> {
+        Self::from_handle_with_destruction(device, handle, create_info, false)
     }
 
     pub(super) unsafe fn from_handle_with_destruction(
@@ -696,7 +713,11 @@ impl RawImage {
     /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
     ///   `self.tiling()` is `ImageTiling::DrmFormatModifier`, then
     ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
-    pub fn bind_memory(
+    ///
+    /// # Safety
+    ///
+    /// - The image must not already have memory bound to it.
+    pub unsafe fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
     ) -> Result<
@@ -1048,6 +1069,39 @@ impl RawImage {
         }
 
         Ok(())
+    }
+
+    /// Assume that this image already has memory backing it.
+    ///
+    /// # Safety
+    ///
+    /// - The image must be backed by suitable memory allocations.
+    pub unsafe fn assume_bound(self) -> Image {
+        let usage = self
+            .usage
+            .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
+
+        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::ShaderReadOnlyOptimal
+        } else if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
+            && usage.difference(ImageUsage::COLOR_ATTACHMENT).is_empty()
+        {
+            ImageLayout::ColorAttachmentOptimal
+        } else if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::DepthStencilAttachmentOptimal
+        } else {
+            ImageLayout::General
+        };
+
+        Image::from_raw(self, ImageMemory::External, layout)
     }
 
     /// # Safety

@@ -203,6 +203,7 @@ pub struct Buffer {
 
 /// The type of backing memory that a buffer can have.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum BufferMemory {
     /// The buffer is backed by normal memory, bound with [`bind_memory`].
     ///
@@ -213,6 +214,9 @@ pub enum BufferMemory {
     ///
     /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
     Sparse,
+
+    /// The buffer is backed by memory not managed by vulkano.
+    External,
 }
 
 impl Buffer {
@@ -402,10 +406,13 @@ impl Buffer {
             .map_err(AllocateBufferError::AllocateMemory)?;
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
-        let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
-            err.map(AllocateBufferError::BindMemory)
-                .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
-        })?;
+        // SAFETY: we just created this raw buffer and hasn't bound any memory to it.
+        let buffer = unsafe {
+            raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
+                err.map(AllocateBufferError::BindMemory)
+                    .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
+            })?
+        };
 
         Ok(Arc::new(buffer))
     }

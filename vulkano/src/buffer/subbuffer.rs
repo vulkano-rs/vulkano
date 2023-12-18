@@ -85,7 +85,7 @@ impl<T: ?Sized> Subbuffer<T> {
     fn memory_offset(&self) -> DeviceSize {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
-            BufferMemory::Sparse => unreachable!(),
+            BufferMemory::Sparse | BufferMemory::External => unreachable!(),
         };
 
         allocation.offset() + self.offset
@@ -124,7 +124,7 @@ impl<T: ?Sized> Subbuffer<T> {
                 // SAFETY: `self.range()` is in bounds of the allocation.
                 unsafe { allocation.mapped_slice_unchecked(self.range()) }
             }
-            BufferMemory::Sparse => unreachable!(),
+            BufferMemory::Sparse | BufferMemory::External => unreachable!(),
         }
     }
 
@@ -291,15 +291,20 @@ where
     /// non-coherent atom size, so in this case one would be at offset 0 and the other at offset
     /// 64. [`SubbufferAllocator`] does this automatically.
     ///
+    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
+    /// from [`RawBuffer::assume_bound`]), then it can't be read from using this function.
+    ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`invalidate_range`]: crate::memory::ResourceMemory::invalidate_range
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`write`]: Self::write
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
+    /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound
     pub fn read(&self) -> Result<BufferReadGuard<'_, T>, HostAccessError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
+            BufferMemory::External => return Err(HostAccessError::Unmanaged),
         };
 
         let range = if let Some(atom_size) = allocation.atom_size() {
@@ -377,15 +382,20 @@ where
     /// in this case one would be at offset 0 and the other at offset 64. [`SubbufferAllocator`]
     /// does this automatically.
     ///
+    /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
+    /// from [`RawBuffer::assume_bound`]), then it can't be written to using this function.
+    ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`flush_range`]: crate::memory::ResourceMemory::flush_range
     /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
     /// [`read`]: Self::read
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
+    /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound
     pub fn write(&self) -> Result<BufferWriteGuard<'_, T>, HostAccessError> {
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),
+            BufferMemory::External => return Err(HostAccessError::Unmanaged),
         };
 
         let range = if let Some(atom_size) = allocation.atom_size() {
@@ -664,6 +674,7 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
         let allocation = match self.subbuffer.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => unreachable!(),
+            BufferMemory::External => unreachable!(),
         };
 
         if allocation.atom_size().is_some() && !thread::panicking() {

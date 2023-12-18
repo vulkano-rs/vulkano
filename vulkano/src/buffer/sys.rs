@@ -40,6 +40,7 @@ pub struct RawBuffer {
     external_memory_handle_types: ExternalMemoryHandleTypes,
 
     memory_requirements: MemoryRequirements,
+    needs_destruction: bool,
 }
 
 impl RawBuffer {
@@ -140,13 +141,39 @@ impl RawBuffer {
     /// # Safety
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
-    /// - `handle` must refer to a buffer that has not yet had memory bound to it.
     /// - `create_info` must match the info used to create the object.
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Buffer,
         create_info: BufferCreateInfo,
+    ) -> Self {
+        Self::from_handle_with_destruction(device, handle, create_info, true)
+    }
+
+    /// Creates a new `RawBuffer` from a raw object handle. Unlike `from_handle`, the created
+    /// `RawBuffer` does not destroy the inner buffer when dropped.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    /// - Caller must ensure that the handle will not be destroyed for the lifetime of returned
+    ///   `RawBuffer`.
+    #[inline]
+    pub unsafe fn from_handle_borrowed(
+        device: Arc<Device>,
+        handle: ash::vk::Buffer,
+        create_info: BufferCreateInfo,
+    ) -> Self {
+        Self::from_handle_with_destruction(device, handle, create_info, false)
+    }
+
+    unsafe fn from_handle_with_destruction(
+        device: Arc<Device>,
+        handle: ash::vk::Buffer,
+        create_info: BufferCreateInfo,
+        needs_destruction: bool,
     ) -> Self {
         let BufferCreateInfo {
             flags,
@@ -195,6 +222,7 @@ impl RawBuffer {
             sharing,
             external_memory_handle_types,
             memory_requirements,
+            needs_destruction,
         }
     }
 
@@ -266,7 +294,11 @@ impl RawBuffer {
     }
 
     /// Binds device memory to this buffer.
-    pub fn bind_memory(
+    ///
+    /// # Safety
+    ///
+    /// - The buffer must not already have memory bound to it.
+    pub unsafe fn bind_memory(
         self,
         allocation: ResourceMemory,
     ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, ResourceMemory)> {
@@ -276,6 +308,15 @@ impl RawBuffer {
 
         unsafe { self.bind_memory_unchecked(allocation) }
             .map_err(|(err, buffer, allocation)| (err.into(), buffer, allocation))
+    }
+
+    /// Assume this buffer has memory bound to it.
+    ///
+    /// # Safety
+    ///
+    /// - The buffer must have memory bound to it.
+    pub unsafe fn assume_bound(self) -> Buffer {
+        Buffer::from_raw(self, BufferMemory::External)
     }
 
     fn validate_bind_memory(
@@ -577,9 +618,11 @@ impl RawBuffer {
 impl Drop for RawBuffer {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_buffer)(self.device.handle(), self.handle, ptr::null());
+        if self.needs_destruction {
+            unsafe {
+                let fns = self.device.fns();
+                (fns.v1_0.destroy_buffer)(self.device.handle(), self.handle, ptr::null());
+            }
         }
     }
 }

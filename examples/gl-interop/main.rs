@@ -160,12 +160,13 @@ mod linux {
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
             .unwrap();
 
-        let image = Arc::new(
+        // SAFETY: we just created this raw image and hasn't bound any memory to it.
+        let image = Arc::new(unsafe {
             raw_image
                 .bind_memory([ResourceMemory::new_dedicated(image_memory)])
                 .map_err(|(err, _, _)| err)
-                .unwrap(),
-        );
+                .unwrap()
+        });
 
         let image_view = ImageView::new_default(image).unwrap();
 
