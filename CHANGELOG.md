@@ -53,6 +53,14 @@ Changes to vertex input:
 Changes to render passes:
 - The `is_compatible_with_shader` methods of `RenderPass` and `Subpass` are removed.
 
+Changes to buffers:
+- `BufferMemory` is now marked non-exhaustive.
+- `RawBuffer::bind_memory` is now marked unsafe.
+
+Changes to images:
+- `ImageMemory` is now marked non-exhaustive.
+- `RawImage::bind_memory` is now marked unsafe.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
@@ -60,6 +68,7 @@ Changes to render passes:
 - Ability to update existing descriptor sets.
 - Support for the `ext_vertex_input_dynamic_state` extension.
 - Support for 64-bit values in vertex input.
+- Support for creating buffers and images that are not backed by vulkano-managed memory.
 
 ### Bugs fixed
 
