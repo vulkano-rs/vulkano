@@ -487,7 +487,9 @@ pub struct MemoryTypeFilter {
 }
 
 impl MemoryTypeFilter {
-    /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag.
+    /// Prefers picking a memory type with the [`DEVICE_LOCAL`] flag. **It does not affect whether
+    /// the memory is host-visible**. You need to combine this with either the
+    /// [`HOST_SEQUENTIAL_WRITE`] or [`HOST_RANDOM_ACCESS`] filter for that.
     ///
     /// Memory being device-local means that it is fastest to access for the device. However,
     /// for dedicated GPUs, getting memory in and out of VRAM requires to go through the PCIe bus,
@@ -514,22 +516,22 @@ impl MemoryTypeFilter {
     /// memory types that are not `HOST_VISIBLE`, which makes sense since it's all system RAM. In
     /// that case you wouldn't need to do staging.
     ///
-    /// Don't use this together with [`PREFER_HOST`], that makes no sense. If you need host access,
-    /// make sure you combine this with either the [`HOST_SEQUENTIAL_WRITE`] or
-    /// [`HOST_RANDOM_ACCESS`] filter.
+    /// Don't use this together with [`PREFER_HOST`], that makes no sense.
     ///
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
-    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-    /// [`PREFER_HOST`]: Self::PREFER_HOST
     /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
     /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
+    /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
+    /// [`PREFER_HOST`]: Self::PREFER_HOST
     pub const PREFER_DEVICE: Self = Self {
         required_flags: MemoryPropertyFlags::empty(),
         preferred_flags: MemoryPropertyFlags::DEVICE_LOCAL,
         not_preferred_flags: MemoryPropertyFlags::empty(),
     };
 
-    /// Prefers picking a memory type without the [`DEVICE_LOCAL`] flag.
+    /// Prefers picking a memory type without the [`DEVICE_LOCAL`] flag. **It does not affect
+    /// whether the memory is host-visible**. You need to combine this with either the
+    /// [`HOST_SEQUENTIAL_WRITE`] or [`HOST_RANDOM_ACCESS`] filter for that.
     ///
     /// This option is best suited for resources that the host does access, but device doesn't
     /// access directly, such as staging buffers and readback buffers.
@@ -544,28 +546,29 @@ impl MemoryTypeFilter {
     /// still prefer host-local memory if the memory is rarely used, such as for manually paging
     /// parts of device-local memory out in order to free up space on the device.
     ///
-    /// Don't use this together with [`PREFER_DEVICE`], that makes no sense. If you need host
-    /// access, make sure you combine this with either the [`HOST_SEQUENTIAL_WRITE`] or
-    /// [`HOST_RANDOM_ACCESS`] filter.
+    /// Don't use this together with [`PREFER_DEVICE`], that makes no sense.
     ///
     /// [`DEVICE_LOCAL`]: MemoryPropertyFlags::DEVICE_LOCAL
-    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
     /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
     /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
+    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
     pub const PREFER_HOST: Self = Self {
         required_flags: MemoryPropertyFlags::empty(),
         preferred_flags: MemoryPropertyFlags::empty(),
         not_preferred_flags: MemoryPropertyFlags::DEVICE_LOCAL,
     };
 
-    /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] flag. Using this filter
-    /// allows the allocator to pick a memory type that is uncached and write-combined, which is
-    /// ideal for sequential writes. However, this optimization might lead to poor performance for
-    /// anything else. What counts as a sequential write is any kind of loop that writes memory
-    /// locations in order, such as iterating over a slice while writing each element in order, or
-    /// equivalently using [`slice::copy_from_slice`]. Copying sized data also counts, as rustc
-    /// should write the memory locations in order. If you have a struct, make sure you write it
-    /// member-by-member.
+    /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] flag. **It does not
+    /// affect whether the memory is device-local or host-local**. You need to combine this with
+    /// either the [`PREFER_DEVICE`] or [`PREFER_HOST`] filter for that.
+    ///
+    /// Using this filter allows the allocator to pick a memory type that is uncached and
+    /// write-combined, which is ideal for sequential writes. However, this optimization might lead
+    /// to poor performance for anything else. What counts as a sequential write is any kind of
+    /// loop that writes memory locations in order, such as iterating over a slice while writing
+    /// each element in order, or equivalently using [`slice::copy_from_slice`]. Copying sized data
+    /// also counts, as rustc should write the memory locations in order. If you have a struct,
+    /// make sure you write it member-by-member.
     ///
     /// Example use cases include staging buffers, as well as any other kind of buffer that you
     /// only write to from the host, like a uniform or vertex buffer.
@@ -576,7 +579,8 @@ impl MemoryTypeFilter {
     /// to get the most performance out, if that's possible.
     ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
-    /// [`HOST_COHERENT`]: MemoryPropertyFlags::HOST_COHERENT
+    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
+    /// [`PREFER_HOST`]: Self::PREFER_HOST
     /// [`HOST_RANDOM_ACCESS`]: Self::HOST_RANDOM_ACCESS
     pub const HOST_SEQUENTIAL_WRITE: Self = Self {
         required_flags: MemoryPropertyFlags::HOST_VISIBLE,
@@ -585,7 +589,9 @@ impl MemoryTypeFilter {
     };
 
     /// This guarantees picking a memory type that has the [`HOST_VISIBLE`] and [`HOST_CACHED`]
-    /// flags, which is best suited for readback and/or random access.
+    /// flags, which is best suited for readback and/or random access. **It does not affect whether
+    /// the memory is device-local or host-local**. You need to combine this with either the
+    /// [`PREFER_DEVICE`] or [`PREFER_HOST`] filter for that.
     ///
     /// Example use cases include using the device for things other than rendering and getting the
     /// results back to the host. That might be compute shading, or image or video manipulation, or
@@ -597,6 +603,8 @@ impl MemoryTypeFilter {
     ///
     /// [`HOST_VISIBLE`]: MemoryPropertyFlags::HOST_VISIBLE
     /// [`HOST_CACHED`]: MemoryPropertyFlags::HOST_CACHED
+    /// [`PREFER_DEVICE`]: Self::PREFER_DEVICE
+    /// [`PREFER_HOST`]: Self::PREFER_HOST
     /// [`HOST_SEQUENTIAL_WRITE`]: Self::HOST_SEQUENTIAL_WRITE
     pub const HOST_RANDOM_ACCESS: Self = Self {
         required_flags: MemoryPropertyFlags::HOST_VISIBLE.union(MemoryPropertyFlags::HOST_CACHED),
