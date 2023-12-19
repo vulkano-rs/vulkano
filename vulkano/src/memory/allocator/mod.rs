@@ -367,6 +367,8 @@ impl Debug for dyn MemoryAllocator {
 ///
 /// # Examples
 ///
+/// #### Direct device access only
+///
 /// For resources that the device frequently accesses, e.g. textures, render targets, or
 /// intermediary buffers, you want device-local memory without any host access:
 ///
@@ -395,6 +397,8 @@ impl Debug for dyn MemoryAllocator {
 /// )
 /// .unwrap();
 /// ```
+///
+/// #### Sequential writes from host, indirect device access
 ///
 /// For staging, the resource is only ever written to sequentially. Also, since the device will
 /// only read the staging resourse once, it would yield no benefit to place it in device-local
@@ -425,6 +429,8 @@ impl Debug for dyn MemoryAllocator {
 /// # let staging_buffer: vulkano::buffer::Subbuffer<u32> = staging_buffer;
 /// ```
 ///
+/// #### Sequential writes from host, direct device access
+///
 /// For resources that the device accesses directly, aka a buffer/image used for anything other
 /// than transfers, it's probably best to put it in device-local memory:
 ///
@@ -452,6 +458,8 @@ impl Debug for dyn MemoryAllocator {
 /// #
 /// # let uniform_buffer: vulkano::buffer::Subbuffer<u32> = uniform_buffer;
 /// ```
+///
+/// #### Readback to host
 ///
 /// For readback, e.g. getting the results of a compute shader back to the host:
 ///
