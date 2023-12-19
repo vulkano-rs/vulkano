@@ -401,7 +401,7 @@ impl Debug for dyn MemoryAllocator {
 /// #### Sequential writes from host, indirect device access
 ///
 /// For staging, the resource is only ever written to sequentially. Also, since the device will
-/// only read the staging resourse once, it would yield no benefit to place it in device-local
+/// only read the staging resource once, it would yield no benefit to place it in device-local
 /// memory, in fact it would be wasteful. Therefore, it's best to put it in host-local memory:
 ///
 /// ```
