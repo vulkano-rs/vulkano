@@ -17,10 +17,12 @@
 
 Changes to command buffers:
 - Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
+- Merged `{Primary,Secondary}AutoCommandBuffer` into `CommandBuffer` and the corresponding `RecordingCommandBuffer::{primary,secondary}` into `new`.
+- `RecordingCommandBuffer` no longer has a type parameter for the command buffer level.
 - Renamed `UnsafeCommandBufferBuilder` to `RawRecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
 - Renamed `UnsafeCommandBuffer` to `RawCommandBuffer`.
 - `RecordingCommandBuffer` and `RawRecordingCommandBuffer` now take an `Arc<dyn CommandBufferAllocator>` on construction.
-- `RecordingCommandBuffer`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
+- `RecordingCommandBuffer`, CommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
 - `RawRecordingCommandBuffer::execute_commands` now takes `&RawCommandBuffer`s as argument.
 
@@ -79,6 +81,7 @@ Changes to images:
 - Improved and more accurate validation of vertex input.
 - [#1738](https://github.com/vulkano-rs/vulkano/issues/1738): Validation of shader interface matching is insufficient.
 - Improved and more accurate validation of fragment output.
+- `RawRecordingCommandBuffer::end` being safe to call.
 
 # Version 0.34.1 (2023-10-29)
 
