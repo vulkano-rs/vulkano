@@ -204,12 +204,10 @@ impl RawRecordingCommandBuffer {
     /// Ends the recording, returning a command buffer which can be submitted.
     #[inline]
     pub unsafe fn end(self) -> Result<RawCommandBuffer, VulkanError> {
-        unsafe {
-            let fns = self.device().fns();
-            (fns.v1_0.end_command_buffer)(self.handle())
-                .result()
-                .map_err(VulkanError::from)?;
-        }
+        let fns = self.device().fns();
+        (fns.v1_0.end_command_buffer)(self.handle())
+            .result()
+            .map_err(VulkanError::from)?;
 
         Ok(RawCommandBuffer { inner: self })
     }
