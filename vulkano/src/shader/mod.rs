@@ -123,6 +123,15 @@
 //! resources that were bound to them. They apply to all shader types, and must be met at the
 //! moment the shader executes on the device.
 //!
+//! Vulkano will validate many of these requirements, but it is only able to do so when the
+//! resources involved are statically known. This means that either the descriptor binding must not
+//! be arrayed, or if it is arrayed, that the array must be indexed only by constants. If the
+//! array index is dynamic (meaning that it depends on values that are inputs to the shader),
+//! then Vulkano cannot check these requirements, and you must ensure them yourself.
+//!
+//! Some requirements, such as the validity of pointers to device memory, cannot be validated
+//! by Vulkano at all.
+//!
 //! ## Descriptors
 //!
 //! - If a descriptor set binding was created with [`DescriptorBindingFlags::PARTIALLY_BOUND`],
@@ -132,12 +141,12 @@
 //! ## Buffers
 //!
 //! - If the [`robust_buffer_access`](Features::robust_buffer_access) feature is not enabled
-//!   on the device, the shader must not access any values outside the range of the buffer,
+//!   on the device, then the shader must not access any values outside the range of the buffer,
 //!   as specified when writing the descriptor set.
 //!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-uniformBuffers-06935)
 //!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-storageBuffers-06936)
-//! - If any `PhysicalStorageBuffer` pointers are dereferenced in the shader, they must point to
-//!   valid buffer memory of the correct type.
+//! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader,
+//!   then they must point to valid buffer memory of the correct type.
 //!
 //! ## Image views and buffer views
 //!
