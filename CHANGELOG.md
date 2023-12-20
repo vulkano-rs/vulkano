@@ -22,7 +22,7 @@ Changes to command buffers:
 - Renamed `UnsafeCommandBufferBuilder` to `RawRecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
 - Renamed `UnsafeCommandBuffer` to `RawCommandBuffer`.
 - `RecordingCommandBuffer` and `RawRecordingCommandBuffer` now take an `Arc<dyn CommandBufferAllocator>` on construction.
-- `RecordingCommandBuffer`, CommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
+- `RecordingCommandBuffer`, `CommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
 - `RawRecordingCommandBuffer::execute_commands` now takes `&RawCommandBuffer`s as argument.
 
