@@ -62,25 +62,26 @@
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! #
-//! let cb = RecordingCommandBuffer::new(
+//! let mut cb = RecordingCommandBuffer::new(
 //!     command_buffer_allocator.clone(),
 //!     queue.queue_family_index(),
 //!     CommandBufferLevel::Primary,
 //!     CommandBufferBeginInfo::default(),
 //! )
-//! .unwrap()
-//! .begin_render_pass(render_pass_begin_info, Default::default())
-//! .unwrap()
-//! .bind_pipeline_graphics(graphics_pipeline.clone())
-//! .unwrap()
-//! .bind_vertex_buffers(0, vertex_buffer.clone())
-//! .unwrap()
-//! .draw(vertex_buffer.len() as u32, 1, 0, 0)
-//! .unwrap()
-//! .end_render_pass(Default::default())
-//! .unwrap()
-//! .end()
 //! .unwrap();
+//!
+//! cb
+//!     .begin_render_pass(render_pass_begin_info, Default::default()).unwrap()
+//!     .bind_pipeline_graphics(graphics_pipeline.clone()).unwrap()
+//!     .bind_vertex_buffers(0, vertex_buffer.clone()).unwrap();
+//!
+//! unsafe {
+//!     cb.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
+//! }
+//!
+//! cb.end_render_pass(Default::default()).unwrap();
+//!
+//! let cb = cb.end().unwrap();
 //!
 //! let future = cb.execute(queue.clone());
 //! ```
