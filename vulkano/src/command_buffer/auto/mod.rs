@@ -63,9 +63,9 @@ pub(in crate::command_buffer) use self::builder::{
 };
 use super::{
     sys::{RawCommandBuffer, RawRecordingCommandBuffer},
-    CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, ResourceInCommand, SecondaryCommandBufferResourcesUsage,
-    SecondaryResourceUseRef,
+    CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferResourcesUsage,
+    CommandBufferState, CommandBufferUsage, ResourceInCommand,
+    SecondaryCommandBufferResourcesUsage, SecondaryResourceUseRef,
 };
 use crate::{
     buffer::Subbuffer,
@@ -86,67 +86,17 @@ use std::{
 
 mod builder;
 
-pub struct PrimaryAutoCommandBuffer {
+pub struct CommandBuffer {
     inner: RawCommandBuffer,
+    // TODO: Remove all of this.
     _keep_alive_objects: Vec<Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>>,
     resources_usage: CommandBufferResourcesUsage,
+    secondary_resources_usage: SecondaryCommandBufferResourcesUsage,
     state: Mutex<CommandBufferState>,
-}
-
-unsafe impl VulkanObject for PrimaryAutoCommandBuffer {
-    type Handle = ash::vk::CommandBuffer;
-
-    #[inline]
-    fn handle(&self) -> Self::Handle {
-        self.inner.handle()
-    }
-}
-
-unsafe impl DeviceOwned for PrimaryAutoCommandBuffer {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-}
-
-impl Debug for PrimaryAutoCommandBuffer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        f.debug_struct("PrimaryAutoCommandBuffer")
-            .field("inner", &self.inner)
-            .finish_non_exhaustive()
-    }
-}
-
-impl PrimaryAutoCommandBuffer {
-    /// Returns the queue family index of this command buffer.
-    #[inline]
-    pub fn queue_family_index(&self) -> u32 {
-        self.inner.queue_family_index()
-    }
-
-    /// Returns the usage of this command buffer.
-    #[inline]
-    pub fn usage(&self) -> CommandBufferUsage {
-        self.inner.usage()
-    }
-
-    pub(crate) fn state(&self) -> MutexGuard<'_, CommandBufferState> {
-        self.state.lock()
-    }
-
-    pub(crate) fn resources_usage(&self) -> &CommandBufferResourcesUsage {
-        &self.resources_usage
-    }
-}
-
-pub struct SecondaryAutoCommandBuffer {
-    inner: RawCommandBuffer,
-    _keep_alive_objects: Vec<Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>>,
-    resources_usage: SecondaryCommandBufferResourcesUsage,
     submit_state: SubmitState,
 }
 
-unsafe impl VulkanObject for SecondaryAutoCommandBuffer {
+unsafe impl VulkanObject for CommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -155,47 +105,71 @@ unsafe impl VulkanObject for SecondaryAutoCommandBuffer {
     }
 }
 
-unsafe impl DeviceOwned for SecondaryAutoCommandBuffer {
+unsafe impl DeviceOwned for CommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-impl Debug for SecondaryAutoCommandBuffer {
+impl Debug for CommandBuffer {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        f.debug_struct("SecondaryAutoCommandBuffer")
+        f.debug_struct("CommandBuffer")
             .field("inner", &self.inner)
             .finish_non_exhaustive()
     }
 }
 
-impl SecondaryAutoCommandBuffer {
+impl CommandBuffer {
     /// Returns the inner raw command buffer.
     #[inline]
     pub fn inner(&self) -> &RawCommandBuffer {
         &self.inner
     }
 
+    /// Returns the queue family index of this command buffer.
+    #[inline]
+    pub fn queue_family_index(&self) -> u32 {
+        self.inner.queue_family_index()
+    }
+
+    /// Returns the level of the command buffer.
+    #[inline]
+    pub fn level(&self) -> CommandBufferLevel {
+        self.inner.level()
+    }
+
     /// Returns the usage of this command buffer.
     #[inline]
     pub fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
-    /// Returns a `CommandBufferInheritance` value describing the properties that the command
-    /// buffer inherits from its parent primary command buffer.
+    /// Returns the inheritance info of the command buffer, if it is a secondary command buffer.
     #[inline]
-    pub fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
-        self.inner.inheritance_info().as_ref().unwrap()
+    pub fn inheritance_info(&self) -> Option<&CommandBufferInheritanceInfo> {
+        self.inner.inheritance_info()
+    }
+
+    pub(crate) fn state(&self) -> MutexGuard<'_, CommandBufferState> {
+        debug_assert_eq!(self.level(), CommandBufferLevel::Primary);
+
+        self.state.lock()
+    }
+
+    pub(crate) fn resources_usage(&self) -> &CommandBufferResourcesUsage {
+        debug_assert_eq!(self.level(), CommandBufferLevel::Primary);
+
+        &self.resources_usage
     }
 
     /// Checks whether this command buffer is allowed to be recorded to a command buffer,
     /// and if so locks it.
     ///
     /// If you call this function, then you should call `unlock` afterwards.
-    #[inline]
-    pub fn lock_record(&self) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn lock_record(&self) -> Result<(), Box<ValidationError>> {
+        debug_assert_eq!(self.level(), CommandBufferLevel::Secondary);
+
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -236,8 +210,9 @@ impl SecondaryAutoCommandBuffer {
     /// # Safety
     ///
     /// Must not be called if you haven't called `lock_record` before.
-    #[inline]
-    pub unsafe fn unlock(&self) {
+    pub(crate) unsafe fn unlock(&self) {
+        debug_assert_eq!(self.level(), CommandBufferLevel::Secondary);
+
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -252,8 +227,8 @@ impl SecondaryAutoCommandBuffer {
         };
     }
 
-    pub(crate) fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
-        &self.resources_usage
+    pub(crate) fn secondary_resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
+        &self.secondary_resources_usage
     }
 }
 
@@ -336,7 +311,8 @@ mod tests {
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
             allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-            BufferCopy, CommandBufferUsage, CopyBufferInfoTyped, RecordingCommandBuffer,
+            BufferCopy, CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage,
+            CopyBufferInfoTyped, RecordingCommandBuffer,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,
@@ -364,10 +340,14 @@ mod tests {
             Default::default(),
         ));
 
-        RecordingCommandBuffer::primary(
+        RecordingCommandBuffer::new(
             allocator,
             queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
+            CommandBufferLevel::Primary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::MultipleSubmit,
+                ..Default::default()
+            },
         )
         .unwrap();
     }
@@ -430,10 +410,14 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut cbb = RecordingCommandBuffer::primary(
+        let mut cbb = RecordingCommandBuffer::new(
             cb_allocator,
             queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
+            CommandBufferLevel::Primary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::OneTimeSubmit,
+                ..Default::default()
+            },
         )
         .unwrap();
 
@@ -476,20 +460,28 @@ mod tests {
         ));
 
         // Make a secondary CB that doesn't support simultaneous use.
-        let builder = RecordingCommandBuffer::secondary(
+        let builder = RecordingCommandBuffer::new(
             cb_allocator.clone(),
             queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-            Default::default(),
+            CommandBufferLevel::Secondary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::MultipleSubmit,
+                inheritance_info: Some(Default::default()),
+                ..Default::default()
+            },
         )
         .unwrap();
         let secondary = builder.end().unwrap();
 
         {
-            let mut builder = RecordingCommandBuffer::primary(
+            let mut builder = RecordingCommandBuffer::new(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
-                CommandBufferUsage::SimultaneousUse,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::SimultaneousUse,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -502,19 +494,27 @@ mod tests {
         }
 
         {
-            let mut builder = RecordingCommandBuffer::primary(
+            let mut builder = RecordingCommandBuffer::new(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
-                CommandBufferUsage::SimultaneousUse,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::SimultaneousUse,
+                    ..Default::default()
+                },
             )
             .unwrap();
             builder.execute_commands(secondary.clone()).unwrap();
             let cb1 = builder.end().unwrap();
 
-            let mut builder = RecordingCommandBuffer::primary(
+            let mut builder = RecordingCommandBuffer::new(
                 cb_allocator,
                 queue.queue_family_index(),
-                CommandBufferUsage::SimultaneousUse,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::SimultaneousUse,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -553,10 +553,14 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut builder = RecordingCommandBuffer::primary(
+        let mut builder = RecordingCommandBuffer::new(
             cb_allocator,
             queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
+            CommandBufferLevel::Primary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::OneTimeSubmit,
+                ..Default::default()
+            },
         )
         .unwrap();
 
@@ -611,10 +615,14 @@ mod tests {
             device,
             Default::default(),
         ));
-        let mut builder = RecordingCommandBuffer::primary(
+        let mut builder = RecordingCommandBuffer::new(
             cb_allocator,
             queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
+            CommandBufferLevel::Primary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::OneTimeSubmit,
+                ..Default::default()
+            },
         )
         .unwrap();
 
@@ -644,10 +652,14 @@ mod tests {
                     ..Default::default()
                 },
             ));
-            let cbb = RecordingCommandBuffer::primary(
+            let cbb = RecordingCommandBuffer::new(
                 cb_allocator.clone(),
                 queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::OneTimeSubmit,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -680,11 +692,15 @@ mod tests {
             // Two secondary command buffers that both write to the buffer
             let secondary = (0..2)
                 .map(|_| {
-                    let mut builder = RecordingCommandBuffer::secondary(
+                    let mut builder = RecordingCommandBuffer::new(
                         cb_allocator.clone(),
                         queue.queue_family_index(),
-                        CommandBufferUsage::SimultaneousUse,
-                        Default::default(),
+                        CommandBufferLevel::Secondary,
+                        CommandBufferBeginInfo {
+                            usage: CommandBufferUsage::SimultaneousUse,
+                            inheritance_info: Some(Default::default()),
+                            ..Default::default()
+                        },
                     )
                     .unwrap();
                     builder
@@ -695,10 +711,15 @@ mod tests {
                 .collect::<Vec<_>>();
 
             {
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = RecordingCommandBuffer::new(
                     cb_allocator.clone(),
                     queue.queue_family_index(),
-                    CommandBufferUsage::SimultaneousUse,
+                    CommandBufferLevel::Secondary,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::SimultaneousUse,
+                        inheritance_info: Some(Default::default()),
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
 
@@ -718,10 +739,15 @@ mod tests {
             }
 
             {
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = RecordingCommandBuffer::new(
                     cb_allocator,
                     queue.queue_family_index(),
-                    CommandBufferUsage::SimultaneousUse,
+                    CommandBufferLevel::Secondary,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::SimultaneousUse,
+                        inheritance_info: Some(Default::default()),
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
 
@@ -745,10 +771,14 @@ mod tests {
                 device.clone(),
                 Default::default(),
             ));
-            let mut sync = RecordingCommandBuffer::primary(
+            let mut sync = RecordingCommandBuffer::new(
                 cb_allocator,
                 queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::MultipleSubmit,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -784,10 +814,14 @@ mod tests {
                 device.clone(),
                 Default::default(),
             ));
-            let mut sync = RecordingCommandBuffer::primary(
+            let mut sync = RecordingCommandBuffer::new(
                 cb_allocator,
                 queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::MultipleSubmit,
+                    ..Default::default()
+                },
             )
             .unwrap();
             let set_layout = DescriptorSetLayout::new(

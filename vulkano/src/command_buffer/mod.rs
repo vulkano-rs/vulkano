@@ -2,9 +2,9 @@
 //!
 //! With Vulkan, to get the device to perform work, even relatively simple tasks, you must create a
 //! command buffer. A command buffer is a list of commands that will executed by the device.
-//! You must first record commands to a command buffer builder, then build it into an actual
-//! command buffer, and then it can be used. Depending on how a command buffer is created, it can
-//! be used only once, or reused many times.
+//! You must first record commands to a recording command buffer, then end the recording to turn it
+//! into an actual command buffer, and then it can be used. Depending on how a command buffer is
+//! created, it can be used only once, or reused many times.
 //!
 //! # Command pools and allocators
 //!
@@ -22,10 +22,10 @@
 //!
 //! There are two levels of command buffers:
 //!
-//! - [`PrimaryAutoCommandBuffer`] can be executed on a queue, and is the main command buffer type.
+//! - A primary command buffer can be executed on a queue, and is the main command buffer level.
 //!   It cannot be executed within another command buffer.
-//! - [`SecondaryAutoCommandBuffer`] can only be executed within a primary command buffer, not
-//!   directly on a queue.
+//! - A secondary command buffer can only be executed within a primary command buffer, not directly
+//!   on a queue.
 //!
 //! Using secondary command buffers, there is slightly more overhead than using primary command
 //! buffers alone, but there are also advantages. A single command buffer cannot be recorded
@@ -41,18 +41,19 @@
 //! To record a new command buffer, the most direct way is to create a new
 //! [`RecordingCommandBuffer`]. You can then call methods on this object to record new commands to
 //! the command buffer. When you are done recording, you call [`end`] to finalise the command
-//! buffer and turn it into either a [`PrimaryAutoCommandBuffer`] or a
-//! [`SecondaryAutoCommandBuffer`].
+//! buffer and turn it into a [`CommandBuffer`].
 //!
 //! # Submitting a primary command buffer
 //!
-//! Once a primary command buffer is recorded and built, you can submit the
-//! [`PrimaryAutoCommandBuffer`] to a queue. Submitting a command buffer returns an object that
-//! implements the [`GpuFuture`] trait and that represents the moment when the execution will end
-//! on the GPU.
+//! Once a primary command buffer has finished recording, you can submit the [`CommandBuffer`] to a
+//! queue. Submitting a command buffer returns an object that implements the [`GpuFuture`] trait
+//! and that represents the moment when the execution will end on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::{CommandBufferUsage, RecordingCommandBuffer, SubpassContents};
+//! use vulkano::command_buffer::{
+//!     CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage, RecordingCommandBuffer,
+//!     SubpassContents,
+//! };
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
@@ -61,10 +62,11 @@
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! #
-//! let cb = RecordingCommandBuffer::primary(
+//! let cb = RecordingCommandBuffer::new(
 //!     command_buffer_allocator.clone(),
 //!     queue.queue_family_index(),
-//!     CommandBufferUsage::MultipleSubmit,
+//!     CommandBufferLevel::Primary,
+//!     CommandBufferBeginInfo::default(),
 //! )
 //! .unwrap()
 //! .begin_render_pass(render_pass_begin_info, Default::default())
@@ -90,11 +92,12 @@
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
 pub use self::{
-    auto::{PrimaryAutoCommandBuffer, RecordingCommandBuffer, SecondaryAutoCommandBuffer},
+    auto::{CommandBuffer, RecordingCommandBuffer},
     commands::{
         acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
         query::*, render_pass::*, secondary::*, sync::*,
     },
+    sys::CommandBufferBeginInfo,
     traits::{CommandBufferExecError, CommandBufferExecFuture},
 };
 use crate::{
@@ -788,7 +791,7 @@ pub struct CommandBufferSubmitInfo {
     /// The command buffer to execute.
     ///
     /// There is no default value.
-    pub command_buffer: Arc<PrimaryAutoCommandBuffer>,
+    pub command_buffer: Arc<CommandBuffer>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -796,7 +799,7 @@ pub struct CommandBufferSubmitInfo {
 impl CommandBufferSubmitInfo {
     /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<PrimaryAutoCommandBuffer>) -> Self {
+    pub fn new(command_buffer: Arc<CommandBuffer>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),
@@ -811,6 +814,15 @@ impl CommandBufferSubmitInfo {
 
         // VUID?
         assert_eq!(device, command_buffer.device().as_ref());
+
+        if self.command_buffer.level() != CommandBufferLevel::Primary {
+            return Err(Box::new(ValidationError {
+                context: "command_buffer".into(),
+                problem: "is not a primary command buffer".into(),
+                vuids: &["VUID-VkCommandBufferSubmitInfo-commandBuffer-03890"],
+                ..Default::default()
+            }));
+        }
 
         Ok(())
     }

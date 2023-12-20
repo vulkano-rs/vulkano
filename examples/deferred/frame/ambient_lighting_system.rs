@@ -2,8 +2,9 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferInheritanceInfo,
-        CommandBufferUsage, RecordingCommandBuffer, SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
+        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
+        RecordingCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -162,7 +163,7 @@ impl AmbientLightingSystem {
         viewport_dimensions: [u32; 2],
         color_input: Arc<ImageView>,
         ambient_color: [f32; 3],
-    ) -> Arc<SecondaryAutoCommandBuffer> {
+    ) -> Arc<CommandBuffer> {
         let push_constants = fs::PushConstants {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };
@@ -182,12 +183,16 @@ impl AmbientLightingSystem {
             depth_range: 0.0..=1.0,
         };
 
-        let mut builder = RecordingCommandBuffer::secondary(
+        let mut builder = RecordingCommandBuffer::new(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
-            CommandBufferInheritanceInfo {
-                render_pass: Some(self.subpass.clone().into()),
+            CommandBufferLevel::Secondary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::MultipleSubmit,
+                inheritance_info: Some(CommandBufferInheritanceInfo {
+                    render_pass: Some(self.subpass.clone().into()),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         )

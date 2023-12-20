@@ -16,8 +16,8 @@ use std::{error::Error, fs::File, io::Read, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
-        RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+        CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -348,10 +348,14 @@ fn main() -> Result<(), impl Error> {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = RecordingCommandBuffer::new(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
-                    CommandBufferUsage::MultipleSubmit,
+                    CommandBufferLevel::Primary,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::MultipleSubmit,
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
                 builder

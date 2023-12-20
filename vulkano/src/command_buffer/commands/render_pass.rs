@@ -24,7 +24,7 @@ use std::{cmp::min, ops::Range, sync::Arc};
 /// # Commands for render passes.
 ///
 /// These commands require a graphics queue.
-impl<L> RecordingCommandBuffer<L> {
+impl RecordingCommandBuffer {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
     /// You must call this or `begin_rendering` before you can record draw commands.
@@ -328,7 +328,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl<L> RecordingCommandBuffer<L> {
+impl RecordingCommandBuffer {
     /// Begins a render pass without a render pass object or framebuffer.
     ///
     /// You must call this or `begin_render_pass` before you can record draw commands.

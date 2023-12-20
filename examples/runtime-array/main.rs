@@ -2,8 +2,8 @@ use std::{error::Error, io::Cursor, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyBufferToImageInfo,
-        RecordingCommandBuffer, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+        CommandBufferUsage, CopyBufferToImageInfo, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, layout::DescriptorBindingFlags, DescriptorSet,
@@ -270,10 +270,14 @@ fn main() -> Result<(), impl Error> {
         Default::default(),
     ));
 
-    let mut uploads = RecordingCommandBuffer::primary(
+    let mut uploads = RecordingCommandBuffer::new(
         command_buffer_allocator.clone(),
         queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
+        CommandBufferLevel::Primary,
+        CommandBufferBeginInfo {
+            usage: CommandBufferUsage::OneTimeSubmit,
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -539,10 +543,14 @@ fn main() -> Result<(), impl Error> {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = RecordingCommandBuffer::new(
                     command_buffer_allocator.clone(),
                     queue.queue_family_index(),
-                    CommandBufferUsage::OneTimeSubmit,
+                    CommandBufferLevel::Primary,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::OneTimeSubmit,
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
                 builder
