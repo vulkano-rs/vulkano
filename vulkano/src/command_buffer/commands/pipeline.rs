@@ -1,3 +1,5 @@
+#[cfg(doc)]
+use crate::device::Properties;
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::{view::BufferView, BufferUsage, Subbuffer},
@@ -516,8 +518,11 @@ impl RecordingCommandBuffer {
     /// # Safety
     ///
     /// - The general [shader safety requirements](crate::shader#safety) apply.
-    /// - All vertex numbers retrieved from the index buffer must fall within the range of
+    /// - Every vertex number that is retrieved from the index buffer must fall within the range of
     ///   the bound vertex-rate vertex buffers.
+    /// - Every vertex number that is retrieved from the index buffer, if it is not the special
+    ///   primitive restart value, must be no greater than the
+    ///   [`max_draw_indexed_index_value`](Properties::max_draw_indexed_index_value) device limit.
     pub unsafe fn draw_indexed(
         &mut self,
         index_count: u32,

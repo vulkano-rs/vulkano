@@ -152,9 +152,9 @@ pub struct DispatchIndirectCommand {
 ///
 /// # Safety
 ///
-/// - All vertex numbers within the specified range must fall within the range of
+/// - Every vertex number within the specified range must fall within the range of
 ///   the bound vertex-rate vertex buffers.
-/// - All instance numbers within the specified range must fall within the range of
+/// - Every instance number within the specified range must fall within the range of
 ///   the bound instance-rate vertex buffers.
 /// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature
 ///   is not enabled, then `first_instance` must be `0`.
@@ -175,10 +175,13 @@ pub struct DrawIndirectCommand {
 ///
 /// # Safety
 ///
-/// - All indexes within the specified range must fall within the range of the bound index buffer.
-/// - All vertex numbers retrieved from the index buffer must fall within the range of
+/// - Every index within the specified range must fall within the range of the bound index buffer.
+/// - Every vertex number that is retrieved from the index buffer must fall within the range of
 ///   the bound vertex-rate vertex buffers.
-/// - All instance numbers within the specified range must fall within the range of
+/// - Every vertex number that is retrieved from the index buffer, if it is not the special
+///   primitive restart value, must be no greater than the
+///   [`max_draw_indexed_index_value`](Properties::max_draw_indexed_index_value) device limit.
+/// - Every instance number within the specified range must fall within the range of
 ///   the bound instance-rate vertex buffers.
 /// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature
 ///   is not enabled, then `first_instance` must be `0`.
