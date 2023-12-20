@@ -115,6 +115,11 @@ use crate::{
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+#[cfg(doc)]
+use crate::{
+    device::{Features, Properties},
+    pipeline::graphics::vertex_input::VertexInputRate,
+};
 use ahash::HashMap;
 use bytemuck::{Pod, Zeroable};
 use std::{ops::Range, sync::Arc};
@@ -126,6 +131,35 @@ pub mod pool;
 pub mod sys;
 mod traits;
 
+/// Used as buffer contents to provide input for the
+/// [`RecordingCommandBuffer::dispatch_indirect`] command.
+///
+/// # Safety
+///
+/// - The `x`, `y` and `z` values must not be greater than the respective elements of the
+/// [`:max_compute_work_group_count`](Properties::max_compute_work_group_count) device limit.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+pub struct DispatchIndirectCommand {
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
+}
+
+/// Used as buffer contents to provide input for the
+/// [`RecordingCommandBuffer::draw_indirect`] command.
+///
+/// # Safety
+///
+/// - All vertex numbers within the specified range must fall within the range of
+///   the bound vertex-rate vertex buffers.
+/// - All instance numbers within the specified range must fall within the range of
+///   the bound instance-rate vertex buffers.
+/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature
+///   is not enabled, then `first_instance` must be `0`.
+/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and
+///   the [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance)
+///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
@@ -135,6 +169,21 @@ pub struct DrawIndirectCommand {
     pub first_instance: u32,
 }
 
+/// Used as buffer contents to provide input for the
+/// [`RecordingCommandBuffer::draw_indexed_indirect`] command.
+///
+/// # Safety
+///
+/// - All indexes within the specified range must fall within the range of the bound index buffer.
+/// - All vertex numbers retrieved from the index buffer must fall within the range of
+///   the bound vertex-rate vertex buffers.
+/// - All instance numbers within the specified range must fall within the range of
+///   the bound instance-rate vertex buffers.
+/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature
+///   is not enabled, then `first_instance` must be `0`.
+/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and
+///   the [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance)
+///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndexedIndirectCommand {
@@ -143,14 +192,6 @@ pub struct DrawIndexedIndirectCommand {
     pub first_index: u32,
     pub vertex_offset: u32,
     pub first_instance: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
-pub struct DispatchIndirectCommand {
-    pub x: u32,
-    pub y: u32,
-    pub z: u32,
 }
 
 vulkan_enum! {

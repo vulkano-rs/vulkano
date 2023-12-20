@@ -191,6 +191,7 @@ fn main() {
         },
     )
     .unwrap();
+
     builder
         .bind_pipeline_compute(pipeline.clone())
         .unwrap()
@@ -202,9 +203,12 @@ fn main() {
         )
         .unwrap()
         .push_constants(pipeline.layout().clone(), 0, push_constants)
-        .unwrap()
-        .dispatch([1024, 1, 1])
         .unwrap();
+
+    unsafe {
+        builder.dispatch([1024, 1, 1]).unwrap();
+    }
+
     let command_buffer = builder.end().unwrap();
 
     let future = sync::now(device)

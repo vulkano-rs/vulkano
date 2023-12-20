@@ -489,9 +489,13 @@ fn main() -> Result<(), impl Error> {
                         0,
                         cs_desciptor_set,
                     )
-                    .unwrap()
-                    .dispatch([1, 1, 1])
-                    .unwrap()
+                    .unwrap();
+
+                unsafe {
+                    builder.dispatch([1, 1, 1]).unwrap();
+                }
+
+                builder
                     .begin_render_pass(
                         RenderPassBeginInfo {
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
@@ -507,13 +511,16 @@ fn main() -> Result<(), impl Error> {
                     .bind_pipeline_graphics(render_pipeline.clone())
                     .unwrap()
                     .bind_vertex_buffers(0, vertices)
-                    .unwrap()
+                    .unwrap();
+
+                unsafe {
                     // The indirect draw call is placed in the command buffer with a reference to
                     // the buffer that will contain the arguments for the draw.
-                    .draw_indirect(indirect_buffer)
-                    .unwrap()
-                    .end_render_pass(Default::default())
-                    .unwrap();
+                    builder.draw_indirect(indirect_buffer).unwrap();
+                }
+
+                builder.end_render_pass(Default::default()).unwrap();
+
                 let command_buffer = builder.end().unwrap();
 
                 let future = previous_frame_end

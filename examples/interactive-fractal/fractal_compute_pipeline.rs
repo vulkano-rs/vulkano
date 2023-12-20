@@ -168,15 +168,21 @@ impl FractalComputePipeline {
             max_iters: max_iters as i32,
             is_julia: is_julia as u32,
         };
+
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .unwrap()
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
             .unwrap()
             .push_constants(pipeline_layout.clone(), 0, push_constants)
-            .unwrap()
-            .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
             .unwrap();
+
+        unsafe {
+            builder
+                .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
+                .unwrap();
+        }
+
         let command_buffer = builder.end().unwrap();
         let finished = command_buffer.execute(self.queue.clone()).unwrap();
         finished.then_signal_fence_and_flush().unwrap().boxed()

@@ -200,9 +200,13 @@ impl GameOfLifeComputePipeline {
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
             .unwrap()
             .push_constants(pipeline_layout.clone(), 0, push_constants)
-            .unwrap()
-            .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
             .unwrap();
+
+        unsafe {
+            builder
+                .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
+                .unwrap();
+        }
     }
 }
 

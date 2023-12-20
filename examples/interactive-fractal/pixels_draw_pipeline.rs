@@ -215,7 +215,7 @@ impl PixelsDrawPipeline {
             },
         )
         .unwrap();
-        let desc_set = self.create_descriptor_set(image);
+
         builder
             .set_viewport(
                 0,
@@ -234,15 +234,20 @@ impl PixelsDrawPipeline {
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                desc_set,
+                self.create_descriptor_set(image),
             )
             .unwrap()
             .bind_vertex_buffers(0, self.vertices.clone())
             .unwrap()
             .bind_index_buffer(self.indices.clone())
-            .unwrap()
-            .draw_indexed(self.indices.len() as u32, 1, 0, 0, 0)
             .unwrap();
+
+        unsafe {
+            builder
+                .draw_indexed(self.indices.len() as u32, 1, 0, 0, 0)
+                .unwrap();
+        }
+
         builder.end().unwrap()
     }
 }

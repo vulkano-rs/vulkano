@@ -248,37 +248,23 @@ fn main() {
     )
     .unwrap();
 
-    #[allow(clippy::erasing_op, clippy::identity_op)]
-    builder
-        .bind_pipeline_compute(pipeline.clone())
-        .unwrap()
-        .bind_descriptor_sets(
-            PipelineBindPoint::Compute,
-            pipeline.layout().clone(),
-            0,
-            set.clone().offsets([0 * align as u32]),
-        )
-        .unwrap()
-        .dispatch([12, 1, 1])
-        .unwrap()
-        .bind_descriptor_sets(
-            PipelineBindPoint::Compute,
-            pipeline.layout().clone(),
-            0,
-            set.clone().offsets([1 * align as u32]),
-        )
-        .unwrap()
-        .dispatch([12, 1, 1])
-        .unwrap()
-        .bind_descriptor_sets(
-            PipelineBindPoint::Compute,
-            pipeline.layout().clone(),
-            0,
-            set.offsets([2 * align as u32]),
-        )
-        .unwrap()
-        .dispatch([12, 1, 1])
-        .unwrap();
+    builder.bind_pipeline_compute(pipeline.clone()).unwrap();
+
+    for index in 0..3 {
+        builder
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                pipeline.layout().clone(),
+                0,
+                set.clone().offsets([index * align as u32]),
+            )
+            .unwrap();
+
+        unsafe {
+            builder.dispatch([12, 1, 1]).unwrap();
+        }
+    }
+
     let command_buffer = builder.end().unwrap();
 
     let future = sync::now(device)

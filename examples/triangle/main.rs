@@ -591,10 +591,10 @@ fn main() -> Result<(), impl Error> {
                     recreate_swapchain = true;
                 }
 
-                // In order to draw, we have to build a *command buffer*. The command buffer object
+                // In order to draw, we have to record a *command buffer*. The command buffer object
                 // holds the list of commands that are going to be executed.
                 //
-                // Building a command buffer is an expensive operation (usually a few hundred
+                // Recording a command buffer is an expensive operation (usually a few hundred
                 // microseconds), but it is known to be a hot path in the driver and is expected to
                 // be optimized.
                 //
@@ -644,16 +644,22 @@ fn main() -> Result<(), impl Error> {
                     .bind_pipeline_graphics(pipeline.clone())
                     .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
-                    .unwrap()
-                    // We add a draw command.
-                    .draw(vertex_buffer.len() as u32, 1, 0, 0)
-                    .unwrap()
+                    .unwrap();
+
+                unsafe {
+                    builder
+                        // We add a draw command.
+                        .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                        .unwrap();
+                }
+
+                builder
                     // We leave the render pass. Note that if we had multiple subpasses we could
                     // have called `next_subpass` to jump to the next subpass.
                     .end_render_pass(Default::default())
                     .unwrap();
 
-                // Finish building the command buffer by calling `build`.
+                // Finish recording the command buffer by calling `end`.
                 let command_buffer = builder.end().unwrap();
 
                 let future = previous_frame_end
