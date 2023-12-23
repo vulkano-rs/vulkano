@@ -70,10 +70,12 @@
 //! )
 //! .unwrap();
 //!
-//! cb
-//!     .begin_render_pass(render_pass_begin_info, Default::default()).unwrap()
-//!     .bind_pipeline_graphics(graphics_pipeline.clone()).unwrap()
-//!     .bind_vertex_buffers(0, vertex_buffer.clone()).unwrap();
+//! cb.begin_render_pass(render_pass_begin_info, Default::default())
+//!     .unwrap()
+//!     .bind_pipeline_graphics(graphics_pipeline.clone())
+//!     .unwrap()
+//!     .bind_vertex_buffers(0, vertex_buffer.clone())
+//!     .unwrap();
 //!
 //! unsafe {
 //!     cb.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
