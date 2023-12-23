@@ -1,5 +1,5 @@
 #[cfg(doc)]
-use crate::device::Properties;
+use crate::device::{Features, Properties};
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::{view::BufferView, BufferUsage, Subbuffer},
@@ -392,9 +392,9 @@ impl RecordingCommandBuffer {
     ///
     /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](crate::device::Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
-    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// A graphics pipeline must have been bound using
@@ -736,9 +736,9 @@ impl RecordingCommandBuffer {
     ///
     /// One draw is performed for each [`DrawIndexedIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](crate::device::Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
-    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// An index buffer must have been bound using
