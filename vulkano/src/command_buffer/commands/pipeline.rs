@@ -26,7 +26,7 @@ use crate::{
     },
     shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStage, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use std::{mem::size_of, sync::Arc};
 
@@ -37,8 +37,10 @@ macro_rules! vuids {
             VUIDType::DispatchIndirect => &[$(concat!("VUID-vkCmdDispatchIndirect-", $id)),+],
             VUIDType::Draw => &[$(concat!("VUID-vkCmdDraw-", $id)),+],
             VUIDType::DrawIndirect => &[$(concat!("VUID-vkCmdDrawIndirect-", $id)),+],
+            VUIDType::DrawIndirectCount => &[$(concat!("VUID-vkCmdDrawIndirectCount-", $id)),+],
             VUIDType::DrawIndexed => &[$(concat!("VUID-vkCmdDrawIndexed-", $id)),+],
             VUIDType::DrawIndexedIndirect => &[$(concat!("VUID-vkCmdDrawIndexedIndirect-", $id)),+],
+            VUIDType::DrawIndexedIndirectCount => &[$(concat!("VUID-vkCmdDrawIndexedIndirectCount-", $id)),+],
         }
     };
 }
@@ -496,6 +498,142 @@ impl RecordingCommandBuffer {
         self
     }
 
+    /// Perform multiple draw operations using a graphics pipeline,
+    /// reading the number of draw operations from a separate buffer.
+    ///
+    /// One draw is performed for each [`DrawIndirectCommand`] struct that is read from
+    /// `indirect_buffer`. The number of draws to perform is read from `count_buffer`, or
+    /// specified by `max_draw_count`, whichever is lower.
+    /// This number is limited by the
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    ///
+    /// A graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
+    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
+    /// ranges of each `DrawIndirectCommand` in the indirect buffer must be in range of the bound
+    /// vertex buffers.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety)
+    ///   apply.
+    /// - The count stored in `count_buffer` must not be greater than the
+    ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
+    /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
+    pub unsafe fn draw_indirect_count(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
+        count_buffer: Subbuffer<u32>,
+        max_draw_count: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        let stride = size_of::<DrawIndirectCommand>() as u32;
+        self.validate_draw_indirect_count(
+            indirect_buffer.as_bytes(),
+            count_buffer.as_bytes(),
+            max_draw_count,
+            stride,
+        )?;
+
+        unsafe {
+            Ok(self.draw_indirect_count_unchecked(
+                indirect_buffer,
+                count_buffer,
+                max_draw_count,
+                stride,
+            ))
+        }
+    }
+
+    fn validate_draw_indirect_count(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        count_buffer: &Subbuffer<[u8]>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_draw_indirect_count(
+            indirect_buffer,
+            count_buffer,
+            max_draw_count,
+            stride,
+        )?;
+
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-renderpass"],
+                ..Default::default()
+            })
+        })?;
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawIndirectCount-None-08606"],
+                    ..Default::default()
+                })
+            })?
+            .as_ref();
+
+        const VUID_TYPE: VUIDType = VUIDType::DrawIndirectCount;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indirect_count_unchecked(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
+        count_buffer: Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
+        self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
+
+        self.add_command(
+            "draw_indirect_count",
+            used_resources,
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.draw_indirect_count_unchecked(
+                    &indirect_buffer,
+                    &count_buffer,
+                    max_draw_count,
+                    stride,
+                );
+            },
+        );
+
+        self
+    }
+
     /// Perform a single draw operation using a graphics pipeline, using an index buffer.
     ///
     /// The parameters specify the first index and the number of indices in the index buffer that
@@ -848,6 +986,156 @@ impl RecordingCommandBuffer {
             used_resources,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
+            },
+        );
+
+        self
+    }
+
+    /// Perform multiple draw operations using a graphics pipeline, using an index buffer,
+    /// and reading the number of draw operations from a separate buffer.
+    ///
+    /// One draw is performed for each [`DrawIndexedIndirectCommand`] struct that is read from
+    /// `indirect_buffer`. The number of draws to perform is read from `count_buffer`, or
+    /// specified by `max_draw_count`, whichever is lower.
+    /// This number is limited by the
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    ///
+    /// An index buffer must have been bound using
+    /// [`bind_index_buffer`](Self::bind_index_buffer), and the index ranges of each
+    /// `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound index
+    /// buffer.
+    ///
+    /// A graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
+    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
+    /// each `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound
+    /// vertex buffers.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The [safety requirements for `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety)
+    ///   apply.
+    /// - The count stored in `count_buffer` must not be greater than the
+    ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
+    /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
+    pub unsafe fn draw_indexed_indirect_count(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
+        count_buffer: Subbuffer<u32>,
+        max_draw_count: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
+        self.validate_draw_indexed_indirect_count(
+            indirect_buffer.as_bytes(),
+            count_buffer.as_bytes(),
+            max_draw_count,
+            stride,
+        )?;
+
+        unsafe {
+            Ok(self.draw_indexed_indirect_count_unchecked(
+                indirect_buffer,
+                count_buffer,
+                max_draw_count,
+                stride,
+            ))
+        }
+    }
+
+    fn validate_draw_indexed_indirect_count(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        count_buffer: &Subbuffer<[u8]>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_draw_indexed_indirect_count(
+            indirect_buffer,
+            count_buffer,
+            max_draw_count,
+            stride,
+        )?;
+
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-renderpass"],
+                ..Default::default()
+            })
+        })?;
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawIndexedIndirectCount-None-08606"],
+                    ..Default::default()
+                })
+            })?
+            .as_ref();
+
+        const VUID_TYPE: VUIDType = VUIDType::DrawIndexedIndirectCount;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
+
+        let _index_buffer = self.builder_state.index_buffer.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "no index buffer is currently bound".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-None-07312"],
+                ..Default::default()
+            })
+        })?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indexed_indirect_count_unchecked(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
+        count_buffer: Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_vertex_buffers_resources(&mut used_resources, pipeline);
+        self.add_index_buffer_resources(&mut used_resources);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
+        self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
+
+        self.add_command(
+            "draw_indexed_indirect_count",
+            used_resources,
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.draw_indexed_indirect_count_unchecked(
+                    &indirect_buffer,
+                    &count_buffer,
+                    max_draw_count,
+                    stride,
+                );
             },
         );
 
@@ -3145,6 +3433,169 @@ impl RawRecordingCommandBuffer {
     }
 
     #[inline]
+    pub unsafe fn draw_indirect_count(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        count_buffer: &Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_indirect_count(
+            indirect_buffer.as_bytes(),
+            count_buffer.as_bytes(),
+            max_draw_count,
+            stride,
+        )?;
+
+        Ok(self.draw_indirect_count_unchecked(
+            indirect_buffer,
+            count_buffer,
+            max_draw_count,
+            stride,
+        ))
+    }
+
+    fn validate_draw_indirect_count(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        count_buffer: &Subbuffer<[u8]>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device().enabled_features().draw_indirect_count {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "draw_indirect_count",
+                )])]),
+                vuids: &["VUID-vkCmdDrawIndirectCount-None-04445"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !indirect_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "indirect_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if !count_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "count_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-countBuffer-02715"],
+                ..Default::default()
+            }));
+        }
+
+        if stride % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "stride".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-stride-03110"],
+                ..Default::default()
+            }));
+        }
+
+        if (stride as DeviceSize) < size_of::<DrawIndirectCommand>() as DeviceSize {
+            return Err(Box::new(ValidationError {
+                context: "stride".into(),
+                problem: "is not greater than `size_of::<DrawIndirectCommand>()`".into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-stride-03110"],
+                ..Default::default()
+            }));
+        }
+
+        if max_draw_count >= 1
+            && stride as DeviceSize * (max_draw_count as DeviceSize - 1)
+                + size_of::<DrawIndirectCommand>() as DeviceSize
+                > indirect_buffer.size()
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`max_draw_count` is equal to or greater than 1, but \
+                    `stride * (max_draw_count - 1) + size_of::<DrawIndirectCommand>()` is \
+                    greater than `indirect_buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndirectCount-maxDrawCount-03111"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indirect_count_unchecked(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawIndirectCommand]>,
+        count_buffer: &Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let device = self.device();
+        let fns = device.fns();
+
+        if device.api_version() >= Version::V1_2 {
+            (fns.v1_2.cmd_draw_indirect_count)(
+                self.handle(),
+                indirect_buffer.buffer().handle(),
+                indirect_buffer.offset(),
+                count_buffer.buffer().handle(),
+                count_buffer.offset(),
+                max_draw_count,
+                stride,
+            );
+        } else if device.enabled_extensions().khr_draw_indirect_count {
+            (fns.khr_draw_indirect_count.cmd_draw_indirect_count_khr)(
+                self.handle(),
+                indirect_buffer.buffer().handle(),
+                indirect_buffer.offset(),
+                count_buffer.buffer().handle(),
+                count_buffer.offset(),
+                max_draw_count,
+                stride,
+            );
+        } else {
+            debug_assert!(device.enabled_extensions().amd_draw_indirect_count);
+            (fns.amd_draw_indirect_count.cmd_draw_indirect_count_amd)(
+                self.handle(),
+                indirect_buffer.buffer().handle(),
+                indirect_buffer.offset(),
+                count_buffer.buffer().handle(),
+                count_buffer.offset(),
+                max_draw_count,
+                stride,
+            );
+        }
+
+        self
+    }
+
+    #[inline]
     pub unsafe fn draw_indexed(
         &mut self,
         index_count: u32,
@@ -3351,6 +3802,171 @@ impl RawRecordingCommandBuffer {
 
         self
     }
+
+    #[inline]
+    pub unsafe fn draw_indexed_indirect_count(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
+        count_buffer: &Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_indexed_indirect_count(
+            indirect_buffer.as_bytes(),
+            count_buffer.as_bytes(),
+            max_draw_count,
+            stride,
+        )?;
+
+        Ok(self.draw_indexed_indirect_count_unchecked(
+            indirect_buffer,
+            count_buffer,
+            max_draw_count,
+            stride,
+        ))
+    }
+
+    fn validate_draw_indexed_indirect_count(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        count_buffer: &Subbuffer<[u8]>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device().enabled_features().draw_indirect_count {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "draw_indirect_count",
+                )])]),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-None-04445"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !indirect_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "indirect_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if !count_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "count_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-countBuffer-02715"],
+                ..Default::default()
+            }));
+        }
+
+        if stride % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "stride".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-stride-03142"],
+                ..Default::default()
+            }));
+        }
+
+        if (stride as DeviceSize) < size_of::<DrawIndirectCommand>() as DeviceSize {
+            return Err(Box::new(ValidationError {
+                context: "stride".into(),
+                problem: "is not greater than `size_of::<DrawIndirectCommand>()`".into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-stride-03142"],
+                ..Default::default()
+            }));
+        }
+
+        if max_draw_count >= 1
+            && stride as DeviceSize * (max_draw_count as DeviceSize - 1)
+                + size_of::<DrawIndirectCommand>() as DeviceSize
+                > indirect_buffer.size()
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`max_draw_count` is equal to or greater than 1, but \
+                    `stride * (max_draw_count - 1) + size_of::<DrawIndirectCommand>()` is \
+                    greater than `indirect_buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawIndexedIndirectCount-maxDrawCount-03143"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_indexed_indirect_count_unchecked(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawIndexedIndirectCommand]>,
+        count_buffer: &Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let device = self.device();
+        let fns = device.fns();
+
+        if device.api_version() >= Version::V1_2 {
+            (fns.v1_2.cmd_draw_indexed_indirect_count)(
+                self.handle(),
+                indirect_buffer.buffer().handle(),
+                indirect_buffer.offset(),
+                count_buffer.buffer().handle(),
+                count_buffer.offset(),
+                max_draw_count,
+                stride,
+            );
+        } else if device.enabled_extensions().khr_draw_indirect_count {
+            (fns.khr_draw_indirect_count
+                .cmd_draw_indexed_indirect_count_khr)(
+                self.handle(),
+                indirect_buffer.buffer().handle(),
+                indirect_buffer.offset(),
+                count_buffer.buffer().handle(),
+                count_buffer.offset(),
+                max_draw_count,
+                stride,
+            );
+        } else {
+            debug_assert!(device.enabled_extensions().amd_draw_indirect_count);
+            (fns.amd_draw_indirect_count
+                .cmd_draw_indexed_indirect_count_amd)(
+                self.handle(),
+                indirect_buffer.buffer().handle(),
+                indirect_buffer.offset(),
+                count_buffer.buffer().handle(),
+                count_buffer.offset(),
+                max_draw_count,
+                stride,
+            );
+        }
+
+        self
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -3359,6 +3975,8 @@ enum VUIDType {
     DispatchIndirect,
     Draw,
     DrawIndirect,
+    DrawIndirectCount,
     DrawIndexed,
     DrawIndexedIndirect,
+    DrawIndexedIndirectCount,
 }
