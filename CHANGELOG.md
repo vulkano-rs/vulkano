@@ -75,6 +75,7 @@ Changes to draw/dispatch commands:
 - Support for 64-bit values in vertex input.
 - Support for creating buffers and images that are not backed by vulkano-managed memory.
 - Documented the safety requirements of shaders in the `shader` module.
+- Support for the `khr_draw_indirect_count` extension.
 
 ### Bugs fixed
 
