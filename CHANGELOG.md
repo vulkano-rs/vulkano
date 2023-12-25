@@ -63,6 +63,9 @@ Changes to images:
 - `ImageMemory` is now marked non-exhaustive.
 - `RawImage::bind_memory` is now marked unsafe.
 
+Changes to draw/dispatch commands:
+- These are now `unsafe`, as the shader can perform invalid operations outside of Vulkano's control.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
@@ -71,6 +74,7 @@ Changes to images:
 - Support for the `ext_vertex_input_dynamic_state` extension.
 - Support for 64-bit values in vertex input.
 - Support for creating buffers and images that are not backed by vulkano-managed memory.
+- Documented the safety requirements of shaders in the `shader` module.
 
 ### Bugs fixed
 
