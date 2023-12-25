@@ -595,6 +595,7 @@ fn main() -> Result<(), impl Error> {
                     },
                 )
                 .unwrap();
+
                 builder
                     // Push constants for compute shader.
                     .push_constants(compute_pipeline.layout().clone(), 0, push_constants)
@@ -608,10 +609,16 @@ fn main() -> Result<(), impl Error> {
                         0, // Bind this descriptor set to index 0.
                         descriptor_set.clone(),
                     )
-                    .unwrap()
-                    .dispatch([PARTICLE_COUNT as u32 / 128, 1, 1])
-                    .unwrap()
-                    // Use render-pass to draw particles to swapchain.
+                    .unwrap();
+
+                unsafe {
+                    builder
+                        .dispatch([PARTICLE_COUNT as u32 / 128, 1, 1])
+                        .unwrap();
+                }
+
+                // Use render-pass to draw particles to swapchain.
+                builder
                     .begin_render_pass(
                         RenderPassBeginInfo {
                             clear_values: vec![Some([0., 0., 0., 1.].into())],
@@ -625,13 +632,15 @@ fn main() -> Result<(), impl Error> {
                     .bind_pipeline_graphics(graphics_pipeline.clone())
                     .unwrap()
                     .bind_vertex_buffers(0, vertex_buffer.clone())
-                    .unwrap()
-                    .draw(PARTICLE_COUNT as u32, 1, 0, 0)
-                    .unwrap()
-                    .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = builder.end().unwrap();
 
+                unsafe {
+                    builder.draw(PARTICLE_COUNT as u32, 1, 0, 0).unwrap();
+                }
+
+                builder.end_render_pass(Default::default()).unwrap();
+
+                let command_buffer = builder.end().unwrap();
                 let future = previous_future
                     .join(acquire_future)
                     .then_execute(queue.clone(), command_buffer)

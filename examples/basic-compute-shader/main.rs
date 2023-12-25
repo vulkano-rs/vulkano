@@ -206,14 +206,12 @@ fn main() {
         },
     )
     .unwrap();
+
+    // Note that we clone the pipeline and the set. Since they are both wrapped in an `Arc`,
+    // this only clones the `Arc` and not the whole pipeline or set (which aren't cloneable
+    // anyway). In this example we would avoid cloning them since this is the last time we use
+    // them, but in real code you would probably need to clone them.
     builder
-        // The command buffer only does one thing: execute the compute pipeline. This is called a
-        // *dispatch* operation.
-        //
-        // Note that we clone the pipeline and the set. Since they are both wrapped in an `Arc`,
-        // this only clones the `Arc` and not the whole pipeline or set (which aren't cloneable
-        // anyway). In this example we would avoid cloning them since this is the last time we use
-        // them, but in real code you would probably need to clone them.
         .bind_pipeline_compute(pipeline.clone())
         .unwrap()
         .bind_descriptor_sets(
@@ -222,9 +220,13 @@ fn main() {
             0,
             set,
         )
-        .unwrap()
-        .dispatch([1024, 1, 1])
         .unwrap();
+
+    unsafe {
+        // The command buffer only does one thing: execute the compute pipeline. This is called a
+        // *dispatch* operation.
+        builder.dispatch([1024, 1, 1]).unwrap();
+    }
 
     // Finish building the command buffer by calling `build`.
     let command_buffer = builder.end().unwrap();

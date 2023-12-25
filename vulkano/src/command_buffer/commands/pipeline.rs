@@ -1,3 +1,5 @@
+#[cfg(doc)]
+use crate::device::{Features, Properties};
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::{view::BufferView, BufferUsage, Subbuffer},
@@ -50,7 +52,14 @@ impl RecordingCommandBuffer {
     /// A compute pipeline must have been bound using
     /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
     /// pipeline, such as descriptor sets, must have been set beforehand.
-    pub fn dispatch(&mut self, group_counts: [u32; 3]) -> Result<&mut Self, Box<ValidationError>> {
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    pub unsafe fn dispatch(
+        &mut self,
+        group_counts: [u32; 3],
+    ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_dispatch(group_counts)?;
 
         unsafe { Ok(self.dispatch_unchecked(group_counts)) }
@@ -116,7 +125,13 @@ impl RecordingCommandBuffer {
     /// A compute pipeline must have been bound using
     /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
     /// pipeline, such as descriptor sets, must have been set beforehand.
-    pub fn dispatch_indirect(
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The [safety requirements for `DispatchIndirectCommand`](DispatchIndirectCommand#safety)
+    ///   apply.
+    pub unsafe fn dispatch_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -197,7 +212,11 @@ impl RecordingCommandBuffer {
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided vertex and
     /// instance ranges must be in range of the bound vertex buffers.
-    pub fn draw(
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    pub unsafe fn draw(
         &mut self,
         vertex_count: u32,
         instance_count: u32,
@@ -373,9 +392,9 @@ impl RecordingCommandBuffer {
     ///
     /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](crate::device::Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
-    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// A graphics pipeline must have been bound using
@@ -384,7 +403,13 @@ impl RecordingCommandBuffer {
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
     /// ranges of each `DrawIndirectCommand` in the indirect buffer must be in range of the bound
     /// vertex buffers.
-    pub fn draw_indirect(
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety)
+    ///   apply.
+    pub unsafe fn draw_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -489,7 +514,16 @@ impl RecordingCommandBuffer {
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided instance
     /// range must be in range of the bound vertex buffers. The vertex indices in the index buffer
     /// must be in range of the bound vertex buffers.
-    pub fn draw_indexed(
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - Every vertex number that is retrieved from the index buffer must fall within the range of
+    ///   the bound vertex-rate vertex buffers.
+    /// - Every vertex number that is retrieved from the index buffer, if it is not the special
+    ///   primitive restart value, must be no greater than the
+    ///   [`max_draw_indexed_index_value`](Properties::max_draw_indexed_index_value) device limit.
+    pub unsafe fn draw_indexed(
         &mut self,
         index_count: u32,
         instance_count: u32,
@@ -702,9 +736,9 @@ impl RecordingCommandBuffer {
     ///
     /// One draw is performed for each [`DrawIndexedIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](crate::device::Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
-    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// An index buffer must have been bound using
@@ -718,7 +752,13 @@ impl RecordingCommandBuffer {
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
     /// each `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound
     /// vertex buffers.
-    pub fn draw_indexed_indirect(
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The [safety requirements for `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety)
+    ///   apply.
+    pub unsafe fn draw_indexed_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
     ) -> Result<&mut Self, Box<ValidationError>> {
@@ -1070,7 +1110,7 @@ impl RecordingCommandBuffer {
                                     is not equal to the view type required by the pipeline"
                                 )
                                 .into(),
-                                // vuids?
+                                vuids: vuids!(vuid_type, "viewType-07752"),
                                 ..Default::default()
                             }));
                         }
@@ -1147,7 +1187,7 @@ impl RecordingCommandBuffer {
                                     `{view_numeric_type:?}` numeric type"
                                 )
                                 .into(),
-                                // vuids?
+                                vuids: vuids!(vuid_type, "format-07753"),
                                 ..Default::default()
                             }));
                         }
@@ -1196,7 +1236,7 @@ impl RecordingCommandBuffer {
                                     sampler YCbCr conversion"
                                 )
                                 .into(),
-                                // vuids?
+                                vuids: vuids!(vuid_type, "None-06550", "ConstOffset-06551"),
                                 ..Default::default()
                             }));
                         }

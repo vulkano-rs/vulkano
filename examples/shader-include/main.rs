@@ -177,6 +177,7 @@ fn main() {
         },
     )
     .unwrap();
+
     builder
         .bind_pipeline_compute(pipeline.clone())
         .unwrap()
@@ -186,9 +187,12 @@ fn main() {
             0,
             set,
         )
-        .unwrap()
-        .dispatch([1024, 1, 1])
         .unwrap();
+
+    unsafe {
+        builder.dispatch([1024, 1, 1]).unwrap();
+    }
+
     let command_buffer = builder.end().unwrap();
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

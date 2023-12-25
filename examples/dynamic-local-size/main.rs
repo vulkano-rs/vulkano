@@ -259,6 +259,7 @@ fn main() {
         },
     )
     .unwrap();
+
     builder
         .bind_pipeline_compute(pipeline.clone())
         .unwrap()
@@ -268,12 +269,19 @@ fn main() {
             0,
             set,
         )
-        .unwrap()
+        .unwrap();
+
+    unsafe {
         // Note that dispatch dimensions must be proportional to the local size.
-        .dispatch([1024 / local_size_x, 1024 / local_size_y, 1])
-        .unwrap()
+        builder
+            .dispatch([1024 / local_size_x, 1024 / local_size_y, 1])
+            .unwrap();
+    }
+
+    builder
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();
+
     let command_buffer = builder.end().unwrap();
 
     let future = sync::now(device)

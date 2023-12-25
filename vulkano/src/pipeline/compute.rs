@@ -567,6 +567,7 @@ mod tests {
             },
         )
         .unwrap();
+
         cbb.bind_pipeline_compute(pipeline.clone())
             .unwrap()
             .bind_descriptor_sets(
@@ -575,9 +576,12 @@ mod tests {
                 0,
                 set,
             )
-            .unwrap()
-            .dispatch([1, 1, 1])
             .unwrap();
+
+        unsafe {
+            cbb.dispatch([1, 1, 1]).unwrap();
+        }
+
         let cb = cbb.end().unwrap();
 
         let future = now(device)
@@ -718,6 +722,7 @@ mod tests {
             },
         )
         .unwrap();
+
         cbb.bind_pipeline_compute(pipeline.clone())
             .unwrap()
             .bind_descriptor_sets(
@@ -726,9 +731,12 @@ mod tests {
                 0,
                 set,
             )
-            .unwrap()
-            .dispatch([128, 1, 1])
             .unwrap();
+
+        unsafe {
+            cbb.dispatch([128, 1, 1]).unwrap();
+        }
+
         let cb = cbb.end().unwrap();
 
         let future = now(device)

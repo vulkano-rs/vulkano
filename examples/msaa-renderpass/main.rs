@@ -390,6 +390,7 @@ fn main() {
         },
     )
     .unwrap();
+
     builder
         .begin_render_pass(
             RenderPassBeginInfo {
@@ -404,15 +405,19 @@ fn main() {
         .bind_pipeline_graphics(pipeline)
         .unwrap()
         .bind_vertex_buffers(0, vertex_buffer.clone())
-        .unwrap()
-        .draw(vertex_buffer.len() as u32, 1, 0, 0)
-        .unwrap()
+        .unwrap();
+
+    unsafe {
+        builder.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
+    }
+
+    builder
         .end_render_pass(Default::default())
         .unwrap()
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();
-    let command_buffer = builder.end().unwrap();
 
+    let command_buffer = builder.end().unwrap();
     let finished = command_buffer.execute(queue).unwrap();
     finished
         .then_signal_fence_and_flush()

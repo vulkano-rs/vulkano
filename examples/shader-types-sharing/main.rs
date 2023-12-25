@@ -203,6 +203,7 @@ fn main() {
             },
         )
         .unwrap();
+
         builder
             .bind_pipeline_compute(pipeline.clone())
             .unwrap()
@@ -214,11 +215,13 @@ fn main() {
             )
             .unwrap()
             .push_constants(pipeline.layout().clone(), 0, parameters)
-            .unwrap()
-            .dispatch([1024, 1, 1])
             .unwrap();
-        let command_buffer = builder.end().unwrap();
 
+        unsafe {
+            builder.dispatch([1024, 1, 1]).unwrap();
+        }
+
+        let command_buffer = builder.end().unwrap();
         let future = sync::now(queue.device().clone())
             .then_execute(queue.clone(), command_buffer)
             .unwrap()

@@ -375,6 +375,7 @@ fn main() -> Result<(), impl Error> {
                     },
                 )
                 .unwrap();
+
                 builder
                     .begin_render_pass(
                         RenderPassBeginInfo {
@@ -401,13 +402,17 @@ fn main() -> Result<(), impl Error> {
                     .bind_vertex_buffers(0, (vertex_buffer.clone(), normals_buffer.clone()))
                     .unwrap()
                     .bind_index_buffer(index_buffer.clone())
-                    .unwrap()
-                    .draw_indexed(index_buffer.len() as u32, 1, 0, 0, 0)
-                    .unwrap()
-                    .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = builder.end().unwrap();
 
+                unsafe {
+                    builder
+                        .draw_indexed(index_buffer.len() as u32, 1, 0, 0, 0)
+                        .unwrap();
+                }
+
+                builder.end_render_pass(Default::default()).unwrap();
+
+                let command_buffer = builder.end().unwrap();
                 let future = previous_frame_end
                     .take()
                     .unwrap()

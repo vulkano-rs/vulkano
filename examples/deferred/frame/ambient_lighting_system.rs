@@ -197,6 +197,7 @@ impl AmbientLightingSystem {
             },
         )
         .unwrap();
+
         builder
             .set_viewport(0, [viewport].into_iter().collect())
             .unwrap()
@@ -212,9 +213,14 @@ impl AmbientLightingSystem {
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap()
             .bind_vertex_buffers(0, self.vertex_buffer.clone())
-            .unwrap()
-            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
+
+        unsafe {
+            builder
+                .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+                .unwrap();
+        }
+
         builder.end().unwrap()
     }
 }

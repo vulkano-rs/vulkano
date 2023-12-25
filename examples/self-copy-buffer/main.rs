@@ -172,6 +172,7 @@ fn main() {
         },
     )
     .unwrap();
+
     builder
         // Copy from the first half to the second half (inside the same buffer) before we run the
         // computation.
@@ -194,9 +195,12 @@ fn main() {
             0,
             set,
         )
-        .unwrap()
-        .dispatch([1024, 1, 1])
         .unwrap();
+
+    unsafe {
+        builder.dispatch([1024, 1, 1]).unwrap();
+    }
+
     let command_buffer = builder.end().unwrap();
 
     let future = sync::now(device)
