@@ -74,6 +74,7 @@ contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkan
 | [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
 | [Korangar](https://github.com/vE5li/korangar) | A Vulkan based Ragnarok Online client |
 | [Krnl](https://github.com/charles-r-earp/krnl) | Safe, portable, high performance compute (GPGPU) kernels. |
+| [Vera](https://github.com/Coddeus/vera) | Animation engine scripted in Rust. |
 
 We would love to help you keep your project in sync with the most recent changes in Vulkano
 if you give us feedback by adding your project to this list.
