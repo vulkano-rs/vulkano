@@ -247,7 +247,8 @@ impl QueryPool {
             | QueryType::AccelerationStructureCompactedSize
             | QueryType::AccelerationStructureSerializationSize
             | QueryType::AccelerationStructureSerializationBottomLevelPointers
-            | QueryType::AccelerationStructureSize => (),
+            | QueryType::AccelerationStructureSize
+            | QueryType::MeshPrimitivesGenerated => (),
         }
 
         Ok(())
@@ -391,6 +392,18 @@ impl QueryPoolCreateInfo {
                     }));
                 }
             }
+            QueryType::MeshPrimitivesGenerated => {
+                if !device.enabled_features().mesh_shader_queries {
+                    return Err(Box::new(ValidationError {
+                        context: "query_type".into(),
+                        problem: "is `QueryType::MeshPrimitivesGenerated`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "mesh_shader_queries",
+                        )])]),
+                        vuids: &["VUID-VkQueryPoolCreateInfo-meshShaderQueries-07068"],
+                    }));
+                }
+            }
             QueryType::Occlusion
             | QueryType::Timestamp
             | QueryType::AccelerationStructureCompactedSize
@@ -478,6 +491,14 @@ pub enum QueryType {
     ///
     /// [`write_acceleration_structures_properties`]: crate::command_buffer::RecordingCommandBuffer::write_acceleration_structures_properties
     AccelerationStructureSize = ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR.as_raw(),
+
+    /// Queries the number of primitives emitted from a mesh shader that reach the fragment shader.
+    ///
+    /// Used with the [`begin_query`] and [`end_query`] commands.
+    ///
+    /// [`begin_query`]: crate::command_buffer::RecordingCommandBuffer::begin_query
+    /// [`end_query`]: crate::command_buffer::RecordingCommandBuffer::end_query
+    MeshPrimitivesGenerated = ash::vk::QueryType::MESH_PRIMITIVES_GENERATED_EXT.as_raw(),
 }
 
 impl QueryType {
@@ -502,7 +523,8 @@ impl QueryType {
             | Self::AccelerationStructureCompactedSize
             | Self::AccelerationStructureSerializationSize
             | Self::AccelerationStructureSerializationBottomLevelPointers
-            | Self::AccelerationStructureSize => 1,
+            | Self::AccelerationStructureSize
+            | Self::MeshPrimitivesGenerated => 1,
             Self::PipelineStatistics(flags) => flags.count() as DeviceSize,
         }
     }
@@ -558,6 +580,17 @@ impl QueryType {
                     }));
                 }
             }
+            QueryType::MeshPrimitivesGenerated => {
+                if !device.enabled_extensions().ext_mesh_shader {
+                    return Err(Box::new(ValidationError {
+                        problem: "is `QueryType::MeshPrimitivesGenerated`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("ext_mesh_shader"),
+                        ])]),
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         Ok(())
@@ -583,6 +616,7 @@ impl From<&QueryType> for ash::vk::QueryType {
             QueryType::AccelerationStructureSize => {
                 ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR
             }
+            QueryType::MeshPrimitivesGenerated => ash::vk::QueryType::MESH_PRIMITIVES_GENERATED_EXT,
         }
     }
 }

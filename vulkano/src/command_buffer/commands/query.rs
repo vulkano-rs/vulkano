@@ -505,6 +505,22 @@ impl RawRecordingCommandBuffer {
                     }));
                 }
             }
+            QueryType::MeshPrimitivesGenerated => {
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::GRAPHICS)
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`query_pool.query_type()` is \
+                            `QueryType::MeshPrimitivesGenerated`, but \
+                            the queue family of the command buffer does not support \
+                            graphics operations"
+                            .into(),
+                        vuids: &["VUID-vkCmdBeginQuery-queryType-07070"],
+                        ..Default::default()
+                    }));
+                }
+            }
             QueryType::Timestamp
             | QueryType::AccelerationStructureCompactedSize
             | QueryType::AccelerationStructureSerializationSize
