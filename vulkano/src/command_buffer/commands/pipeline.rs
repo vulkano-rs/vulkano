@@ -2305,6 +2305,18 @@ impl RecordingCommandBuffer {
             }));
         }
 
+        if self
+            .builder_state
+            .queries
+            .contains_key(&ash::vk::QueryType::MESH_PRIMITIVES_GENERATED_EXT)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "a `MeshPrimitivesGenerated` query is currently active".into(),
+                vuids: vuids!(vuid_type, "stage-07073"),
+                ..Default::default()
+            }));
+        }
+
         if let Some(query_state) = self
             .builder_state
             .queries
@@ -2366,18 +2378,6 @@ impl RecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 problem: "the currently bound graphics pipeline uses primitive shading".into(),
                 vuids: vuids!(vuid_type, "stage-06480"),
-                ..Default::default()
-            }));
-        }
-
-        if self
-            .builder_state
-            .queries
-            .contains_key(&ash::vk::QueryType::MESH_PRIMITIVES_GENERATED_EXT)
-        {
-            return Err(Box::new(ValidationError {
-                problem: "a `MeshPrimitivesGenerated` query is currently active".into(),
-                vuids: vuids!(vuid_type, "stage-07073"),
                 ..Default::default()
             }));
         }
