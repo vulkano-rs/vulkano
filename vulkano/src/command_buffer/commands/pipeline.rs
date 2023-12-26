@@ -2316,10 +2316,7 @@ impl RecordingCommandBuffer {
                 unreachable!()
             };
 
-            if pipeline_statistics_flags.intersects(
-                QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS
-                    | QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS,
-            ) {
+            if pipeline_statistics_flags.is_mesh_shading_graphics() {
                 return Err(Box::new(ValidationError {
                     problem: "a pipeline statistics query is currently active, and its \
                         pipeline statistics flags include statistics for mesh shading"
@@ -2384,17 +2381,7 @@ impl RecordingCommandBuffer {
                 unreachable!()
             };
 
-            if pipeline_statistics_flags.intersects(
-                QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES
-                    | QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES
-                    | QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS
-                    | QueryPipelineStatisticFlags::GEOMETRY_SHADER_INVOCATIONS
-                    | QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES
-                    | QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS
-                    | QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES
-                    | QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES
-                    | QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS,
-            ) {
+            if pipeline_statistics_flags.is_primitive_shading_graphics() {
                 return Err(Box::new(ValidationError {
                     problem: "a pipeline statistics query is currently active, and its \
                         pipeline statistics flags include statistics for primitive shading"

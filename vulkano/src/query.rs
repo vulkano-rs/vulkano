@@ -613,6 +613,14 @@ vulkan_bitflags! {
         /// Returns `true` if `self` contains any flags referring to graphics operations.
         #[inline]
         pub const fn is_graphics(self) -> bool {
+            self.is_primitive_shading_graphics() || self.is_mesh_shading_graphics() ||
+            self.intersects(QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS)
+        }
+
+        /// Returns `true` if `self` contains any flags referring to primitive shading graphics
+        /// operations.
+        #[inline]
+        pub const fn is_primitive_shading_graphics(self) -> bool {
             self.intersects(
                 (QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES)
                     .union(QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES)
@@ -621,10 +629,17 @@ vulkan_bitflags! {
                     .union(QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES)
                     .union(QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS)
                     .union(QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES)
-                    .union(QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS)
                     .union(QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES)
-                    .union(QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS)
-                    .union(QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS),
+            )
+        }
+
+        /// Returns `true` if `self` contains any flags referring to mesh shading graphics
+        /// operations.
+        #[inline]
+        pub const fn is_mesh_shading_graphics(self) -> bool {
+            self.intersects(
+                (QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS)
                     .union(QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS),
             )
         }
