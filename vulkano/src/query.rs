@@ -44,6 +44,17 @@ impl QueryPool {
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
+    fn validate_new(
+        device: &Device,
+        create_info: &QueryPoolCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
@@ -84,17 +95,6 @@ impl QueryPool {
         };
 
         Ok(Self::from_handle(device, handle, create_info))
-    }
-
-    fn validate_new(
-        device: &Device,
-        create_info: &QueryPoolCreateInfo,
-    ) -> Result<(), Box<ValidationError>> {
-        create_info
-            .validate(device)
-            .map_err(|err| err.add_context("create_info"))?;
-
-        Ok(())
     }
 
     /// Creates a new `QueryPool` from a raw object handle.
@@ -373,6 +373,23 @@ impl QueryPoolCreateInfo {
                     err.add_context("query_type.flags")
                         .set_vuids(&["VUID-VkQueryPoolCreateInfo-queryType-00792"])
                 })?;
+
+                if flags.intersects(
+                    QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS
+                        | QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS,
+                ) && !device.enabled_features().mesh_shader_queries
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "query_type.flags".into(),
+                        problem: "contains `TASK_SHADER_INVOCATIONS` or \
+                            `MESH_SHADER_INVOCATIONS`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "mesh_shader_queries",
+                        )])]),
+                        vuids: &["VUID-VkQueryPoolCreateInfo-meshShaderQueries-07069"],
+                    }));
+                }
             }
             QueryType::Occlusion
             | QueryType::Timestamp
@@ -606,7 +623,9 @@ vulkan_bitflags! {
                     .union(QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES)
                     .union(QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS)
                     .union(QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES)
-                    .union(QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS),
+                    .union(QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS),
             )
         }
     }
@@ -645,19 +664,17 @@ vulkan_bitflags! {
     /// Count the number of times a compute shader is invoked.
     COMPUTE_SHADER_INVOCATIONS = COMPUTE_SHADER_INVOCATIONS,
 
-    /* TODO: enable
-    // TODO: document
-    TASK_SHADER_INVOCATIONS = TASK_SHADER_INVOCATIONS_NV
+    /// Count the number of times a task shader is invoked.
+    TASK_SHADER_INVOCATIONS = TASK_SHADER_INVOCATIONS_EXT
     RequiresOneOf([
-        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
-    ]),*/
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+    ]),
 
-    /* TODO: enable
-    // TODO: document
-    MESH_SHADER_INVOCATIONS = MESH_SHADER_INVOCATIONS_NV
+    /// Count the number of times a mesh shader is invoked.
+    MESH_SHADER_INVOCATIONS = MESH_SHADER_INVOCATIONS_EXT
     RequiresOneOf([
-        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
-    ]),*/
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+    ]),
 }
 
 /// A trait for elements of buffers that can be used as a destination for query results.

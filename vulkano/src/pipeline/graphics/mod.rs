@@ -117,10 +117,9 @@ pub struct GraphicsPipeline {
     id: NonZeroU64,
 
     flags: PipelineCreateFlags,
-    // TODO: replace () with an object that describes the shaders in some way.
-    shaders: HashMap<ShaderStage, ()>,
+    shader_stages: ShaderStages,
     vertex_input_state: Option<VertexInputState>,
-    input_assembly_state: InputAssemblyState,
+    input_assembly_state: Option<InputAssemblyState>,
     tessellation_state: Option<TessellationState>,
     viewport_state: Option<ViewportState>,
     rasterization_state: RasterizationState,
@@ -137,6 +136,7 @@ pub struct GraphicsPipeline {
     num_used_descriptor_sets: u32,
     fixed_state: HashSet<DynamicState>,
     fragment_tests_stages: Option<FragmentTestsStages>,
+    mesh_is_nv: bool,
     // Note: this is only `Some` if `vertex_input_state` is `None`.
     required_vertex_inputs: Option<HashMap<u32, ShaderInterfaceLocationInfo>>,
 }
@@ -917,7 +917,8 @@ impl GraphicsPipeline {
             _ne: _,
         } = create_info;
 
-        let mut shaders = HashMap::default();
+        let mut shader_stages = ShaderStages::empty();
+        let mut mesh_is_nv = false;
         let mut descriptor_binding_requirements: HashMap<
             (u32, u32),
             DescriptorBindingRequirements,
@@ -932,7 +933,7 @@ impl GraphicsPipeline {
 
             let entry_point_info = entry_point.info();
             let stage = ShaderStage::from(entry_point_info.execution_model);
-            shaders.insert(stage, ());
+            shader_stages |= stage.into();
 
             let spirv = entry_point.module().spirv();
             let entry_point_function = spirv.function(entry_point.id());
@@ -947,6 +948,7 @@ impl GraphicsPipeline {
                         ));
                     }
                 }
+                ExecutionModel::MeshNV | ExecutionModel::TaskNV => mesh_is_nv = true,
                 ExecutionModel::Fragment => {
                     fragment_tests_stages = Some(FragmentTestsStages::Late);
 
@@ -1055,9 +1057,9 @@ impl GraphicsPipeline {
             id: Self::next_id(),
 
             flags,
-            shaders,
+            shader_stages,
             vertex_input_state,
-            input_assembly_state: input_assembly_state.unwrap(), // Can be None if there's a mesh shader, but we don't support that yet
+            input_assembly_state,
             tessellation_state,
             viewport_state,
             rasterization_state: rasterization_state.unwrap(), // Can be None for pipeline libraries, but we don't support that yet
@@ -1074,6 +1076,7 @@ impl GraphicsPipeline {
             num_used_descriptor_sets,
             fixed_state,
             fragment_tests_stages,
+            mesh_is_nv,
             required_vertex_inputs,
         })
     }
@@ -1090,16 +1093,15 @@ impl GraphicsPipeline {
         self.flags
     }
 
-    /// Returns information about a particular shader.
-    ///
-    /// `None` is returned if the pipeline does not contain this shader.
-    ///
-    /// Compatibility note: `()` is temporary, it will be replaced with something else in the
-    /// future.
-    // TODO: ^ implement and make this public
+    /// Returns the shader stages that this pipeline contains.
     #[inline]
-    pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
-        self.shaders.get(&stage).copied()
+    pub fn shader_stages(&self) -> ShaderStages {
+        self.shader_stages
+    }
+
+    #[inline]
+    pub(crate) fn mesh_is_nv(&self) -> bool {
+        self.mesh_is_nv
     }
 
     /// Returns the vertex input state used to create this pipeline.
@@ -1110,8 +1112,8 @@ impl GraphicsPipeline {
 
     /// Returns the input assembly state used to create this pipeline.
     #[inline]
-    pub fn input_assembly_state(&self) -> &InputAssemblyState {
-        &self.input_assembly_state
+    pub fn input_assembly_state(&self) -> Option<&InputAssemblyState> {
+        self.input_assembly_state.as_ref()
     }
 
     /// Returns the tessellation state used to create this pipeline.
@@ -1448,17 +1450,17 @@ impl GraphicsPipelineCreateInfo {
             Gather shader stages
         */
 
-        let mut stages_present = ShaderStages::empty();
-        let mut vertex_stage = None;
-        let mut tessellation_control_stage = None;
-        let mut tessellation_evaluation_stage = None;
-        let mut geometry_stage = None;
-        let mut fragment_stage = None;
+        const PRIMITIVE_SHADING_STAGES: ShaderStages = ShaderStages::VERTEX
+            .union(ShaderStages::TESSELLATION_CONTROL)
+            .union(ShaderStages::TESSELLATION_CONTROL)
+            .union(ShaderStages::GEOMETRY);
+        const MESH_SHADING_STAGES: ShaderStages = ShaderStages::MESH.union(ShaderStages::TASK);
 
-        for (stage_index, stage) in stages.iter().enumerate() {
-            let entry_point_info = stage.entry_point.info();
-            let stage_enum = ShaderStage::from(entry_point_info.execution_model);
-            let stage_flag = ShaderStages::from(stage_enum);
+        let mut stages_present = ShaderStages::empty();
+
+        for stage in stages {
+            let stage_flag =
+                ShaderStages::from(ShaderStage::from(stage.entry_point.info().execution_model));
 
             if stages_present.intersects(stage_flag) {
                 return Err(Box::new(ValidationError {
@@ -1474,43 +1476,6 @@ impl GraphicsPipelineCreateInfo {
                 }));
             }
 
-            const PRIMITIVE_SHADING_STAGES: ShaderStages = ShaderStages::VERTEX
-                .union(ShaderStages::TESSELLATION_CONTROL)
-                .union(ShaderStages::TESSELLATION_CONTROL)
-                .union(ShaderStages::GEOMETRY);
-            const MESH_SHADING_STAGES: ShaderStages = ShaderStages::MESH.union(ShaderStages::TASK);
-
-            if stage_flag.intersects(PRIMITIVE_SHADING_STAGES)
-                && stages_present.intersects(MESH_SHADING_STAGES)
-                || stage_flag.intersects(MESH_SHADING_STAGES)
-                    && stages_present.intersects(PRIMITIVE_SHADING_STAGES)
-            {
-                return Err(Box::new(ValidationError {
-                    context: "stages".into(),
-                    problem: "contains both primitive shading stages and mesh shading stages"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02095"],
-                    ..Default::default()
-                }));
-            }
-
-            let stage_slot = match stage_enum {
-                ShaderStage::Vertex => &mut vertex_stage,
-                ShaderStage::TessellationControl => &mut tessellation_control_stage,
-                ShaderStage::TessellationEvaluation => &mut tessellation_evaluation_stage,
-                ShaderStage::Geometry => &mut geometry_stage,
-                ShaderStage::Fragment => &mut fragment_stage,
-                _ => {
-                    return Err(Box::new(ValidationError {
-                        context: format!("stages[{}]", stage_index).into(),
-                        problem: "is not a pre-rasterization or fragment shader stage".into(),
-                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06896"],
-                        ..Default::default()
-                    }));
-                }
-            };
-
-            *stage_slot = Some(stage);
             stages_present |= stage_flag;
         }
 
@@ -1548,13 +1513,8 @@ impl GraphicsPipelineCreateInfo {
             _ => (),
         }
 
-        let need_vertex_input_state = need_pre_rasterization_shader_state
-            && stages.iter().any(|stage| {
-                matches!(
-                    stage.entry_point.info().execution_model,
-                    ExecutionModel::Vertex
-                )
-            });
+        let need_vertex_input_state =
+            need_pre_rasterization_shader_state && stages_present.intersects(ShaderStages::VERTEX);
         let need_fragment_shader_state = need_pre_rasterization_shader_state
             && (!rasterization_state
                 .as_ref()
@@ -1568,109 +1528,34 @@ impl GraphicsPipelineCreateInfo {
                 .rasterizer_discard_enable
                 || dynamic_state.contains(&DynamicState::RasterizerDiscardEnable));
 
-        match (vertex_stage.is_some(), need_pre_rasterization_shader_state) {
-            (true, false) => {
-                return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::Vertex` stage"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
-                    ..Default::default()
-                }));
-            }
-            (false, true) => {
+        if need_pre_rasterization_shader_state {
+            if !stages_present.intersects(ShaderStages::VERTEX | ShaderStages::MESH) {
                 return Err(Box::new(ValidationError {
                     problem: "the pipeline is being created with \
                         pre-rasterization shader state, but `stages` does not contain a \
-                        `ShaderStage::Vertex` stage"
+                        `ShaderStage::Vertex` or `ShaderStage::Mesh` stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-stage-02096"],
                     ..Default::default()
                 }));
             }
-            _ => (),
-        }
-
-        match (
-            tessellation_control_stage.is_some(),
-            need_pre_rasterization_shader_state,
-        ) {
-            (true, false) => {
+        } else {
+            if stages_present.intersects(PRIMITIVE_SHADING_STAGES | MESH_SHADING_STAGES) {
                 return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
-                        pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::TessellationControl` stage"
+                    pre-rasterization shader state, but `stages` contains a \
+                    pre-rasterization shader stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
                     ..Default::default()
                 }));
             }
-            (false, true) => (),
-            _ => (),
         }
 
         match (
-            tessellation_evaluation_stage.is_some(),
-            need_pre_rasterization_shader_state,
+            stages_present.intersects(ShaderStages::FRAGMENT),
+            need_fragment_shader_state,
         ) {
-            (true, false) => {
-                return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::TessellationEvaluation` stage"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
-                    ..Default::default()
-                }));
-            }
-            (false, true) => (),
-            _ => (),
-        }
-
-        if stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
-            && !stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
-        {
-            return Err(Box::new(ValidationError {
-                context: "stages".into(),
-                problem: "contains a `ShaderStage::TessellationControl` stage, but not a \
-                    `ShaderStage::TessellationEvaluation` stage"
-                    .into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00729"],
-                ..Default::default()
-            }));
-        } else if stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
-            && !stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
-        {
-            return Err(Box::new(ValidationError {
-                context: "stages".into(),
-                problem: "contains a `ShaderStage::TessellationEvaluation` stage, but not a \
-                    `ShaderStage::TessellationControl` stage"
-                    .into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00730"],
-                ..Default::default()
-            }));
-        }
-
-        match (
-            geometry_stage.is_some(),
-            need_pre_rasterization_shader_state,
-        ) {
-            (true, false) => {
-                return Err(Box::new(ValidationError {
-                    problem: "the pipeline is not being created with \
-                        pre-rasterization shader state, but `stages` contains a \
-                        `ShaderStage::Geometry` stage"
-                        .into(),
-                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
-                    ..Default::default()
-                }));
-            }
-            (false, true) => (),
-            _ => (),
-        }
-
-        match (fragment_stage.is_some(), need_fragment_shader_state) {
             (true, false) => {
                 return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
@@ -1956,6 +1841,16 @@ impl GraphicsPipelineCreateInfo {
             Validate shader stages individually
         */
 
+        let mut has_mesh_ext = false;
+        let mut has_mesh_nv = false;
+        let mut vertex_stage = None;
+        let mut tessellation_control_stage = None;
+        let mut tessellation_evaluation_stage = None;
+        let mut geometry_stage = None;
+        let mut task_stage = None;
+        let mut mesh_stage = None;
+        let mut fragment_stage = None;
+
         for (stage_index, stage) in stages.iter().enumerate() {
             stage
                 .validate(device)
@@ -1969,6 +1864,37 @@ impl GraphicsPipelineCreateInfo {
             } = stage;
 
             let entry_point_info = entry_point.info();
+            let execution_model = entry_point_info.execution_model;
+
+            match execution_model {
+                ExecutionModel::TaskEXT | ExecutionModel::MeshEXT => {
+                    has_mesh_ext = true;
+                }
+                ExecutionModel::TaskNV | ExecutionModel::MeshNV => {
+                    has_mesh_nv = true;
+                }
+                _ => (),
+            }
+
+            let stage_enum = ShaderStage::from(execution_model);
+            let stage_slot = match stage_enum {
+                ShaderStage::Vertex => &mut vertex_stage,
+                ShaderStage::TessellationControl => &mut tessellation_control_stage,
+                ShaderStage::TessellationEvaluation => &mut tessellation_evaluation_stage,
+                ShaderStage::Geometry => &mut geometry_stage,
+                ShaderStage::Task => &mut task_stage,
+                ShaderStage::Mesh => &mut mesh_stage,
+                ShaderStage::Fragment => &mut fragment_stage,
+                _ => {
+                    return Err(Box::new(ValidationError {
+                        context: format!("stages[{}]", stage_index).into(),
+                        problem: "is not a pre-rasterization or fragment shader stage".into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06896"],
+                        ..Default::default()
+                    }));
+                }
+            };
+            *stage_slot = Some(stage);
 
             layout
                 .ensure_compatible_with_shader(
@@ -1987,11 +1913,64 @@ impl GraphicsPipelineCreateInfo {
                 })?;
         }
 
-        let ordered_stages: SmallVec<[_; 5]> = [
+        if stages_present.intersects(PRIMITIVE_SHADING_STAGES)
+            && stages_present.intersects(MESH_SHADING_STAGES)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains both primitive shading stages and mesh shading stages".into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-02095"],
+                ..Default::default()
+            }));
+        }
+
+        if stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
+            && !stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains a `ShaderStage::TessellationControl` stage, but not a \
+                    `ShaderStage::TessellationEvaluation` stage"
+                    .into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00729"],
+                ..Default::default()
+            }));
+        } else if stages_present.intersects(ShaderStages::TESSELLATION_EVALUATION)
+            && !stages_present.intersects(ShaderStages::TESSELLATION_CONTROL)
+        {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains a `ShaderStage::TessellationEvaluation` stage, but not a \
+                    `ShaderStage::TessellationControl` stage"
+                    .into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00730"],
+                ..Default::default()
+            }));
+        }
+
+        if has_mesh_ext && has_mesh_nv {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "contains mesh shader stages from both the EXT and the NV version".into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-TaskNV-07063"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-VkGraphicsPipelineCreateInfo-layout-01688
+        // Checked at pipeline layout creation time.
+
+        /*
+            Check compatibility between shader interfaces
+        */
+
+        let ordered_stages: SmallVec<[_; 7]> = [
             vertex_stage,
             tessellation_control_stage,
             tessellation_evaluation_stage,
             geometry_stage,
+            task_stage,
+            mesh_stage,
             fragment_stage,
         ]
         .into_iter()
@@ -2044,9 +2023,6 @@ impl GraphicsPipelineCreateInfo {
             })?;
         }
 
-        // VUID-VkGraphicsPipelineCreateInfo-layout-01688
-        // Checked at pipeline layout creation time.
-
         /*
             Validate states individually
         */
@@ -2061,9 +2037,6 @@ impl GraphicsPipelineCreateInfo {
             input_assembly_state
                 .validate(device)
                 .map_err(|err| err.add_context("input_assembly_state"))?;
-
-            // TODO:
-            // VUID-VkGraphicsPipelineCreateInfo-topology-00737
         }
 
         if let Some(tessellation_state) = tessellation_state {
@@ -2076,7 +2049,133 @@ impl GraphicsPipelineCreateInfo {
             viewport_state
                 .validate(device)
                 .map_err(|err| err.add_context("viewport_state"))?;
+        }
 
+        if let Some(rasterization_state) = rasterization_state {
+            rasterization_state
+                .validate(device)
+                .map_err(|err| err.add_context("rasterization_state"))?;
+        }
+
+        if let Some(multisample_state) = multisample_state {
+            multisample_state
+                .validate(device)
+                .map_err(|err| err.add_context("multisample_state"))?;
+        }
+
+        if let Some(depth_stencil_state) = depth_stencil_state {
+            depth_stencil_state
+                .validate(device)
+                .map_err(|err| err.add_context("depth_stencil_state"))?;
+        }
+
+        if let Some(color_blend_state) = color_blend_state {
+            color_blend_state
+                .validate(device)
+                .map_err(|err| err.add_context("color_blend_state"))?;
+        }
+
+        if let Some(subpass) = subpass {
+            match subpass {
+                PipelineSubpassType::BeginRenderPass(subpass) => {
+                    // VUID-VkGraphicsPipelineCreateInfo-commonparent
+                    assert_eq!(device, subpass.render_pass().device().as_ref());
+                }
+                PipelineSubpassType::BeginRendering(rendering_info) => {
+                    if !device.enabled_features().dynamic_rendering {
+                        return Err(Box::new(ValidationError {
+                            context: "subpass".into(),
+                            problem: "is `PipelineRenderPassType::BeginRendering`".into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                                "dynamic_rendering",
+                            )])]),
+                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576"],
+                        }));
+                    }
+
+                    rendering_info
+                        .validate(device)
+                        .map_err(|err| err.add_context("subpass"))?;
+                }
+            }
+        }
+
+        if let Some(discard_rectangle_state) = discard_rectangle_state {
+            if !device.enabled_extensions().ext_discard_rectangles {
+                return Err(Box::new(ValidationError {
+                    context: "discard_rectangle_state".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_discard_rectangles",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            discard_rectangle_state
+                .validate(device)
+                .map_err(|err| err.add_context("discard_rectangle_state"))?;
+        }
+
+        for dynamic_state in dynamic_state.iter().copied() {
+            dynamic_state.validate_device(device).map_err(|err| {
+                err.add_context("dynamic_state")
+                    .set_vuids(&["VUID-VkPipelineDynamicStateCreateInfo-pDynamicStates-parameter"])
+            })?;
+        }
+
+        /*
+            Check dynamic states against other things
+        */
+
+        if stages_present.intersects(ShaderStages::MESH) {
+            if dynamic_state.contains(&DynamicState::PrimitiveTopology) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::PrimitiveTopology`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07065"],
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::PrimitiveRestartEnable) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::PrimitiveRestartEnable`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07066"],
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::PatchControlPoints) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::PatchControlPoints`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07066"],
+                    ..Default::default()
+                }));
+            }
+
+            if dynamic_state.contains(&DynamicState::VertexInput) {
+                return Err(Box::new(ValidationError {
+                    problem: "`stages` includes a mesh shader, but `dynamic_state` contains \
+                        `DynamicState::VertexInput`"
+                        .into(),
+                    vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-07067"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if let Some(_input_assembly_state) = input_assembly_state {
+            // TODO:
+            // VUID-VkGraphicsPipelineCreateInfo-topology-00737
+        }
+
+        if let Some(viewport_state) = viewport_state {
             let ViewportState {
                 ref viewports,
                 ref scissors,
@@ -2152,10 +2251,6 @@ impl GraphicsPipelineCreateInfo {
         }
 
         if let Some(rasterization_state) = rasterization_state {
-            rasterization_state
-                .validate(device)
-                .map_err(|err| err.add_context("rasterization_state"))?;
-
             let &RasterizationState {
                 depth_clamp_enable: _,
                 rasterizer_discard_enable: _,
@@ -2232,20 +2327,12 @@ impl GraphicsPipelineCreateInfo {
             // VUID-VkGraphicsPipelineCreateInfo-renderPass-06059
         }
 
-        if let Some(multisample_state) = multisample_state {
-            multisample_state
-                .validate(device)
-                .map_err(|err| err.add_context("multisample_state"))?;
-
+        if let Some(_multisample_state) = multisample_state {
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-lineRasterizationMode-02766
         }
 
         if let Some(depth_stencil_state) = depth_stencil_state {
-            depth_stencil_state
-                .validate(device)
-                .map_err(|err| err.add_context("depth_stencil_state"))?;
-
             let &DepthStencilState {
                 flags: _,
                 ref depth,
@@ -2285,137 +2372,6 @@ impl GraphicsPipelineCreateInfo {
 
             // TODO:
             // VUID-VkGraphicsPipelineCreateInfo-renderPass-06040
-        }
-
-        if let Some(color_blend_state) = color_blend_state {
-            color_blend_state
-                .validate(device)
-                .map_err(|err| err.add_context("color_blend_state"))?;
-        }
-
-        if let Some(subpass) = subpass {
-            match subpass {
-                PipelineSubpassType::BeginRenderPass(subpass) => {
-                    // VUID-VkGraphicsPipelineCreateInfo-commonparent
-                    assert_eq!(device, subpass.render_pass().device().as_ref());
-
-                    if subpass.subpass_desc().view_mask != 0 {
-                        if stages_present.intersects(
-                            ShaderStages::TESSELLATION_CONTROL
-                                | ShaderStages::TESSELLATION_EVALUATION,
-                        ) && !device.enabled_features().multiview_tessellation_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains tessellation shaders, and \
-                                    `subpass` has a non-zero `view_mask`"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_tessellation_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06047"],
-                                ..Default::default()
-                            }));
-                        }
-
-                        if stages_present.intersects(ShaderStages::GEOMETRY)
-                            && !device.enabled_features().multiview_geometry_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains a geometry shader, and \
-                                    `subpass` has a non-zero `view_mask`"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_geometry_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06048"],
-                                ..Default::default()
-                            }));
-                        }
-                    }
-                }
-                PipelineSubpassType::BeginRendering(rendering_info) => {
-                    if !device.enabled_features().dynamic_rendering {
-                        return Err(Box::new(ValidationError {
-                            context: "subpass".into(),
-                            problem: "is `PipelineRenderPassType::BeginRendering`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "dynamic_rendering",
-                            )])]),
-                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576"],
-                        }));
-                    }
-
-                    rendering_info
-                        .validate(device)
-                        .map_err(|err| err.add_context("subpass"))?;
-
-                    let &PipelineRenderingCreateInfo {
-                        view_mask,
-                        color_attachment_formats: _,
-                        depth_attachment_format: _,
-                        stencil_attachment_format: _,
-                        _ne: _,
-                    } = rendering_info;
-
-                    if view_mask != 0 {
-                        if stages_present.intersects(
-                            ShaderStages::TESSELLATION_CONTROL
-                                | ShaderStages::TESSELLATION_EVALUATION,
-                        ) && !device.enabled_features().multiview_tessellation_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains tessellation shaders, and \
-                                    `subpass.view_mask` is not 0"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_tessellation_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06057"],
-                                ..Default::default()
-                            }));
-                        }
-
-                        if stages_present.intersects(ShaderStages::GEOMETRY)
-                            && !device.enabled_features().multiview_geometry_shader
-                        {
-                            return Err(Box::new(ValidationError {
-                                problem: "`stages` contains a geometry shader, and \
-                                    `subpass.view_mask` is not 0"
-                                    .into(),
-                                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("multiview_geometry_shader"),
-                                ])]),
-                                vuids: &["VUID-VkGraphicsPipelineCreateInfo-renderPass-06058"],
-                                ..Default::default()
-                            }));
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(discard_rectangle_state) = discard_rectangle_state {
-            if !device.enabled_extensions().ext_discard_rectangles {
-                return Err(Box::new(ValidationError {
-                    context: "discard_rectangle_state".into(),
-                    problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                        "ext_discard_rectangles",
-                    )])]),
-                    ..Default::default()
-                }));
-            }
-
-            discard_rectangle_state
-                .validate(device)
-                .map_err(|err| err.add_context("discard_rectangle_state"))?;
-        }
-
-        for dynamic_state in dynamic_state.iter().copied() {
-            dynamic_state.validate_device(device).map_err(|err| {
-                err.add_context("dynamic_state")
-                    .set_vuids(&["VUID-VkPipelineDynamicStateCreateInfo-pDynamicStates-parameter"])
-            })?;
         }
 
         /*
@@ -2698,6 +2654,70 @@ impl GraphicsPipelineCreateInfo {
                             have a stencil attachment"
                             .into(),
                         // vuids?
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+
+        if let Some(subpass) = subpass {
+            let view_mask = match subpass {
+                PipelineSubpassType::BeginRenderPass(subpass) => subpass.subpass_desc().view_mask,
+                PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.view_mask,
+            };
+
+            if view_mask != 0 {
+                if stages_present.intersects(
+                    ShaderStages::TESSELLATION_CONTROL | ShaderStages::TESSELLATION_EVALUATION,
+                ) && !device.enabled_features().multiview_tessellation_shader
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`stages` contains tessellation shaders, and \
+                            `subpass` has a non-zero `view_mask`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "multiview_tessellation_shader",
+                        )])]),
+                        vuids: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06047",
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06057",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+
+                if stages_present.intersects(ShaderStages::GEOMETRY)
+                    && !device.enabled_features().multiview_geometry_shader
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`stages` contains a geometry shader, and \
+                            `subpass` has a non-zero `view_mask`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "multiview_geometry_shader",
+                        )])]),
+                        vuids: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06048",
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-06058",
+                        ],
+                        ..Default::default()
+                    }));
+                }
+
+                if stages_present.intersects(ShaderStages::MESH)
+                    && !device.enabled_features().multiview_mesh_shader
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`stages` contains a mesh shader, and \
+                            `subpass` has a non-zero `view_mask`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "multiview_mesh_shader",
+                        )])]),
+                        vuids: &[
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-07064",
+                            "VUID-VkGraphicsPipelineCreateInfo-renderPass-07720",
+                        ],
                         ..Default::default()
                     }));
                 }

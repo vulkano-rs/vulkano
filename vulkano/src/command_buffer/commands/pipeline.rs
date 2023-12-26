@@ -7,7 +7,7 @@ use crate::{
         auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
         sys::RawRecordingCommandBuffer,
         DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
-        RecordingCommandBuffer, ResourceInCommand, SubpassContents,
+        DrawMeshTasksIndirectCommand, RecordingCommandBuffer, ResourceInCommand, SubpassContents,
     },
     descriptor_set::{
         layout::DescriptorType, DescriptorBindingResources, DescriptorBufferInfo,
@@ -24,7 +24,8 @@ use crate::{
         },
         DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
     },
-    shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStage, ShaderStages},
+    query::{QueryPipelineStatisticFlags, QueryType},
+    shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
@@ -41,6 +42,9 @@ macro_rules! vuids {
             VUIDType::DrawIndexed => &[$(concat!("VUID-vkCmdDrawIndexed-", $id)),+],
             VUIDType::DrawIndexedIndirect => &[$(concat!("VUID-vkCmdDrawIndexedIndirect-", $id)),+],
             VUIDType::DrawIndexedIndirectCount => &[$(concat!("VUID-vkCmdDrawIndexedIndirectCount-", $id)),+],
+            VUIDType::DrawMeshTasks => &[$(concat!("VUID-vkCmdDrawMeshTasksEXT-", $id)),+],
+            VUIDType::DrawMeshTasksIndirect => &[$(concat!("VUID-vkCmdDrawMeshTasksIndirectEXT-", $id)),+],
+            VUIDType::DrawMeshTasksIndirectCount => &[$(concat!("VUID-vkCmdDrawMeshTasksIndirectCountEXT-", $id)),+],
         }
     };
 }
@@ -203,13 +207,13 @@ impl RecordingCommandBuffer {
         self
     }
 
-    /// Perform a single draw operation using a graphics pipeline.
+    /// Perform a single draw operation using a primitive shading graphics pipeline.
     ///
     /// The parameters specify the first vertex and the number of vertices to draw, and the first
     /// instance and number of instances. For non-instanced drawing, specify `instance_count` as 1
     /// and `first_instance` as 0.
     ///
-    /// A graphics pipeline must have been bound using
+    /// A primitive shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided vertex and
@@ -266,9 +270,9 @@ impl RecordingCommandBuffer {
         const VUID_TYPE: VUIDType = VUIDType::Draw;
         self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
         let view_mask = match pipeline.subpass() {
             PipelineSubpassType::BeginRenderPass(subpass) => subpass.render_pass().views_used(),
@@ -390,7 +394,7 @@ impl RecordingCommandBuffer {
         self
     }
 
-    /// Perform multiple draw operations using a graphics pipeline.
+    /// Perform multiple draw operations using a primitive shading graphics pipeline.
     ///
     /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
@@ -399,7 +403,7 @@ impl RecordingCommandBuffer {
     /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
-    /// A graphics pipeline must have been bound using
+    /// A primitive shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
@@ -455,9 +459,9 @@ impl RecordingCommandBuffer {
         const VUID_TYPE: VUIDType = VUIDType::DrawIndirect;
         self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
         Ok(())
     }
@@ -498,7 +502,7 @@ impl RecordingCommandBuffer {
         self
     }
 
-    /// Perform multiple draw operations using a graphics pipeline,
+    /// Perform multiple draw operations using a primitive shading graphics pipeline,
     /// reading the number of draw operations from a separate buffer.
     ///
     /// One draw is performed for each [`DrawIndirectCommand`] struct that is read from
@@ -507,7 +511,7 @@ impl RecordingCommandBuffer {
     /// This number is limited by the
     /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     ///
-    /// A graphics pipeline must have been bound using
+    /// A primitive shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
@@ -584,9 +588,9 @@ impl RecordingCommandBuffer {
         const VUID_TYPE: VUIDType = VUIDType::DrawIndirectCount;
         self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
         Ok(())
     }
@@ -634,7 +638,8 @@ impl RecordingCommandBuffer {
         self
     }
 
-    /// Perform a single draw operation using a graphics pipeline, using an index buffer.
+    /// Perform a single draw operation using a primitive shading graphics pipeline,
+    /// using an index buffer.
     ///
     /// The parameters specify the first index and the number of indices in the index buffer that
     /// should be used, and the first instance and number of instances. For non-instanced drawing,
@@ -646,7 +651,7 @@ impl RecordingCommandBuffer {
     /// [`bind_index_buffer`](Self::bind_index_buffer), and the provided index range must be in
     /// range of the bound index buffer.
     ///
-    /// A graphics pipeline must have been bound using
+    /// A primitive shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided instance
@@ -728,9 +733,9 @@ impl RecordingCommandBuffer {
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexed;
         self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
         let index_buffer = self.builder_state.index_buffer.as_ref().ok_or_else(|| {
             Box::new(ValidationError {
@@ -870,7 +875,8 @@ impl RecordingCommandBuffer {
         self
     }
 
-    /// Perform multiple draw operations using a graphics pipeline, using an index buffer.
+    /// Perform multiple draw operations using a primitive shading graphics pipeline,
+    /// using an index buffer.
     ///
     /// One draw is performed for each [`DrawIndexedIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
@@ -884,7 +890,7 @@ impl RecordingCommandBuffer {
     /// `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound index
     /// buffer.
     ///
-    /// A graphics pipeline must have been bound using
+    /// A primitive shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
@@ -940,9 +946,9 @@ impl RecordingCommandBuffer {
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexedIndirect;
         self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
         let _index_buffer = self.builder_state.index_buffer.as_ref().ok_or_else(|| {
             Box::new(ValidationError {
@@ -992,8 +998,8 @@ impl RecordingCommandBuffer {
         self
     }
 
-    /// Perform multiple draw operations using a graphics pipeline, using an index buffer,
-    /// and reading the number of draw operations from a separate buffer.
+    /// Perform multiple draw operations using a primitive shading graphics pipeline,
+    /// using an index buffer, and reading the number of draw operations from a separate buffer.
     ///
     /// One draw is performed for each [`DrawIndexedIndirectCommand`] struct that is read from
     /// `indirect_buffer`. The number of draws to perform is read from `count_buffer`, or
@@ -1006,7 +1012,7 @@ impl RecordingCommandBuffer {
     /// `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound index
     /// buffer.
     ///
-    /// A graphics pipeline must have been bound using
+    /// A primitive shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
     /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
     /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
@@ -1083,9 +1089,9 @@ impl RecordingCommandBuffer {
         const VUID_TYPE: VUIDType = VUIDType::DrawIndexedIndirectCount;
         self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
         self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_primitive_shading(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
         self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
-        self.validate_pipeline_graphics_vertex_buffers(VUID_TYPE, pipeline)?;
 
         let _index_buffer = self.builder_state.index_buffer.as_ref().ok_or_else(|| {
             Box::new(ValidationError {
@@ -1131,6 +1137,448 @@ impl RecordingCommandBuffer {
             used_resources,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indexed_indirect_count_unchecked(
+                    &indirect_buffer,
+                    &count_buffer,
+                    max_draw_count,
+                    stride,
+                );
+            },
+        );
+
+        self
+    }
+
+    /// Perform a single draw operation using a mesh shading graphics pipeline.
+    ///
+    /// A mesh shading graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets and dynamic state, must have been set beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    pub unsafe fn draw_mesh_tasks(
+        &mut self,
+        group_counts: [u32; 3],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_mesh_tasks(group_counts)?;
+
+        unsafe { Ok(self.draw_mesh_tasks_unchecked(group_counts)) }
+    }
+
+    fn validate_draw_mesh_tasks(&self, group_counts: [u32; 3]) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_draw_mesh_tasks(group_counts)?;
+
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksEXT-renderpass"],
+                ..Default::default()
+            })
+        })?;
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-None-08606"],
+                    ..Default::default()
+                })
+            })?
+            .as_ref();
+
+        const VUID_TYPE: VUIDType = VUIDType::DrawMeshTasks;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_mesh_shading(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+
+        if pipeline.mesh_is_nv() {
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound graphics pipeline uses NV mesh shaders instead of \
+                    EXT mesh shaders"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksEXT-MeshEXT-07087"],
+                ..Default::default()
+            }));
+        }
+
+        let properties = self.device().physical_device().properties();
+        let group_counts_product = group_counts.into_iter().try_fold(1, u32::checked_mul);
+
+        if pipeline.shader_stages().intersects(ShaderStages::TASK) {
+            if group_counts[0] > properties.max_task_work_group_count.unwrap_or_default()[0] {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts[0]".into(),
+                    problem: "is greater than the `max_task_work_group_count[0]` device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07322"],
+                    ..Default::default()
+                }));
+            }
+
+            if group_counts[1] > properties.max_task_work_group_count.unwrap_or_default()[1] {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts[1]".into(),
+                    problem: "is greater than the `max_task_work_group_count[1]` device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07323"],
+                    ..Default::default()
+                }));
+            }
+
+            if group_counts[2] > properties.max_task_work_group_count.unwrap_or_default()[2] {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts[2]".into(),
+                    problem: "is greater than the `max_task_work_group_count[2]` device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07324"],
+                    ..Default::default()
+                }));
+            }
+
+            if group_counts_product.map_or(true, |size| {
+                size > properties
+                    .max_task_work_group_total_count
+                    .unwrap_or_default()
+            }) {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts".into(),
+                    problem: "the product is greater than the `max_task_work_group_total_count` \
+                        device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07325"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if group_counts[0] > properties.max_mesh_work_group_count.unwrap_or_default()[0] {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts[0]".into(),
+                    problem: "is greater than the `max_mesh_work_group_count[0]` device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07326"],
+                    ..Default::default()
+                }));
+            }
+
+            if group_counts[1] > properties.max_mesh_work_group_count.unwrap_or_default()[1] {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts[1]".into(),
+                    problem: "is greater than the `max_mesh_work_group_count[1]` device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07327"],
+                    ..Default::default()
+                }));
+            }
+
+            if group_counts[2] > properties.max_mesh_work_group_count.unwrap_or_default()[2] {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts[2]".into(),
+                    problem: "is greater than the `max_mesh_work_group_count[2]` device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07328"],
+                    ..Default::default()
+                }));
+            }
+
+            if group_counts_product.map_or(true, |size| {
+                size > properties
+                    .max_mesh_work_group_total_count
+                    .unwrap_or_default()
+            }) {
+                return Err(Box::new(ValidationError {
+                    context: "group_counts".into(),
+                    problem: "the product is greater than the `max_mesh_work_group_total_count` \
+                        device limit"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksEXT-TaskEXT-07329"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_mesh_tasks_unchecked(&mut self, group_counts: [u32; 3]) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+
+        self.add_command(
+            "draw_mesh_tasks",
+            used_resources,
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.draw_mesh_tasks_unchecked(group_counts);
+            },
+        );
+
+        self
+    }
+
+    /// Perform multiple draw operations using a mesh shading graphics pipeline.
+    ///
+    /// One draw is performed for each [`DrawMeshTasksIndirectCommand`] struct in `indirect_buffer`.
+    /// The maximum number of draw commands in the buffer is limited by the
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    /// This limit is 1 unless the
+    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
+    /// enabled.
+    ///
+    /// A mesh shading graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets and dynamic state, must have been set beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The [safety requirements for
+    ///   `DrawMeshTasksIndirectCommand`](DrawMeshTasksIndirectCommand#safety) apply.
+    pub unsafe fn draw_mesh_tasks_indirect(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawMeshTasksIndirectCommand]>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        let draw_count = indirect_buffer.len() as u32;
+        let stride = size_of::<DrawMeshTasksIndirectCommand>() as u32;
+        self.validate_draw_mesh_tasks_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
+
+        unsafe { Ok(self.draw_mesh_tasks_indirect_unchecked(indirect_buffer, draw_count, stride)) }
+    }
+
+    fn validate_draw_mesh_tasks_indirect(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_draw_mesh_tasks_indirect(indirect_buffer, draw_count, stride)?;
+
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-renderpass"],
+                ..Default::default()
+            })
+        })?;
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-None-08606"],
+                    ..Default::default()
+                })
+            })?
+            .as_ref();
+
+        const VUID_TYPE: VUIDType = VUIDType::DrawMeshTasksIndirect;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_mesh_shading(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+
+        if pipeline.mesh_is_nv() {
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound graphics pipeline uses NV mesh shaders instead of \
+                    EXT mesh shaders"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-MeshEXT-07091"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_mesh_tasks_indirect_unchecked(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
+
+        self.add_command(
+            "draw_mesh_tasks_indirect",
+            used_resources,
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.draw_mesh_tasks_indirect_unchecked(&indirect_buffer, draw_count, stride);
+            },
+        );
+
+        self
+    }
+
+    /// Perform multiple draw operations using a mesh shading graphics pipeline,
+    /// reading the number of draw operations from a separate buffer.
+    ///
+    /// One draw is performed for each [`DrawMeshTasksIndirectCommand`] struct that is read from
+    /// `indirect_buffer`. The number of draws to perform is read from `count_buffer`, or
+    /// specified by `max_draw_count`, whichever is lower.
+    /// This number is limited by the
+    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    ///
+    /// A mesh shading graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets and dynamic state, must have been set beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements](crate::shader#safety) apply.
+    /// - The [safety requirements for
+    ///   `DrawMeshTasksIndirectCommand`](DrawMeshTasksIndirectCommand#safety) apply.
+    /// - The count stored in `count_buffer` must not be greater than the
+    ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
+    /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
+    pub unsafe fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        count_buffer: Subbuffer<u32>,
+        max_draw_count: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        let stride = size_of::<DrawMeshTasksIndirectCommand>() as u32;
+        self.validate_draw_mesh_tasks_indirect_count(
+            indirect_buffer.as_bytes(),
+            count_buffer.as_bytes(),
+            max_draw_count,
+            stride,
+        )?;
+
+        unsafe {
+            Ok(self.draw_mesh_tasks_indirect_count_unchecked(
+                indirect_buffer,
+                count_buffer,
+                max_draw_count,
+                stride,
+            ))
+        }
+    }
+
+    fn validate_draw_mesh_tasks_indirect_count(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        count_buffer: &Subbuffer<[u8]>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_draw_mesh_tasks_indirect_count(
+            indirect_buffer,
+            count_buffer,
+            max_draw_count,
+            stride,
+        )?;
+
+        let render_pass_state = self.builder_state.render_pass.as_ref().ok_or_else(|| {
+            Box::new(ValidationError {
+                problem: "a render pass instance is not active".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-renderpass"],
+                ..Default::default()
+            })
+        })?;
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "no graphics pipeline is currently bound".into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-None-08606"],
+                    ..Default::default()
+                })
+            })?
+            .as_ref();
+
+        const VUID_TYPE: VUIDType = VUIDType::DrawMeshTasksIndirectCount;
+        self.validate_pipeline_descriptor_sets(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_push_constants(VUID_TYPE, pipeline.layout())?;
+        self.validate_pipeline_graphics_mesh_shading(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_dynamic_state(VUID_TYPE, pipeline)?;
+        self.validate_pipeline_graphics_render_pass(VUID_TYPE, pipeline, render_pass_state)?;
+
+        if pipeline.mesh_is_nv() {
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound graphics pipeline uses NV mesh shaders instead of \
+                    EXT mesh shaders"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-MeshEXT-07100"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_mesh_tasks_indirect_count_unchecked(
+        &mut self,
+        indirect_buffer: Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        count_buffer: Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.builder_state.render_pass.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        let pipeline = self
+            .builder_state
+            .pipeline_graphics
+            .as_ref()
+            .unwrap()
+            .as_ref();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
+        self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
+
+        self.add_command(
+            "draw_mesh_tasks_indirect_count",
+            used_resources,
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.draw_mesh_tasks_indirect_count_unchecked(
                     &indirect_buffer,
                     &count_buffer,
                     max_draw_count,
@@ -1841,6 +2289,125 @@ impl RecordingCommandBuffer {
         Ok(())
     }
 
+    fn validate_pipeline_graphics_primitive_shading(
+        &self,
+        vuid_type: VUIDType,
+        pipeline: &GraphicsPipeline,
+    ) -> Result<(), Box<ValidationError>> {
+        if pipeline
+            .shader_stages()
+            .intersects(ShaderStages::MESH | ShaderStages::TASK)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound graphics pipeline uses mesh shading".into(),
+                vuids: vuids!(vuid_type, "stage-06481"),
+                ..Default::default()
+            }));
+        }
+
+        if let Some(query_state) = self
+            .builder_state
+            .queries
+            .get(&ash::vk::QueryType::PIPELINE_STATISTICS)
+        {
+            let &QueryType::PipelineStatistics(pipeline_statistics_flags) =
+                query_state.query_pool.query_type()
+            else {
+                unreachable!()
+            };
+
+            if pipeline_statistics_flags.intersects(
+                QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS
+                    | QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS,
+            ) {
+                return Err(Box::new(ValidationError {
+                    problem: "a pipeline statistics query is currently active, and its \
+                        pipeline statistics flags include statistics for mesh shading"
+                        .into(),
+                    vuids: vuids!(vuid_type, "stage-07073"),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let vertex_input_state = pipeline
+            .dynamic_state()
+            .contains(&DynamicState::VertexInput)
+            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
+            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
+
+        for &binding_num in vertex_input_state.bindings.keys() {
+            if !self.builder_state.vertex_buffers.contains_key(&binding_num) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "the currently bound graphics pipeline uses \
+                        vertex buffer binding {0}, but \
+                        no vertex buffer is currently bound to binding {0}",
+                        binding_num
+                    )
+                    .into(),
+                    vuids: vuids!(vuid_type, "None-04007"),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_pipeline_graphics_mesh_shading(
+        &self,
+        vuid_type: VUIDType,
+        pipeline: &GraphicsPipeline,
+    ) -> Result<(), Box<ValidationError>> {
+        if pipeline.shader_stages().intersects(
+            ShaderStages::VERTEX
+                | ShaderStages::TESSELLATION_CONTROL
+                | ShaderStages::TESSELLATION_EVALUATION
+                | ShaderStages::GEOMETRY,
+        ) {
+            return Err(Box::new(ValidationError {
+                problem: "the currently bound graphics pipeline uses primitive shading".into(),
+                vuids: vuids!(vuid_type, "stage-06480"),
+                ..Default::default()
+            }));
+        }
+
+        if let Some(query_state) = self
+            .builder_state
+            .queries
+            .get(&ash::vk::QueryType::PIPELINE_STATISTICS)
+        {
+            let &QueryType::PipelineStatistics(pipeline_statistics_flags) =
+                query_state.query_pool.query_type()
+            else {
+                unreachable!()
+            };
+
+            if pipeline_statistics_flags.intersects(
+                QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES
+                    | QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES
+                    | QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS
+                    | QueryPipelineStatisticFlags::GEOMETRY_SHADER_INVOCATIONS
+                    | QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES
+                    | QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS
+                    | QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES
+                    | QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES
+                    | QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS,
+            ) {
+                return Err(Box::new(ValidationError {
+                    problem: "a pipeline statistics query is currently active, and its \
+                        pipeline statistics flags include statistics for primitive shading"
+                        .into(),
+                    vuids: vuids!(vuid_type, "pipelineStatistics-07076"),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
+    }
+
     fn validate_pipeline_graphics_dynamic_state(
         &self,
         vuid_type: VUIDType,
@@ -2166,8 +2733,10 @@ impl RecordingCommandBuffer {
                                     ..Default::default()
                                 }));
                             }
+                        } else if let Some(input_assembly_state) = pipeline.input_assembly_state() {
+                            input_assembly_state.topology
                         } else {
-                            pipeline.input_assembly_state().topology
+                            unreachable!("PrimitiveRestartEnable can only occur on primitive shading pipelines")
                         };
 
                         match topology {
@@ -2234,7 +2803,9 @@ impl RecordingCommandBuffer {
                         }));
                     };
 
-                    if pipeline.shader(ShaderStage::TessellationControl).is_some() {
+                    if pipeline.shader_stages().intersects(
+                        ShaderStages::TESSELLATION_CONTROL | ShaderStages::TESSELLATION_EVALUATION,
+                    ) {
                         if !matches!(topology, PrimitiveTopology::PatchList) {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
@@ -2272,52 +2843,54 @@ impl RecordingCommandBuffer {
                         .dynamic_primitive_topology_unrestricted
                         .unwrap_or(false)
                     {
-                        let is_same_topology_class = matches!(
-                            (topology, pipeline.input_assembly_state().topology),
-                            (PrimitiveTopology::PointList, PrimitiveTopology::PointList)
-                                | (
-                                    PrimitiveTopology::LineList
-                                        | PrimitiveTopology::LineStrip
-                                        | PrimitiveTopology::LineListWithAdjacency
-                                        | PrimitiveTopology::LineStripWithAdjacency,
-                                    PrimitiveTopology::LineList
-                                        | PrimitiveTopology::LineStrip
-                                        | PrimitiveTopology::LineListWithAdjacency
-                                        | PrimitiveTopology::LineStripWithAdjacency,
-                                )
-                                | (
-                                    PrimitiveTopology::TriangleList
-                                        | PrimitiveTopology::TriangleStrip
-                                        | PrimitiveTopology::TriangleFan
-                                        | PrimitiveTopology::TriangleListWithAdjacency
-                                        | PrimitiveTopology::TriangleStripWithAdjacency,
-                                    PrimitiveTopology::TriangleList
-                                        | PrimitiveTopology::TriangleStrip
-                                        | PrimitiveTopology::TriangleFan
-                                        | PrimitiveTopology::TriangleListWithAdjacency
-                                        | PrimitiveTopology::TriangleStripWithAdjacency,
-                                )
-                                | (PrimitiveTopology::PatchList, PrimitiveTopology::PatchList)
-                        );
+                        if let Some(input_assembly_state) = pipeline.input_assembly_state() {
+                            let is_same_topology_class = matches!(
+                                (topology, input_assembly_state.topology),
+                                (PrimitiveTopology::PointList, PrimitiveTopology::PointList)
+                                    | (
+                                        PrimitiveTopology::LineList
+                                            | PrimitiveTopology::LineStrip
+                                            | PrimitiveTopology::LineListWithAdjacency
+                                            | PrimitiveTopology::LineStripWithAdjacency,
+                                        PrimitiveTopology::LineList
+                                            | PrimitiveTopology::LineStrip
+                                            | PrimitiveTopology::LineListWithAdjacency
+                                            | PrimitiveTopology::LineStripWithAdjacency,
+                                    )
+                                    | (
+                                        PrimitiveTopology::TriangleList
+                                            | PrimitiveTopology::TriangleStrip
+                                            | PrimitiveTopology::TriangleFan
+                                            | PrimitiveTopology::TriangleListWithAdjacency
+                                            | PrimitiveTopology::TriangleStripWithAdjacency,
+                                        PrimitiveTopology::TriangleList
+                                            | PrimitiveTopology::TriangleStrip
+                                            | PrimitiveTopology::TriangleFan
+                                            | PrimitiveTopology::TriangleListWithAdjacency
+                                            | PrimitiveTopology::TriangleStripWithAdjacency,
+                                    )
+                                    | (PrimitiveTopology::PatchList, PrimitiveTopology::PatchList)
+                            );
 
-                        if !is_same_topology_class {
-                            return Err(Box::new(ValidationError {
-                                problem: format!(
-                                    "the currently bound graphics pipeline requires the \
-                                    `DynamicState::{:?}` dynamic state, and the \
-                                    `dynamic_primitive_topology_unrestricted` device property is \
-                                    `false`, but the dynamic primitive topology does not belong \
-                                    to the same topology class as the topology that the \
-                                    graphics pipeline was created with",
-                                    dynamic_state
-                                )
-                                .into(),
-                                vuids: vuids!(
-                                    vuid_type,
-                                    "dynamicPrimitiveTopologyUnrestricted-07500"
-                                ),
-                                ..Default::default()
-                            }));
+                            if !is_same_topology_class {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the currently bound graphics pipeline requires the \
+                                        `DynamicState::{:?}` dynamic state, and the \
+                                        `dynamic_primitive_topology_unrestricted` device property is \
+                                        `false`, but the dynamic primitive topology does not belong \
+                                        to the same topology class as the topology that the \
+                                        graphics pipeline was created with",
+                                        dynamic_state
+                                    )
+                                    .into(),
+                                    vuids: vuids!(
+                                        vuid_type,
+                                        "dynamicPrimitiveTopologyUnrestricted-07500"
+                                    ),
+                                    ..Default::default()
+                                }));
+                            }
                         }
                     }
 
@@ -2807,36 +3380,6 @@ impl RecordingCommandBuffer {
 
         // VUID-vkCmdDraw-None-02686
         // TODO:
-
-        Ok(())
-    }
-
-    fn validate_pipeline_graphics_vertex_buffers(
-        &self,
-        vuid_type: VUIDType,
-        pipeline: &GraphicsPipeline,
-    ) -> Result<(), Box<ValidationError>> {
-        let vertex_input_state = pipeline
-            .dynamic_state()
-            .contains(&DynamicState::VertexInput)
-            .then(|| self.builder_state.vertex_input.as_ref().unwrap())
-            .unwrap_or_else(|| pipeline.vertex_input_state().unwrap());
-
-        for &binding_num in vertex_input_state.bindings.keys() {
-            if !self.builder_state.vertex_buffers.contains_key(&binding_num) {
-                return Err(Box::new(ValidationError {
-                    problem: format!(
-                        "the currently bound graphics pipeline uses \
-                        vertex buffer binding {0}, but \
-                        no vertex buffer is currently bound to binding {0}",
-                        binding_num
-                    )
-                    .into(),
-                    vuids: vuids!(vuid_type, "None-04007"),
-                    ..Default::default()
-                }));
-            }
-        }
 
         Ok(())
     }
@@ -3967,6 +4510,364 @@ impl RawRecordingCommandBuffer {
 
         self
     }
+
+    #[inline]
+    pub unsafe fn draw_mesh_tasks(
+        &mut self,
+        group_counts: [u32; 3],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_mesh_tasks(group_counts)?;
+
+        Ok(self.draw_mesh_tasks_unchecked(group_counts))
+    }
+
+    fn validate_draw_mesh_tasks(
+        &self,
+        _group_counts: [u32; 3],
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device().enabled_extensions().ext_mesh_shader {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_mesh_shader",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_mesh_tasks_unchecked(&mut self, group_counts: [u32; 3]) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.ext_mesh_shader.cmd_draw_mesh_tasks_ext)(
+            self.handle(),
+            group_counts[0],
+            group_counts[1],
+            group_counts[2],
+        );
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn draw_mesh_tasks_indirect(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_mesh_tasks_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
+
+        Ok(self.draw_mesh_tasks_indirect_unchecked(indirect_buffer, draw_count, stride))
+    }
+
+    fn validate_draw_mesh_tasks_indirect(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device().enabled_extensions().ext_mesh_shader {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_mesh_shader",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdDrawMeshTasksIndirectEXT-commonparent
+        assert_eq!(self.device(), indirect_buffer.device());
+
+        if !indirect_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "indirect_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+            return Err(Box::new(ValidationError {
+                problem: "`size_of::<DrawMeshTasksIndirectCommand>()` is greater than \
+                    `indirect_buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdDispatchIndirect-offset-00407"],
+                ..Default::default()
+            }));
+        }
+
+        if draw_count > 1 {
+            if !self.device().enabled_features().multi_draw_indirect {
+                return Err(Box::new(ValidationError {
+                    context: "draw_count".into(),
+                    problem: "is greater than 1".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        "multi_draw_indirect",
+                    )])]),
+                    vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-02718"],
+                }));
+            }
+
+            if stride % 4 != 0 {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride` is not a multiple of 4"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07088"],
+                    ..Default::default()
+                }));
+            }
+
+            if (stride as DeviceSize) < size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride` is not greater than `size_of::<DrawMeshTasksIndirectCommand>()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07088"],
+                    ..Default::default()
+                }));
+            }
+
+            if stride as DeviceSize * (draw_count as DeviceSize - 1)
+                + size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize
+                > indirect_buffer.size()
+            {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is greater than 1, but \
+                        `stride * (draw_count - 1) + size_of::<DrawMeshTasksIndirectCommand>()` \
+                        is greater than `indirect_buffer.size()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07090"],
+                    ..Default::default()
+                }));
+            }
+        } else {
+            if size_of::<DrawIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+                return Err(Box::new(ValidationError {
+                    problem: "`draw_count` is 1, but `size_of::<DrawMeshTasksIndirectCommand>()` \
+                        is greater than `indirect_buffer.size()`"
+                        .into(),
+                    vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-07089"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        let properties = self.device().physical_device().properties();
+
+        if draw_count > properties.max_draw_indirect_count {
+            return Err(Box::new(ValidationError {
+                context: "draw_count".into(),
+                problem: "is greater than the `max_draw_indirect_count` limit".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-02719"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_mesh_tasks_indirect_unchecked(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.ext_mesh_shader.cmd_draw_mesh_tasks_indirect_ext)(
+            self.handle(),
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
+            draw_count,
+            stride,
+        );
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        count_buffer: &Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_draw_mesh_tasks_indirect_count(
+            indirect_buffer.as_bytes(),
+            count_buffer.as_bytes(),
+            max_draw_count,
+            stride,
+        )?;
+
+        Ok(self.draw_mesh_tasks_indirect_count_unchecked(
+            indirect_buffer,
+            count_buffer,
+            max_draw_count,
+            stride,
+        ))
+    }
+
+    fn validate_draw_mesh_tasks_indirect_count(
+        &self,
+        indirect_buffer: &Subbuffer<[u8]>,
+        count_buffer: &Subbuffer<[u8]>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.device().enabled_extensions().ext_mesh_shader {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                    "ext_mesh_shader",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if !self.device().enabled_features().draw_indirect_count {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    "draw_indirect_count",
+                )])]),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-None-04445"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if !indirect_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "indirect_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-buffer-02709"],
+                ..Default::default()
+            }));
+        }
+
+        if !count_buffer
+            .buffer()
+            .usage()
+            .intersects(BufferUsage::INDIRECT_BUFFER)
+        {
+            return Err(Box::new(ValidationError {
+                context: "count_buffer.usage()".into(),
+                problem: "does not contain `BufferUsage::INDIRECT_BUFFER`".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-countBuffer-02715"],
+                ..Default::default()
+            }));
+        }
+
+        if stride % 4 != 0 {
+            return Err(Box::new(ValidationError {
+                context: "stride".into(),
+                problem: "is not a multiple of 4".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-stride-07096"],
+                ..Default::default()
+            }));
+        }
+
+        if (stride as DeviceSize) < size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize {
+            return Err(Box::new(ValidationError {
+                context: "stride".into(),
+                problem: "is not greater than `size_of::<DrawMeshTasksIndirectCommand>()`".into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-stride-07096"],
+                ..Default::default()
+            }));
+        }
+
+        if max_draw_count >= 1
+            && stride as DeviceSize * (max_draw_count as DeviceSize - 1)
+                + size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize
+                > indirect_buffer.size()
+        {
+            return Err(Box::new(ValidationError {
+                problem: "`max_draw_count` is equal to or greater than 1, but \
+                    `stride * (max_draw_count - 1) + size_of::<DrawMeshTasksIndirectCommand>()` \
+                    is greater than `indirect_buffer.size()`"
+                    .into(),
+                vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-maxDrawCount-07097"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn draw_mesh_tasks_indirect_count_unchecked(
+        &mut self,
+        indirect_buffer: &Subbuffer<[DrawMeshTasksIndirectCommand]>,
+        count_buffer: &Subbuffer<u32>,
+        max_draw_count: u32,
+        stride: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+
+        (fns.ext_mesh_shader.cmd_draw_mesh_tasks_indirect_count_ext)(
+            self.handle(),
+            indirect_buffer.buffer().handle(),
+            indirect_buffer.offset(),
+            count_buffer.buffer().handle(),
+            count_buffer.offset(),
+            max_draw_count,
+            stride,
+        );
+
+        self
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -3979,4 +4880,7 @@ enum VUIDType {
     DrawIndexed,
     DrawIndexedIndirect,
     DrawIndexedIndirectCount,
+    DrawMeshTasks,
+    DrawMeshTasksIndirect,
+    DrawMeshTasksIndirectCount,
 }

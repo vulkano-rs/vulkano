@@ -173,6 +173,31 @@ pub struct DrawIndirectCommand {
 }
 
 /// Used as buffer contents to provide input for the
+/// [`RecordingCommandBuffer::draw_mesh_tasks_indirect`] command.
+///
+/// # Safety
+///
+/// - If the graphics pipeline **does not** include a task shader, then the
+///   `group_count_x`, `group_count_y` and `group_count_z` values must not be greater than the
+///   respective elements of the
+///   [`max_mesh_work_group_count`](Properties::max_mesh_work_group_count) device limit,
+///   and the product of these three values must not be greater than the
+///   [`max_mesh_work_group_total_count`](Properties::max_mesh_work_group_total_count) device limit.
+/// - If the graphics pipeline **does** include a task shader, then the
+///   `group_count_x`, `group_count_y` and `group_count_z` values must not be greater than the
+///   respective elements of the
+///   [`max_task_work_group_count`](Properties::max_task_work_group_count) device limit,
+///   and the product of these three values must not be greater than the
+///   [`max_task_work_group_total_count`](Properties::max_task_work_group_total_count) device limit.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
+pub struct DrawMeshTasksIndirectCommand {
+    pub group_count_x: u32,
+    pub group_count_y: u32,
+    pub group_count_z: u32,
+}
+
+/// Used as buffer contents to provide input for the
 /// [`RecordingCommandBuffer::draw_indexed_indirect`] command.
 ///
 /// # Safety
