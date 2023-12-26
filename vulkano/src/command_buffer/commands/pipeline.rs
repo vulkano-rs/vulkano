@@ -24,7 +24,7 @@ use crate::{
         },
         DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
     },
-    query::{QueryPipelineStatisticFlags, QueryType},
+    query::QueryType,
     shader::{DescriptorBindingRequirements, DescriptorIdentifier, ShaderStages},
     sync::{PipelineStageAccess, PipelineStageAccessFlags},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,

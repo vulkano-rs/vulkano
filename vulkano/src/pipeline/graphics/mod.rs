@@ -2,10 +2,26 @@
 //!
 //! Unlike a compute pipeline, which performs general-purpose work, a graphics pipeline is geared
 //! specifically towards doing graphical processing. To that end, it consists of several shaders,
-//! with additional state and glue logic in between.
+//! with additional state and glue logic in between, known as the pipeline's *state*.
+//! The state often directly corresponds to one or more steps in the graphics pipeline. Each
+//! state collection has a dedicated submodule.
+//!
+//! # Processing steps
 //!
 //! A graphics pipeline performs many separate steps, that execute more or less in sequence.
 //! Due to the parallel nature of a GPU, no strict ordering guarantees may exist.
+//!
+//! Graphics pipelines come in two different forms:
+//! - *Primitive shading* graphics pipelines, which contain a vertex shader, vertex input and
+//!   input assembly state, and optionally tessellation shaders and/or a geometry shader.
+//! - *Mesh shading* graphics pipelines, which contain a mesh shader, and optionally a
+//!   task shader.
+//!
+//! These types differ in the operations that are performed in the first half of the pipeline,
+//! but share a common second half. The type of a graphics pipeline is determined by whether
+//! it contains a vertex or a mesh shader (it cannot contain both).
+//!
+//! ## Primitive shading
 //!
 //! 1. Vertex input and assembly: vertex input data is read from data buffers and then assembled
 //!    into primitives (points, lines, triangles etc.).
@@ -17,14 +33,31 @@
 //!    newly created vertices.
 //! 4. (Optional) Geometry shading: whole primitives are fed as input and processed into a new set
 //!    of output primitives.
-//! 5. Vertex post-processing, including:
+//!
+//! ## Mesh shading
+//!
+//! 1. (Optional) Task shader invocations: the task shader is run once for each workgroup in the
+//!    draw command. The task shader then spawns one or more mesh shader invocations.
+//! 2. Mesh shader invocations: the mesh shader is run, either once each time it is spawned by a
+//!    task shader, or if there is no task shader, once for each workgroup in the draw command.
+//!    The mesh shader outputs a list of primitives (triangles etc).
+//!
+//! Mesh shading pipelines do not receive any vertex input; their input data is supplied entirely
+//! from resources bound via descriptor sets, in combination with the x, y and z coordinates of
+//! the current workgroup.
+//!
+//! ## Rasterization, fragment processing and output
+//!
+//! These steps are shared by all graphics pipeline types.
+//!
+//! 1. Vertex post-processing, including:
 //!    - Clipping primitives to the view frustum and user-defined clipping planes.
 //!    - Perspective division.
 //!    - Viewport mapping.
-//! 6. Rasterization: converting primitives into a two-dimensional representation. Primitives may be
+//! 2. Rasterization: converting primitives into a two-dimensional representation. Primitives may be
 //!    discarded depending on their orientation, and are then converted into a collection of
 //!    fragments that are processed further.
-//! 7. Fragment operations. These include invocations of the fragment shader, which generates the
+//! 3. Fragment operations. These include invocations of the fragment shader, which generates the
 //!    values to be written to the color attachment. Various testing and discarding operations can
 //!    be performed both before and after the fragment shader ("early" and "late" fragment tests),
 //!    including:
@@ -34,13 +67,11 @@
 //!    - Depth bounds test
 //!    - Stencil test
 //!    - Depth test
-//! 8. Color attachment output: the final pixel data is written to a framebuffer. Blending and
+//! 4. Color attachment output: the final pixel data is written to a framebuffer. Blending and
 //!    logical operations can be applied to combine incoming pixel data with data already present
 //!    in the framebuffer.
 //!
-//! A graphics pipeline contains many configuration options, which are grouped into collections of
-//! "state". Often, these directly correspond to one or more steps in the graphics pipeline. Each
-//! state collection has a dedicated submodule.
+//! # Using a graphics pipeline
 //!
 //! Once a graphics pipeline has been created, you can execute it by first *binding* it in a command
 //! buffer, binding the necessary vertex buffers, binding any descriptor sets, setting push
