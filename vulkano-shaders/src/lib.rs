@@ -92,10 +92,12 @@
 //! of the following:
 //!
 //! - `vertex`
-//! - `fragment`
-//! - `geometry`
 //! - `tess_ctrl`
 //! - `tess_eval`
+//! - `geometry`
+//! - `task`
+//! - `mesh`
+//! - `fragment`
 //! - `compute`
 //! - `raygen`
 //! - `anyhit`
@@ -421,10 +423,12 @@ impl Parse for MacroInput {
 
                     output.0 = Some(match lit.value().as_str() {
                         "vertex" => ShaderKind::Vertex,
-                        "fragment" => ShaderKind::Fragment,
-                        "geometry" => ShaderKind::Geometry,
                         "tess_ctrl" => ShaderKind::TessControl,
                         "tess_eval" => ShaderKind::TessEvaluation,
+                        "geometry" => ShaderKind::Geometry,
+                        "task" => ShaderKind::Task,
+                        "mesh" => ShaderKind::Mesh,
+                        "fragment" => ShaderKind::Fragment,
                         "compute" => ShaderKind::Compute,
                         "raygen" => ShaderKind::RayGeneration,
                         "anyhit" => ShaderKind::AnyHit,
@@ -434,9 +438,9 @@ impl Parse for MacroInput {
                         "callable" => ShaderKind::Callable,
                         ty => bail!(
                             lit,
-                            "expected `vertex`, `fragment`, `geometry`, `tess_ctrl`, `tess_eval`, \
-                            `compute`, `raygen`, `anyhit`, `closesthit`, `miss`, `intersection` or \
-                            `callable`, found `{ty}`",
+                            "expected `vertex`, `tess_ctrl`, `tess_eval`, `geometry`, `task`, \
+                            `mesh`, `fragment` `compute`, `raygen`, `anyhit`, `closesthit`, \
+                            `miss`, `intersection` or `callable`, found `{ty}`",
                         ),
                     });
                 }
