@@ -1579,8 +1579,8 @@ impl GraphicsPipelineCreateInfo {
             if stages_present.intersects(PRIMITIVE_SHADING_STAGES | MESH_SHADING_STAGES) {
                 return Err(Box::new(ValidationError {
                     problem: "the pipeline is not being created with \
-                    pre-rasterization shader state, but `stages` contains a \
-                    pre-rasterization shader stage"
+                        pre-rasterization shader state, but `stages` contains a \
+                        pre-rasterization shader stage"
                         .into(),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-06895"],
                     ..Default::default()
