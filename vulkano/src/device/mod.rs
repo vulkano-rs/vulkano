@@ -1788,7 +1788,7 @@ mod tests {
     #[test]
     fn empty_extensions() {
         let d: Vec<CString> = (&DeviceExtensions::empty()).into();
-        assert!(d.get(0).is_none());
+        assert!(d.is_empty());
     }
 
     #[test]

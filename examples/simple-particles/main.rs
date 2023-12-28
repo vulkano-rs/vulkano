@@ -440,13 +440,8 @@ fn main() -> Result<(), impl Error> {
     use vulkano::pipeline::Pipeline; // Required to access the `layout` method of pipeline.
     let descriptor_set = DescriptorSet::new(
         descriptor_set_allocator.clone(),
-        compute_pipeline
-            .layout()
-            .set_layouts()
-            // 0 is the index of the descriptor set.
-            .get(0)
-            .unwrap()
-            .clone(),
+        // 0 is the index of the descriptor set.
+        compute_pipeline.layout().set_layouts()[0].clone(),
         [
             // 0 is the binding of the data in this set. We bind the `Buffer` of vertices here.
             WriteDescriptorSet::buffer(0, vertex_buffer.clone()),

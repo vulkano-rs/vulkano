@@ -153,7 +153,7 @@ fn main() {
     )
     .unwrap();
 
-    let layout = pipeline.layout().set_layouts().get(0).unwrap();
+    let layout = &pipeline.layout().set_layouts()[0];
     let set = DescriptorSet::new(
         descriptor_set_allocator,
         layout.clone(),

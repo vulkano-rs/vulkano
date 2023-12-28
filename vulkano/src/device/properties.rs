@@ -114,7 +114,7 @@ impl<const N: usize> FromVulkan<[c_char; N]> for String {
 impl FromVulkan<u32> for Version {
     #[inline]
     fn from_vulkan(val: u32) -> Option<Self> {
-        val.try_into().ok()
+        Some(val.into())
     }
 }
 

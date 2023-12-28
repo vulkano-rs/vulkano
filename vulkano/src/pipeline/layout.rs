@@ -686,7 +686,7 @@ impl PipelineLayoutCreateInfo {
         let mut total_descriptors_not_uab = [0; TOTAL_DESCRIPTOR_LIMITS.len()];
         let mut has_push_descriptor_set = false;
 
-        for (_set_num, set_layout) in set_layouts.iter().enumerate() {
+        for set_layout in set_layouts {
             assert_eq!(device, set_layout.device().as_ref());
 
             if set_layout
