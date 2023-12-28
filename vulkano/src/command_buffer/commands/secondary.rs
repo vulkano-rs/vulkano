@@ -423,17 +423,17 @@ impl RecordingCommandBuffer {
                         }
                     }
                     QueryType::PipelineStatistics => {
-                        let inherited_flags = inheritance_info.query_statistics_flags;
+                        let inherited_flags = inheritance_info.pipeline_statistics;
 
                         if !inherited_flags.contains(state.query_pool.pipeline_statistics()) {
                             return Err(Box::new(ValidationError {
                                 context: format!(
-                                    "command_buffers[{}].inheritance_info().query_statistics_flags",
+                                    "command_buffers[{}].inheritance_info().pipeline_statistics",
                                     command_buffer_index
                                 )
                                 .into(),
                                 problem: "is not a superset of the flags of the active \
-                                    pipeline statistics query"
+                                    `PipelineStatistics` query"
                                     .into(),
                                 vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00104"],
                                 ..Default::default()

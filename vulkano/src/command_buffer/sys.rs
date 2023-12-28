@@ -98,7 +98,7 @@ impl RawRecordingCommandBuffer {
                 let &CommandBufferInheritanceInfo {
                     ref render_pass,
                     occlusion_query,
-                    query_statistics_flags,
+                    pipeline_statistics,
                     _ne: _,
                 } = inheritance_info;
 
@@ -109,7 +109,7 @@ impl RawRecordingCommandBuffer {
                         framebuffer: ash::vk::Framebuffer::null(),
                         occlusion_query_enable: ash::vk::FALSE,
                         query_flags: ash::vk::QueryControlFlags::empty(),
-                        pipeline_statistics: query_statistics_flags.into(),
+                        pipeline_statistics: pipeline_statistics.into(),
                         ..Default::default()
                     });
 

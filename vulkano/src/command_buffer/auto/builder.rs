@@ -108,7 +108,7 @@ impl RecordingCommandBuffer {
             let &CommandBufferInheritanceInfo {
                 ref render_pass,
                 occlusion_query: _,
-                query_statistics_flags: _,
+                pipeline_statistics: _,
                 _ne: _,
             } = inheritance_info;
 

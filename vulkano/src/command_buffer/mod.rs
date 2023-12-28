@@ -285,7 +285,7 @@ pub struct CommandBufferInheritanceInfo {
     /// The default value is `None`.
     pub occlusion_query: Option<QueryControlFlags>,
 
-    /// Which pipeline statistics queries are allowed to be active on the primary command buffer
+    /// Which `PipelineStatistics` queries are allowed to be active on the primary command buffer
     /// when this secondary command buffer is executed.
     ///
     /// If this value is not empty, the [`pipeline_statistics_query`] feature must be enabled on
@@ -294,7 +294,7 @@ pub struct CommandBufferInheritanceInfo {
     /// The default value is [`QueryPipelineStatisticFlags::empty()`].
     ///
     /// [`pipeline_statistics_query`]: crate::device::Features::pipeline_statistics_query
-    pub query_statistics_flags: QueryPipelineStatisticFlags,
+    pub pipeline_statistics: QueryPipelineStatisticFlags,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -305,7 +305,7 @@ impl Default for CommandBufferInheritanceInfo {
         Self {
             render_pass: None,
             occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::empty(),
+            pipeline_statistics: QueryPipelineStatisticFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -316,7 +316,7 @@ impl CommandBufferInheritanceInfo {
         let &Self {
             ref render_pass,
             occlusion_query,
-            query_statistics_flags,
+            pipeline_statistics,
             _ne: _,
         } = self;
 
@@ -370,18 +370,14 @@ impl CommandBufferInheritanceInfo {
             }
         }
 
-        query_statistics_flags
-            .validate_device(device)
-            .map_err(|err| {
-                err.add_context("query_statistics_flags")
-                    .set_vuids(&["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789"])
-            })?;
+        pipeline_statistics.validate_device(device).map_err(|err| {
+            err.add_context("pipeline_statistics")
+                .set_vuids(&["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789"])
+        })?;
 
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
+        if pipeline_statistics.count() > 0 && !device.enabled_features().pipeline_statistics_query {
             return Err(Box::new(ValidationError {
-                context: "query_statistics_flags".into(),
+                context: "pipeline_statistics".into(),
                 problem: "is not empty".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
                     "pipeline_statistics_query",

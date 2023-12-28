@@ -547,7 +547,7 @@ vulkan_bitflags! {
 vulkan_bitflags! {
     #[non_exhaustive]
 
-    /// For pipeline statistics queries, the statistics that should be gathered.
+    /// For `PipelineStatistics` queries, the statistics that should be gathered.
     QueryPipelineStatisticFlags impl {
         /// Returns `true` if `self` contains any flags referring to compute operations.
         #[inline]

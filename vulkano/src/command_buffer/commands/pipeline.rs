@@ -2391,7 +2391,7 @@ impl RecordingCommandBuffer {
                 .is_primitive_shading_graphics()
             {
                 return Err(Box::new(ValidationError {
-                    problem: "a pipeline statistics query is currently active, and its \
+                    problem: "a `PipelineStatistics` query is currently active, and its \
                         pipeline statistics flags include statistics for primitive shading"
                         .into(),
                     vuids: vuids!(vuid_type, "pipelineStatistics-07076"),
