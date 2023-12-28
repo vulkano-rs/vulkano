@@ -1,10 +1,23 @@
 // Welcome to the mesh shader triangle example!
 //
 // This is a simple, modified version of the `instancing.rs` example that demonstrates how to use mesh shaders to
-// achieve the same result. Here are some resources to learn about mesh shading:
+// generate geometry, that looks identical to the instancing example.
+//
+// Here are some resources to learn about mesh shading:
 // * https://vulkan.org/user/pages/09.events/vulkanised-2023/vulkanised_mesh_best_practices_2023.02.09-1.pdf
 
 use std::{error::Error, sync::Arc};
+
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
+
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
+use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
+use vulkano::device::Features;
+use vulkano::pipeline::{Pipeline, PipelineBindPoint};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -21,10 +34,9 @@ use vulkano::{
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
-            input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
@@ -38,11 +50,6 @@ use vulkano::{
     },
     sync::{self, GpuFuture},
     Validated, VulkanError, VulkanLibrary,
-};
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
 };
 
 /// The vertex type that we will be used to describe the triangle's geometry.
@@ -83,6 +90,7 @@ fn main() -> Result<(), impl Error> {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
+        ext_mesh_shader: true,
         ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family_index) = instance
@@ -119,6 +127,10 @@ fn main() -> Result<(), impl Error> {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
+            enabled_features: Features {
+                mesh_shader: true,
+                ..Features::default()
+            },
             queue_create_infos: vec![QueueCreateInfo {
                 queue_family_index,
                 ..Default::default()
@@ -161,6 +173,10 @@ fn main() -> Result<(), impl Error> {
     };
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // We now create a buffer that will store the shape of our triangle. This triangle is identical
     // to the one in the `triangle.rs` example.
@@ -178,7 +194,7 @@ fn main() -> Result<(), impl Error> {
     let vertex_buffer = Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
+            usage: BufferUsage::VERTEX_BUFFER | BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
         AllocationCreateInfo {
@@ -192,9 +208,9 @@ fn main() -> Result<(), impl Error> {
 
     // Now we create another buffer that will store the unique data per instance. For this example,
     // we'll have the instances form a 10x10 grid that slowly gets larger.
+    let rows = 10;
+    let cols = 10;
     let instances = {
-        let rows = 10;
-        let cols = 10;
         let n_instances = rows * cols;
         let mut data = Vec::new();
         for c in 0..cols {
@@ -216,7 +232,7 @@ fn main() -> Result<(), impl Error> {
     let instance_buffer = Buffer::from_iter(
         memory_allocator,
         BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
+            usage: BufferUsage::VERTEX_BUFFER | BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
         AllocationCreateInfo {
@@ -228,10 +244,11 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
-    mod vs {
+    mod mesh {
         vulkano_shaders::shader! {
-            ty: "vertex",
-            path: "shader.vert",
+            ty: "mesh",
+            path: "shader.mesh",
+            vulkan_version: "1.2",
         }
     }
 
@@ -260,7 +277,7 @@ fn main() -> Result<(), impl Error> {
     .unwrap();
 
     let pipeline = {
-        let vs = vs::load(device.clone())
+        let mesh = mesh::load(device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
@@ -268,11 +285,8 @@ fn main() -> Result<(), impl Error> {
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let vertex_input_state = [TriangleVertex::per_vertex(), InstanceData::per_instance()]
-            .definition(&vs.info().input_interface)
-            .unwrap();
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(mesh),
             PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
@@ -289,10 +303,6 @@ fn main() -> Result<(), impl Error> {
             None,
             GraphicsPipelineCreateInfo {
                 stages: stages.into_iter().collect(),
-                // Use the implementations of the `Vertex` trait to describe to vulkano how the two
-                // vertex types are expected to be used.
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
                 viewport_state: Some(ViewportState::default()),
                 rasterization_state: Some(RasterizationState::default()),
                 multisample_state: Some(MultisampleState::default()),
@@ -307,6 +317,17 @@ fn main() -> Result<(), impl Error> {
         )
         .unwrap()
     };
+
+    let descriptor_set = DescriptorSet::new(
+        descriptor_set_allocator,
+        pipeline.layout().set_layouts()[0].clone(),
+        [
+            WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
+            WriteDescriptorSet::buffer(1, instance_buffer.clone()),
+        ],
+        [],
+    )
+    .unwrap();
 
     let mut viewport = Viewport {
         offset: [0.0, 0.0],
@@ -407,19 +428,17 @@ fn main() -> Result<(), impl Error> {
                     .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())
                     .unwrap()
-                    // We pass both our lists of vertices here.
-                    .bind_vertex_buffers(0, (vertex_buffer.clone(), instance_buffer.clone()))
+                    // Instead of binding vertex attributes, bind buffers as descriptor sets
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        pipeline.layout().clone(),
+                        0,
+                        descriptor_set.clone(),
+                    )
                     .unwrap();
 
                 unsafe {
-                    builder
-                        .draw(
-                            vertex_buffer.len() as u32,
-                            instance_buffer.len() as u32,
-                            0,
-                            0,
-                        )
-                        .unwrap();
+                    builder.draw_mesh_tasks([cols, rows, 1]).unwrap();
                 }
 
                 builder.end_render_pass(Default::default()).unwrap();
