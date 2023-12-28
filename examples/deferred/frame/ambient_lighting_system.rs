@@ -168,7 +168,7 @@ impl AmbientLightingSystem {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };
 
-        let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
+        let layout = &self.pipeline.layout().set_layouts()[0];
         let descriptor_set = DescriptorSet::new(
             self.descriptor_set_allocator.clone(),
             layout.clone(),

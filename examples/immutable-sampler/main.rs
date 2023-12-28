@@ -352,7 +352,7 @@ fn main() -> Result<(), impl Error> {
         .unwrap()
     };
 
-    let layout = pipeline.layout().set_layouts().get(0).unwrap();
+    let layout = &pipeline.layout().set_layouts()[0];
 
     // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the
     // layout.

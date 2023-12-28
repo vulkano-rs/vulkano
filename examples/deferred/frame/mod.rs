@@ -5,7 +5,7 @@
 
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
-pub use self::system::{DrawPass, Frame, FrameSystem, LightingPass, Pass};
+pub use self::system::{FrameSystem, Pass};
 
 mod ambient_lighting_system;
 mod directional_lighting_system;

@@ -94,12 +94,13 @@
 //! [`end`]: RecordingCommandBuffer::end
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
+#[allow(unused_imports)] // everything is exported for future-proofing
+pub use self::commands::{
+    acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
+    query::*, render_pass::*, secondary::*, sync::*,
+};
 pub use self::{
     auto::{CommandBuffer, RecordingCommandBuffer},
-    commands::{
-        acceleration_structure::*, clear::*, copy::*, debug::*, dynamic_state::*, pipeline::*,
-        query::*, render_pass::*, secondary::*, sync::*,
-    },
     sys::CommandBufferBeginInfo,
     traits::{CommandBufferExecError, CommandBufferExecFuture},
 };

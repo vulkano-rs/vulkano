@@ -170,7 +170,7 @@ impl PixelsDrawPipeline {
     }
 
     fn create_image_sampler_nearest(&self, image: Arc<ImageView>) -> Arc<DescriptorSet> {
-        let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
+        let layout = &self.pipeline.layout().set_layouts()[0];
         let sampler = Sampler::new(
             self.gfx_queue.device().clone(),
             SamplerCreateInfo {

@@ -550,7 +550,7 @@ mod tests {
         }
 
         // Check first entrypoint
-        let e1_descriptors = descriptors.get(0).expect("could not find entrypoint1");
+        let e1_descriptors = &descriptors[0];
         let mut e1_bindings = Vec::new();
         for loc in e1_descriptors.keys() {
             e1_bindings.push(*loc);
@@ -564,7 +564,7 @@ mod tests {
         assert!(e1_bindings.contains(&(0, 4)));
 
         // Check second entrypoint
-        let e2_descriptors = descriptors.get(1).expect("could not find entrypoint2");
+        let e2_descriptors = &descriptors[1];
         let mut e2_bindings = Vec::new();
         for loc in e2_descriptors.keys() {
             e2_bindings.push(*loc);

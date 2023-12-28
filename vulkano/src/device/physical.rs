@@ -153,7 +153,7 @@ impl PhysicalDevice {
         let fns = instance.fns();
         let mut output = MaybeUninit::uninit();
         (fns.v1_0.get_physical_device_properties)(handle, output.as_mut_ptr());
-        let api_version = Version::try_from(output.assume_init().api_version).unwrap();
+        let api_version = Version::from(output.assume_init().api_version);
         std::cmp::min(instance.max_api_version(), api_version)
     }
 

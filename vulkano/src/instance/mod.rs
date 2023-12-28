@@ -1239,7 +1239,7 @@ mod tests {
     #[test]
     fn empty_extensions() {
         let i: Vec<CString> = (&InstanceExtensions::empty()).into();
-        assert!(i.get(0).is_none());
+        assert!(i.is_empty());
     }
 
     #[test]
