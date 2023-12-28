@@ -179,6 +179,8 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  requires_all_of,
                  ..
              }| {
+                let name_string = name.to_string();
+
                 let requires_all_of_items = requires_all_of
                     .iter()
                     .filter(
@@ -213,6 +215,14 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                             let base_requirement_item = {
                                 let ident = format_ident!("{}", base_requirement);
                                 quote! {
+                                    assert!(
+                                        supported.#ident,
+                                        "The device extension `{}` is enabled, and it requires \
+                                        the `{}` extension to be also enabled, but the device \
+                                        does not support the required extension. \
+                                        This is a bug in the Vulkan driver for this device.",
+                                        #name_string, #base_requirement,
+                                    );
                                     self.#ident = true;
                                 }
                             };
@@ -355,6 +365,8 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  requires_all_of,
                  ..
              }| {
+                let name_string = name.to_string();
+
                 let requires_all_of_items = requires_all_of
                     .iter()
                     .filter(
@@ -389,6 +401,14 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                             let base_requirement_item = {
                                 let ident = format_ident!("{}", base_requirement);
                                 quote! {
+                                    assert!(
+                                        supported.#ident,
+                                        "The instance extension `{}` is enabled, and it requires \
+                                        the `{}` extension to be also enabled, but the device \
+                                        does not support the required extension. \
+                                        This is a bug in the Vulkan driver.",
+                                        #name_string, #base_requirement,
+                                    );
                                     self.#ident = true;
                                 }
                             };
@@ -468,6 +488,18 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     let empty_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: false,
+        }
+    });
+
+    let count_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            self.#name as u64
+        }
+    });
+
+    let is_empty_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            self.#name
         }
     });
 
@@ -563,6 +595,18 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                     #(#empty_items)*
                     _ne: crate::NonExhaustive(()),
                 }
+            }
+
+            /// Returns the number of members set in self.
+            #[inline]
+            pub const fn count(self) -> u64 {
+                #(#count_items)+*
+            }
+
+            /// Returns whether no members are set in `self`.
+            #[inline]
+            pub const fn is_empty(self) -> bool {
+                !(#(#is_empty_items)||*)
             }
 
             /// Returns whether any members are set in both `self` and `other`.

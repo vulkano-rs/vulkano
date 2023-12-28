@@ -230,46 +230,102 @@ impl Device {
             create_info.enabled_extensions.khr_portability_subset = true;
         }
 
+        macro_rules! enable_extension_required_features {
+            (
+                $extension:ident,
+                $feature_to_enable:ident $(,)?
+            ) => {
+                if create_info.enabled_extensions.$extension {
+                    assert!(
+                        physical_device.supported_features().$feature_to_enable,
+                        "The device extension `{}` is enabled, and it requires the `{}` feature \
+                        to be also enabled, but the device does not support the required feature. \
+                        This is a bug in the Vulkan driver for this device.",
+                        stringify!($extension),
+                        stringify!($feature_to_enable),
+                    );
+                    create_info.enabled_features.$feature_to_enable = true;
+                }
+            };
+        }
+
         if physical_device.api_version() >= Version::V1_1 {
             // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-04476
-            if create_info.enabled_extensions.khr_shader_draw_parameters {
-                create_info.enabled_features.shader_draw_parameters = true;
-            }
+            enable_extension_required_features!(khr_shader_draw_parameters, shader_draw_parameters);
         }
 
         if physical_device.api_version() >= Version::V1_2 {
             // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02831
-            if create_info.enabled_extensions.khr_draw_indirect_count {
-                create_info.enabled_features.draw_indirect_count = true;
-            }
+            enable_extension_required_features!(khr_draw_indirect_count, draw_indirect_count);
 
             // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02832
-            if create_info
-                .enabled_extensions
-                .khr_sampler_mirror_clamp_to_edge
-            {
-                create_info.enabled_features.sampler_mirror_clamp_to_edge = true;
-            }
+            enable_extension_required_features!(
+                khr_sampler_mirror_clamp_to_edge,
+                sampler_mirror_clamp_to_edge,
+            );
 
             // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02833
-            if create_info.enabled_extensions.ext_descriptor_indexing {
-                create_info.enabled_features.descriptor_indexing = true;
-            }
+            enable_extension_required_features!(ext_descriptor_indexing, descriptor_indexing);
 
             // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02834
-            if create_info.enabled_extensions.ext_sampler_filter_minmax {
-                create_info.enabled_features.sampler_filter_minmax = true;
-            }
+            enable_extension_required_features!(ext_sampler_filter_minmax, sampler_filter_minmax);
 
             // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02835
-            if create_info
-                .enabled_extensions
-                .ext_shader_viewport_index_layer
-            {
-                create_info.enabled_features.shader_output_viewport_index = true;
-                create_info.enabled_features.shader_output_layer = true;
-            }
+            enable_extension_required_features!(
+                ext_shader_viewport_index_layer,
+                shader_output_layer,
+            );
+            enable_extension_required_features!(
+                ext_shader_viewport_index_layer,
+                shader_output_layer,
+            );
         }
+
+        macro_rules! enable_feature_required_features {
+            (
+                $feature:ident,
+                $feature_to_enable:ident $(,)?
+            ) => {
+                if create_info.enabled_features.$feature {
+                    assert!(
+                        physical_device.supported_features().$feature_to_enable,
+                        "The device feature `{}` is enabled, and it requires the `{}` feature \
+                        to be also enabled, but the device does not support the required feature. \
+                        This is a bug in the Vulkan driver for this device.",
+                        stringify!($feature),
+                        stringify!($feature_to_enable),
+                    );
+                    create_info.enabled_features.$feature_to_enable = true;
+                }
+            };
+        }
+
+        // VUID-VkPhysicalDeviceVariablePointersFeatures-variablePointers-01431
+        enable_feature_required_features!(variable_pointers, variable_pointers_storage_buffer);
+
+        // VUID-VkPhysicalDeviceMultiviewFeatures-multiviewGeometryShader-00580
+        enable_feature_required_features!(multiview_geometry_shader, multiview);
+
+        // VUID-VkPhysicalDeviceMultiviewFeatures-multiviewTessellationShader-00581
+        enable_feature_required_features!(multiview_tessellation_shader, multiview);
+
+        // VUID-VkPhysicalDeviceMeshShaderFeaturesEXT-multiviewMeshShader-07032
+        enable_feature_required_features!(multiview_mesh_shader, multiview);
+
+        // VUID-VkPhysicalDeviceMeshShaderFeaturesEXT-primitiveFragmentShadingRateMeshShader-07033
+        enable_feature_required_features!(
+            primitive_fragment_shading_rate_mesh_shader,
+            primitive_fragment_shading_rate,
+        );
+
+        // VUID-VkPhysicalDeviceRayTracingPipelineFeaturesKHR-rayTracingPipelineShaderGroupHandleCaptureReplayMixed-03575
+        enable_feature_required_features!(
+            ray_tracing_pipeline_shader_group_handle_capture_replay_mixed,
+            ray_tracing_pipeline_shader_group_handle_capture_replay,
+        );
+
+        // VUID-VkPhysicalDeviceRobustness2FeaturesEXT-robustBufferAccess2-04000
+        enable_feature_required_features!(robust_buffer_access2, robust_buffer_access);
 
         let &DeviceCreateInfo {
             ref queue_create_infos,
