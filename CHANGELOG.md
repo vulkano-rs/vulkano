@@ -66,6 +66,9 @@ Changes to images:
 Changes to draw/dispatch commands:
 - These are now `unsafe`, as the shader can perform invalid operations outside of Vulkano's control.
 
+Changes to pipelines:
+- `GraphicsPipeline::input_assembly_state` returns an option now.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
@@ -76,6 +79,7 @@ Changes to draw/dispatch commands:
 - Support for creating buffers and images that are not backed by vulkano-managed memory.
 - Documented the safety requirements of shaders in the `shader` module.
 - Support for the `khr_draw_indirect_count` extension.
+- Support for the `ext_mesh_shader` extension.
 
 ### Bugs fixed
 
