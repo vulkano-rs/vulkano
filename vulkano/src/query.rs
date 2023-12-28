@@ -44,6 +44,17 @@ impl QueryPool {
         unsafe { Ok(Self::new_unchecked(device, create_info)?) }
     }
 
+    fn validate_new(
+        device: &Device,
+        create_info: &QueryPoolCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         device: Arc<Device>,
@@ -84,17 +95,6 @@ impl QueryPool {
         };
 
         Ok(Self::from_handle(device, handle, create_info))
-    }
-
-    fn validate_new(
-        device: &Device,
-        create_info: &QueryPoolCreateInfo,
-    ) -> Result<(), Box<ValidationError>> {
-        create_info
-            .validate(device)
-            .map_err(|err| err.add_context("create_info"))?;
-
-        Ok(())
     }
 
     /// Creates a new `QueryPool` from a raw object handle.
@@ -247,7 +247,8 @@ impl QueryPool {
             | QueryType::AccelerationStructureCompactedSize
             | QueryType::AccelerationStructureSerializationSize
             | QueryType::AccelerationStructureSerializationBottomLevelPointers
-            | QueryType::AccelerationStructureSize => (),
+            | QueryType::AccelerationStructureSize
+            | QueryType::MeshPrimitivesGenerated => (),
         }
 
         Ok(())
@@ -373,6 +374,35 @@ impl QueryPoolCreateInfo {
                     err.add_context("query_type.flags")
                         .set_vuids(&["VUID-VkQueryPoolCreateInfo-queryType-00792"])
                 })?;
+
+                if flags.intersects(
+                    QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS
+                        | QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS,
+                ) && !device.enabled_features().mesh_shader_queries
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "query_type.flags".into(),
+                        problem: "contains `TASK_SHADER_INVOCATIONS` or \
+                            `MESH_SHADER_INVOCATIONS`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "mesh_shader_queries",
+                        )])]),
+                        vuids: &["VUID-VkQueryPoolCreateInfo-meshShaderQueries-07069"],
+                    }));
+                }
+            }
+            QueryType::MeshPrimitivesGenerated => {
+                if !device.enabled_features().mesh_shader_queries {
+                    return Err(Box::new(ValidationError {
+                        context: "query_type".into(),
+                        problem: "is `QueryType::MeshPrimitivesGenerated`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "mesh_shader_queries",
+                        )])]),
+                        vuids: &["VUID-VkQueryPoolCreateInfo-meshShaderQueries-07068"],
+                    }));
+                }
             }
             QueryType::Occlusion
             | QueryType::Timestamp
@@ -461,6 +491,14 @@ pub enum QueryType {
     ///
     /// [`write_acceleration_structures_properties`]: crate::command_buffer::RecordingCommandBuffer::write_acceleration_structures_properties
     AccelerationStructureSize = ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR.as_raw(),
+
+    /// Queries the number of primitives emitted from a mesh shader that reach the fragment shader.
+    ///
+    /// Used with the [`begin_query`] and [`end_query`] commands.
+    ///
+    /// [`begin_query`]: crate::command_buffer::RecordingCommandBuffer::begin_query
+    /// [`end_query`]: crate::command_buffer::RecordingCommandBuffer::end_query
+    MeshPrimitivesGenerated = ash::vk::QueryType::MESH_PRIMITIVES_GENERATED_EXT.as_raw(),
 }
 
 impl QueryType {
@@ -485,7 +523,8 @@ impl QueryType {
             | Self::AccelerationStructureCompactedSize
             | Self::AccelerationStructureSerializationSize
             | Self::AccelerationStructureSerializationBottomLevelPointers
-            | Self::AccelerationStructureSize => 1,
+            | Self::AccelerationStructureSize
+            | Self::MeshPrimitivesGenerated => 1,
             Self::PipelineStatistics(flags) => flags.count() as DeviceSize,
         }
     }
@@ -541,6 +580,17 @@ impl QueryType {
                     }));
                 }
             }
+            QueryType::MeshPrimitivesGenerated => {
+                if !device.enabled_extensions().ext_mesh_shader {
+                    return Err(Box::new(ValidationError {
+                        problem: "is `QueryType::MeshPrimitivesGenerated`".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceExtension("ext_mesh_shader"),
+                        ])]),
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         Ok(())
@@ -566,6 +616,7 @@ impl From<&QueryType> for ash::vk::QueryType {
             QueryType::AccelerationStructureSize => {
                 ash::vk::QueryType::ACCELERATION_STRUCTURE_SIZE_KHR
             }
+            QueryType::MeshPrimitivesGenerated => ash::vk::QueryType::MESH_PRIMITIVES_GENERATED_EXT,
         }
     }
 }
@@ -596,6 +647,14 @@ vulkan_bitflags! {
         /// Returns `true` if `self` contains any flags referring to graphics operations.
         #[inline]
         pub const fn is_graphics(self) -> bool {
+            self.is_primitive_shading_graphics() || self.is_mesh_shading_graphics() ||
+            self.intersects(QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS)
+        }
+
+        /// Returns `true` if `self` contains any flags referring to primitive shading graphics
+        /// operations.
+        #[inline]
+        pub const fn is_primitive_shading_graphics(self) -> bool {
             self.intersects(
                 (QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES)
                     .union(QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES)
@@ -604,9 +663,18 @@ vulkan_bitflags! {
                     .union(QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES)
                     .union(QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS)
                     .union(QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES)
-                    .union(QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS)
                     .union(QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES)
                     .union(QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS),
+            )
+        }
+
+        /// Returns `true` if `self` contains any flags referring to mesh shading graphics
+        /// operations.
+        #[inline]
+        pub const fn is_mesh_shading_graphics(self) -> bool {
+            self.intersects(
+                (QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS)
+                    .union(QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS),
             )
         }
     }
@@ -645,19 +713,17 @@ vulkan_bitflags! {
     /// Count the number of times a compute shader is invoked.
     COMPUTE_SHADER_INVOCATIONS = COMPUTE_SHADER_INVOCATIONS,
 
-    /* TODO: enable
-    // TODO: document
-    TASK_SHADER_INVOCATIONS = TASK_SHADER_INVOCATIONS_NV
+    /// Count the number of times a task shader is invoked.
+    TASK_SHADER_INVOCATIONS = TASK_SHADER_INVOCATIONS_EXT
     RequiresOneOf([
-        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
-    ]),*/
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+    ]),
 
-    /* TODO: enable
-    // TODO: document
-    MESH_SHADER_INVOCATIONS = MESH_SHADER_INVOCATIONS_NV
+    /// Count the number of times a mesh shader is invoked.
+    MESH_SHADER_INVOCATIONS = MESH_SHADER_INVOCATIONS_EXT
     RequiresOneOf([
-        RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
-    ]),*/
+        RequiresAllOf([DeviceExtension(ext_mesh_shader)]),
+    ]),
 }
 
 /// A trait for elements of buffers that can be used as a destination for query results.

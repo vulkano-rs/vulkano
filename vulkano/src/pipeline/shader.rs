@@ -74,8 +74,8 @@ impl PipelineShaderStageCreateInfo {
                 .set_vuids(&["VUID-VkPipelineShaderStageCreateInfo-flags-parameter"])
         })?;
 
-        let entry_point_info = entry_point.info();
-        let stage_enum = ShaderStage::from(entry_point_info.execution_model);
+        let execution_model = entry_point.info().execution_model;
+        let stage_enum = ShaderStage::from(execution_model);
 
         stage_enum.validate_device(device).map_err(|err| {
             err.add_context("entry_point.info().execution")
@@ -144,18 +144,6 @@ impl PipelineShaderStageCreateInfo {
             ShaderStage::Miss => (),
             ShaderStage::Intersection => (),
             ShaderStage::Callable => (),
-            ShaderStage::Task => {
-                if !device.enabled_features().task_shader {
-                    return Err(Box::new(ValidationError {
-                        context: "entry_point".into(),
-                        problem: "specifies a `ShaderStage::Task` entry point".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "task_shader",
-                        )])]),
-                        vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02092"],
-                    }));
-                }
-            }
             ShaderStage::Mesh => {
                 if !device.enabled_features().mesh_shader {
                     return Err(Box::new(ValidationError {
@@ -165,6 +153,18 @@ impl PipelineShaderStageCreateInfo {
                             "mesh_shader",
                         )])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02091"],
+                    }));
+                }
+            }
+            ShaderStage::Task => {
+                if !device.enabled_features().task_shader {
+                    return Err(Box::new(ValidationError {
+                        context: "entry_point".into(),
+                        problem: "specifies a `ShaderStage::Task` entry point".into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            "task_shader",
+                        )])]),
+                        vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02092"],
                     }));
                 }
             }
