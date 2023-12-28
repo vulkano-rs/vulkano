@@ -17,40 +17,28 @@ use winit::{
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::device::Features;
+use vulkano::padded::Padded;
 use vulkano::pipeline::{Pipeline, PipelineBindPoint};
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
+use vulkano::{buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage}, command_buffer::{
+    allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+    CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
+}, device::{
+    physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    QueueFlags,
+}, DeviceSize, image::{view::ImageView, Image, ImageUsage}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
+    graphics::{
+        color_blend::{ColorBlendAttachmentState, ColorBlendState},
+        multisample::MultisampleState,
+        rasterization::RasterizationState,
+        vertex_input::Vertex,
+        viewport::{Viewport, ViewportState},
+        GraphicsPipelineCreateInfo,
     },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    image::{view::ImageView, Image, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::{ColorBlendAttachmentState, ColorBlendState},
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::Vertex,
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    single_pass_renderpass,
-    swapchain::{
-        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
-    },
-    sync::{self, GpuFuture},
-    Validated, VulkanError, VulkanLibrary,
-};
+    layout::PipelineDescriptorSetLayoutCreateInfo,
+    DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+}, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass}, single_pass_renderpass, swapchain::{
+    acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+}, sync::{self, GpuFuture}, Validated, VulkanError, VulkanLibrary};
 
 /// The vertex type that we will be used to describe the triangle's geometry.
 #[derive(BufferContents, Vertex)]
@@ -61,13 +49,21 @@ struct TriangleVertex {
 }
 
 /// The vertex type that describes the unique data per instance.
-#[derive(BufferContents, Vertex)]
-#[repr(C)]
-struct InstanceData {
-    #[format(R32G32_SFLOAT)]
-    position_offset: [f32; 2],
-    #[format(R32_SFLOAT)]
-    scale: f32,
+type InstanceData = mesh::Instance;
+
+mod mesh {
+    vulkano_shaders::shader! {
+        ty: "mesh",
+        path: "shader.mesh",
+        vulkan_version: "1.2",
+    }
+}
+
+mod fs {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        path: "shader.frag",
+    }
 }
 
 fn main() -> Result<(), impl Error> {
@@ -229,7 +225,7 @@ fn main() -> Result<(), impl Error> {
         }
         data
     };
-    let instance_buffer = Buffer::from_iter(
+    let instance_buffer = Buffer::new_unsized::<mesh::InstanceBuffer>(
         memory_allocator,
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER | BufferUsage::STORAGE_BUFFER,
@@ -240,22 +236,13 @@ fn main() -> Result<(), impl Error> {
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
-        instances,
+        instances.len() as DeviceSize,
     )
     .unwrap();
-
-    mod mesh {
-        vulkano_shaders::shader! {
-            ty: "mesh",
-            path: "shader.mesh",
-            vulkan_version: "1.2",
-        }
-    }
-
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            path: "shader.frag",
+    {
+        let mut guard = instance_buffer.write().unwrap();
+        for (i, instance) in instances.iter().enumerate() {
+            guard.instance[i] = Padded(*instance);
         }
     }
 
