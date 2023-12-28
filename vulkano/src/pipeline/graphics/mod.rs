@@ -1284,21 +1284,23 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The shader stages to use.
     ///
-    /// A vertex shader must always be included. Other stages are optional.
+    /// Either a vertex shader or mesh shader must always be included. Other stages are optional.
     ///
     /// The default value is empty.
     pub stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
 
     /// The vertex input state.
     ///
-    /// This state is always used, and must be provided.
+    /// This state is used if `stages` contains a vertex shader,
+    /// not used if `stages` contains a mesh shader.
     ///
     /// The default value is `None`.
     pub vertex_input_state: Option<VertexInputState>,
 
     /// The input assembly state.
     ///
-    /// This state is always used, and must be provided.
+    /// This state is used if `stages` contains a vertex shader,
+    /// not used if `stages` contains a mesh shader.
     ///
     /// The default value is `None`.
     pub input_assembly_state: Option<InputAssemblyState>,
