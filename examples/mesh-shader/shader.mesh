@@ -44,10 +44,10 @@ void main() {
 	vec2 position_offset;
 	float scale;
 
-	const bool LOAD_FROM_INSTANCE_BUFFER = false;
+	const bool LOAD_FROM_INSTANCE_BUFFER = true;
 	if (LOAD_FROM_INSTANCE_BUFFER) {
 		// load instance data from buffers, similarly to doing an instanced draw
-		Instance instance = buffer_instance.instance[gl_GlobalInvocationID.x * rows + gl_GlobalInvocationID.y];
+		Instance instance = buffer_instance.instance[gl_GlobalInvocationID.y * rows + gl_GlobalInvocationID.x];
 		position_offset = instance.position_offset;
 		scale = instance.scale;
 	} else {
