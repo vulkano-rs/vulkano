@@ -1291,30 +1291,32 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The vertex input state.
     ///
-    /// This state is used if `stages` contains a vertex shader,
-    /// not used if `stages` contains a mesh shader.
+    /// This must be `Some` if `stages` contains a vertex shader.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     pub vertex_input_state: Option<VertexInputState>,
 
     /// The input assembly state.
     ///
-    /// This state is used if `stages` contains a vertex shader,
-    /// not used if `stages` contains a mesh shader.
+    /// This must be `Some` if `stages` contains a vertex shader.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     pub input_assembly_state: Option<InputAssemblyState>,
 
     /// The tessellation state.
     ///
-    /// This state is used if `stages` contains tessellation shaders.
+    /// This must be `Some` if `stages` contains tessellation shaders.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     pub tessellation_state: Option<TessellationState>,
 
     /// The viewport state.
     ///
-    /// This state is used if [rasterizer discarding] is not enabled.
+    /// This must be `Some` if [rasterizer discarding] is not enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1323,14 +1325,15 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The rasterization state.
     ///
-    /// This state is always used, and must be provided.
+    /// This must always be `Some`.
     ///
     /// The default value is `None`.
     pub rasterization_state: Option<RasterizationState>,
 
     /// The multisample state.
     ///
-    /// This state is used if [rasterizer discarding] is not enabled.
+    /// This must be `Some` if [rasterizer discarding] is not enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1339,8 +1342,9 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The depth/stencil state.
     ///
-    /// This state is used if `render_pass` has depth/stencil attachments, or if
+    /// This must be `Some` if `render_pass` has depth/stencil attachments, or if
     /// [rasterizer discarding] is enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1349,8 +1353,9 @@ pub struct GraphicsPipelineCreateInfo {
 
     /// The color blend state.
     ///
-    /// This state is used if `render_pass` has color attachments, and [rasterizer discarding] is
+    /// This must be `Some` if `render_pass` has color attachments, and [rasterizer discarding] is
     /// not enabled.
+    /// It must be `None` otherwise.
     ///
     /// The default value is `None`.
     ///
@@ -1384,8 +1389,6 @@ pub struct GraphicsPipelineCreateInfo {
     pub base_pipeline: Option<Arc<GraphicsPipeline>>,
 
     /// The discard rectangle state.
-    ///
-    /// This state is always used if it is provided.
     ///
     /// The default value is `None`.
     pub discard_rectangle_state: Option<DiscardRectangleState>,
