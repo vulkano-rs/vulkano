@@ -2308,7 +2308,7 @@ impl RecordingCommandBuffer {
         if self
             .builder_state
             .queries
-            .contains_key(&ash::vk::QueryType::MESH_PRIMITIVES_GENERATED_EXT)
+            .contains_key(&QueryType::MeshPrimitivesGenerated)
         {
             return Err(Box::new(ValidationError {
                 problem: "a `MeshPrimitivesGenerated` query is currently active".into(),
@@ -2320,17 +2320,15 @@ impl RecordingCommandBuffer {
         if let Some(query_state) = self
             .builder_state
             .queries
-            .get(&ash::vk::QueryType::PIPELINE_STATISTICS)
+            .get(&QueryType::PipelineStatistics)
         {
-            let &QueryType::PipelineStatistics(pipeline_statistics_flags) =
-                query_state.query_pool.query_type()
-            else {
-                unreachable!()
-            };
-
-            if pipeline_statistics_flags.is_mesh_shading_graphics() {
+            if query_state
+                .query_pool
+                .pipeline_statistics()
+                .is_mesh_shading_graphics()
+            {
                 return Err(Box::new(ValidationError {
-                    problem: "a pipeline statistics query is currently active, and its \
+                    problem: "a `PipelineStatistics` query is currently active, and its \
                         pipeline statistics flags include statistics for mesh shading"
                         .into(),
                     vuids: vuids!(vuid_type, "stage-07073"),
@@ -2385,15 +2383,13 @@ impl RecordingCommandBuffer {
         if let Some(query_state) = self
             .builder_state
             .queries
-            .get(&ash::vk::QueryType::PIPELINE_STATISTICS)
+            .get(&QueryType::PipelineStatistics)
         {
-            let &QueryType::PipelineStatistics(pipeline_statistics_flags) =
-                query_state.query_pool.query_type()
-            else {
-                unreachable!()
-            };
-
-            if pipeline_statistics_flags.is_primitive_shading_graphics() {
+            if query_state
+                .query_pool
+                .pipeline_statistics()
+                .is_primitive_shading_graphics()
+            {
                 return Err(Box::new(ValidationError {
                     problem: "a pipeline statistics query is currently active, and its \
                         pipeline statistics flags include statistics for primitive shading"

@@ -422,10 +422,10 @@ impl RecordingCommandBuffer {
                             }));
                         }
                     }
-                    &QueryType::PipelineStatistics(state_flags) => {
+                    QueryType::PipelineStatistics => {
                         let inherited_flags = inheritance_info.query_statistics_flags;
 
-                        if !inherited_flags.contains(state_flags) {
+                        if !inherited_flags.contains(state.query_pool.pipeline_statistics()) {
                             return Err(Box::new(ValidationError {
                                 context: format!(
                                     "command_buffers[{}].inheritance_info().query_statistics_flags",
