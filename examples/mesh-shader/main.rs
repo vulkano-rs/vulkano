@@ -19,26 +19,38 @@ use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::device::Features;
 use vulkano::padded::Padded;
 use vulkano::pipeline::{Pipeline, PipelineBindPoint};
-use vulkano::{buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage}, command_buffer::{
-    allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-    CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
-}, device::{
-    physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-    QueueFlags,
-}, DeviceSize, image::{view::ImageView, Image, ImageUsage}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
-    graphics::{
-        color_blend::{ColorBlendAttachmentState, ColorBlendState},
-        multisample::MultisampleState,
-        rasterization::RasterizationState,
-        vertex_input::Vertex,
-        viewport::{Viewport, ViewportState},
-        GraphicsPipelineCreateInfo,
+use vulkano::{
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+        CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
     },
-    layout::PipelineDescriptorSetLayoutCreateInfo,
-    DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-}, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass}, single_pass_renderpass, swapchain::{
-    acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
-}, sync::{self, GpuFuture}, Validated, VulkanError, VulkanLibrary};
+    device::{
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFlags,
+    },
+    image::{view::ImageView, Image, ImageUsage},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    pipeline::{
+        graphics::{
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
+        },
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    single_pass_renderpass,
+    swapchain::{
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+    },
+    sync::{self, GpuFuture},
+    DeviceSize, Validated, VulkanError, VulkanLibrary,
+};
 
 /// The vertex type that we will be used to describe the triangle's geometry.
 #[derive(BufferContents)]
