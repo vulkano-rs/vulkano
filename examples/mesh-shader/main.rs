@@ -41,10 +41,9 @@ use vulkano::{buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage}, c
 }, sync::{self, GpuFuture}, Validated, VulkanError, VulkanLibrary};
 
 /// The vertex type that we will be used to describe the triangle's geometry.
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents)]
 #[repr(C)]
 struct TriangleVertex {
-    #[format(R32G32_SFLOAT)]
     position: [f32; 2],
 }
 
@@ -190,7 +189,7 @@ fn main() -> Result<(), impl Error> {
     let vertex_buffer = Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER | BufferUsage::STORAGE_BUFFER,
+            usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
         AllocationCreateInfo {
@@ -228,7 +227,7 @@ fn main() -> Result<(), impl Error> {
     let instance_buffer = Buffer::new_unsized::<mesh::InstanceBuffer>(
         memory_allocator,
         BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER | BufferUsage::STORAGE_BUFFER,
+            usage: BufferUsage::STORAGE_BUFFER,
             ..Default::default()
         },
         AllocationCreateInfo {

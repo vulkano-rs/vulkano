@@ -5,17 +5,13 @@ edition = "2021"
 publish = false
 
 [[bin]]
-name = "mesh-shader-triangle"
+name = "mesh-shader"
 path = "main.rs"
 test = false
 bench = false
 doc = false
 
 [dependencies]
-# The `vulkano` crate is the main crate that you must use to use Vulkan.
 vulkano = { workspace = true, features = ["macros"] }
-# Provides the `shader!` macro that is used to generate code for using shaders.
 vulkano-shaders = { workspace = true }
-# The Vulkan library doesn't provide any functionality to create and handle windows, as
-# this would be out of scope. In order to open a window, we are going to use the `winit` crate.
 winit = { workspace = true }
