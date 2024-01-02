@@ -152,6 +152,7 @@
 
 pub use ash::vk::Handle;
 use bytemuck::{Pod, Zeroable};
+pub use extensions::ExtensionProperties;
 pub use half;
 pub use library::{LoadingError, VulkanLibrary};
 use std::{
@@ -162,7 +163,7 @@ use std::{
     ops::Deref,
     sync::Arc,
 };
-pub use {extensions::ExtensionProperties, version::Version};
+pub use version::Version;
 
 #[macro_use]
 mod tests;

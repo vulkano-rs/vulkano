@@ -1,3 +1,4 @@
+use super::LightingVertex;
 use cgmath::Vector3;
 use std::sync::Arc;
 use vulkano::{
@@ -31,8 +32,6 @@ use vulkano::{
     },
     render_pass::Subpass,
 };
-
-use super::LightingVertex;
 
 /// Allows applying a directional light source to a scene.
 pub struct DirectionalLightingSystem {
