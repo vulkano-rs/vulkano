@@ -24,30 +24,36 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     - name: Build examples
+      run: cargo build --bins --verbose
+    - name: Run examples
       run: |
         cd examples
-        cargo build --verbose
+        ./run_all_headless.ps1
   linux_stable:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Set up environment
+      run: |
+        mkdir .cargo
+        echo 'build.rustflags = ["--cfg", "CI"]' > .cargo/config.toml
     - name: Build tests
       run: cargo build --tests --verbose
     - name: Run tests
       run: cargo test --verbose
     - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
+      run: cargo build --bins --verbose
   macos_stable:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Set up environment
+      run: |
+        mkdir .cargo
+        echo 'build.rustflags = ["--cfg", "CI"]' > .cargo/config.toml
     - name: Build tests
       run: cargo build --tests --verbose
     - name: Run tests
       run: cargo test --verbose
     - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
+      run: cargo build --bins --verbose

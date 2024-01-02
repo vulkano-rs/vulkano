@@ -53,9 +53,17 @@ pub struct Surface {
 impl Surface {
     /// Returns the instance extensions required to create a surface from a window of the given
     /// event loop.
+    #[cfg_attr(CI, allow(unreachable_code, unused))]
     pub fn required_extensions(
         event_loop: &impl HasDisplayHandle,
     ) -> Result<InstanceExtensions, HandleError> {
+        #[cfg(CI)]
+        return Ok(InstanceExtensions {
+            khr_surface: true,
+            ext_headless_surface: true,
+            ..InstanceExtensions::empty()
+        });
+
         let mut extensions = InstanceExtensions {
             khr_surface: true,
             ..InstanceExtensions::empty()
@@ -92,10 +100,14 @@ impl Surface {
     /// # Safety
     ///
     /// - The given `window` must outlive the created surface.
+    #[cfg_attr(CI, allow(unreachable_code, unused))]
     pub unsafe fn from_window_ref(
         instance: Arc<Instance>,
         window: &(impl HasWindowHandle + HasDisplayHandle),
     ) -> Result<Arc<Self>, FromWindowError> {
+        #[cfg(CI)]
+        return Self::headless(instance, None).map_err(FromWindowError::CreateSurface);
+
         let window_handle = window
             .window_handle()
             .map_err(FromWindowError::RetrieveHandle)?;
