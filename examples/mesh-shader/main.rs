@@ -12,31 +12,23 @@
 // Presentation: https://www.youtube.com/watch?v=g9FoZcEQlbA
 
 use std::{error::Error, sync::Arc};
-
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-};
-
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
-use vulkano::device::Features;
-use vulkano::padded::Padded;
-use vulkano::pipeline::{Pipeline, PipelineBindPoint};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
         CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
     },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+    },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    padded::Padded,
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
@@ -46,7 +38,8 @@ use vulkano::{
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     single_pass_renderpass,
@@ -55,6 +48,11 @@ use vulkano::{
     },
     sync::{self, GpuFuture},
     DeviceSize, Validated, VulkanError, VulkanLibrary,
+};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
 };
 
 /// The vertex type that we will be used to describe the triangle's geometry.
