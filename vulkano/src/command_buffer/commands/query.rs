@@ -44,7 +44,7 @@ impl RecordingCommandBuffer {
         if self
             .builder_state
             .queries
-            .contains_key(&query_pool.query_type().into())
+            .contains_key(&query_pool.query_type())
         {
             return Err(Box::new(ValidationError {
                 problem: "a query with the same type as `query_pool.query_type()` is \
@@ -85,7 +85,7 @@ impl RecordingCommandBuffer {
         flags: QueryControlFlags,
     ) -> &mut Self {
         self.builder_state.queries.insert(
-            query_pool.query_type().into(),
+            query_pool.query_type(),
             QueryState {
                 query_pool: query_pool.clone(),
                 query,
@@ -126,7 +126,7 @@ impl RecordingCommandBuffer {
         if !self
             .builder_state
             .queries
-            .get(&query_pool.query_type().into())
+            .get(&query_pool.query_type())
             .map_or(false, |state| {
                 *state.query_pool == *query_pool && state.query == query
             })
@@ -163,8 +163,7 @@ impl RecordingCommandBuffer {
         query_pool: Arc<QueryPool>,
         query: u32,
     ) -> &mut Self {
-        let raw_ty = query_pool.query_type().into();
-        self.builder_state.queries.remove(&raw_ty);
+        self.builder_state.queries.remove(&query_pool.query_type());
 
         self.add_command(
             "end_query",
@@ -470,16 +469,15 @@ impl RawRecordingCommandBuffer {
                     }));
                 }
             }
-            QueryType::PipelineStatistics(statistic_flags) => {
-                if statistic_flags.is_graphics()
+            QueryType::PipelineStatistics => {
+                if query_pool.pipeline_statistics().is_graphics()
                     && !queue_family_properties
                         .queue_flags
                         .intersects(QueueFlags::GRAPHICS)
                 {
                     return Err(Box::new(ValidationError {
-                        context: "query_pool.query_type()".into(),
-                        problem: "is `QueryType::PipelineStatistics`, and the \
-                            pipeline statistics flags include a graphics flag, but \
+                        problem: "`query_pool.query_type()` is `QueryType::PipelineStatistics`, \
+                            and `query_pool.pipeline_statistics()` includes a graphics flag, but \
                             the queue family of the command buffer does not support \
                             graphics operations"
                             .into(),
@@ -488,15 +486,14 @@ impl RawRecordingCommandBuffer {
                     }));
                 }
 
-                if statistic_flags.is_compute()
+                if query_pool.pipeline_statistics().is_compute()
                     && !queue_family_properties
                         .queue_flags
                         .intersects(QueueFlags::COMPUTE)
                 {
                     return Err(Box::new(ValidationError {
-                        context: "query_pool.query_type()".into(),
-                        problem: "is `QueryType::PipelineStatistics`, and the \
-                            pipeline statistics flags include a compute flag, but \
+                        problem: "`query_pool.query_type()` is `QueryType::PipelineStatistics`, \
+                            and `query_pool.pipeline_statistics()` includes a compute flag, but \
                             the queue family of the command buffer does not support \
                             compute operations"
                             .into(),
@@ -965,8 +962,7 @@ impl RawRecordingCommandBuffer {
         }
 
         let count = queries.end - queries.start;
-        let per_query_len = query_pool.query_type().result_len()
-            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let per_query_len = query_pool.result_len(flags);
         let required_len = per_query_len * count as DeviceSize;
 
         if destination.len() < required_len {
@@ -1017,8 +1013,7 @@ impl RawRecordingCommandBuffer {
     where
         T: QueryResultElement,
     {
-        let per_query_len = query_pool.query_type().result_len()
-            + flags.intersects(QueryResultFlags::WITH_AVAILABILITY) as DeviceSize;
+        let per_query_len = query_pool.result_len(flags);
         let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
 
         let fns = self.device().fns();

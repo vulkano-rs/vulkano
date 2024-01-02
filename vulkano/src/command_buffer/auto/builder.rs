@@ -27,7 +27,7 @@ use crate::{
         },
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
-    query::{QueryControlFlags, QueryPool},
+    query::{QueryControlFlags, QueryPool, QueryType},
     range_map::RangeMap,
     range_set::RangeSet,
     render_pass::{Framebuffer, Subpass},
@@ -108,7 +108,7 @@ impl RecordingCommandBuffer {
             let &CommandBufferInheritanceInfo {
                 ref render_pass,
                 occlusion_query: _,
-                query_statistics_flags: _,
+                pipeline_statistics: _,
                 _ne: _,
             } = inheritance_info;
 
@@ -1209,7 +1209,7 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
 
     // Active queries
-    pub(in crate::command_buffer) queries: HashMap<ash::vk::QueryType, QueryState>,
+    pub(in crate::command_buffer) queries: HashMap<QueryType, QueryState>,
 }
 
 impl CommandBufferBuilderState {
