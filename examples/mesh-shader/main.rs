@@ -65,7 +65,7 @@ type InstanceData = mesh::Instance;
 mod mesh {
     vulkano_shaders::shader! {
         ty: "mesh",
-        path: "shader.mesh",
+        path: "mesh.glsl",
         vulkan_version: "1.2",
     }
 }
@@ -73,7 +73,7 @@ mod mesh {
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shader.frag",
+        path: "fragment.glsl",
     }
 }
 
