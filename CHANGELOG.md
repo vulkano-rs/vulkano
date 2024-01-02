@@ -69,6 +69,12 @@ Changes to draw/dispatch commands:
 Changes to pipelines:
 - `GraphicsPipeline::input_assembly_state` returns an option now.
 
+Changes to queries:
+- `QueryType` is now a regular Vulkan enum like others in Vulkano.
+- The `QueryType::result_len` method is moved to `QueryPool`, and now takes result flags into account.
+- `QueryPoolCreateInfo` now has a `pipeline_statistics` field to specify the pipeline statistics flags.
+- The `CommandBufferInheritanceInfo::query_statistic_flags` field is renamed to `pipeline_statistics` to match Vulkan.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
