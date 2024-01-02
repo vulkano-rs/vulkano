@@ -78,7 +78,7 @@ mod mesh {
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "fragment.glsl",
+        path: "frag.glsl",
     }
 }
 
