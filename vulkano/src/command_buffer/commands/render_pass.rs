@@ -1028,7 +1028,7 @@ impl RawRecordingCommandBuffer {
                                     "`framebuffer.attachments()[{0}]` is used in `render_pass` \
                                     with the `ImageLayout::ShaderReadOnlyOptimal` layout, but \
                                     `framebuffer.attachments()[{0}].usage()` does not contain \
-                                    `ImageUsage::SAMPLED` or `ImageUsage::INPUT_ATTACHMENT",
+                                    `ImageUsage::SAMPLED` or `ImageUsage::INPUT_ATTACHMENT`",
                                     attachment_index,
                                 )
                                 .into(),
@@ -1044,7 +1044,7 @@ impl RawRecordingCommandBuffer {
                                     "`framebuffer.attachments()[{0}]` is used in `render_pass` \
                                     with the `ImageLayout::TransferSrcOptimal` layout, but \
                                     `framebuffer.attachments()[{0}].usage()` does not contain \
-                                    `ImageUsage::TRANSFER_SRC",
+                                    `ImageUsage::TRANSFER_SRC`",
                                     attachment_index,
                                 )
                                 .into(),
@@ -1060,7 +1060,7 @@ impl RawRecordingCommandBuffer {
                                     "`framebuffer.attachments()[{0}]` is used in `render_pass` \
                                     with the `ImageLayout::TransferDstOptimal` layout, but \
                                     `framebuffer.attachments()[{0}].usage()` does not contain \
-                                    `ImageUsage::TRANSFER_DST",
+                                    `ImageUsage::TRANSFER_DST`",
                                     attachment_index,
                                 )
                                 .into(),
@@ -1164,7 +1164,7 @@ impl RawRecordingCommandBuffer {
                                     "`framebuffer.attachments()[{0}]` is used in `render_pass` \
                                     with the `ImageLayout::ShaderReadOnlyOptimal` layout, but \
                                     `framebuffer.attachments()[{0}].usage()` does not contain \
-                                    `ImageUsage::SAMPLED` or `ImageUsage::INPUT_ATTACHMENT",
+                                    `ImageUsage::SAMPLED` or `ImageUsage::INPUT_ATTACHMENT`",
                                     atch_ref.attachment,
                                 )
                                 .into(),
@@ -1180,7 +1180,7 @@ impl RawRecordingCommandBuffer {
                                     "`framebuffer.attachments()[{0}]` is used in `render_pass` \
                                     with the `ImageLayout::TransferSrcOptimal` layout, but \
                                     `framebuffer.attachments()[{0}].usage()` does not contain \
-                                    `ImageUsage::TRANSFER_SRC",
+                                    `ImageUsage::TRANSFER_SRC`",
                                     atch_ref.attachment,
                                 )
                                 .into(),
@@ -1196,7 +1196,7 @@ impl RawRecordingCommandBuffer {
                                     "`framebuffer.attachments()[{0}]` is used in `render_pass` \
                                     with the `ImageLayout::TransferDstOptimal` layout, but \
                                     `framebuffer.attachments()[{0}].usage()` does not contain \
-                                    `ImageUsage::TRANSFER_DST",
+                                    `ImageUsage::TRANSFER_DST`",
                                     atch_ref.attachment,
                                 )
                                 .into(),
