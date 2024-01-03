@@ -17,7 +17,7 @@ use crate::{
     device::Device,
     format::Format,
     macros::{vulkan_bitflags, vulkan_enum},
-    pipeline::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
+    pipeline::inout_interface::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;

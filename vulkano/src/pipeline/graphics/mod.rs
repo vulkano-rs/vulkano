@@ -91,9 +91,11 @@ use self::{
     viewport::ViewportState,
 };
 use super::{
-    cache::PipelineCache, shader::validate_interfaces_compatible, DynamicState, Pipeline,
-    PipelineBindPoint, PipelineCreateFlags, PipelineLayout, PipelineShaderStageCreateInfo,
-    ShaderInterfaceLocationInfo,
+    cache::PipelineCache,
+    inout_interface::{shader_interface_location_info, ShaderInterfaceLocationInfo},
+    shader::inout_interface::validate_interfaces_compatible,
+    DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags, PipelineLayout,
+    PipelineShaderStageCreateInfo,
 };
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -972,7 +974,7 @@ impl GraphicsPipeline {
             match entry_point_info.execution_model {
                 ExecutionModel::Vertex => {
                     if vertex_input_state.is_none() {
-                        required_vertex_inputs = Some(super::shader_interface_location_info(
+                        required_vertex_inputs = Some(shader_interface_location_info(
                             entry_point.module().spirv(),
                             entry_point.id(),
                             StorageClass::Input,
@@ -2415,7 +2417,7 @@ impl GraphicsPipelineCreateInfo {
         */
 
         if let (Some(vertex_stage), Some(vertex_input_state)) = (vertex_stage, vertex_input_state) {
-            let required_vertex_inputs = super::shader_interface_location_info(
+            let required_vertex_inputs = shader_interface_location_info(
                 vertex_stage.entry_point.module().spirv(),
                 vertex_stage.entry_point.id(),
                 StorageClass::Input,
@@ -2506,7 +2508,7 @@ impl GraphicsPipelineCreateInfo {
         if let (Some(fragment_stage), Some(color_blend_state), Some(subpass)) =
             (fragment_stage, color_blend_state, subpass)
         {
-            let fragment_shader_outputs = super::shader_interface_location_info(
+            let fragment_shader_outputs = shader_interface_location_info(
                 fragment_stage.entry_point.module().spirv(),
                 fragment_stage.entry_point.id(),
                 StorageClass::Output,

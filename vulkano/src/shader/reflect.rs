@@ -147,7 +147,7 @@ fn inspect_entry_point(
             &mut self,
             chain: [fn(&Spirv, Id) -> Option<Id>; N],
             id: Id,
-        ) -> Option<(&mut DescriptorBindingVariable, Option<u32>)> {
+        ) -> Option<(&mut DescriptorBindingVariable, Option<u64>)> {
             let mut id = chain
                 .into_iter()
                 .try_fold(id, |id, func| func(self.spirv, id))?;
@@ -169,10 +169,7 @@ fn inspect_entry_point(
                     // Variable was accessed with an access chain.
                     // Retrieve index from instruction if it's a constant value.
                     // TODO: handle a `None` index too?
-                    let index = match *self.spirv.id(*indexes.first().unwrap()).instruction() {
-                        Instruction::Constant { ref value, .. } => Some(value[0]),
-                        _ => None,
-                    };
+                    let index = get_constant(self.spirv, *indexes.first().unwrap());
                     let variable = self.result.entry(id).or_insert_with(|| variable.clone());
                     variable.reqs.stages = self.stage.into();
                     return Some((variable, index));
@@ -184,10 +181,15 @@ fn inspect_entry_point(
 
         fn inspect_entry_point_r(&mut self, function: Id) {
             fn desc_reqs(
-                descriptor_variable: Option<(&mut DescriptorBindingVariable, Option<u32>)>,
+                descriptor_variable: Option<(&mut DescriptorBindingVariable, Option<u64>)>,
             ) -> Option<&mut DescriptorRequirements> {
-                descriptor_variable
-                    .map(|(variable, index)| variable.reqs.descriptors.entry(index).or_default())
+                descriptor_variable.map(|(variable, index)| {
+                    variable
+                        .reqs
+                        .descriptors
+                        .entry(index.map(|index| index.try_into().unwrap()))
+                        .or_default()
+                })
             }
 
             fn inst_image_texel_pointer(spirv: &Spirv, id: Id) -> Option<Id> {
@@ -561,7 +563,7 @@ fn inspect_entry_point(
                             Some((variable, Some(index))) => DescriptorIdentifier {
                                 set: variable.set,
                                 binding: variable.binding,
-                                index,
+                                index: index.try_into().unwrap(),
                             },
                             _ => continue,
                         };
@@ -787,12 +789,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 reqs.descriptor_types
                     .retain(|&d| d != DescriptorType::InlineUniformBlock);
 
-                let len = match spirv.id(length).instruction() {
-                    Instruction::Constant { value, .. } => {
-                        value.iter().rev().fold(0, |a, &b| (a << 32) | b as u64)
-                    }
-                    _ => panic!("failed to find array length"),
-                };
+                let len = get_constant(spirv, length).expect("failed to find array length");
 
                 if let Some(count) = reqs.descriptor_count.as_mut() {
                     *count *= len as u32
@@ -1178,18 +1175,22 @@ fn shader_interface(
 }
 
 /// Returns the size of a type, or `None` if its size cannot be determined.
-fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
+pub(crate) fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
     let id_info = spirv.id(id);
 
     match *id_info.instruction() {
-        Instruction::TypeBool { .. } => {
-            panic!("Can't put booleans in structs")
-        }
+        Instruction::TypeVoid { .. } => Some(0),
+        Instruction::TypeBool { .. } => Some(4),
         Instruction::TypeInt { width, .. } | Instruction::TypeFloat { width, .. } => {
             assert!(width % 8 == 0);
             Some(width as DeviceSize / 8)
         }
-        Instruction::TypePointer { .. } => Some(8),
+        Instruction::TypePointer {
+            storage_class, ty, ..
+        } => match storage_class {
+            StorageClass::PhysicalStorageBuffer => Some(8),
+            _ => size_of_type(spirv, ty),
+        },
         Instruction::TypeVector {
             component_type,
             component_count,
@@ -1200,75 +1201,73 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
             column_type,
             column_count,
             ..
-        } => {
-            // FIXME: row-major or column-major
-            size_of_type(spirv, column_type)
-                .map(|column_size| column_size * column_count as DeviceSize)
-        }
-        Instruction::TypeArray { length, .. } => {
-            let stride = id_info
-                .decorations()
-                .iter()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::ArrayStride { array_stride },
-                        ..
-                    } => Some(array_stride),
-                    _ => None,
-                })
-                .unwrap();
-            let length = match spirv.id(length).instruction() {
-                Instruction::Constant { value, .. } => Some(
-                    value
-                        .iter()
-                        .rev()
-                        .fold(0u64, |a, &b| (a << 32) | b as DeviceSize),
-                ),
+        } => id_info
+            .decorations()
+            .iter()
+            .find_map(|instruction| match *instruction {
+                Instruction::Decorate {
+                    decoration: Decoration::MatrixStride { matrix_stride },
+                    ..
+                } => Some(matrix_stride as DeviceSize),
                 _ => None,
-            }
-            .unwrap();
-
-            Some(stride as DeviceSize * length)
-        }
+            })
+            .or_else(|| size_of_type(spirv, column_type))
+            .map(|stride| stride * column_count as DeviceSize),
+        Instruction::TypeArray {
+            element_type,
+            length,
+            ..
+        } => id_info
+            .decorations()
+            .iter()
+            .find_map(|instruction| match *instruction {
+                Instruction::Decorate {
+                    decoration: Decoration::ArrayStride { array_stride },
+                    ..
+                } => Some(array_stride as DeviceSize),
+                _ => None,
+            })
+            .or_else(|| size_of_type(spirv, element_type))
+            .map(|stride| {
+                let length = get_constant(spirv, length).unwrap();
+                stride * length
+            }),
         Instruction::TypeRuntimeArray { .. } => None,
         Instruction::TypeStruct {
             ref member_types, ..
         } => {
-            let mut end_of_struct = 0;
-
-            for (&member, member_info) in member_types.iter().zip(id_info.members()) {
-                // Built-ins have an unknown size.
-                if member_info.decorations().iter().any(|instruction| {
-                    matches!(
-                        instruction,
-                        Instruction::MemberDecorate {
-                            decoration: Decoration::BuiltIn { .. },
-                            ..
-                        }
-                    )
-                }) {
-                    return None;
-                }
-
-                // Some structs don't have `Offset` decorations, in the case they are used as local
-                // variables only. Ignoring these.
-                let offset =
-                    member_info.decorations().iter().find_map(
-                        |instruction| match *instruction {
-                            Instruction::MemberDecorate {
-                                decoration: Decoration::Offset { byte_offset },
-                                ..
-                            } => Some(byte_offset),
-                            _ => None,
-                        },
-                    )?;
-                let size = size_of_type(spirv, member)?;
-                end_of_struct = end_of_struct.max(offset as DeviceSize + size);
-            }
-
-            Some(end_of_struct)
+            member_types.iter().zip(id_info.members()).try_fold(
+                0,
+                |end_of_struct, (&member, member_info)| {
+                    let offset = member_info
+                        .decorations()
+                        .iter()
+                        .find_map(|instruction| {
+                            match *instruction {
+                                // Built-ins have an unknown size.
+                                Instruction::MemberDecorate {
+                                    decoration: Decoration::BuiltIn { .. },
+                                    ..
+                                } => Some(None),
+                                Instruction::MemberDecorate {
+                                    decoration: Decoration::Offset { byte_offset },
+                                    ..
+                                } => Some(Some(byte_offset as DeviceSize)),
+                                _ => None,
+                            }
+                        })
+                        .unwrap_or(Some(end_of_struct))?;
+                    let size = size_of_type(spirv, member)?;
+                    Some(end_of_struct.max(offset + size))
+                },
+            )
         }
-        _ => panic!("Type {} not found", id),
+        ref instruction => todo!(
+            "An unknown type was passed to `size_of_type`. \
+            This is a Vulkano bug and should be reported.\n
+            Instruction::{:?}",
+            instruction
+        ),
     }
 }
 
@@ -1366,23 +1365,8 @@ fn shader_interface_type_of(
                 shader_interface_type_of(spirv, element_type, false)
             } else {
                 let mut ty = shader_interface_type_of(spirv, element_type, false);
-                let num_elements = spirv
-                    .constants()
-                    .iter()
-                    .find_map(|instruction| match *instruction {
-                        Instruction::Constant {
-                            result_id,
-                            ref value,
-                            ..
-                        } if result_id == length => Some(value.clone()),
-                        _ => None,
-                    })
-                    .expect("failed to find array length")
-                    .iter()
-                    .rev()
-                    .fold(0u64, |a, &b| (a << 32) | b as u64)
-                    as u32;
-                ty.num_elements *= num_elements;
+                let length = get_constant(spirv, length).expect("failed to find array length");
+                ty.num_elements *= length as u32;
                 ty
             }
         }
