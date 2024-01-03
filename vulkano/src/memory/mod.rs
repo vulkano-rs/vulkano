@@ -12,7 +12,12 @@
 //! ```
 //! // Enumerating memory heaps.
 //! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
-//! for (index, heap) in physical_device.memory_properties().memory_heaps.iter().enumerate() {
+//! for (index, heap) in physical_device
+//!     .memory_properties()
+//!     .memory_heaps
+//!     .iter()
+//!     .enumerate()
+//! {
 //!     println!("Heap #{:?} has a capacity of {:?} bytes", index, heap.size);
 //! }
 //! ```
@@ -68,7 +73,8 @@
 //!         memory_type_index,
 //!         ..Default::default()
 //!     },
-//! ).expect("Failed to allocate memory");
+//! )
+//! .expect("Failed to allocate memory");
 //!
 //! // The memory is automatically freed when `memory` is destroyed.
 //! ```

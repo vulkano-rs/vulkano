@@ -17,17 +17,21 @@ use winit::{
 /// ## Examples
 ///
 /// ```
-/// use vulkano_util::context::{VulkanoConfig, VulkanoContext};
+/// use vulkano_util::{
+///     context::{VulkanoConfig, VulkanoContext},
+///     window::VulkanoWindows,
+/// };
 /// use winit::event_loop::EventLoop;
-/// use vulkano_util::window::VulkanoWindows;
 ///
 /// #[test]
 /// fn test() {
 ///     let context = VulkanoContext::new(VulkanoConfig::default());
 ///     let event_loop = EventLoop::new();
 ///     let mut vulkano_windows = VulkanoWindows::default();
-///     let _id1 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
-///     let _id2 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+///     let _id1 =
+///         vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+///     let _id2 =
+///         vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
 ///
 ///     // You should now have two windows.
 /// }

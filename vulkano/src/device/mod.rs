@@ -7,7 +7,10 @@
 //!
 //! ```no_run
 //! use vulkano::{
-//!     device::{physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo},
+//!     device::{
+//!         physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, Features,
+//!         QueueCreateInfo,
+//!     },
 //!     instance::{Instance, InstanceExtensions},
 //!     Version, VulkanLibrary,
 //! };
@@ -23,7 +26,8 @@
 //! let physical_device = instance
 //!     .enumerate_physical_devices()
 //!     .unwrap_or_else(|err| panic!("Couldn't enumerate physical devices: {:?}", err))
-//!     .next().expect("No physical device");
+//!     .next()
+//!     .expect("No physical device");
 //!
 //! // Here is the device-creating code.
 //! let device = {
@@ -43,7 +47,7 @@
 //!         },
 //!     ) {
 //!         Ok(d) => d,
-//!         Err(err) => panic!("Couldn't build device: {:?}", err)
+//!         Err(err) => panic!("Couldn't build device: {:?}", err),
 //!     }
 //! };
 //! ```

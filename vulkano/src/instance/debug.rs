@@ -21,12 +21,13 @@
 //! let _callback = unsafe {
 //!     DebugUtilsMessenger::new(
 //!         instance,
-//!         DebugUtilsMessengerCreateInfo::user_callback(
-//!             DebugUtilsMessengerCallback::new(|message_severity, message_type, callback_data| {
+//!         DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
+//!             |message_severity, message_type, callback_data| {
 //!                 println!("Debug callback: {:?}", callback_data.message);
-//!             }),
-//!         ),
-//!     ).ok()
+//!             },
+//!         )),
+//!     )
+//!     .ok()
 //! };
 //! ```
 //!

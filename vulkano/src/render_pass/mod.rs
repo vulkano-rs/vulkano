@@ -62,7 +62,8 @@ mod framebuffer;
 ///         subpasses: vec![SubpassDescription::default()],
 ///         ..Default::default()
 ///     },
-/// ).unwrap();
+/// )
+/// .unwrap();
 /// ```
 ///
 /// This example creates a render pass with no attachment and one single subpass that doesn't draw

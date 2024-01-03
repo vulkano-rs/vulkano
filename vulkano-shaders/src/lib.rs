@@ -6,7 +6,7 @@
 //!
 //! ```
 //! mod vs {
-//!     vulkano_shaders::shader!{
+//!     vulkano_shaders::shader! {
 //!         ty: "vertex",
 //!         src: r"
 //!             #version 450
