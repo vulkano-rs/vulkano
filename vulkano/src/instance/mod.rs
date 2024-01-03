@@ -31,7 +31,7 @@
 //! for physical_device in instance.enumerate_physical_devices().unwrap() {
 //!     println!(
 //!         "Available device: {}",
-//!         physical_device.properties().device_name
+//!         physical_device.properties().device_name,
 //!     );
 //! }
 //! ```
@@ -641,7 +641,7 @@ impl Instance {
     /// for physical_device in instance.enumerate_physical_devices().unwrap() {
     ///     println!(
     ///         "Available device: {}",
-    ///         physical_device.properties().device_name
+    ///         physical_device.properties().device_name,
     ///     );
     /// }
     /// ```

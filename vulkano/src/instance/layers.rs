@@ -92,7 +92,7 @@ impl LayerProperties {
     ///     println!(
     ///         "Layer {} - Version: {}",
     ///         layer.name(),
-    ///         layer.implementation_version()
+    ///         layer.implementation_version(),
     ///     );
     /// }
     /// ```
