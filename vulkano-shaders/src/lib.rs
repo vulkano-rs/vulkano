@@ -1,5 +1,6 @@
 //! The procedural macro for vulkano's shader system.
-//! Manages the compile-time compilation of GLSL into SPIR-V and generation of associated Rust code.
+//! Manages the compile-time compilation of GLSL into SPIR-V and generation of associated Rust
+//! code.
 //!
 //! # Basic usage
 //!
@@ -31,11 +32,11 @@
 //!
 //! The macro generates the following items of interest:
 //!
-//! - The `load` constructor. This function takes an `Arc<Device>`, constructs a
-//!   [`ShaderModule`] with the passed-in device and the shader data provided
-//!   via the macro, and returns `Result<Arc<ShaderModule>, Validated<VulkanError>>`.
-//!   Before doing so, it checks every capability instruction in the shader data,
-//!   verifying that the passed-in `Device` has the appropriate features enabled.
+//! - The `load` constructor. This function takes an `Arc<Device>`, constructs a [`ShaderModule`]
+//!   with the passed-in device and the shader data provided via the macro, and returns
+//!   `Result<Arc<ShaderModule>, Validated<VulkanError>>`. Before doing so, it checks every
+//!   capability instruction in the shader data, verifying that the passed-in `Device` has the
+//!   appropriate features enabled.
 //! - If the `shaders` option is used, then instead of one `load` constructor, there is one for
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
 //! - A Rust struct translated from each struct contained in the shader data. By default each

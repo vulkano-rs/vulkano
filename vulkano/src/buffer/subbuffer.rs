@@ -275,9 +275,9 @@ where
     /// return an error. Similarly if you called [`write`] on the buffer and haven't dropped the
     /// lock, this function will return an error as well.
     ///
-    /// After this function successfully locks the subbuffer, any attempt to submit a command buffer
-    /// that uses it in exclusive mode will fail. You can still submit this subbuffer for
-    /// non-exclusive accesses (ie. reads).
+    /// After this function successfully locks the subbuffer, any attempt to submit a command
+    /// buffer that uses it in exclusive mode will fail. You can still submit this subbuffer
+    /// for non-exclusive accesses (ie. reads).
     ///
     /// If the memory backing the buffer is not [host-coherent], then this function will lock a
     /// range that is potentially larger than the subbuffer, because the range given to
@@ -344,8 +344,8 @@ where
             // SAFETY:
             // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
             //   within the mapped range of the memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size
-            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
+            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
             unsafe { allocation.invalidate_range_unchecked(memory_range) }
                 .map_err(HostAccessError::Invalidate)?;
@@ -429,8 +429,8 @@ where
             // SAFETY:
             // - `self.mapped_slice()` didn't return an error, which means that the subbuffer falls
             //   within the mapped range of the memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size
-            //   for non-host-coherent memory, therefore the subbuffer's range aligned to the
+            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
+            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
             //   non-coherent atom size must fall within the mapped range of the memory.
             unsafe { allocation.invalidate_range_unchecked(memory_range) }
                 .map_err(HostAccessError::Invalidate)?;

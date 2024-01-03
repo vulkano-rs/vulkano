@@ -805,7 +805,8 @@ pub struct SparseBufferMemoryBind {
     pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
 }
 
-/// Parameters for a single sparse bind operation on parts of an image with an opaque memory layout.
+/// Parameters for a single sparse bind operation on parts of an image with an opaque memory
+/// layout.
 ///
 /// This type of sparse bind should be used for mip tail regions, the metadata aspect, and for the
 /// normal regions of images that do not have the `sparse_residency` flag set.

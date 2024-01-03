@@ -57,8 +57,8 @@ use std::{
 /// this trait, but if you **must**:
 ///
 /// - `allocate` must return a memory block that is in bounds of the region.
-/// - `allocate` must return a memory block that doesn't alias any other currently allocated
-///   memory blocks:
+/// - `allocate` must return a memory block that doesn't alias any other currently allocated memory
+///   blocks:
 ///   - Two currently allocated memory blocks must not share any memory locations, meaning that the
 ///     intersection of the byte ranges of the two memory blocks must be empty.
 ///   - Two neighboring currently allocated memory blocks must not share any [page] whose size is

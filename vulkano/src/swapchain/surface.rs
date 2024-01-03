@@ -167,8 +167,8 @@ impl Surface {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `instance`.
     /// - `handle` must have been created using the function specified by `api`.
-    /// - The window object that `handle` was created from must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The window object that `handle` was created from must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_handle(
         instance: Arc<Instance>,
         handle: ash::vk::SurfaceKHR,
@@ -191,8 +191,9 @@ impl Surface {
 
     /// Creates a `Surface` with no backing window or display.
     ///
-    /// Presenting to a headless surface does nothing, so this is mostly useless in itself. However,
-    /// it may be useful for testing, and it is available for future extensions to layer on top of.
+    /// Presenting to a headless surface does nothing, so this is mostly useless in itself.
+    /// However, it may be useful for testing, and it is available for future extensions to
+    /// layer on top of.
     pub fn headless(
         instance: Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
@@ -434,8 +435,8 @@ impl Surface {
     /// # Safety
     ///
     /// - `window` must be a valid Android `ANativeWindow` handle.
-    /// - The object referred to by `window` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `window` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
     pub unsafe fn from_android(
         instance: Arc<Instance>,
         window: *mut ash::vk::ANativeWindow,
@@ -505,8 +506,8 @@ impl Surface {
     ///
     /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
     /// - `surface` must be a valid DirectFB `IDirectFBSurface` handle.
-    /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_directfb(
         instance: Arc<Instance>,
         dfb: *mut ash::vk::IDirectFB,
@@ -584,8 +585,8 @@ impl Surface {
     /// # Safety
     ///
     /// - `image_pipe_handle` must be a valid Fuchsia `zx_handle_t` handle.
-    /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_fuchsia_image_pipe(
         instance: Arc<Instance>,
         image_pipe_handle: ash::vk::zx_handle_t,
@@ -659,8 +660,8 @@ impl Surface {
     /// # Safety
     ///
     /// - `stream_descriptor` must be a valid Google Games Platform `GgpStreamDescriptor` handle.
-    /// - The object referred to by `stream_descriptor` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `stream_descriptor` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_ggp_stream_descriptor(
         instance: Arc<Instance>,
         stream_descriptor: ash::vk::GgpStreamDescriptor,
@@ -734,8 +735,8 @@ impl Surface {
     /// # Safety
     ///
     /// - `metal_layer` must be a valid `IOSMetalLayer` handle.
-    /// - The object referred to by `metal_layer` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `metal_layer` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     pub unsafe fn from_ios(
         instance: Arc<Instance>,
@@ -808,8 +809,8 @@ impl Surface {
     /// # Safety
     ///
     /// - `view` must be a valid `CAMetalLayer` or `NSView` handle.
-    /// - The object referred to by `view` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `view` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     pub unsafe fn from_mac_os(
         instance: Arc<Instance>,
@@ -882,8 +883,8 @@ impl Surface {
     /// # Safety
     ///
     /// - `layer` must be a valid Metal `CAMetalLayer` handle.
-    /// - The object referred to by `layer` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `layer` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
     pub unsafe fn from_metal(
         instance: Arc<Instance>,
         layer: *const ash::vk::CAMetalLayer,
@@ -950,8 +951,8 @@ impl Surface {
     ///
     /// - `context` must be a valid QNX Screen `_screen_context` handle.
     /// - `window` must be a valid QNX Screen `_screen_window` handle.
-    /// - The object referred to by `window` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `window` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
     pub unsafe fn from_qnx_screen(
         instance: Arc<Instance>,
         context: *mut ash::vk::_screen_context,
@@ -1029,8 +1030,8 @@ impl Surface {
     /// # Safety
     ///
     /// - `window` must be a valid `nn::vi::NativeWindowHandle` handle.
-    /// - The object referred to by `window` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The object referred to by `window` must outlive the created `Surface`. The `object`
+    ///   parameter can be used to ensure this.
     pub unsafe fn from_vi(
         instance: Arc<Instance>,
         window: *mut c_void,
@@ -1184,8 +1185,8 @@ impl Surface {
     ///
     /// - `hinstance` must be a valid Win32 `HINSTANCE` handle.
     /// - `hwnd` must be a valid Win32 `HWND` handle.
-    /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_win32(
         instance: Arc<Instance>,
         hinstance: ash::vk::HINSTANCE,
@@ -1348,8 +1349,8 @@ impl Surface {
     ///
     /// - `display` must be a valid Xlib `Display` handle.
     /// - `window` must be a valid Xlib `Window` handle.
-    /// - The objects referred to by `display` and `window` must outlive the created `Surface`.
-    ///   The `object` parameter can be used to ensure this.
+    /// - The objects referred to by `display` and `window` must outlive the created `Surface`. The
+    ///   `object` parameter can be used to ensure this.
     pub unsafe fn from_xlib(
         instance: Arc<Instance>,
         display: *mut ash::vk::Display,
@@ -2136,7 +2137,8 @@ vulkan_enum! {
     ]),
 }
 
-/// Parameters for [`PhysicalDevice::surface_capabilities`] and [`PhysicalDevice::surface_formats`].
+/// Parameters for [`PhysicalDevice::surface_capabilities`] and
+/// [`PhysicalDevice::surface_formats`].
 ///
 /// [`PhysicalDevice::surface_capabilities`]: crate::device::physical::PhysicalDevice::surface_capabilities
 /// [`PhysicalDevice::surface_formats`]: crate::device::physical::PhysicalDevice::surface_formats

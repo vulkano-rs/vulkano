@@ -161,9 +161,8 @@
 //! |     |                   |       |           |         |       |                         |
 //! +-----+-------------------+-------+-----------+-- - - --+       +-------------------------+
 //! ```
-//!
+//! 
 //! So fine, we use a different block for E, and just use this block for allocations that fit:
-//!
 //! ```plain
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! |     |   |     |         |       |     |     |         |
@@ -171,9 +170,8 @@
 //! |     |   |     |         |       |     |     |         |
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! ```
-//!
+//! 
 //! Sure, now let's free some shall we? And voilà, the problem just became much worse:
-//!
 //! ```plain
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! |     |   |     |         |       |     |     |         |
@@ -181,7 +179,7 @@
 //! |     |   |     |         |       |     |     |         |
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! ```
-//!
+//! 
 //! # Leakage
 //!
 //! Memory leaks happen when allocations are kept alive past their shelf life. This most often

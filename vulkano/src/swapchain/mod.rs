@@ -2,8 +2,8 @@
 //!
 //! Before you can draw on the screen or a window, you have to create two objects:
 //!
-//! - Create a `Surface` object that represents the location where the image will show up (either
-//!   a window or a monitor).
+//! - Create a `Surface` object that represents the location where the image will show up (either a
+//!   window or a monitor).
 //! - Create a `Swapchain` that uses that `Surface`.
 //!
 //! Creating a surface can be done with only an `Instance` object. However creating a swapchain
@@ -219,8 +219,8 @@
 //!  - Call `swapchain::acquire_next_image`. This function will return the index of the image
 //!    (within the list returned by `Swapchain::new`) that is available to draw, plus a future
 //!    representing the moment when the GPU will gain access to that image.
-//!  - Draw on that image just like you would draw to any other image (see the documentation of
-//!    the `pipeline` module). You need to chain the draw after the future that was returned by
+//!  - Draw on that image just like you would draw to any other image (see the documentation of the
+//!    `pipeline` module). You need to chain the draw after the future that was returned by
 //!    `acquire_next_image`.
 //!  - Call `Swapchain::present` with the same index and by chaining the futures, in order to tell
 //!    the implementation that you are finished drawing to the image and that it can queue a
@@ -402,7 +402,6 @@ impl Swapchain {
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
     /// - Panics if `create_info.usage` is empty.
-    ///
     // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     #[inline]
     pub fn new(
@@ -1154,8 +1153,8 @@ impl Swapchain {
     ///
     /// - `handle` and `image_handles` must be valid Vulkan object handles created from `device`.
     /// - `handle` must not be retired.
-    /// - `image_handles` must be swapchain images owned by `handle`,
-    ///   in the same order as they were returned by `vkGetSwapchainImagesKHR`.
+    /// - `image_handles` must be swapchain images owned by `handle`, in the same order as they
+    ///   were returned by `vkGetSwapchainImagesKHR`.
     /// - `surface` and `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
@@ -1614,8 +1613,8 @@ impl Swapchain {
     ///
     /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
     /// and must not already hold full-screen exclusivity. Full-screen exclusivity is held until
-    /// either the `release_full_screen_exclusive` is called, or if any of the the other `Swapchain`
-    /// functions return `FullScreenExclusiveLost`.
+    /// either the `release_full_screen_exclusive` is called, or if any of the the other
+    /// `Swapchain` functions return `FullScreenExclusiveLost`.
     #[inline]
     pub fn acquire_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_acquire_full_screen_exclusive_mode()?;
@@ -1819,7 +1818,8 @@ pub struct SwapchainCreateInfo {
     /// The default value is `Format::UNDEFINED`.
     pub image_format: Format,
 
-    /// The formats that an image view can have when it is created from one of the swapchain images.
+    /// The formats that an image view can have when it is created from one of the swapchain
+    /// images.
     ///
     /// If the list is not empty, and `flags` does not contain
     /// [`SwapchainCreateFlags::MUTABLE_FORMAT`], then the list must contain at most one element,
@@ -1895,9 +1895,10 @@ pub struct SwapchainCreateInfo {
     /// The default value is empty.
     pub present_modes: SmallVec<[PresentMode; PresentMode::COUNT]>,
 
-    /// Whether the implementation is allowed to discard rendering operations that affect regions of
-    /// the surface which aren't visible. This is important to take into account if your fragment
-    /// shader has side-effects or if you want to read back the content of the image afterwards.
+    /// Whether the implementation is allowed to discard rendering operations that affect regions
+    /// of the surface which aren't visible. This is important to take into account if your
+    /// fragment shader has side-effects or if you want to read back the content of the image
+    /// afterwards.
     ///
     /// The default value is `true`.
     pub clipped: bool,

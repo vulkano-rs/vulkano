@@ -27,25 +27,25 @@
 //!    is suitable for your program. A [`PhysicalDevice`] represents a Vulkan-capable device that
 //!    is available on the system, such as a graphics card, a software implementation, etc.
 //!
-//! 6. Create a [`Device`] and accompanying [`Queue`]s from the selected `PhysicalDevice`.
-//!    The `Device` is the most important object of Vulkan, and you need one to create almost
-//!    every other object. `Queue`s are created together with the `Device`, and are used to submit
-//!    work to the device to make it do something.
+//! 6. Create a [`Device`] and accompanying [`Queue`]s from the selected `PhysicalDevice`. The
+//!    `Device` is the most important object of Vulkan, and you need one to create almost every
+//!    other object. `Queue`s are created together with the `Device`, and are used to submit work
+//!    to the device to make it do something.
 //!
 //! 7. If you created a `Surface` earlier, create a [`Swapchain`]. This object contains special
-//!    images that correspond to the contents of the surface. Whenever you want to
-//!    change the contents (show something new to the user), you must first *acquire* one of these
-//!    images from the swapchain, fill it with the new contents (by rendering, copying or any
-//!    other means), and then *present* it back to the swapchain.
-//!    A swapchain can become outdated if the properties of the surface change, such as when
-//!    the size of the window changes. It then becomes necessary to create a new swapchain.
+//!    images that correspond to the contents of the surface. Whenever you want to change the
+//!    contents (show something new to the user), you must first *acquire* one of these images from
+//!    the swapchain, fill it with the new contents (by rendering, copying or any other means), and
+//!    then *present* it back to the swapchain. A swapchain can become outdated if the properties
+//!    of the surface change, such as when the size of the window changes. It then becomes
+//!    necessary to create a new swapchain.
 //!
 //! 8. Record a [*command buffer*](crate::command_buffer), containing commands that the device must
 //!    execute. Then build the command buffer and submit it to a `Queue`.
 //!
 //! Many different operations can be recorded to a command buffer, such as *draw*, *compute* and
-//! *transfer* operations. To do any of these things, you will need to create several other objects,
-//! depending on your specific needs. This includes:
+//! *transfer* operations. To do any of these things, you will need to create several other
+//! objects, depending on your specific needs. This includes:
 //!
 //! - [*Buffers*] store general-purpose data on memory accessible by the device. This can include
 //!   mesh data (vertices, texture coordinates etc.), lighting information, matrices, and anything
@@ -55,8 +55,7 @@
 //!   as textures, depth/stencil buffers, framebuffers and as part of a swapchain.
 //!
 //! - [*Pipelines*] describe operations on the device. They include one or more [*shader*]s, small
-//!   programs that the device will execute as part of a pipeline.
-//!   Pipelines come in several types:
+//!   programs that the device will execute as part of a pipeline. Pipelines come in several types:
 //!   - A [`ComputePipeline`] describes how *dispatch* commands are to be performed.
 //!   - A [`GraphicsPipeline`] describes how *draw* commands are to be performed.
 //!
@@ -65,11 +64,11 @@
 //!   more of these layouts in turn forms a [`PipelineLayout`], which is used when creating a
 //!   pipeline object.
 //!
-//! - For more complex, multi-stage draw operations, you can create a [`RenderPass`] object.
-//!   This object describes the stages, known as subpasses, that draw operations consist of,
-//!   how they interact with one another, and which types of images are available in each subpass.
-//!   You must also create a [`Framebuffer`], which contains the image objects that are to be used
-//!   in a render pass.
+//! - For more complex, multi-stage draw operations, you can create a [`RenderPass`] object. This
+//!   object describes the stages, known as subpasses, that draw operations consist of, how they
+//!   interact with one another, and which types of images are available in each subpass. You must
+//!   also create a [`Framebuffer`], which contains the image objects that are to be used in a
+//!   render pass.
 //!
 //! # `_unchecked` functions
 //!

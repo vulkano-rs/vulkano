@@ -400,21 +400,21 @@ fn main() -> Result<(), impl Error> {
             PipelineShaderStageCreateInfo::new(fs),
         ];
 
-        // We must now create a **pipeline layout** object, which describes the locations and types of
-        // descriptor sets and push constants used by the shaders in the pipeline.
+        // We must now create a **pipeline layout** object, which describes the locations and types
+        // of descriptor sets and push constants used by the shaders in the pipeline.
         //
         // Multiple pipelines can share a common layout object, which is more efficient.
         // The shaders in a pipeline must use a subset of the resources described in its pipeline
-        // layout, but the pipeline layout is allowed to contain resources that are not present in the
-        // shaders; they can be used by shaders in other pipelines that share the same layout.
-        // Thus, it is a good idea to design shaders so that many pipelines have common resource
-        // locations, which allows them to share pipeline layouts.
+        // layout, but the pipeline layout is allowed to contain resources that are not present in
+        // the shaders; they can be used by shaders in other pipelines that share the same
+        // layout. Thus, it is a good idea to design shaders so that many pipelines have
+        // common resource locations, which allows them to share pipeline layouts.
         let layout = PipelineLayout::new(
             device.clone(),
             // Since we only have one pipeline in this example, and thus one pipeline layout,
             // we automatically generate the creation info for it from the resources used in the
-            // shaders. In a real application, you would specify this information manually so that you
-            // can re-use one layout in multiple pipelines.
+            // shaders. In a real application, you would specify this information manually so that
+            // you can re-use one layout in multiple pipelines.
             PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
                 .into_pipeline_layout_create_info(device.clone())
                 .unwrap(),
@@ -446,7 +446,8 @@ fn main() -> Result<(), impl Error> {
                 // The default value does not perform any multisampling.
                 multisample_state: Some(MultisampleState::default()),
                 // How pixel values are combined with the values already present in the framebuffer.
-                // The default value overwrites the old value with the new one, without any blending.
+                // The default value overwrites the old value with the new one, without any
+                // blending.
                 color_blend_state: Some(ColorBlendState::with_attachment_states(
                     subpass.num_color_attachments(),
                     ColorBlendAttachmentState::default(),

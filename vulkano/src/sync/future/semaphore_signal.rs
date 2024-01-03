@@ -171,7 +171,8 @@ where
                         .map(|r| r.map(|_| ()))
                         .fold(Ok(()), Result::and)?;
 
-                    // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
+                    // FIXME: problematic because if we return an error and flush() is called again,
+                    // then we'll submit the present twice
                     queue_submit(
                         &queue,
                         SubmitInfo {

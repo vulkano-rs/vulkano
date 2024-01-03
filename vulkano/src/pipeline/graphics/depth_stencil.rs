@@ -75,8 +75,8 @@ impl DepthStencilState {
         Self::default()
     }
 
-    /// Creates a `DepthStencilState` with a `Less` depth test, `depth_write` set to true, and other
-    /// tests disabled.
+    /// Creates a `DepthStencilState` with a `Less` depth test, `depth_write` set to true, and
+    /// other tests disabled.
     #[inline]
     #[deprecated(since = "0.34.0", note = "use `DepthState::simple` instead")]
     pub fn simple_depth_test() -> Self {
@@ -301,7 +301,8 @@ pub struct StencilOpState {
     /// considered to pass if the `compare_op` between the stencil buffer value and this reference
     /// value yields true.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if culling is disabled, and the `reference` values of the front and back face
     /// are not equal, then the
     /// [`separate_stencil_mask_ref`](crate::device::Features::separate_stencil_mask_ref)

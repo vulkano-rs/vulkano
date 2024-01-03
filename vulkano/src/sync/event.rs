@@ -42,7 +42,8 @@ pub struct Event {
 impl Event {
     /// Creates a new `Event`.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, the
     /// [`events`](crate::device::Features::events)
     /// feature must be enabled on the device.

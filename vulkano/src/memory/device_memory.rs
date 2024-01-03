@@ -1151,15 +1151,15 @@ pub enum MemoryImportInfo {
     ///
     /// - `handle` must be a valid Windows handle.
     /// - Vulkan will not take ownership of `handle`.
-    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32`], it owns a reference
-    ///   to the underlying resource and must eventually be closed by the caller.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32`], it owns a reference to the
+    ///   underlying resource and must eventually be closed by the caller.
     /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32Kmt`], it does not own a
     ///   reference to the underlying resource.
     /// - `handle` must be created by the Vulkan API.
     /// - [`MemoryAllocateInfo::allocation_size`] and [`MemoryAllocateInfo::memory_type_index`]
     ///   must match those of the original memory allocation.
-    /// - If the original memory allocation used [`MemoryAllocateInfo::dedicated_allocation`],
-    ///   the imported one must also use it, and the associated buffer or image must be defined
+    /// - If the original memory allocation used [`MemoryAllocateInfo::dedicated_allocation`], the
+    ///   imported one must also use it, and the associated buffer or image must be defined
     ///   identically to the original.
     Win32 {
         handle_type: ExternalMemoryHandleType,
@@ -1889,7 +1889,8 @@ impl MappedDeviceMemory {
     /// # Safety
     ///
     /// - If there are memory writes by the GPU that have not been propagated into the CPU cache,
-    ///   then there must not be any references in Rust code to the specified `range` of the memory.
+    ///   then there must not be any references in Rust code to the specified `range` of the
+    ///   memory.
     ///
     /// # Panics
     ///
@@ -1942,8 +1943,8 @@ impl MappedDeviceMemory {
     ///
     /// # Safety
     ///
-    /// - There must be no operations pending or executing in a GPU queue, that access the specified
-    ///   `range` of the memory.
+    /// - There must be no operations pending or executing in a GPU queue, that access the
+    ///   specified `range` of the memory.
     ///
     /// # Panics
     ///
@@ -1992,8 +1993,8 @@ impl MappedDeviceMemory {
     ///
     /// # Safety
     ///
-    /// - While the returned reference exists, there must not be any mutable references in Rust code
-    ///   to the same memory.
+    /// - While the returned reference exists, there must not be any mutable references in Rust
+    ///   code to the same memory.
     /// - While the returned reference exists, there must be no operations pending or executing in
     ///   a GPU queue, that write to the same memory.
     ///

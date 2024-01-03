@@ -12,10 +12,9 @@
 //! Due to the parallel nature of a GPU, no strict ordering guarantees may exist.
 //!
 //! Graphics pipelines come in two different forms:
-//! - *Primitive shading* graphics pipelines, which contain a vertex shader, vertex input and
-//!   input assembly state, and optionally tessellation shaders and/or a geometry shader.
-//! - *Mesh shading* graphics pipelines, which contain a mesh shader, and optionally a
-//!   task shader.
+//! - *Primitive shading* graphics pipelines, which contain a vertex shader, vertex input and input
+//!   assembly state, and optionally tessellation shaders and/or a geometry shader.
+//! - *Mesh shading* graphics pipelines, which contain a mesh shader, and optionally a task shader.
 //!
 //! These types differ in the operations that are performed in the first half of the pipeline,
 //! but share a common second half. The type of a graphics pipeline is determined by whether
@@ -39,8 +38,8 @@
 //! 1. (Optional) Task shader invocations: the task shader is run once for each workgroup in the
 //!    draw command. The task shader then spawns one or more mesh shader invocations.
 //! 2. Mesh shader invocations: the mesh shader is run, either once each time it is spawned by a
-//!    task shader, or if there is no task shader, once for each workgroup in the draw command.
-//!    The mesh shader outputs a list of primitives (triangles etc).
+//!    task shader, or if there is no task shader, once for each workgroup in the draw command. The
+//!    mesh shader outputs a list of primitives (triangles etc).
 //!
 //! Mesh shading pipelines do not receive any vertex input; their input data is supplied entirely
 //! from resources bound via descriptor sets, in combination with the x, y and z coordinates of
@@ -54,8 +53,8 @@
 //!    - Clipping primitives to the view frustum and user-defined clipping planes.
 //!    - Perspective division.
 //!    - Viewport mapping.
-//! 2. Rasterization: converting primitives into a two-dimensional representation. Primitives may be
-//!    discarded depending on their orientation, and are then converted into a collection of
+//! 2. Rasterization: converting primitives into a two-dimensional representation. Primitives may
+//!    be discarded depending on their orientation, and are then converted into a collection of
 //!    fragments that are processed further.
 //! 3. Fragment operations. These include invocations of the fragment shader, which generates the
 //!    values to be written to the color attachment. Various testing and discarding operations can
@@ -73,8 +72,8 @@
 //!
 //! # Using a graphics pipeline
 //!
-//! Once a graphics pipeline has been created, you can execute it by first *binding* it in a command
-//! buffer, binding the necessary vertex buffers, binding any descriptor sets, setting push
+//! Once a graphics pipeline has been created, you can execute it by first *binding* it in a
+//! command buffer, binding the necessary vertex buffers, binding any descriptor sets, setting push
 //! constants, and setting any dynamic state that the pipeline may need. Then you issue a `draw`
 //! command.
 
@@ -1093,7 +1092,9 @@ impl GraphicsPipeline {
             input_assembly_state,
             tessellation_state,
             viewport_state,
-            rasterization_state: rasterization_state.unwrap(), // Can be None for pipeline libraries, but we don't support that yet
+            rasterization_state: rasterization_state.unwrap(), /* Can be None for pipeline
+                                                                * libraries, but we don't support
+                                                                * that yet */
             multisample_state,
             depth_stencil_state,
             color_blend_state,

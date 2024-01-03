@@ -183,14 +183,13 @@ impl DescriptorPool {
     ///
     /// # Safety
     ///
-    /// - When the pool is dropped, the returned descriptor sets must not be in use by either
-    ///   the host or device.
+    /// - When the pool is dropped, the returned descriptor sets must not be in use by either the
+    ///   host or device.
     /// - If the device API version is less than 1.1, and the [`khr_maintenance1`] extension is not
-    ///   enabled on the device, then
-    ///   the length of `allocate_infos` must not be greater than the number of descriptor sets
-    ///   remaining in the pool, and
-    ///   the total number of descriptors of each type being allocated must not be greater than the
-    ///   number of descriptors of that type remaining in the pool.
+    ///   enabled on the device, then the length of `allocate_infos` must not be greater than the
+    ///   number of descriptor sets remaining in the pool, and the total number of descriptors of
+    ///   each type being allocated must not be greater than the number of descriptors of that type
+    ///   remaining in the pool.
     ///
     /// [`khr_maintenance1`]: crate::device::DeviceExtensions::khr_maintenance1
     #[inline]
@@ -339,8 +338,8 @@ impl DescriptorPool {
     ///
     /// # Safety
     ///
-    /// - All elements of `descriptor_sets` must have been allocated from `self`,
-    ///   and not freed previously.
+    /// - All elements of `descriptor_sets` must have been allocated from `self`, and not freed
+    ///   previously.
     /// - All elements of `descriptor_sets` must not be in use by the host or device.
     #[inline]
     pub unsafe fn free_descriptor_sets(

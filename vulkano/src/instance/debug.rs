@@ -392,7 +392,8 @@ pub struct DebugUtilsMessengerCallbackLabel<'a> {
     /// The name of the label.
     pub label_name: &'a str,
 
-    /// An RGBA color value that is associated with the label, with values in the range `0.0..=1.0`.
+    /// An RGBA color value that is associated with the label, with values in the range
+    /// `0.0..=1.0`.
     pub color: &'a [f32; 4],
 }
 
@@ -507,7 +508,8 @@ pub struct DebugUtilsLabel {
     /// The default value is empty.
     pub label_name: String,
 
-    /// An RGBA color value that is associated with the label, with values in the range `0.0..=1.0`.
+    /// An RGBA color value that is associated with the label, with values in the range
+    /// `0.0..=1.0`.
     ///
     /// If set to `[0.0; 4]`, the value is ignored.
     ///

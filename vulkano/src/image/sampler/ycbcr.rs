@@ -374,8 +374,8 @@ pub struct SamplerYcbcrConversionCreateInfo {
     /// The format must support YCbCr conversions, meaning that its `FormatFeatures` must support
     /// at least one of `cosited_chroma_samples` or `midpoint_chroma_samples`.
     ///
-    /// If this is set to a format that has chroma subsampling (contains `422` or `420` in the name)
-    /// then `component_mapping` is restricted as follows:
+    /// If this is set to a format that has chroma subsampling (contains `422` or `420` in the
+    /// name) then `component_mapping` is restricted as follows:
     /// - `g` must be identity swizzled.
     /// - `a` must be identity swizzled or `Zero` or `One`.
     /// - `r` and `b` must be identity swizzled or mapped to each other.
@@ -419,8 +419,8 @@ pub struct SamplerYcbcrConversionCreateInfo {
     /// The default value is [`CositedEven`](ChromaLocation::CositedEven) for both axes.
     pub chroma_offset: [ChromaLocation; 2],
 
-    /// For formats with chroma subsampling, specifies the filter used for reconstructing the chroma
-    /// components to full resolution.
+    /// For formats with chroma subsampling, specifies the filter used for reconstructing the
+    /// chroma components to full resolution.
     ///
     /// The `Cubic` filter is not supported. If `Linear` is used, the format must support it.
     ///

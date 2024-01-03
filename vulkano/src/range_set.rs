@@ -29,7 +29,8 @@ impl<T: Ord + Copy> RangeSet<T> {
 
     /// Inserts the elements of `range` into the set.
     pub fn insert(&mut self, elements: Range<T>) {
-        // Find the first range that is not less than `elements`, and the first range that is greater.
+        // Find the first range that is not less than `elements`, and the first range that is
+        // greater.
         let index_start = self
             .0
             .iter()

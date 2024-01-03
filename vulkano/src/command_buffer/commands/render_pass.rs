@@ -67,8 +67,10 @@ impl RecordingCommandBuffer {
         // TODO:
 
         // VUID-vkCmdBeginRenderPass2-framebuffer-02533
-        // For any attachment in framebuffer that is used by renderPass and is bound to memory locations that are also bound to another attachment used by renderPass, and if at least one of those uses causes either
-        // attachment to be written to, both attachments must have had the VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
+        // For any attachment in framebuffer that is used by renderPass and is bound to memory
+        // locations that are also bound to another attachment used by renderPass, and if at least
+        // one of those uses causes either attachment to be written to, both attachments
+        // must have had the VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
 
         Ok(())
     }
@@ -638,7 +640,8 @@ impl RecordingCommandBuffer {
     /// `rects` specify the regions to clear.
     ///
     /// A graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). And the command must be inside render pass.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). And the command must be inside
+    /// render pass.
     ///
     /// If the render pass instance this is recorded in uses multiview,
     /// then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one.
@@ -1223,8 +1226,10 @@ impl RawRecordingCommandBuffer {
         // TODO:
 
         // VUID-vkCmdBeginRenderPass2-framebuffer-02533
-        // For any attachment in framebuffer that is used by renderPass and is bound to memory locations that are also bound to another attachment used by renderPass, and if at least one of those uses causes either
-        // attachment to be written to, both attachments must have had the VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
+        // For any attachment in framebuffer that is used by renderPass and is bound to memory
+        // locations that are also bound to another attachment used by renderPass, and if at least
+        // one of those uses causes either attachment to be written to, both attachments
+        // must have had the VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
 
         Ok(())
     }
@@ -1825,7 +1830,8 @@ pub struct RenderPassBeginInfo {
 
     /// The size of the area that will be rendered to.
     ///
-    /// `render_area_offset + render_area_extent` must not be greater than [`framebuffer.extent()`].
+    /// `render_area_offset + render_area_extent` must not be greater than
+    /// [`framebuffer.extent()`].
     ///
     /// The default value is [`framebuffer.extent()`].
     pub render_area_extent: [u32; 2],

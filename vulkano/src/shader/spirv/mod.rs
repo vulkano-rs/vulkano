@@ -719,9 +719,9 @@ struct InstructionReader<'a> {
 }
 
 impl<'a> InstructionReader<'a> {
-    /// Constructs a new reader from a slice of words for a single instruction, including the opcode
-    /// word. `instruction` is the number of the instruction currently being read, and is used for
-    /// error reporting.
+    /// Constructs a new reader from a slice of words for a single instruction, including the
+    /// opcode word. `instruction` is the number of the instruction currently being read, and
+    /// is used for error reporting.
     fn new(words: &'a [u32], instruction: usize) -> Self {
         debug_assert!(!words.is_empty());
         Self {
