@@ -1534,8 +1534,7 @@ unsafe fn get_metal_layer_ios(ui_view: *mut c_void) -> IOSMetalLayer {
 #[cfg(target_os = "macos")]
 unsafe fn get_metal_layer_macos(ns_view: *mut c_void) -> *mut Object {
     use core_graphics_types::base::CGFloat;
-    use objc::runtime::YES;
-    use objc::runtime::{BOOL, NO};
+    use objc::runtime::{BOOL, NO, YES};
 
     let view: *mut Object = ns_view.cast();
     let main_layer: *mut Object = msg_send![view, layer];

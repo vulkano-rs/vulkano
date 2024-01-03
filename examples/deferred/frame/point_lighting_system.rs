@@ -1,3 +1,4 @@
+use super::LightingVertex;
 use cgmath::{Matrix4, Vector3};
 use std::sync::Arc;
 use vulkano::{
@@ -31,8 +32,6 @@ use vulkano::{
     },
     render_pass::Subpass,
 };
-
-use super::LightingVertex;
 
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,

@@ -158,7 +158,6 @@ mod tests {
     use crate::format::Format;
     #[allow(deprecated)]
     use crate::pipeline::graphics::vertex_input::Vertex;
-
     use bytemuck::{Pod, Zeroable};
 
     #[test]

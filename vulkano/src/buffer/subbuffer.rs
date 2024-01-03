@@ -24,7 +24,6 @@ use std::{
     sync::Arc,
     thread,
 };
-
 #[cfg(feature = "macros")]
 pub use vulkano_macros::BufferContents;
 

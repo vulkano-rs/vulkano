@@ -1,3 +1,4 @@
+use super::LightingVertex;
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -30,8 +31,6 @@ use vulkano::{
     },
     render_pass::Subpass,
 };
-
-use super::LightingVertex;
 
 /// Allows applying an ambient lighting to a scene.
 pub struct AmbientLightingSystem {

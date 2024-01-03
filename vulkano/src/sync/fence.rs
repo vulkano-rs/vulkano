@@ -33,8 +33,8 @@ use crate::{
     VulkanObject,
 };
 use smallvec::SmallVec;
-use std::fs::File;
 use std::{
+    fs::File,
     future::Future,
     mem::MaybeUninit,
     num::NonZeroU64,

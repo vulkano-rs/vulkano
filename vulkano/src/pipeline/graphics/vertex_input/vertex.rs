@@ -105,9 +105,7 @@ impl VertexMemberInfo {
 
 #[cfg(test)]
 mod tests {
-    use crate::format::Format;
-    use crate::pipeline::graphics::vertex_input::Vertex;
-
+    use crate::{format::Format, pipeline::graphics::vertex_input::Vertex};
     use bytemuck::{Pod, Zeroable};
 
     #[test]

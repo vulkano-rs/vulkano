@@ -3,9 +3,8 @@
 // The main code is in the `system` module, while the other modules implement the different kinds
 // of lighting sources.
 
-use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
-
 pub use self::system::{FrameSystem, Pass};
+use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
 mod ambient_lighting_system;
 mod directional_lighting_system;
