@@ -890,8 +890,7 @@ mod tests {
         assert_eq!(range_map.to_vec(), vec![]);
     }
 
-    ///
-    /// impl Debug
+    // impl Debug
 
     #[test]
     fn map_debug_repr_looks_right() {

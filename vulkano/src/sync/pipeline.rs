@@ -3065,8 +3065,8 @@ impl ImageMemoryBarrier {
             queue_family_ownership_transfer: None,
             image,
             subresource_range: ImageSubresourceRange {
-                aspects: ImageAspects::empty(), /* Can't use image format aspects because `color`
-                                                 * can't be specified with `planeN`. */
+                // Can't use image format aspects because `color` can't be specified with `planeN`.
+                aspects: ImageAspects::empty(),
                 mip_levels: 0..0,
                 array_layers: 0..0,
             },

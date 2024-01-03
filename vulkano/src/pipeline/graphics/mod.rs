@@ -1092,9 +1092,8 @@ impl GraphicsPipeline {
             input_assembly_state,
             tessellation_state,
             viewport_state,
-            rasterization_state: rasterization_state.unwrap(), /* Can be None for pipeline
-                                                                * libraries, but we don't support
-                                                                * that yet */
+            // Can be None for pipeline libraries, but we don't support that yet
+            rasterization_state: rasterization_state.unwrap(),
             multisample_state,
             depth_stencil_state,
             color_blend_state,

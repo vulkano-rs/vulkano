@@ -2910,8 +2910,9 @@ impl RecordingCommandBuffer {
                     }
                 }
                 // DynamicState::RayTracingPipelineStackSize => unreachable!(
-                //     "RayTracingPipelineStackSize dynamic state should not occur on a graphics
-                // pipeline" ),
+                //     "RayTracingPipelineStackSize dynamic state should not occur on a graphics \
+                //     pipeline",
+                // ),
                 // DynamicState::SampleLocations => todo!(),
                 DynamicState::Scissor => {
                     let viewport_state = pipeline.viewport_state().unwrap();

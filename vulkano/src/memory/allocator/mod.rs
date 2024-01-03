@@ -154,15 +154,16 @@
 //! Now if we free B and D, since these are done out of order, we will be left with holes between
 //! the other allocations, and we won't be able to fit allocation E anywhere:
 //!
-//!  ```plain
+//! ```plain
 //! +-----+-------------------+-------+-----------+-- - - --+       +-------------------------+
 //! |     |                   |       |           |         |   ?   |                         |
 //! |  A  |                   |   C   |           |   •••   |  <==  |            E            |
 //! |     |                   |       |           |         |       |                         |
 //! +-----+-------------------+-------+-----------+-- - - --+       +-------------------------+
 //! ```
-//! 
+//!
 //! So fine, we use a different block for E, and just use this block for allocations that fit:
+//!
 //! ```plain
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! |     |   |     |         |       |     |     |         |
@@ -170,8 +171,9 @@
 //! |     |   |     |         |       |     |     |         |
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! ```
-//! 
+//!
 //! Sure, now let's free some shall we? And voilà, the problem just became much worse:
+//!
 //! ```plain
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! |     |   |     |         |       |     |     |         |
@@ -179,7 +181,7 @@
 //! |     |   |     |         |       |     |     |         |
 //! +-----+---+-----+---------+-------+-----+-----+-- - - --+
 //! ```
-//! 
+//!
 //! # Leakage
 //!
 //! Memory leaks happen when allocations are kept alive past their shelf life. This most often
