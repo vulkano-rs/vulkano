@@ -7,7 +7,7 @@
 //! [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html).
 
 use crate::{shader::SpecializationConstant, Version};
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use smallvec::{smallvec, SmallVec};
 use std::{
     borrow::Cow,
@@ -77,7 +77,7 @@ impl Spirv {
         let mut global_variables = Vec::new();
 
         let mut functions = HashMap::default();
-        let mut current_function: Option<&mut Vec<Instruction>> = None;
+        let mut current_function: Option<&mut FunctionInfo> = None;
 
         for instruction in iter_instructions(&words[5..]) {
             let instruction = instruction?;
@@ -116,123 +116,133 @@ impl Spirv {
                 continue;
             }
 
-            if current_function.is_some() {
-                match instruction {
-                    Instruction::FunctionEnd { .. } => {
-                        current_function.take().unwrap().push(instruction);
-                    }
-                    _ => current_function.as_mut().unwrap().push(instruction),
+            match instruction {
+                Instruction::Function { result_id, .. } => {
+                    current_function = None;
+                    let function = functions.entry(result_id).or_insert_with(|| {
+                        let entry_point = entry_points
+                            .iter()
+                            .find(|instruction| {
+                                matches!(
+                                    **instruction,
+                                    Instruction::EntryPoint { entry_point, .. }
+                                    if entry_point == result_id
+                                )
+                            })
+                            .cloned();
+                        let execution_modes = execution_modes
+                            .iter()
+                            .filter(|instruction| {
+                                matches!(
+                                    **instruction,
+                                    Instruction::ExecutionMode { entry_point, .. }
+                                    | Instruction::ExecutionModeId { entry_point, .. }
+                                    if entry_point == result_id
+                                )
+                            })
+                            .cloned()
+                            .collect();
+
+                        FunctionInfo {
+                            instructions: Vec::new(),
+                            called_functions: HashSet::default(),
+                            entry_point,
+                            execution_modes,
+                        }
+                    });
+                    let current_function = current_function.insert(function);
+                    current_function.instructions.push(instruction);
                 }
-            } else {
-                let destination = match instruction {
-                    Instruction::Function { result_id, .. } => {
-                        current_function = None;
-                        let function = functions.entry(result_id).or_insert_with(|| {
-                            let entry_point = entry_points
-                                .iter()
-                                .find(|instruction| {
-                                    matches!(
-                                        **instruction,
-                                        Instruction::EntryPoint { entry_point, .. }
-                                        if entry_point == result_id
-                                    )
-                                })
-                                .cloned();
-                            let execution_modes = execution_modes
-                                .iter()
-                                .filter(|instruction| {
-                                    matches!(
-                                        **instruction,
-                                        Instruction::ExecutionMode { entry_point, .. }
-                                        | Instruction::ExecutionModeId { entry_point, .. }
-                                        if entry_point == result_id
-                                    )
-                                })
-                                .cloned()
-                                .collect();
+                Instruction::FunctionEnd { .. } => {
+                    let current_function = current_function.take().unwrap();
+                    current_function.instructions.push(instruction);
+                }
+                _ => {
+                    if let Some(current_function) = current_function.as_mut() {
+                        if let Instruction::FunctionCall { function, .. } = instruction {
+                            current_function.called_functions.insert(function);
+                        }
 
-                            FunctionInfo {
-                                instructions: Vec::new(),
-                                entry_point,
-                                execution_modes,
+                        current_function.instructions.push(instruction);
+                    } else {
+                        let destination = match instruction {
+                            Instruction::Capability { .. } => &mut capabilities,
+                            Instruction::Extension { .. } => &mut extensions,
+                            Instruction::ExtInstImport { .. } => &mut ext_inst_imports,
+                            Instruction::MemoryModel { .. } => &mut memory_models,
+                            Instruction::EntryPoint { .. } => &mut entry_points,
+                            Instruction::ExecutionMode { .. }
+                            | Instruction::ExecutionModeId { .. } => &mut execution_modes,
+                            Instruction::Name { .. } | Instruction::MemberName { .. } => &mut names,
+                            Instruction::Decorate { .. }
+                            | Instruction::MemberDecorate { .. }
+                            | Instruction::DecorationGroup { .. }
+                            | Instruction::GroupDecorate { .. }
+                            | Instruction::GroupMemberDecorate { .. }
+                            | Instruction::DecorateId { .. }
+                            | Instruction::DecorateString { .. }
+                            | Instruction::MemberDecorateString { .. } => &mut decorations,
+                            Instruction::TypeVoid { .. }
+                            | Instruction::TypeBool { .. }
+                            | Instruction::TypeInt { .. }
+                            | Instruction::TypeFloat { .. }
+                            | Instruction::TypeVector { .. }
+                            | Instruction::TypeMatrix { .. }
+                            | Instruction::TypeImage { .. }
+                            | Instruction::TypeSampler { .. }
+                            | Instruction::TypeSampledImage { .. }
+                            | Instruction::TypeArray { .. }
+                            | Instruction::TypeRuntimeArray { .. }
+                            | Instruction::TypeStruct { .. }
+                            | Instruction::TypeOpaque { .. }
+                            | Instruction::TypePointer { .. }
+                            | Instruction::TypeFunction { .. }
+                            | Instruction::TypeEvent { .. }
+                            | Instruction::TypeDeviceEvent { .. }
+                            | Instruction::TypeReserveId { .. }
+                            | Instruction::TypeQueue { .. }
+                            | Instruction::TypePipe { .. }
+                            | Instruction::TypeForwardPointer { .. }
+                            | Instruction::TypePipeStorage { .. }
+                            | Instruction::TypeNamedBarrier { .. }
+                            | Instruction::TypeRayQueryKHR { .. }
+                            | Instruction::TypeAccelerationStructureKHR { .. }
+                            | Instruction::TypeCooperativeMatrixNV { .. }
+                            | Instruction::TypeVmeImageINTEL { .. }
+                            | Instruction::TypeAvcImePayloadINTEL { .. }
+                            | Instruction::TypeAvcRefPayloadINTEL { .. }
+                            | Instruction::TypeAvcSicPayloadINTEL { .. }
+                            | Instruction::TypeAvcMcePayloadINTEL { .. }
+                            | Instruction::TypeAvcMceResultINTEL { .. }
+                            | Instruction::TypeAvcImeResultINTEL { .. }
+                            | Instruction::TypeAvcImeResultSingleReferenceStreamoutINTEL {
+                                ..
                             }
-                        });
-                        current_function.insert(&mut function.instructions)
-                    }
-                    Instruction::Capability { .. } => &mut capabilities,
-                    Instruction::Extension { .. } => &mut extensions,
-                    Instruction::ExtInstImport { .. } => &mut ext_inst_imports,
-                    Instruction::MemoryModel { .. } => &mut memory_models,
-                    Instruction::EntryPoint { .. } => &mut entry_points,
-                    Instruction::ExecutionMode { .. } | Instruction::ExecutionModeId { .. } => {
-                        &mut execution_modes
-                    }
-                    Instruction::Name { .. } | Instruction::MemberName { .. } => &mut names,
-                    Instruction::Decorate { .. }
-                    | Instruction::MemberDecorate { .. }
-                    | Instruction::DecorationGroup { .. }
-                    | Instruction::GroupDecorate { .. }
-                    | Instruction::GroupMemberDecorate { .. }
-                    | Instruction::DecorateId { .. }
-                    | Instruction::DecorateString { .. }
-                    | Instruction::MemberDecorateString { .. } => &mut decorations,
-                    Instruction::TypeVoid { .. }
-                    | Instruction::TypeBool { .. }
-                    | Instruction::TypeInt { .. }
-                    | Instruction::TypeFloat { .. }
-                    | Instruction::TypeVector { .. }
-                    | Instruction::TypeMatrix { .. }
-                    | Instruction::TypeImage { .. }
-                    | Instruction::TypeSampler { .. }
-                    | Instruction::TypeSampledImage { .. }
-                    | Instruction::TypeArray { .. }
-                    | Instruction::TypeRuntimeArray { .. }
-                    | Instruction::TypeStruct { .. }
-                    | Instruction::TypeOpaque { .. }
-                    | Instruction::TypePointer { .. }
-                    | Instruction::TypeFunction { .. }
-                    | Instruction::TypeEvent { .. }
-                    | Instruction::TypeDeviceEvent { .. }
-                    | Instruction::TypeReserveId { .. }
-                    | Instruction::TypeQueue { .. }
-                    | Instruction::TypePipe { .. }
-                    | Instruction::TypeForwardPointer { .. }
-                    | Instruction::TypePipeStorage { .. }
-                    | Instruction::TypeNamedBarrier { .. }
-                    | Instruction::TypeRayQueryKHR { .. }
-                    | Instruction::TypeAccelerationStructureKHR { .. }
-                    | Instruction::TypeCooperativeMatrixNV { .. }
-                    | Instruction::TypeVmeImageINTEL { .. }
-                    | Instruction::TypeAvcImePayloadINTEL { .. }
-                    | Instruction::TypeAvcRefPayloadINTEL { .. }
-                    | Instruction::TypeAvcSicPayloadINTEL { .. }
-                    | Instruction::TypeAvcMcePayloadINTEL { .. }
-                    | Instruction::TypeAvcMceResultINTEL { .. }
-                    | Instruction::TypeAvcImeResultINTEL { .. }
-                    | Instruction::TypeAvcImeResultSingleReferenceStreamoutINTEL { .. }
-                    | Instruction::TypeAvcImeResultDualReferenceStreamoutINTEL { .. }
-                    | Instruction::TypeAvcImeSingleReferenceStreaminINTEL { .. }
-                    | Instruction::TypeAvcImeDualReferenceStreaminINTEL { .. }
-                    | Instruction::TypeAvcRefResultINTEL { .. }
-                    | Instruction::TypeAvcSicResultINTEL { .. } => &mut types,
-                    Instruction::ConstantTrue { .. }
-                    | Instruction::ConstantFalse { .. }
-                    | Instruction::Constant { .. }
-                    | Instruction::ConstantComposite { .. }
-                    | Instruction::ConstantSampler { .. }
-                    | Instruction::ConstantNull { .. }
-                    | Instruction::ConstantPipeStorage { .. }
-                    | Instruction::SpecConstantTrue { .. }
-                    | Instruction::SpecConstantFalse { .. }
-                    | Instruction::SpecConstant { .. }
-                    | Instruction::SpecConstantComposite { .. }
-                    | Instruction::SpecConstantOp { .. }
-                    | Instruction::Undef { .. } => &mut constants,
-                    Instruction::Variable { .. } => &mut global_variables,
-                    _ => continue,
-                };
+                            | Instruction::TypeAvcImeResultDualReferenceStreamoutINTEL { .. }
+                            | Instruction::TypeAvcImeSingleReferenceStreaminINTEL { .. }
+                            | Instruction::TypeAvcImeDualReferenceStreaminINTEL { .. }
+                            | Instruction::TypeAvcRefResultINTEL { .. }
+                            | Instruction::TypeAvcSicResultINTEL { .. } => &mut types,
+                            Instruction::ConstantTrue { .. }
+                            | Instruction::ConstantFalse { .. }
+                            | Instruction::Constant { .. }
+                            | Instruction::ConstantComposite { .. }
+                            | Instruction::ConstantSampler { .. }
+                            | Instruction::ConstantNull { .. }
+                            | Instruction::ConstantPipeStorage { .. }
+                            | Instruction::SpecConstantTrue { .. }
+                            | Instruction::SpecConstantFalse { .. }
+                            | Instruction::SpecConstant { .. }
+                            | Instruction::SpecConstantComposite { .. }
+                            | Instruction::SpecConstantOp { .. }
+                            | Instruction::Undef { .. } => &mut constants,
+                            Instruction::Variable { .. } => &mut global_variables,
+                            _ => continue,
+                        };
 
-                destination.push(instruction);
+                        destination.push(instruction);
+                    }
+                }
             }
         }
 
@@ -647,6 +657,7 @@ impl StructMemberInfo {
 #[derive(Clone, Debug)]
 pub struct FunctionInfo {
     instructions: Vec<Instruction>,
+    called_functions: HashSet<Id>,
     entry_point: Option<Instruction>,
     execution_modes: Vec<Instruction>,
 }
@@ -656,6 +667,13 @@ impl FunctionInfo {
     #[inline]
     pub fn instructions(&self) -> &[Instruction] {
         &self.instructions
+    }
+
+    /// Returns `Id`s of all functions that are called by this function.
+    /// This may include recursive function calls.
+    #[inline]
+    pub fn called_functions(&self) -> &HashSet<Id> {
+        &self.called_functions
     }
 
     /// Returns the `EntryPoint` instruction that targets this function, if there is one.
