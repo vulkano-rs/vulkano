@@ -62,7 +62,10 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc
 /// use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear_no_mipmap());
+/// let _sampler = Sampler::new(
+///     device.clone(),
+///     SamplerCreateInfo::simple_repeat_linear_no_mipmap(),
+/// );
 /// ```
 ///
 /// More detailed sampler creation:
@@ -71,14 +74,17 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::RangeInclusive, ptr, sync::Arc
 /// use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo {
-///     mag_filter: Filter::Linear,
-///     min_filter: Filter::Linear,
-///     address_mode: [SamplerAddressMode::Repeat; 3],
-///     mip_lod_bias: 1.0,
-///     lod: 0.0..=100.0,
-///     ..Default::default()
-/// })
+/// let _sampler = Sampler::new(
+///     device.clone(),
+///     SamplerCreateInfo {
+///         mag_filter: Filter::Linear,
+///         min_filter: Filter::Linear,
+///         address_mode: [SamplerAddressMode::Repeat; 3],
+///         mip_lod_bias: 1.0,
+///         lod: 0.0..=100.0,
+///         ..Default::default()
+///     },
+/// )
 /// .unwrap();
 /// ```
 #[derive(Debug)]

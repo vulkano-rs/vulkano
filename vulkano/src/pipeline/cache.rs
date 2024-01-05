@@ -50,8 +50,7 @@ impl PipelineCache {
     /// ```
     /// # use std::sync::Arc;
     /// # use vulkano::device::Device;
-    /// use std::fs::File;
-    /// use std::io::Read;
+    /// use std::{fs::File, io::Read};
     /// use vulkano::pipeline::cache::{PipelineCache, PipelineCacheCreateInfo};
     /// # let device: Arc<Device> = return;
     ///
@@ -76,8 +75,9 @@ impl PipelineCache {
     ///         PipelineCacheCreateInfo {
     ///             initial_data,
     ///             ..Default::default()
-    ///         }
-    ///     ).unwrap()
+    ///         },
+    ///     )
+    ///     .unwrap()
     /// };
     /// ```
     #[inline]
@@ -178,9 +178,7 @@ impl PipelineCache {
     /// # Examples
     ///
     /// ```
-    /// use std::fs;
-    /// use std::fs::File;
-    /// use std::io::Write;
+    /// use std::{fs, fs::File, io::Write};
     /// # use std::sync::Arc;
     /// # use vulkano::pipeline::cache::PipelineCache;
     ///

@@ -58,8 +58,8 @@
 //!
 //!     let extensions = InstanceExtensions {
 //!         khr_surface: true,
-//!         khr_win32_surface: true,        // If you don't enable this, `from_hwnd` will fail.
-//!         .. InstanceExtensions::empty()
+//!         khr_win32_surface: true, // If you don't enable this, `from_hwnd` will fail.
+//!         ..InstanceExtensions::empty()
 //!     };
 //!
 //!     Instance::new(
@@ -86,7 +86,8 @@
 //!         hinstance,
 //!         window.hwnd() as ash::vk::HWND,
 //!         Some(window),
-//!     ).unwrap()
+//!     )
+//!     .unwrap()
 //! };
 //! ```
 //!
@@ -121,7 +122,7 @@
 //! # use vulkano::device::DeviceExtensions;
 //! let ext = DeviceExtensions {
 //!     khr_swapchain: true,
-//!     .. DeviceExtensions::empty()
+//!     ..DeviceExtensions::empty()
 //! };
 //! ```
 //!
@@ -265,7 +266,8 @@
 //! ```
 //! use vulkano::{
 //!     swapchain::{self, SwapchainCreateInfo, SwapchainPresentInfo},
-//!     sync::GpuFuture, Validated, VulkanError,
+//!     sync::GpuFuture,
+//!     Validated, VulkanError,
 //! };
 //!
 //! // let (swapchain, images) = Swapchain::new(...);
@@ -276,20 +278,25 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         let (new_swapchain, new_images) = swapchain.recreate(SwapchainCreateInfo {
-//!             image_extent: [1024, 768],
-//!             ..swapchain.create_info()
-//!         })
-//!         .unwrap();
+//!         let (new_swapchain, new_images) = swapchain
+//!             .recreate(SwapchainCreateInfo {
+//!                 image_extent: [1024, 768],
+//!                 ..swapchain.create_info()
+//!             })
+//!             .unwrap();
 //!         swapchain = new_swapchain;
 //!         images = new_images;
 //!         recreate_swapchain = false;
 //!     }
 //!
 //!     let (image_index, suboptimal, acq_future) =
-//!         match swapchain::acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+//!         match swapchain::acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap)
+//!         {
 //!             Ok(r) => r,
-//!             Err(VulkanError::OutOfDate) => { recreate_swapchain = true; continue; },
+//!             Err(VulkanError::OutOfDate) => {
+//!                 recreate_swapchain = true;
+//!                 continue;
+//!             }
 //!             Err(err) => panic!("{:?}", err),
 //!         };
 //!

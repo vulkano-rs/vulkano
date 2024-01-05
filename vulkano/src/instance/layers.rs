@@ -89,7 +89,11 @@ impl LayerProperties {
     /// let library = VulkanLibrary::new().unwrap();
     ///
     /// for layer in library.layer_properties().unwrap() {
-    ///     println!("Layer {} - Version: {}", layer.name(), layer.implementation_version());
+    ///     println!(
+    ///         "Layer {} - Version: {}",
+    ///         layer.name(),
+    ///         layer.implementation_version(),
+    ///     );
     /// }
     /// ```
     #[inline]

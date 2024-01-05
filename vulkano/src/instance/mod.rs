@@ -29,7 +29,10 @@
 //! # let library = VulkanLibrary::new().unwrap();
 //! # let instance = Instance::new(library, Default::default()).unwrap();
 //! for physical_device in instance.enumerate_physical_devices().unwrap() {
-//!     println!("Available device: {}", physical_device.properties().device_name);
+//!     println!(
+//!         "Available device: {}",
+//!         physical_device.properties().device_name,
+//!     );
 //! }
 //! ```
 //!
@@ -127,10 +130,8 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 /// };
 ///
 /// let library = VulkanLibrary::new().unwrap();
-/// let _instance = Instance::new(
-///     library,
-///     InstanceCreateInfo::application_from_cargo_toml(),
-/// ).unwrap();
+/// let _instance =
+///     Instance::new(library, InstanceCreateInfo::application_from_cargo_toml()).unwrap();
 /// # }
 /// ```
 ///
@@ -192,7 +193,7 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 /// let extensions = InstanceExtensions {
 ///     khr_surface: true,
 ///     khr_android_surface: true,
-///     .. InstanceExtensions::empty()
+///     ..InstanceExtensions::empty()
 /// };
 ///
 /// let instance = Instance::new(
@@ -241,7 +242,8 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 ///
 /// // For the sake of the example, we activate all the layers that
 /// // contain the word "foo" in their description.
-/// let layers: Vec<_> = library.layer_properties()?
+/// let layers: Vec<_> = library
+///     .layer_properties()?
 ///     .filter(|l| l.description().contains("foo"))
 ///     .collect();
 ///
@@ -637,7 +639,10 @@ impl Instance {
     /// # let library = VulkanLibrary::new().unwrap();
     /// # let instance = Instance::new(library, Default::default()).unwrap();
     /// for physical_device in instance.enumerate_physical_devices().unwrap() {
-    ///     println!("Available device: {}", physical_device.properties().device_name);
+    ///     println!(
+    ///         "Available device: {}",
+    ///         physical_device.properties().device_name,
+    ///     );
     /// }
     /// ```
     pub fn enumerate_physical_devices(
