@@ -1201,18 +1201,23 @@ pub(crate) fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
             column_type,
             column_count,
             ..
-        } => id_info
-            .decorations()
-            .iter()
-            .find_map(|instruction| match *instruction {
-                Instruction::Decorate {
-                    decoration: Decoration::MatrixStride { matrix_stride },
-                    ..
-                } => Some(matrix_stride as DeviceSize),
-                _ => None,
-            })
-            .or_else(|| size_of_type(spirv, column_type))
-            .map(|stride| stride * column_count as DeviceSize),
+        } => {
+            // FIXME: row-major or column-major
+            // FIXME: `MatrixStride` applies to a struct member containing the matrix, not the
+            // matrix type itself.
+            id_info
+                .decorations()
+                .iter()
+                .find_map(|instruction| match *instruction {
+                    Instruction::Decorate {
+                        decoration: Decoration::MatrixStride { matrix_stride },
+                        ..
+                    } => Some(matrix_stride as DeviceSize),
+                    _ => None,
+                })
+                .or_else(|| size_of_type(spirv, column_type))
+                .map(|stride| stride * column_count as DeviceSize)
+        }
         Instruction::TypeArray {
             element_type,
             length,
