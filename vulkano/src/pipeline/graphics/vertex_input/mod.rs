@@ -101,7 +101,7 @@ use super::color_blend::ColorComponents;
 use crate::{
     device::Device,
     format::{Format, FormatFeatures},
-    pipeline::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
+    pipeline::inout_interface::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
