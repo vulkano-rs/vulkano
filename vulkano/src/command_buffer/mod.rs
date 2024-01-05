@@ -22,8 +22,8 @@
 //!
 //! There are two levels of command buffers:
 //!
-//! - A primary command buffer can be executed on a queue, and is the main command buffer level.
-//!   It cannot be executed within another command buffer.
+//! - A primary command buffer can be executed on a queue, and is the main command buffer level. It
+//!   cannot be executed within another command buffer.
 //! - A secondary command buffer can only be executed within a primary command buffer, not directly
 //!   on a queue.
 //!
@@ -155,15 +155,15 @@ pub struct DispatchIndirectCommand {
 ///
 /// # Safety
 ///
-/// - Every vertex number within the specified range must fall within the range of
-///   the bound vertex-rate vertex buffers.
-/// - Every instance number within the specified range must fall within the range of
-///   the bound instance-rate vertex buffers.
-/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature
-///   is not enabled, then `first_instance` must be `0`.
-/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and
-///   the [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance)
-///   device property is `false`, then `first_instance` must be `0`.
+/// - Every vertex number within the specified range must fall within the range of the bound
+///   vertex-rate vertex buffers.
+/// - Every instance number within the specified range must fall within the range of the bound
+///   instance-rate vertex buffers.
+/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature is
+///   not enabled, then `first_instance` must be `0`.
+/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and the
+///   [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance) device
+///   property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
@@ -178,18 +178,18 @@ pub struct DrawIndirectCommand {
 ///
 /// # Safety
 ///
-/// - If the graphics pipeline **does not** include a task shader, then the
-///   `group_count_x`, `group_count_y` and `group_count_z` values must not be greater than the
-///   respective elements of the
-///   [`max_mesh_work_group_count`](Properties::max_mesh_work_group_count) device limit,
-///   and the product of these three values must not be greater than the
-///   [`max_mesh_work_group_total_count`](Properties::max_mesh_work_group_total_count) device limit.
-/// - If the graphics pipeline **does** include a task shader, then the
-///   `group_count_x`, `group_count_y` and `group_count_z` values must not be greater than the
-///   respective elements of the
-///   [`max_task_work_group_count`](Properties::max_task_work_group_count) device limit,
-///   and the product of these three values must not be greater than the
-///   [`max_task_work_group_total_count`](Properties::max_task_work_group_total_count) device limit.
+/// - If the graphics pipeline **does not** include a task shader, then the `group_count_x`,
+///   `group_count_y` and `group_count_z` values must not be greater than the respective elements
+///   of the [`max_mesh_work_group_count`](Properties::max_mesh_work_group_count) device limit, and
+///   the product of these three values must not be greater than the
+///   [`max_mesh_work_group_total_count`](Properties::max_mesh_work_group_total_count) device
+///   limit.
+/// - If the graphics pipeline **does** include a task shader, then the `group_count_x`,
+///   `group_count_y` and `group_count_z` values must not be greater than the respective elements
+///   of the [`max_task_work_group_count`](Properties::max_task_work_group_count) device limit, and
+///   the product of these three values must not be greater than the
+///   [`max_task_work_group_total_count`](Properties::max_task_work_group_total_count) device
+///   limit.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawMeshTasksIndirectCommand {
@@ -204,18 +204,18 @@ pub struct DrawMeshTasksIndirectCommand {
 /// # Safety
 ///
 /// - Every index within the specified range must fall within the range of the bound index buffer.
-/// - Every vertex number that is retrieved from the index buffer must fall within the range of
-///   the bound vertex-rate vertex buffers.
+/// - Every vertex number that is retrieved from the index buffer must fall within the range of the
+///   bound vertex-rate vertex buffers.
 /// - Every vertex number that is retrieved from the index buffer, if it is not the special
 ///   primitive restart value, must be no greater than the
 ///   [`max_draw_indexed_index_value`](Properties::max_draw_indexed_index_value) device limit.
-/// - Every instance number within the specified range must fall within the range of
-///   the bound instance-rate vertex buffers.
-/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature
-///   is not enabled, then `first_instance` must be `0`.
-/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and
-///   the [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance)
-///   device property is `false`, then `first_instance` must be `0`.
+/// - Every instance number within the specified range must fall within the range of the bound
+///   instance-rate vertex buffers.
+/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature is
+///   not enabled, then `first_instance` must be `0`.
+/// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and the
+///   [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance) device
+///   property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndexedIndirectCommand {
@@ -747,8 +747,9 @@ pub enum CommandBufferUsage {
     /// optimizations.
     OneTimeSubmit = ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT.as_raw(),
 
-    /// The command buffer can be used multiple times, but must not execute or record more than once
-    /// simultaneously. In other words, it is as if executing the command buffer borrows it mutably.
+    /// The command buffer can be used multiple times, but must not execute or record more than
+    /// once simultaneously. In other words, it is as if executing the command buffer borrows
+    /// it mutably.
     MultipleSubmit = 0,
 
     /// The command buffer can be executed multiple times in parallel on different queues.
@@ -907,10 +908,10 @@ pub struct SemaphoreSubmitInfo {
 
     /// If `semaphore.semaphore_type()` is [`SemaphoreType::Timeline`], specifies the value that
     /// will be used for the semaphore operation:
-    /// - If it's a signal operation, then the semaphore's value will be set to this value
-    ///   when it is signaled.
-    /// - If it's a wait operation, then the semaphore will wait until its value is greater than
-    ///   or equal to this value.
+    /// - If it's a signal operation, then the semaphore's value will be set to this value when it
+    ///   is signaled.
+    /// - If it's a wait operation, then the semaphore will wait until its value is greater than or
+    ///   equal to this value.
     ///
     /// If `semaphore.semaphore_type()` is [`SemaphoreType::Binary`], then this must be `0`.
     ///
@@ -921,9 +922,9 @@ pub struct SemaphoreSubmitInfo {
     /// scope: stages of queue operations following the wait operation that can start executing
     /// after the semaphore is signalled.
     ///
-    /// For a semaphore signal operation, specifies the pipeline stages in the first synchronization
-    /// scope: stages of queue operations preceding the signal operation that must complete before
-    /// the semaphore is signalled.
+    /// For a semaphore signal operation, specifies the pipeline stages in the first
+    /// synchronization scope: stages of queue operations preceding the signal operation that
+    /// must complete before the semaphore is signalled.
     /// If this value does not equal [`ALL_COMMANDS`], then the [`synchronization2`] feature must
     /// be enabled on the device.
     ///

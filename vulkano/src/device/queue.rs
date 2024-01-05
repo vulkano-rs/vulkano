@@ -453,7 +453,8 @@ impl<'a> QueueGuard<'a> {
     /// - The semaphore must be kept alive while the command is being executed.
     /// - The semaphore must be already in the signaled state, or there must be a previously
     ///   submitted operation that will signal it.
-    /// - When the wait operation is executed, no other queue must be waiting on the same semaphore.
+    /// - When the wait operation is executed, no other queue must be waiting on the same
+    ///   semaphore.
     ///
     /// For every element of `present_info.swapchain_infos`:
     /// - `swapchain` must be kept alive while the command is being executed.
@@ -461,8 +462,8 @@ impl<'a> QueueGuard<'a> {
     ///   operation must happen-after the acquire operation.
     /// - The swapchain image indicated by `swapchain` and `image_index` must be in the
     ///   [`ImageLayout::PresentSrc`] layout when the presentation operation is executed.
-    /// - The swapchain image indicated by `swapchain` and `image_index` must not be accessed
-    ///   after this function is called, until it is acquired again.
+    /// - The swapchain image indicated by `swapchain` and `image_index` must not be accessed after
+    ///   this function is called, until it is acquired again.
     /// - If `present_id` is `Some`, then it must be greater than any present ID previously used
     ///   for the same swapchain.
     ///
@@ -709,8 +710,8 @@ impl<'a> QueueGuard<'a> {
     /// - If the command buffer's `usage` is [`CommandBufferUsage::MultipleSubmit`], then it must
     ///   not be currently submitted and not yet completed.
     /// - If a recorded command performs a queue family transfer acquire operation, then a
-    ///   corresponding queue family transfer release operation with matching parameters must
-    ///   have been previously submitted, and must happen-before it.
+    ///   corresponding queue family transfer release operation with matching parameters must have
+    ///   been previously submitted, and must happen-before it.
     /// - If a recorded command references an [`Event`], then that `Event` must not be referenced
     ///   by a command that is currently executing on another queue.
     ///
@@ -1350,7 +1351,8 @@ pub struct QueueFamilyProperties {
     /// If timestamps are not supported, this is `None`.
     pub timestamp_valid_bits: Option<u32>,
 
-    /// The minimum granularity supported for image transfers, in terms of `[width, height, depth]`.
+    /// The minimum granularity supported for image transfers, in terms of `[width, height,
+    /// depth]`.
     pub min_image_transfer_granularity: [u32; 3],
 }
 

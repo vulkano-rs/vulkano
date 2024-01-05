@@ -29,15 +29,14 @@
 //! Vulkan allows four different setups:
 //!
 //! - The state of both the viewports and scissor boxes is known at pipeline creation.
-//! - The state of viewports is known at pipeline creation, but the state of scissor boxes is
-//!   only known when submitting the draw command.
-//! - The state of scissor boxes is known at pipeline creation, but the state of viewports is
-//!   only known when submitting the draw command.
-//! - The state of both the viewports and scissor boxes is only known when submitting the
-//!   draw command.
+//! - The state of viewports is known at pipeline creation, but the state of scissor boxes is only
+//!   known when submitting the draw command.
+//! - The state of scissor boxes is known at pipeline creation, but the state of viewports is only
+//!   known when submitting the draw command.
+//! - The state of both the viewports and scissor boxes is only known when submitting the draw
+//!   command.
 //!
 //! In all cases the number of viewports and scissor boxes must be the same.
-//!
 
 use crate::{device::Device, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version};
 use smallvec::{smallvec, SmallVec};

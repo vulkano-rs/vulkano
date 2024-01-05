@@ -28,10 +28,10 @@
 //! Both the device and the host can perform the same two operations on a timeline semaphore:
 //! - A **semaphore signal operation** will set the semaphore counter value to a specified value.
 //! - A **semaphore wait operation** will block execution of the operation it is associated with,
-//!   as long as the semaphore's counter value is less than a specified threshold value.
-//!   Once the semaphore's counter value is equal to or greater than the threshold, execution
-//!   continues. Unlike with binary semaphores, waiting does not alter the state of a timeline
-//!   semaphore, so multiple operations can wait for the same semaphore value.
+//!   as long as the semaphore's counter value is less than a specified threshold value. Once the
+//!   semaphore's counter value is equal to or greater than the threshold, execution continues.
+//!   Unlike with binary semaphores, waiting does not alter the state of a timeline semaphore, so
+//!   multiple operations can wait for the same semaphore value.
 //!
 //! Additionally, the host can query the current counter value of a timeline semaphore.
 //!
@@ -43,14 +43,13 @@
 //!
 //! For binary semaphores:
 //! - When a semaphore signal operation is executed, the semaphore must be in the unsignaled state.
-//!   In other words, the same semaphore cannot be signalled by multiple commands;
-//!   there must always be a wait operation in between them.
-//! - There must never be more than one semaphore wait operation executing on the same semaphore
-//!   at the same time.
-//! - When a semaphore wait operation is queued as part of a command,
-//!   the semaphore must already be in the signaled state, or
-//!   the signal operation that it waits for must have been queued previously
-//!   (as part of a previous command, or an earlier batch within the same command).
+//!   In other words, the same semaphore cannot be signalled by multiple commands; there must
+//!   always be a wait operation in between them.
+//! - There must never be more than one semaphore wait operation executing on the same semaphore at
+//!   the same time.
+//! - When a semaphore wait operation is queued as part of a command, the semaphore must already be
+//!   in the signaled state, or the signal operation that it waits for must have been queued
+//!   previously (as part of a previous command, or an earlier batch within the same command).
 //!
 //! For timeline semaphores:
 //! - When a semaphore signal operation is executed, the new counter value of the semaphore must be
@@ -299,8 +298,8 @@ impl Semaphore {
     ///
     /// # Safety
     ///
-    /// - The safety requirements for semaphores, as detailed in the module documentation,
-    ///   must be followed.
+    /// - The safety requirements for semaphores, as detailed in the module documentation, must be
+    ///   followed.
     #[inline]
     pub unsafe fn signal(
         &self,
@@ -856,10 +855,9 @@ impl Semaphore {
     /// # Safety
     ///
     /// - The semaphore must not be in use by the device.
-    /// - If in `import_semaphore_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`,
-    ///   then `file` must represent a binary semaphore that was exported from Vulkan or a
-    ///   compatible API, with a driver and device UUID equal to those of the device that owns
-    ///   `self`.
+    /// - If in `import_semaphore_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`, then
+    ///   `file` must represent a binary semaphore that was exported from Vulkan or a compatible
+    ///   API, with a driver and device UUID equal to those of the device that owns `self`.
     #[inline]
     pub unsafe fn import_fd(
         &self,

@@ -521,7 +521,8 @@ fn evaluate_spec_constant_op(
     }
 }
 
-// Evaluate a SpecConstantInstruction that does calculations on scalars or paired vector components.
+// Evaluate a SpecConstantInstruction that does calculations on scalars or paired vector
+// components.
 fn evaluate_spec_constant_calculation_op(
     instruction: &SpecConstantInstruction,
     constants: &HashMap<Id, Constant>,

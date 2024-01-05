@@ -28,8 +28,8 @@ use std::{ops::Range, ptr, sync::Arc};
 /// provided for each resource type:
 /// - The basic constructor variant writes a single element to array index 0. It is intended for
 ///   non-arrayed bindings, where `descriptor_count` in the descriptor set layout is 1.
-/// - The `_array` variant writes several elements and allows specifying the target array index.
-///   At least one element must be provided; a panic results if the provided iterator is empty.
+/// - The `_array` variant writes several elements and allows specifying the target array index. At
+///   least one element must be provided; a panic results if the provided iterator is empty.
 #[derive(Clone, Debug)]
 pub struct WriteDescriptorSet {
     binding: u32,
@@ -44,8 +44,8 @@ impl WriteDescriptorSet {
     /// immutable samplers in the layout. The Vulkan spec requires these elements to be explicitly
     /// written, but since there is no data to write, a dummy write is provided instead.
     ///
-    /// For regular descriptor sets, the data for such descriptors is automatically valid, and dummy
-    /// writes are not allowed.
+    /// For regular descriptor sets, the data for such descriptors is automatically valid, and
+    /// dummy writes are not allowed.
     #[inline]
     pub fn none(binding: u32) -> Self {
         Self::none_array(binding, 0, 1)

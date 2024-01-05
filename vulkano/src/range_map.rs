@@ -1,9 +1,7 @@
 // Most of the code in this module comes from the rangemap crate, which is licensed under either of
-// - Apache License, Version 2.0
-//   (https://github.com/jeffparsons/rangemap/blob/master/LICENSE-APACHE or
-//   http://www.apache.org/licenses/LICENSE-2.0)
-// - MIT (https://github.com/jeffparsons/rangemap/blob/master/LICENSE-MIT or
-//   http://opensource.org/licenses/MIT)
+// - Apache License, Version 2.0 (https://github.com/jeffparsons/rangemap/blob/master/LICENSE-APACHE
+//   or http://www.apache.org/licenses/LICENSE-2.0)
+// - MIT (https://github.com/jeffparsons/rangemap/blob/master/LICENSE-MIT or http://opensource.org/licenses/MIT)
 // at your option.
 //
 // The following changes were made:
@@ -892,9 +890,7 @@ mod tests {
         assert_eq!(range_map.to_vec(), vec![]);
     }
 
-    ///
-    /// impl Debug
-    ///
+    // impl Debug
 
     #[test]
     fn map_debug_repr_looks_right() {

@@ -41,9 +41,9 @@
 //!
 //! - An incompatible definition of `Pc` invalidates all bound descriptor sets.
 //! - An incompatible definition of `DsN` invalidates all bound descriptor sets *N* and higher.
-//! - If *N* is the highest set being assigned in a bind command, and it and all lower sets
-//!   have compatible definitions, including the push constants, then descriptor sets above *N*
-//!   remain valid.
+//! - If *N* is the highest set being assigned in a bind command, and it and all lower sets have
+//!   compatible definitions, including the push constants, then descriptor sets above *N* remain
+//!   valid.
 //!
 //! [`RecordingCommandBuffer`] keeps track of this state and will automatically remove descriptor
 //! sets that have been invalidated by incompatible layouts in subsequent binding commands.

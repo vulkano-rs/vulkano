@@ -25,8 +25,7 @@ impl RecordingCommandBuffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `src_buffer` or `dst_buffer` were not created from the same device
-    ///   as `self`.
+    /// - Panics if `src_buffer` or `dst_buffer` were not created from the same device as `self`.
     pub fn copy_buffer(
         &mut self,
         copy_buffer_info: impl Into<CopyBufferInfo>,
@@ -125,8 +124,7 @@ impl RecordingCommandBuffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `src_image` or `dst_image` were not created from the same device
-    ///   as `self`.
+    /// - Panics if `src_image` or `dst_image` were not created from the same device as `self`.
     pub fn copy_image(
         &mut self,
         copy_image_info: CopyImageInfo,
@@ -501,8 +499,7 @@ impl RecordingCommandBuffer {
     ///
     /// # Panics
     ///
-    /// - Panics if `src_image` or `dst_image` were not created from the same device
-    ///   as `self`.
+    /// - Panics if `src_image` or `dst_image` were not created from the same device as `self`.
     pub fn resolve_image(
         &mut self,
         resolve_image_info: ResolveImageInfo,
@@ -5233,7 +5230,8 @@ pub struct BlitImageInfo {
     ///
     /// The default value is a single region, covering the first mip level, and the smallest of the
     /// array layers of the two images. The whole extent of each image is covered, scaling if
-    /// necessary. All aspects of each image are selected, or `plane0` if the image is multi-planar.
+    /// necessary. All aspects of each image are selected, or `plane0` if the image is
+    /// multi-planar.
     pub regions: SmallVec<[ImageBlit; 1]>,
 
     /// The filter to use for sampling `src_image` when the `src_extent` and

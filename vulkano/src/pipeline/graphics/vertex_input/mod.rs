@@ -15,23 +15,23 @@
 //! components in a location, even if not all bits are actually used.
 //!
 //! A variable may take up fewer than four components. For example, a single `float` takes up only
-//! one component, a `vec2` takes up two, and so on. Using the `component` layout qualifier in GLSL,
-//! it is possible to fit multiple variables into a single four-component location slot, as long
-//! as the components of each variable don't overlap.
+//! one component, a `vec2` takes up two, and so on. Using the `component` layout qualifier in
+//! GLSL, it is possible to fit multiple variables into a single four-component location slot, as
+//! long as the components of each variable don't overlap.
 //!
 //! If the input variable is an array, then it takes up a series of consecutive locations. Each
 //! element of the array always starts at a new location, regardless of whether there is still room
 //! in the previous one. So, for example, an array of three `vec2` takes three locations, since
 //! `vec2` alone needs one location. An array can be decorated with the `component` qualifier as
-//! well; this is equivalent to applying the qualifier to every element of the array. If elements do
-//! not use all components in their locations, those free components can be filled with additional
-//! variables, just like for non-array types.
+//! well; this is equivalent to applying the qualifier to every element of the array. If elements
+//! do not use all components in their locations, those free components can be filled with
+//! additional variables, just like for non-array types.
 //!
 //! Matrices are laid out as if they were an array of column vectors. Thus, a `mat4x3` is laid out
-//! as an array of four `vec3`s, `mat2x4` as two `vec4`s. As with individual vectors, each column of
-//! the matrix uses up as many components of its location as there are rows in the matrix, and the
-//! remaining components are available for additional variables as described above. However, it is
-//! not possible to use the `component` qualifier on a matrix.
+//! as an array of four `vec3`s, `mat2x4` as two `vec4`s. As with individual vectors, each column
+//! of the matrix uses up as many components of its location as there are rows in the matrix, and
+//! the remaining components are available for additional variables as described above. However, it
+//! is not possible to use the `component` qualifier on a matrix.
 //!
 //! If a 64-bit value is to be passed to a shader, it will take up two adjacent components. Vectors
 //! of 64-bit values are correspondingly twice as large: `dvec2` takes up all four components of a
@@ -41,8 +41,8 @@
 //!
 //! # Input attributes
 //!
-//! An input attribute is a mapping between data in a vertex buffer and the locations and components
-//! of the vertex shader.
+//! An input attribute is a mapping between data in a vertex buffer and the locations and
+//! components of the vertex shader.
 //!
 //! Input attributes are assigned on a per-location basis; it is not possible to assign attributes
 //! to individual components. Instead, each attribute specifies up to four values to be read from
@@ -603,7 +603,8 @@ pub struct VertexInputAttributeDescription {
 
     /// Number of bytes between the start of a vertex buffer element and the location of attribute.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if the sum of `offset + format.block_size()` is greater than the `stride` of
     /// `binding`, the
     /// [`vertex_attribute_access_beyond_stride`](crate::device::Features::vertex_attribute_access_beyond_stride)

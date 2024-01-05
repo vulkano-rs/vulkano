@@ -10,7 +10,8 @@
 //! instances of (references to) one or more bottom-level structures. A top-level structure is
 //! intended to contain the whole rendered scene (or the relevant parts of it), while a
 //! bottom-level structure may contain individual objects within the scene. This two-level
-//! arrangement allows you to easily rearrange the scene, adding and removing parts of it as needed.
+//! arrangement allows you to easily rearrange the scene, adding and removing parts of it as
+//! needed.
 //!
 //! # Building an acceleration structure
 //!
@@ -44,8 +45,8 @@
 //! - [`AccelerationStructureBuildGeometryInfo::scratch_data`]
 //! - [`AccelerationStructureGeometryTrianglesData::vertex_data`]
 //! - [`AccelerationStructureGeometryTrianglesData::vertex_stride`]
-//! - [`AccelerationStructureGeometryTrianglesData::transform_data`]
-//!   (but the variant of `Option` must not change)
+//! - [`AccelerationStructureGeometryTrianglesData::transform_data`] (but the variant of `Option`
+//!   must not change)
 //! - [`AccelerationStructureGeometryAabbsData::data`]
 //! - [`AccelerationStructureGeometryAabbsData::stride`]
 //! - [`AccelerationStructureGeometryInstancesData::data`]
@@ -75,7 +76,8 @@
 //!
 //! On the Vulkano side, you can then create a descriptor set layout using
 //! [`DescriptorType::AccelerationStructure`] as a descriptor type, and write the
-//! acceleration structure to a descriptor set using [`WriteDescriptorSet::acceleration_structure`].
+//! acceleration structure to a descriptor set using
+//! [`WriteDescriptorSet::acceleration_structure`].
 //!
 //! [`build_acceleration_structure`]: crate::command_buffer::RecordingCommandBuffer::build_acceleration_structure
 //! [`build_acceleration_structure_indirect`]: crate::command_buffer::RecordingCommandBuffer::build_acceleration_structure_indirect
@@ -113,8 +115,8 @@ impl AccelerationStructure {
     ///
     /// # Safety
     ///
-    /// - `create_info.buffer` (and any subbuffer it overlaps with) must not be accessed
-    ///   while it is bound to the acceleration structure.
+    /// - `create_info.buffer` (and any subbuffer it overlaps with) must not be accessed while it
+    ///   is bound to the acceleration structure.
     ///
     /// [`acceleration_structure`]: crate::device::Features::acceleration_structure
     #[inline]
@@ -1625,7 +1627,8 @@ vulkan_enum! {
     HostOrDevice = HOST_OR_DEVICE,
 }
 
-/// The minimum sizes needed for various resources during an acceleration structure build operation.
+/// The minimum sizes needed for various resources during an acceleration structure build
+/// operation.
 #[derive(Clone, Debug)]
 pub struct AccelerationStructureBuildSizesInfo {
     /// The minimum required size of the acceleration structure for a build or update operation.

@@ -152,10 +152,10 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 /// functions, even though they could theoretically support a higher version. You can think of it
 /// as a promise never to use any functionality from a higher version.
 ///
-/// The maximum API version is not a _minimum_, so it is possible to set it to a higher version than
-/// what the instance or device inherently support. The final API version that you are able to use
-/// on an instance or device is the lower of the supported API version and the chosen maximum API
-/// version of the `Instance`.
+/// The maximum API version is not a _minimum_, so it is possible to set it to a higher version
+/// than what the instance or device inherently support. The final API version that you are able to
+/// use on an instance or device is the lower of the supported API version and the chosen maximum
+/// API version of the `Instance`.
 ///
 /// Due to a quirk in how the Vulkan 1.0 specification was written, if the instance only
 /// supports Vulkan 1.0, then it is not possible to specify a maximum API version higher than 1.0.

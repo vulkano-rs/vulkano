@@ -45,7 +45,8 @@ use std::{
     time::Duration,
 };
 
-/// A two-state synchronization primitive that is signalled by the device and waited on by the host.
+/// A two-state synchronization primitive that is signalled by the device and waited on by the
+/// host.
 #[derive(Debug)]
 pub struct Fence {
     handle: ash::vk::Fence,
@@ -616,9 +617,9 @@ impl Fence {
     /// # Safety
     ///
     /// - The fence must not be in use by the device.
-    /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`,
-    ///   then `file` must represent a fence that was exported from Vulkan or a compatible API,
-    ///   with a driver and device UUID equal to those of the device that owns `self`.
+    /// - If in `import_fence_fd_info`, `handle_type` is `ExternalHandleType::OpaqueFd`, then
+    ///   `file` must represent a fence that was exported from Vulkan or a compatible API, with a
+    ///   driver and device UUID equal to those of the device that owns `self`.
     #[inline]
     pub unsafe fn import_fd(
         &self,
@@ -765,8 +766,8 @@ impl Fence {
     // Shared by Fence and FenceSignalFuture
     pub(crate) fn poll_impl(&self, cx: &mut Context<'_>) -> Poll<Result<(), VulkanError>> {
         // Vulkan only allows polling of the fence status, so we have to use a spin future.
-        // This is still better than blocking in async applications, since a smart-enough async engine
-        // can choose to run some other tasks between probing this one.
+        // This is still better than blocking in async applications, since a smart-enough async
+        // engine can choose to run some other tasks between probing this one.
 
         // Check if we are done without blocking
         match self.is_signaled() {

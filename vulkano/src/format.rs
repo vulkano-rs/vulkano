@@ -1,16 +1,16 @@
 //! All the formats supported by Vulkan.
 //!
-//! A format is mostly used to describe the texel data of an image. However, formats also show up in
-//! a few other places, most notably to describe the format of vertex buffers.
+//! A format is mostly used to describe the texel data of an image. However, formats also show up
+//! in a few other places, most notably to describe the format of vertex buffers.
 //!
 //! # Format support
 //!
 //! Not all formats are supported by every device. Those that devices do support may only be
 //! supported for certain use cases. It is an error to use a format where it is not supported, but
-//! you can query a device beforehand for its support by calling `format_properties` on the physical
-//! device. You can use this to select a usable format from one or more suitable alternatives.
-//! Some formats are required to be always supported for a particular usage. These are listed in the
-//! [tables in the Vulkan specification](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support).
+//! you can query a device beforehand for its support by calling `format_properties` on the
+//! physical device. You can use this to select a usable format from one or more suitable
+//! alternatives. Some formats are required to be always supported for a particular usage. These
+//! are listed in the [tables in the Vulkan specification](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support).
 //!
 //! # Special format types
 //!
@@ -27,8 +27,8 @@
 //!
 //! Depth/stencil formats deviate from the others in a few more ways. Their data representation is
 //! considered opaque, meaning that they do not have a fixed layout in memory nor a fixed size per
-//! texel. They also have special limitations in several operations such as copying; a depth/stencil
-//! format is not compatible with any other format, only with itself.
+//! texel. They also have special limitations in several operations such as copying; a
+//! depth/stencil format is not compatible with any other format, only with itself.
 //!
 //! ## Block-compressed formats
 //!
@@ -59,10 +59,10 @@
 //! requires it.
 //!
 //! Many YCbCr formats make use of **chroma subsampling**. This is a technique whereby the two
-//! chroma components are encoded using a lower resolution than the luma component. The human eye is
-//! less sensitive to color detail than to detail in brightness, so this allows more detail to be
-//! encoded in less data. Chroma subsampling is indicated with one of three numbered suffixes in a
-//! format name:
+//! chroma components are encoded using a lower resolution than the luma component. The human eye
+//! is less sensitive to color detail than to detail in brightness, so this allows more detail to
+//! be encoded in less data. Chroma subsampling is indicated with one of three numbered suffixes in
+//! a format name:
 //! - `444` indicates a YCbCr format without chroma subsampling. All components have the same
 //!   resolution.
 //! - `422` indicates horizontal chroma subsampling. The horizontal resolution of the chroma
@@ -74,9 +74,9 @@
 //! of storing the components of a single texel together in memory, the components are separated
 //! into *planes*, which act like independent images. In 3-plane formats, the planes hold the Y,
 //! Cb and Cr components respectively, while in 2-plane formats, Cb and Cr are combined into a
-//! two-component plane. Where chroma subsampling is applied, plane 0 has the full resolution, while
-//! planes 1 and 2 have reduced resolution. Effectively, they are standalone images with half the
-//! resolution of the original.
+//! two-component plane. Where chroma subsampling is applied, plane 0 has the full resolution,
+//! while planes 1 and 2 have reduced resolution. Effectively, they are standalone images with half
+//! the resolution of the original.
 //!
 //! The texels of multi-planar images cannot be accessed individually, for example to copy or blit,
 //! since the components of each texel are split across the planes. Instead, you must access each
@@ -276,8 +276,8 @@ pub enum NumericFormat {
     SSCALED,
     /// Unsigned integer that is converted to a floating-point value directly.
     USCALED,
-    /// Unsigned integer where R, G, B components represent a normalized floating-point value in the
-    /// sRGB color space, while the A component is a simple normalized value as in `UNORM`.
+    /// Unsigned integer where R, G, B components represent a normalized floating-point value in
+    /// the sRGB color space, while the A component is a simple normalized value as in `UNORM`.
     SRGB,
 }
 

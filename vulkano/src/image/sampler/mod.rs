@@ -19,8 +19,8 @@
 //!
 //! It is possible to provide a *bias* to the base LOD value, which is simply added to it.
 //! An LOD bias can be provided both in the sampler object and as part of the sampling operation in
-//! the shader, and are combined by addition to produce the final bias value, which is then added to
-//! the base LOD.
+//! the shader, and are combined by addition to produce the final bias value, which is then added
+//! to the base LOD.
 //!
 //! Once LOD bias has been applied, the resulting value may be *clamped* to a minimum and maximum
 //! value to provide the final LOD. A maximum may be specified by the sampler, while a minimum
@@ -629,7 +629,8 @@ pub struct SamplerCreateInfo {
     /// [`max_sampler_lod_bias`](crate::device::Properties::max_sampler_lod_bias) limit of the
     /// device.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `mip_lod_bias` is not `0.0`, the
     /// [`sampler_mip_lod_bias`](crate::device::Features::sampler_mip_lod_bias)
     /// feature must be enabled on the device.
@@ -640,8 +641,8 @@ pub struct SamplerCreateInfo {
     /// Whether anisotropic texel filtering is enabled (`Some`), and the maximum anisotropy value
     /// to use if it is enabled.
     ///
-    /// Anisotropic filtering is a special filtering mode that takes into account the differences in
-    /// scaling between the horizontal and vertical framebuffer axes.
+    /// Anisotropic filtering is a special filtering mode that takes into account the differences
+    /// in scaling between the horizontal and vertical framebuffer axes.
     ///
     /// If set to `Some`, the [`sampler_anisotropy`](crate::device::Features::sampler_anisotropy)
     /// feature must be enabled on the device, the provided maximum value must not exceed the
@@ -657,15 +658,16 @@ pub struct SamplerCreateInfo {
     /// Depth comparison is an alternative mode for samplers that can be used in combination with
     /// image views specifying the depth aspect. Instead of returning a value that is sampled from
     /// the image directly, a comparison operation is applied between the sampled value and a
-    /// reference value that is specified as part of the operation. The result is binary: 1.0 if the
-    /// operation returns `true`, 0.0 if it returns `false`.
+    /// reference value that is specified as part of the operation. The result is binary: 1.0 if
+    /// the operation returns `true`, 0.0 if it returns `false`.
     ///
     /// If set to `Some`, the `reduction_mode` must be set to
     /// [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
-    /// devices, if the sampler is going to be used as a mutable sampler (written to descriptor sets
-    /// rather than being an immutable part of a descriptor set layout), the
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// devices, if the sampler is going to be used as a mutable sampler (written to descriptor
+    /// sets rather than being an immutable part of a descriptor set layout), the
     /// [`mutable_comparison_samplers`](crate::device::Features::mutable_comparison_samplers)
     /// feature must be enabled on the device.
     ///

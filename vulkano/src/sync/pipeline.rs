@@ -3065,7 +3065,8 @@ impl ImageMemoryBarrier {
             queue_family_ownership_transfer: None,
             image,
             subresource_range: ImageSubresourceRange {
-                aspects: ImageAspects::empty(), // Can't use image format aspects because `color` can't be specified with `planeN`.
+                // Can't use image format aspects because `color` can't be specified with `planeN`.
+                aspects: ImageAspects::empty(),
                 mip_levels: 0..0,
                 array_layers: 0..0,
             },
@@ -3538,13 +3539,16 @@ impl ImageMemoryBarrier {
         }
 
         // VUID-VkImageMemoryBarrier2-synchronization2-07793
-        // If the synchronization2 feature is not enabled, oldLayout must not be VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR or VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+        // If the synchronization2 feature is not enabled, oldLayout must not be
+        // VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR or VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
 
         // VUID-VkImageMemoryBarrier2-synchronization2-07794
-        // If the synchronization2 feature is not enabled, newLayout must not be VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR or VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
+        // If the synchronization2 feature is not enabled, newLayout must not be
+        // VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR or VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR
 
         // VUID-VkImageMemoryBarrier2-attachmentFeedbackLoopLayout-07313
-        // If the attachmentFeedbackLoopLayout feature is not enabled, newLayout must not be VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+        // If the attachmentFeedbackLoopLayout feature is not enabled, newLayout must not be
+        // VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
 
         subresource_range
             .validate(device)

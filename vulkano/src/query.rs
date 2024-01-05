@@ -163,7 +163,8 @@ impl QueryPool {
     /// enough to hold the data.
     ///
     /// `true` is returned if every result was available and written to the buffer. `false`
-    /// is returned if some results were not yet available; these will not be written to the buffer.
+    /// is returned if some results were not yet available; these will not be written to the
+    /// buffer.
     ///
     /// See also [`copy_query_pool_results`].
     ///

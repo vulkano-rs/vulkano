@@ -59,8 +59,8 @@ pub enum FenceSignalFutureBehavior {
 /// Contrary to most other future types, it is possible to block the current thread until the event
 /// happens. This is done by calling the `wait()` function.
 ///
-/// This can also be done through Rust's Async system by simply `.await`ing this object. Note though
-/// that (due to the Vulkan API fence design) this will spin to check the fence, rather than
+/// This can also be done through Rust's Async system by simply `.await`ing this object. Note
+/// though that (due to the Vulkan API fence design) this will spin to check the fence, rather than
 /// blocking in the driver. Therefore if you have a long-running task, blocking may be less
 /// CPU intense (depending on the driver's implementation).
 ///

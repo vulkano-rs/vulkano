@@ -10,9 +10,9 @@ use crate::{
 /// State of the multisampling.
 #[derive(Copy, Clone, Debug)]
 pub struct MultisampleState {
-    /// The number of rasterization samples to take per pixel. The GPU will pick this many different
-    /// locations within each pixel and assign to each of these locations a different depth value.
-    /// The depth and stencil test will then be run for each sample.
+    /// The number of rasterization samples to take per pixel. The GPU will pick this many
+    /// different locations within each pixel and assign to each of these locations a different
+    /// depth value. The depth and stencil test will then be run for each sample.
     ///
     /// The default value is [`SampleCount::Sample1`].
     pub rasterization_samples: SampleCount,
@@ -21,9 +21,9 @@ pub struct MultisampleState {
     /// fragment shader.
     ///
     /// If the value is 1.0, then all sub-pixel samples will run
-    /// through the shader and get a different value. If the value is 0.5, about half of the samples
-    /// will run through the shader and the other half will get their values from the ones which
-    /// went through the shader.
+    /// through the shader and get a different value. If the value is 0.5, about half of the
+    /// samples will run through the shader and the other half will get their values from the
+    /// ones which went through the shader.
     ///
     /// If set to `Some`, the [`sample_rate_shading`](crate::device::Features::sample_rate_shading)
     /// feature must be enabled on the device.
@@ -39,9 +39,9 @@ pub struct MultisampleState {
 
     /// Controls whether the alpha value of the fragment will be used in an implementation-defined
     /// way to determine which samples get disabled or not. For example if the alpha value is 0.5,
-    /// then about half of the samples will be discarded. If you render to a multisample image, this
-    /// means that the color will end up being mixed with whatever color was underneath, which gives
-    /// the same effect as alpha blending.
+    /// then about half of the samples will be discarded. If you render to a multisample image,
+    /// this means that the color will end up being mixed with whatever color was underneath,
+    /// which gives the same effect as alpha blending.
     ///
     /// The default value is `false`.
     pub alpha_to_coverage_enable: bool,

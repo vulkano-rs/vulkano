@@ -13,14 +13,14 @@
 //! # Creating surfaces that render directly to a display
 //!
 //! - Choose the `Display` that you want to render to.
-//! - Get display plane properties with [`PhysicalDevice::display_plane_properties`],
-//!   and choose a display plane index that is supported with the chosen display.
+//! - Get display plane properties with [`PhysicalDevice::display_plane_properties`], and choose a
+//!   display plane index that is supported with the chosen display.
 //! - Choose a `DisplayMode`, which is the combination of a display, a resolution and a refresh
 //!   rate. You can enumerate the modes available on a display with
-//!   [`Display::display_mode_properties`], or create your own mode.
-//!   A display can show multiple planes in a stacking fashion.
-//! - Create a `Surface` object with `Surface::from_display_plane`,
-//!   and pass the chosen `DisplayMode` and display plane index.
+//!   [`Display::display_mode_properties`], or create your own mode. A display can show multiple
+//!   planes in a stacking fashion.
+//! - Create a `Surface` object with `Surface::from_display_plane`, and pass the chosen
+//!   `DisplayMode` and display plane index.
 
 use crate::{
     cache::{OnceCache, WeakArcOnceCache},
@@ -125,7 +125,8 @@ impl Display {
         self.plane_reorder_possible
     }
 
-    /// Returns whether the content of the display is buffered internally, and therefore persistent.
+    /// Returns whether the content of the display is buffered internally, and therefore
+    /// persistent.
     #[inline]
     pub fn persistent_content(&self) -> bool {
         self.persistent_content

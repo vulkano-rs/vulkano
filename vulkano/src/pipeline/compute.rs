@@ -7,11 +7,11 @@
 //! of pipeline. While it theoretically possible to perform graphics operations entirely in a
 //! compute pipeline, a graphics pipeline is better suited to that task.
 //!
-//! A compute pipeline is relatively simple to create, requiring only a pipeline layout and a single
-//! shader, the *compute shader*. The compute shader is the actual program that performs the work.
-//! Once created, you can execute a compute pipeline by *binding* it in a command buffer, binding
-//! any descriptor sets and/or push constants that the pipeline needs, and then issuing a `dispatch`
-//! command on the command buffer.
+//! A compute pipeline is relatively simple to create, requiring only a pipeline layout and a
+//! single shader, the *compute shader*. The compute shader is the actual program that performs the
+//! work. Once created, you can execute a compute pipeline by *binding* it in a command buffer,
+//! binding any descriptor sets and/or push constants that the pipeline needs, and then issuing a
+//! `dispatch` command on the command buffer.
 
 use super::{PipelineCreateFlags, PipelineShaderStageCreateInfo};
 use crate::{

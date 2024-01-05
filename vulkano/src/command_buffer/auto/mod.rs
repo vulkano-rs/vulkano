@@ -8,16 +8,17 @@
 //! simultaneously.
 //!
 //! Now imagine that the command buffer contains 10 draw commands instead. Contrary to the dispatch
-//! commands, the draw pipeline contains multiple stages: draw indirect, vertex input, vertex shader,
-//! ..., fragment shader, late fragment test, color output. When there are multiple stages, the
-//! implementations must start and end the stages in order. In other words it can start the draw
-//! indirect stage of all 10 commands, then start the vertex input stage of all 10 commands, and so
-//! on. But it can't for example start the fragment shader stage of a command before starting the
-//! vertex shader stage of another command. Same thing for ending the stages in the right order.
+//! commands, the draw pipeline contains multiple stages: draw indirect, vertex input, vertex
+//! shader, ..., fragment shader, late fragment test, color output. When there are multiple stages,
+//! the implementations must start and end the stages in order. In other words it can start the
+//! draw indirect stage of all 10 commands, then start the vertex input stage of all 10 commands,
+//! and so on. But it can't for example start the fragment shader stage of a command before
+//! starting the vertex shader stage of another command. Same thing for ending the stages in the
+//! right order.
 //!
-//! Depending on the type of the command, the pipeline stages are different. Compute shaders use the
-//! compute stage, while transfer commands use the transfer stage. The compute and transfer stages
-//! aren't ordered.
+//! Depending on the type of the command, the pipeline stages are different. Compute shaders use
+//! the compute stage, while transfer commands use the transfer stage. The compute and transfer
+//! stages aren't ordered.
 //!
 //! When you submit multiple command buffers to a queue, the implementation doesn't do anything in
 //! particular and behaves as if the command buffers were appended to one another. Therefore if you
@@ -32,10 +33,10 @@
 //! is done by adding a pipeline barrier between the two commands.
 //!
 //! A pipeline barriers has a source stage and a destination stage (plus various other things).
-//! A barrier represents a split in the list of commands. When you add it, the stages of the commands
-//! before the barrier corresponding to the source stage of the barrier, must finish before the
-//! stages of the commands after the barrier corresponding to the destination stage of the barrier
-//! can start.
+//! A barrier represents a split in the list of commands. When you add it, the stages of the
+//! commands before the barrier corresponding to the source stage of the barrier, must finish
+//! before the stages of the commands after the barrier corresponding to the destination stage of
+//! the barrier can start.
 //!
 //! For example if you add a barrier that transitions from the compute stage to the compute stage,
 //! then the compute stage of all the commands before the barrier must end before the compute stage

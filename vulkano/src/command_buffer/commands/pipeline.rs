@@ -214,10 +214,10 @@ impl RecordingCommandBuffer {
     /// and `first_instance` as 0.
     ///
     /// A primitive shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
-    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided vertex and
-    /// instance ranges must be in range of the bound vertex buffers.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets, vertex buffers and dynamic state, must have
+    /// been set beforehand. If the bound graphics pipeline uses vertex buffers, then the
+    /// provided vertex and instance ranges must be in range of the bound vertex buffers.
     ///
     /// # Safety
     ///
@@ -404,17 +404,16 @@ impl RecordingCommandBuffer {
     /// enabled.
     ///
     /// A primitive shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
-    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
-    /// ranges of each `DrawIndirectCommand` in the indirect buffer must be in range of the bound
-    /// vertex buffers.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets, vertex buffers and dynamic state, must have
+    /// been set beforehand. If the bound graphics pipeline uses vertex buffers, then the
+    /// vertex and instance ranges of each `DrawIndirectCommand` in the indirect buffer must be
+    /// in range of the bound vertex buffers.
     ///
     /// # Safety
     ///
     /// - The general [shader safety requirements](crate::shader#safety) apply.
-    /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety)
-    ///   apply.
+    /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety) apply.
     pub unsafe fn draw_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
@@ -512,17 +511,16 @@ impl RecordingCommandBuffer {
     /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     ///
     /// A primitive shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
-    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
-    /// ranges of each `DrawIndirectCommand` in the indirect buffer must be in range of the bound
-    /// vertex buffers.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets, vertex buffers and dynamic state, must have
+    /// been set beforehand. If the bound graphics pipeline uses vertex buffers, then the
+    /// vertex and instance ranges of each `DrawIndirectCommand` in the indirect buffer must be
+    /// in range of the bound vertex buffers.
     ///
     /// # Safety
     ///
     /// - The general [shader safety requirements](crate::shader#safety) apply.
-    /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety)
-    ///   apply.
+    /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
     ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
     /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
@@ -652,11 +650,11 @@ impl RecordingCommandBuffer {
     /// range of the bound index buffer.
     ///
     /// A primitive shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
-    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided instance
-    /// range must be in range of the bound vertex buffers. The vertex indices in the index buffer
-    /// must be in range of the bound vertex buffers.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets, vertex buffers and dynamic state, must have
+    /// been set beforehand. If the bound graphics pipeline uses vertex buffers, then the
+    /// provided instance range must be in range of the bound vertex buffers. The vertex
+    /// indices in the index buffer must be in range of the bound vertex buffers.
     ///
     /// # Safety
     ///
@@ -891,17 +889,17 @@ impl RecordingCommandBuffer {
     /// buffer.
     ///
     /// A primitive shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
-    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
-    /// each `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound
-    /// vertex buffers.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets, vertex buffers and dynamic state, must have
+    /// been set beforehand. If the bound graphics pipeline uses vertex buffers, then the
+    /// instance ranges of each `DrawIndexedIndirectCommand` in the indirect buffer must be in
+    /// range of the bound vertex buffers.
     ///
     /// # Safety
     ///
     /// - The general [shader safety requirements](crate::shader#safety) apply.
-    /// - The [safety requirements for `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety)
-    ///   apply.
+    /// - The [safety requirements for
+    ///   `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety) apply.
     pub unsafe fn draw_indexed_indirect(
         &mut self,
         indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
@@ -1013,17 +1011,17 @@ impl RecordingCommandBuffer {
     /// buffer.
     ///
     /// A primitive shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
-    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
-    /// each `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound
-    /// vertex buffers.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets, vertex buffers and dynamic state, must have
+    /// been set beforehand. If the bound graphics pipeline uses vertex buffers, then the
+    /// instance ranges of each `DrawIndexedIndirectCommand` in the indirect buffer must be in
+    /// range of the bound vertex buffers.
     ///
     /// # Safety
     ///
     /// - The general [shader safety requirements](crate::shader#safety) apply.
-    /// - The [safety requirements for `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety)
-    ///   apply.
+    /// - The [safety requirements for
+    ///   `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
     ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
     /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
@@ -1152,7 +1150,8 @@ impl RecordingCommandBuffer {
     ///
     /// A mesh shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
-    /// graphics pipeline, such as descriptor sets and dynamic state, must have been set beforehand.
+    /// graphics pipeline, such as descriptor sets and dynamic state, must have been set
+    /// beforehand.
     ///
     /// # Safety
     ///
@@ -1336,16 +1335,17 @@ impl RecordingCommandBuffer {
 
     /// Perform multiple draw operations using a mesh shading graphics pipeline.
     ///
-    /// One draw is performed for each [`DrawMeshTasksIndirectCommand`] struct in `indirect_buffer`.
-    /// The maximum number of draw commands in the buffer is limited by the
+    /// One draw is performed for each [`DrawMeshTasksIndirectCommand`] struct in
+    /// `indirect_buffer`. The maximum number of draw commands in the buffer is limited by the
     /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
     /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// A mesh shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets and dynamic state, must have been set beforehand.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets and dynamic state, must have been set
+    /// beforehand.
     ///
     /// # Safety
     ///
@@ -1458,8 +1458,9 @@ impl RecordingCommandBuffer {
     /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
     ///
     /// A mesh shading graphics pipeline must have been bound using
-    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
-    /// pipeline, such as descriptor sets and dynamic state, must have been set beforehand.
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
+    /// graphics pipeline, such as descriptor sets and dynamic state, must have been set
+    /// beforehand.
     ///
     /// # Safety
     ///
@@ -1886,11 +1887,11 @@ impl RecordingCommandBuffer {
                         }));
                     }
 
-                    // - If the Sampled Type of the OpTypeImage does not match the numeric format of the
-                    //   image, as shown in the SPIR-V Sampled Type column of the
-                    //   Interpretation of Numeric Format table.
-                    // - If the signedness of any read or sample operation does not match the signedness of
-                    //   the image’s format.
+                    // - If the Sampled Type of the OpTypeImage does not match the numeric format of
+                    //   the image, as shown in the SPIR-V Sampled Type column of the Interpretation
+                    //   of Numeric Format table.
+                    // - If the signedness of any read or sample operation does not match the
+                    //   signedness of the image’s format.
                     if let Some(shader_numeric_type) = binding_reqs.image_scalar_type {
                         let aspects = image_view.subresource_range().aspects;
                         let view_numeric_type = NumericType::from(
@@ -1955,10 +1956,11 @@ impl RecordingCommandBuffer {
                             }));
                         }
 
-                        // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
-                        //   be used with a sampler that enables sampler Y′CBCR conversion.
-                        // - The ConstOffset and Offset operands must not be used with a sampler that enables
+                        // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and
+                        //   OpImageSparse*Gather must not be used with a sampler that enables
                         //   sampler Y′CBCR conversion.
+                        // - The ConstOffset and Offset operands must not be used with a sampler
+                        //   that enables sampler Y′CBCR conversion.
                         if desc_reqs.sampler_no_ycbcr_conversion
                             && sampler.sampler_ycbcr_conversion().is_some()
                         {
@@ -1983,8 +1985,8 @@ impl RecordingCommandBuffer {
                         */
 
                         if desc_reqs.sampler_compare && sampler.compare().is_none() {
-                            // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
-                            //   compareEnable is VK_FALSE
+                            // - The SPIR-V instruction is one of the OpImage*Dref* instructions and
+                            //   the sampler compareEnable is VK_FALSE
                             return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "the currently bound pipeline accesses the sampler bound to \
@@ -1998,8 +2000,8 @@ impl RecordingCommandBuffer {
                                 ..Default::default()
                             }));
                         } else if !desc_reqs.sampler_compare && sampler.compare().is_some() {
-                            // - The SPIR-V instruction is not one of the OpImage*Dref* instructions and the sampler
-                            //   compareEnable is VK_TRUE
+                            // - The SPIR-V instruction is not one of the OpImage*Dref* instructions
+                            //   and the sampler compareEnable is VK_TRUE
                             return Err(Box::new(ValidationError {
                                 problem: format!(
                                     "the currently bound pipeline accesses the sampler bound to \
@@ -2908,7 +2910,8 @@ impl RecordingCommandBuffer {
                     }
                 }
                 // DynamicState::RayTracingPipelineStackSize => unreachable!(
-                //     "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
+                //     "RayTracingPipelineStackSize dynamic state should not occur on a graphics \
+                //     pipeline",
                 // ),
                 // DynamicState::SampleLocations => todo!(),
                 DynamicState::Scissor => {
@@ -3188,12 +3191,14 @@ impl RecordingCommandBuffer {
                     }
 
                     // TODO: VUID-vkCmdDrawIndexed-primitiveFragmentShadingRateWithMultipleViewports-04552
-                    // If the primitiveFragmentShadingRateWithMultipleViewports limit is not supported,
-                    // the bound graphics pipeline was created with the
-                    // VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT dynamic state enabled, and any of the
-                    // shader stages of the bound graphics pipeline write to the PrimitiveShadingRateKHR
-                    // built-in, then vkCmdSetViewportWithCountEXT must have been called in the current
-                    // command buffer prior to this drawing command, and the viewportCount parameter of
+                    // If the primitiveFragmentShadingRateWithMultipleViewports limit is not
+                    // supported, the bound graphics pipeline was created with
+                    // the VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT dynamic
+                    // state enabled, and any of the shader stages of the bound
+                    // graphics pipeline write to the PrimitiveShadingRateKHR
+                    // built-in, then vkCmdSetViewportWithCountEXT must have been called in the
+                    // current command buffer prior to this drawing command, and
+                    // the viewportCount parameter of
                     // vkCmdSetViewportWithCountEXT must be 1
                 }
             }

@@ -1,2 +1,4 @@
-imports_granularity = "Crate"
+comment_width = 99
 group_imports = "One"
+imports_granularity = "Crate"
+wrap_comments = true

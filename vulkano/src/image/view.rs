@@ -818,7 +818,8 @@ pub struct ImageViewCreateInfo {
     /// If this is set to a format that is different from the image, the image must be created with
     /// the `mutable_format` flag.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `format` does not have the same number of components and bits per component as
     /// the parent image's format, the
     /// [`image_view_format_reinterpretation`](crate::device::Features::image_view_format_reinterpretation)
@@ -829,7 +830,8 @@ pub struct ImageViewCreateInfo {
 
     /// How to map components of each pixel.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `component_mapping` is not the identity mapping, the
     /// [`image_view_format_swizzle`](crate::device::Features::image_view_format_swizzle)
     /// feature must be enabled on the device.

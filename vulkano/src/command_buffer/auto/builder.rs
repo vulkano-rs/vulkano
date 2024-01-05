@@ -690,8 +690,8 @@ impl AutoSyncState {
     ///   through `Command::buffer(..)` or `Command::image(..)`.
     /// - `PipelineMemoryAccess` must match the way the resource has been used.
     /// - `start_layout` and `end_layout` designate the image layout that the image is expected to
-    ///   be in when the command starts, and the image layout that the image will be transitioned to
-    ///   during the command. When it comes to buffers, you should pass `Undefined` for both.
+    ///   be in when the command starts, and the image layout that the image will be transitioned
+    ///   to during the command. When it comes to buffers, you should pass `Undefined` for both.
     fn add_resources(&mut self, command_info: &CommandInfo) {
         let &CommandInfo {
             name: command_name,

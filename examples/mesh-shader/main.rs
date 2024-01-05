@@ -1,11 +1,13 @@
 // Welcome to the mesh shader example!
 //
-// This is a simple, modified version of the `instancing.rs` example that demonstrates how to use mesh shaders to
-// generate geometry, that looks identical to the instancing example. We expect you to be familiar with both
-// instancing and compute shaders before approaching mesh shaders, due to their high complexity.
+// This is a simple, modified version of the `instancing.rs` example that demonstrates how to use
+// mesh shaders to generate geometry, that looks identical to the instancing example. We expect you
+// to be familiar with both instancing and compute shaders before approaching mesh shaders, due to
+// their high complexity.
 //
-// This example is intentionally kept simple and does not follow the recommended pattern by which one should emit
-// vertices and indices. This pattern should best match what the hardware likes, and thus is unique to each vendor.
+// This example is intentionally kept simple and does not follow the recommended pattern by which
+// one should emit vertices and indices. This pattern should best match what the hardware likes,
+// and thus is unique to each vendor.
 //
 // See these presentation slides for an overview of mesh shaders and best practices:
 // https://vulkan.org/user/pages/09.events/vulkanised-2023/vulkanised_mesh_best_practices_2023.02.09-1.pdf

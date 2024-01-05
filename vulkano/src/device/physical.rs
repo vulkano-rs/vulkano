@@ -2286,8 +2286,8 @@ impl PhysicalDevice {
         })
     }
 
-    /// Returns the combinations of format and color space that are supported by the physical device
-    /// for the given surface.
+    /// Returns the combinations of format and color space that are supported by the physical
+    /// device for the given surface.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
@@ -3073,8 +3073,8 @@ impl PhysicalDevice {
         ) != 0
     }
 
-    /// Queries whether the physical device supports presenting to Win32 surfaces from queues of the
-    /// given queue family.
+    /// Queries whether the physical device supports presenting to Win32 surfaces from queues of
+    /// the given queue family.
     #[inline]
     pub fn win32_presentation_support(
         &self,

@@ -25,15 +25,15 @@
 //! ## Layout of data
 //!
 //! When buffers, push constants or other user-provided data are accessed in shaders,
-//! the shader expects the values inside to be laid out in a specific way. For every uniform buffer,
-//! storage buffer or push constant block, the SPIR-V specification requires the SPIR-V code to
-//! provide the `Offset` decoration for every member of a struct, indicating where it is placed
-//! relative to the start of the struct. If there are arrays or matrices among the variables, the
-//! SPIR-V code must also provide an `ArrayStride` or `MatrixStride` decoration for them,
-//! indicating the number of bytes between the start of each element in the array or column in the
-//! matrix. When providing data to shaders, you must make sure that your data is placed at the
-//! locations indicated within the SPIR-V code, or the shader will read the wrong data and produce
-//! nonsense.
+//! the shader expects the values inside to be laid out in a specific way. For every uniform
+//! buffer, storage buffer or push constant block, the SPIR-V specification requires the SPIR-V
+//! code to provide the `Offset` decoration for every member of a struct, indicating where it is
+//! placed relative to the start of the struct. If there are arrays or matrices among the
+//! variables, the SPIR-V code must also provide an `ArrayStride` or `MatrixStride` decoration for
+//! them, indicating the number of bytes between the start of each element in the array or column
+//! in the matrix. When providing data to shaders, you must make sure that your data is placed at
+//! the locations indicated within the SPIR-V code, or the shader will read the wrong data and
+//! produce nonsense.
 //!
 //! GLSL does not require you to give explicit offsets and/or strides to your variables (although
 //! it has the option to provide them if you wish). Instead, the shader compiler automatically
@@ -63,12 +63,12 @@
 //!   [`#[repr(C)]`](https://doc.rust-lang.org/nomicon/other-reprs.html#reprc) attribute.
 //!   The shader compiler does not use this alignment by default, so you must use the GLSL
 //!   qualifier. You must also enable the [`scalar_block_layout`] feature in Vulkan.
-//! - **Base alignment**, also known as **std430** (GLSL qualifier: `layout(std430)`).
-//!   The shader compiler uses this alignment by default for all shader data except uniform buffers.
-//!   If you use the base alignment for a uniform buffer, you must also enable the
+//! - **Base alignment**, also known as **std430** (GLSL qualifier: `layout(std430)`). The shader
+//!   compiler uses this alignment by default for all shader data except uniform buffers. If you
+//!   use the base alignment for a uniform buffer, you must also enable the
 //!   [`uniform_buffer_standard_layout`] feature in Vulkan.
-//! - **Extended alignment**, also known as **std140** (GLSL qualifier: `layout(std140)`).
-//!   The shader compiler uses this alignment by default for uniform buffers.
+//! - **Extended alignment**, also known as **std140** (GLSL qualifier: `layout(std140)`). The
+//!   shader compiler uses this alignment by default for uniform buffers.
 //!
 //! Each alignment type is a subset of the ones above it, so if something adheres to the extended
 //! alignment rules, it also follows the rules for the base and scalar alignments.
@@ -140,105 +140,112 @@
 //!
 //! ## Buffers
 //!
-//! - If the [`robust_buffer_access`](Features::robust_buffer_access) feature is not enabled
-//!   on the device, then the shader must not access any values outside the range of the buffer,
-//!   as specified when writing the descriptor set.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-uniformBuffers-06935)
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-storageBuffers-06936)
-//! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader,
-//!   then they must point to valid buffer memory of the correct type.
+//! - If the [`robust_buffer_access`](Features::robust_buffer_access) feature is not enabled on the
+//!   device, then the shader must not access any values outside the range of the buffer, as
+//!   specified when writing the descriptor set. <sup>[\[06935\]] [\[06936\]]</sup>
+//! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader, then
+//!   they must point to valid buffer memory of the correct type.
 //!
 //! ## Image views and buffer views
 //!
-//! - The [`view_type`](ImageView::view_type) of the bound image view
-//!   must match the `Dim` operand of the `OpImageType`.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-viewType-07752)
-//! - The numeric type of the [`format`](ImageView::format) of the bound image view
-//!   must match the `Sampled Type` operand of the `OpImageType`.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-format-07753)
-//! - For every `OpImageWrite` instruction, the type of the `Texel` operand must have at least
-//!   as many components as the format of the bound image view or buffer view.
-//!   If the bound image view's format is [`Format::A8_UNORM`], then the type of the `Texel`
-//!   operand must have four components.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-04469)
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08795)
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08796)
-//! - The `Sampled Type` operand of the `OpTypeImage` declaration must have a `Width` of 64,
-//!   if and only if the format of the bound image view or buffer view also has a 64-bit component.
-//!   Otherwise, it must have a `Width` of 32.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04470)
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04471)
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04472)
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04473)
+//! - The [`view_type`](ImageView::view_type) of the bound image view must match the `Dim` operand
+//!   of the `OpImageType`. <sup>[\[07752\]]</sup>
+//! - The numeric type of the [`format`](ImageView::format) of the bound image view must match the
+//!   `Sampled Type` operand of the `OpImageType`. <sup>[\[07753\]]</sup>
+//! - For every `OpImageWrite` instruction, the type of the `Texel` operand must have at least as
+//!   many components as the format of the bound image view or buffer view. If the bound image
+//!   view's format is [`Format::A8_UNORM`], then the type of the `Texel` operand must have four
+//!   components. <sup>[\[04469\]] [\[08795\]] [\[08796\]]</sup>
+//! - The `Sampled Type` operand of the `OpTypeImage` declaration must have a `Width` of 64, if and
+//!   only if the format of the bound image view or buffer view also has a 64-bit component.
+//!   Otherwise, it must have a `Width` of 32. <sup>[\[04470\]] [\[04471\]] [\[04472\]]
+//!   [\[04473\]]</sup>
 //! - For a storage image/texel buffer declared with `OpTypeImage` with an `Unknown` format:
 //!   - If it is written to in the shader, the format of the bound image view or buffer view must
-//!     have the [`FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT`] format feature.
-//!     [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07027)
-//!     [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07029)
+//!     have the [`FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT`] format feature. <sup>[\[07027\]]
+//!     [\[07029\]]</sup>
 //!   - If it is read from in the shader, the format of the bound image view or buffer view must
-//!     have the [`FormatFeatures::STORAGE_READ_WITHOUT_FORMAT`] format feature.
-//!     [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07028)
-//!     [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07030)
+//!     have the [`FormatFeatures::STORAGE_READ_WITHOUT_FORMAT`] format feature. <sup>[\[07028\]]
+//!     [\[07030\]]</sup>
 //! - If atomic operations are used on a storage image/texel buffer:
-//!   - The bound image view's format must have the [`FormatFeatures::STORAGE_IMAGE_ATOMIC`]
-//!     format feature.
-//!     [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02691)
-//!   - The bound buffer view's format must have the [`FormatFeatures::STORAGE_TEXEL_BUFFER_ATOMIC`]
-//!     format feature.
-//!     [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-07888)
+//!   - The bound image view's format must have the [`FormatFeatures::STORAGE_IMAGE_ATOMIC`] format
+//!     feature. <sup>[\[02691\]]</sup>
+//!   - The bound buffer view's format must have the
+//!     [`FormatFeatures::STORAGE_TEXEL_BUFFER_ATOMIC`] format feature. <sup>[\[07888\]]</sup>
 //!
 //! ## Image sampling
 //!
 //! If the bound sampler uses [`Filter::Linear`] or [`SamplerMipmapMode::Linear`]:
 //! - The bound image view's format must have the [`FormatFeatures::SAMPLED_IMAGE_FILTER_LINEAR`]
-//!   format feature.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-magFilter-04553)
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-mipmapMode-04770)
+//!   format feature. <sup>[\[04553\]] [\[04770\]]</sup>
 //!
 //! If the bound sampler uses [`Filter::Cubic`]:
 //! - The bound image view's format must have the [`FormatFeatures::SAMPLED_IMAGE_FILTER_CUBIC`]
-//!   format feature.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02692)
+//!   format feature. <sup>[\[02692\]]</sup>
 //! - The bound image view's type and format must support cubic filtering, as indicated in
 //!   [`ImageFormatProperties::filter_cubic`] returned from
-//!   [`PhysicalDevice::image_format_properties`].
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubic-02694)
+//!   [`PhysicalDevice::image_format_properties`]. <sup>[\[02694\]]</sup>
 //! - If the sampler's reduction mode is [`SamplerReductionMode::Min`] or
 //!   [`SamplerReductionMode::Max`], the image view type and format must support cubic minmax
 //!   filtering, as indicated in [`ImageFormatProperties::filter_cubic_minmax`] returned from
-//!   [`PhysicalDevice::image_format_properties`].
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubicMinmax-02695)
+//!   [`PhysicalDevice::image_format_properties`]. <sup>[\[02695\]]</sup>
 //!
 //! If the bound sampler uses [depth comparison](SamplerCreateInfo::compare):
-//! - The bound image view's format must have the [`FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON`]
-//!   format feature.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06479)
+//! - The bound image view's format must have the
+//!   [`FormatFeatures::SAMPLED_IMAGE_DEPTH_COMPARISON`] format feature. <sup>[\[06479\]]</sup>
 //!
-//! If the bound sampler uses [unnormalized coordinates](SamplerCreateInfo::unnormalized_coordinates):
-//! - The bound image view must have a type of [`ImageViewType::Dim1d`] or [`ImageViewType::Dim2d`].
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08609)
+//! If the bound sampler uses [unnormalized
+//! coordinates](SamplerCreateInfo::unnormalized_coordinates):
+//! - The bound image view must have a type of [`ImageViewType::Dim1d`] or
+//!   [`ImageViewType::Dim2d`]. <sup>[\[08609\]]</sup>
 //! - The sampler must not be used in any `OpImageSample*` or `OpImageSparseSample*` instructions,
-//!   that contain `ImplicitLod`, `Dref` or `Proj` in their name.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08610)
+//!   that contain `ImplicitLod`, `Dref` or `Proj` in their name. <sup>[\[08610\]]</sup>
 //! - The sampler must not be used in any `OpImageSample*` or `OpImageSparseSample*` instructions,
-//!   that include an LOD bias or offset operand.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08611)
+//!   that include an LOD bias or offset operand. <sup>[\[08611\]]</sup>
 //!
 //! If the bound sampler has a [sampler YCbCr conversion](crate::image::sampler::ycbcr):
 //! - The sampler must only be used in `OpImageSample*` or `OpImageSparseSample*` instructions.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06550)
+//!   <sup>[\[06550\]]</sup>
 //! - The sampler must not be used with the `ConstOffset` or `Offset` image operands.
-//!   [\[spec\]](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-ConstOffset-06551)
+//!   <sup>[\[06551\]]</sup>
 //!
 //! ## Acceleration structures
 //!
 //! - In any top-level acceleration structure, the pointers that refer to the contained
 //!   bottom-level acceleration structure instances must point to valid acceleration structures.
 //!
-//! [alignment rules]: <https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout>
-//! [`GL_EXT_scalar_block_layout`]: <https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt>
+//! [alignment rules]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout
+//! [`GL_EXT_scalar_block_layout`]: https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt
 //! [`scalar_block_layout`]: crate::device::Features::scalar_block_layout
 //! [`uniform_buffer_standard_layout`]: crate::device::Features::uniform_buffer_standard_layout
+//! [\[06935\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-uniformBuffers-06935
+//! [\[06936\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-storageBuffers-06936
+//! [\[07752\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-viewType-07752
+//! [\[07753\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-format-07753
+//! [\[04469\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-04469
+//! [\[08795\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08795
+//! [\[08796\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08796
+//! [\[04470\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04470
+//! [\[04471\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04471
+//! [\[04472\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04472
+//! [\[04473\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04473
+//! [\[07027\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07027
+//! [\[07029\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07029
+//! [\[07028\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07028
+//! [\[07030\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07030
+//! [\[02691\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02691
+//! [\[07888\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-07888
+//! [\[04553\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-magFilter-04553
+//! [\[04770\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-mipmapMode-04770
+//! [\[02692\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02692
+//! [\[02694\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubic-02694
+//! [\[02695\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubicMinmax-02695
+//! [\[06479\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06479
+//! [\[08609\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08609
+//! [\[08610\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08610
+//! [\[08611\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08611
+//! [\[06550\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06550
+//! [\[06551\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-ConstOffset-06551
 
 use self::spirv::{Id, Instruction};
 #[cfg(doc)]
@@ -905,9 +912,9 @@ impl SpecializedShaderModule {
         self.spirv.as_ref().unwrap_or(&self.base_module.spirv)
     }
 
-    /// Returns information about the entry point with the provided name. Returns `None` if no entry
-    /// point with that name exists in the shader module or if multiple entry points with the same
-    /// name exist.
+    /// Returns information about the entry point with the provided name. Returns `None` if no
+    /// entry point with that name exists in the shader module or if multiple entry points with
+    /// the same name exist.
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
         self.single_entry_point_filter(|info| info.name == name)

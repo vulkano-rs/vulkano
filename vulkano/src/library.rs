@@ -349,7 +349,6 @@ impl DynamicLibraryLoader {
     /// # Safety
     ///
     /// - The dynamic library must be a valid Vulkan implementation.
-    ///
     pub unsafe fn new(path: impl AsRef<Path>) -> Result<DynamicLibraryLoader, LoadingError> {
         let vk_lib = Library::new(path.as_ref()).map_err(LoadingError::LibraryLoadFailure)?;
 

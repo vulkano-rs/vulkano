@@ -705,14 +705,14 @@ impl RawImage {
 
     /// Binds device memory to this image.
     ///
-    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`,
-    ///   then `allocations` must contain exactly one element.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::Linear` or `ImageTiling::Optimal`, then
-    ///   `allocations` must contain exactly `self.format().unwrap().planes().len()` elements.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::DrmFormatModifier`, then
-    ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
+    ///   contain exactly one element.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::Linear` or `ImageTiling::Optimal`, then `allocations` must contain exactly
+    ///   `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
+    ///   `self.drm_format_modifier().unwrap().1` elements.
     ///
     /// # Safety
     ///
@@ -1106,14 +1106,14 @@ impl RawImage {
 
     /// # Safety
     ///
-    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`,
-    ///   then `allocations` must contain exactly one element.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::Linear` or `ImageTiling::Optimal`, then
-    ///   `allocations` must contain exactly `self.format().unwrap().planes().len()` elements.
-    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and
-    ///   `self.tiling()` is `ImageTiling::DrmFormatModifier`, then
-    ///   `allocations` must contain exactly `self.drm_format_modifier().unwrap().1` elements.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
+    ///   contain exactly one element.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::Linear` or `ImageTiling::Optimal`, then `allocations` must contain exactly
+    ///   `self.format().unwrap().planes().len()` elements.
+    /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
+    ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
+    ///   `self.drm_format_modifier().unwrap().1` elements.
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn bind_memory_unchecked(
         self,
@@ -1723,11 +1723,12 @@ pub struct ImageCreateInfo {
 
     /// The formats that an image view can have when it is created from this image.
     ///
-    /// If the list is not empty, and `flags` does not contain [`ImageCreateFlags::MUTABLE_FORMAT`],
-    /// then the list must contain at most one element, otherwise any number of elements are
-    /// allowed. The view formats must be compatible with `format`. If `flags` also contains
-    /// [`ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`], then the view formats can also be
-    /// uncompressed formats that are merely size-compatible with `format`.
+    /// If the list is not empty, and `flags` does not contain
+    /// [`ImageCreateFlags::MUTABLE_FORMAT`], then the list must contain at most one element,
+    /// otherwise any number of elements are allowed. The view formats must be compatible with
+    /// `format`. If `flags` also contains [`ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE`],
+    /// then the view formats can also be uncompressed formats that are merely size-compatible
+    /// with `format`.
     ///
     /// If the list is empty, then depending on `flags`, a view must have the same format as
     /// `format`, can have any compatible format, or additionally any uncompressed size-compatible
@@ -1752,7 +1753,8 @@ pub struct ImageCreateInfo {
 
     /// The number of array layers to create the image with.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
     /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
     /// feature must be enabled on the device.
@@ -1767,7 +1769,8 @@ pub struct ImageCreateInfo {
 
     /// The number of samples per texel that the image should use.
     ///
-    /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// On [portability
+    /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
     /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
     /// feature must be enabled on the device.

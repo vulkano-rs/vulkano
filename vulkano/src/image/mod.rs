@@ -1327,8 +1327,7 @@ pub fn max_mip_levels(extent: [u32; 3]) -> u32 {
 ///
 /// # Panics
 ///
-/// - In debug mode, panics if `extent` contains 0.
-///   In release, returns an unspecified value.
+/// - In debug mode, panics if `extent` contains 0. In release, returns an unspecified value.
 #[inline]
 pub fn mip_level_extent(extent: [u32; 3], level: u32) -> Option<[u32; 3]> {
     if level == 0 {

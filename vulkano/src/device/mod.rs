@@ -1240,7 +1240,8 @@ pub struct DeviceCreateInfo {
     /// If the [`khr_portability_subset`](DeviceExtensions::khr_portability_subset) extension is
     /// available, it will be enabled automatically, so you do not have to do this yourself.
     /// You are responsible for ensuring that your program can work correctly on such devices.
-    /// See [the documentation of the `instance` module](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
+    /// See [the documentation of the `instance`
+    /// module](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// for more information.
     ///
     /// The default value is [`DeviceExtensions::empty()`].
@@ -1648,9 +1649,9 @@ pub struct QueueCreateInfo {
     /// The queues to create for the given queue family, each with a relative priority.
     ///
     /// The relative priority value is an arbitrary number between 0.0 and 1.0. Giving a queue a
-    /// higher priority is a hint to the driver that the queue should be given more processing time.
-    /// As this is only a hint, different drivers may handle this value differently and there are no
-    /// guarantees about its behavior.
+    /// higher priority is a hint to the driver that the queue should be given more processing
+    /// time. As this is only a hint, different drivers may handle this value differently and
+    /// there are no guarantees about its behavior.
     ///
     /// The default value is a single queue with a priority of 0.5.
     pub queues: Vec<f32>,

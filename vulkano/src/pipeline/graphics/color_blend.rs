@@ -41,8 +41,8 @@ pub struct ColorBlendState {
     /// The default value is `None`.
     pub logic_op: Option<LogicOp>,
 
-    /// Sets the blend and output state for each color attachment. The number of elements must match
-    /// the number of color attachments in the subpass.
+    /// Sets the blend and output state for each color attachment. The number of elements must
+    /// match the number of color attachments in the subpass.
     ///
     /// If there are multiple elements, and the `blend` and `color_write_mask` members of each
     /// element differ, then the [`independent_blend`](crate::device::Features::independent_blend)

@@ -313,8 +313,8 @@ fn main() -> Result<(), impl Error> {
                         elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0;
                     let rotation = Matrix3::from_angle_y(Rad(rotation as f32));
 
-                    // note: this teapot was meant for OpenGL where the origin is at the lower left
-                    //       instead the origin is at the upper left in Vulkan, so we reverse the Y axis
+                    // NOTE: This teapot was meant for OpenGL where the origin is at the lower left
+                    // instead the origin is at the upper left in Vulkan, so we reverse the Y axis.
                     let aspect_ratio =
                         swapchain.image_extent()[0] as f32 / swapchain.image_extent()[1] as f32;
                     let proj = cgmath::perspective(

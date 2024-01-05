@@ -42,8 +42,8 @@ impl RecordingCommandBuffer {
     /// - If [`index_data`] is `Some`, then if `index_max` is the highest index value in the index
     ///   buffer that is accessed, then the size of [`vertex_data`] must be at least<br/>
     ///   [`vertex_stride`] * ([`first_vertex`] + `index_max` + 1).
-    /// - If [`transform_data`] is `Some`, then for the
-    ///   3x4 matrix in the buffer, the first three columns must be a 3x3 invertible matrix.
+    /// - If [`transform_data`] is `Some`, then for the 3x4 matrix in the buffer, the first three
+    ///   columns must be a 3x3 invertible matrix.
     ///
     /// If `info.geometries` is [`AccelerationStructureGeometries::Aabbs`], then for each geometry:
     /// - For each accessed [`AabbPositions`] element in
@@ -54,11 +54,11 @@ impl RecordingCommandBuffer {
     /// of the buffer in [`data`](AccelerationStructureGeometryInstancesData::data) must be valid,
     /// as follows:
     /// - Any [`AccelerationStructureInstance::acceleration_structure_reference`] address contained
-    ///   in or referenced by [`data`](AccelerationStructureGeometryInstancesData::data)
-    ///   must be either 0, or a device address that was returned from calling [`device_address`]
-    ///   on a bottom-level acceleration structure.
-    /// - If an [`AccelerationStructureInstance::acceleration_structure_reference`] address is
-    ///   not 0, then the corresponding acceleration structure object must be kept alive and not be
+    ///   in or referenced by [`data`](AccelerationStructureGeometryInstancesData::data) must be
+    ///   either 0, or a device address that was returned from calling [`device_address`] on a
+    ///   bottom-level acceleration structure.
+    /// - If an [`AccelerationStructureInstance::acceleration_structure_reference`] address is not
+    ///   0, then the corresponding acceleration structure object must be kept alive and not be
     ///   dropped while it is bound to the top-level acceleration structure.
     /// - If [`data`](AccelerationStructureGeometryInstancesData::data) is
     ///   [`AccelerationStructureGeometryInstancesDataType::Pointers`], then the addresses in the
@@ -138,8 +138,8 @@ impl RecordingCommandBuffer {
     /// - [`primitive_count`] must not be greater than the corresponding element of
     ///   `max_primitive_counts`.
     /// - If `info.geometries` is [`AccelerationStructureGeometries::Instances`], then
-    ///   [`primitive_count`] must not be greater than the [`max_instance_count`] limit.
-    ///   Otherwise, it must not be greater than the [`max_primitive_count`] limit.
+    ///   [`primitive_count`] must not be greater than the [`max_instance_count`] limit. Otherwise,
+    ///   it must not be greater than the [`max_primitive_count`] limit.
     ///
     /// If `info.geometries` is [`AccelerationStructureGeometries::Triangles`], then:
     /// - [`primitive_offset`] must be a multiple of:
@@ -147,15 +147,15 @@ impl RecordingCommandBuffer {
     ///   - The byte size of the smallest component of [`vertex_format`] if [`index_data`] is
     ///     `None`.
     /// - [`transform_offset`] must be a multiple of 16.
-    /// - The size of [`vertex_data`] must be at least<br/>
-    ///   [`primitive_offset`] + ([`first_vertex`] + 3 * [`primitive_count`]) * [`vertex_stride`]
-    ///   <br/>if [`index_data`] is `None`, and as in [`build_acceleration_structure`] if
-    ///   [`index_data`] is `Some`.
-    /// - The size of [`index_data`] must be at least<br/>
-    ///   [`primitive_offset`] + 3 * [`primitive_count`] *
-    ///   [`index_data.index_type().size()`].
-    /// - The size of [`transform_data`] must be at least<br/>
-    ///   [`transform_offset`] + `size_of::<TransformMatrix>()`.
+    /// - The size of [`vertex_data`] must be at least<br/> [`primitive_offset`] +
+    ///   ([`first_vertex`]
+    ///   + 3 * [`primitive_count`]) * [`vertex_stride`] <br/>if [`index_data`] is `None`, and as
+    ///     in
+    ///   [`build_acceleration_structure`] if [`index_data`] is `Some`.
+    /// - The size of [`index_data`] must be at least<br/> [`primitive_offset`] + 3 *
+    ///   [`primitive_count`] * [`index_data.index_type().size()`].
+    /// - The size of [`transform_data`] must be at least<br/> [`transform_offset`] +
+    ///   `size_of::<TransformMatrix>()`.
     ///
     /// If `info.geometries` is [`AccelerationStructureGeometries::Aabbs`], then:
     /// - [`primitive_offset`] must be a multiple of 8.
@@ -170,8 +170,7 @@ impl RecordingCommandBuffer {
     ///     `size_of::<AccelerationStructureInstance>()`<br/> if
     ///     [`data`](AccelerationStructureGeometryInstancesData::data) is
     ///     [`AccelerationStructureGeometryInstancesDataType::Values`].
-    ///   - [`primitive_offset`] + [`primitive_count`] *
-    ///     `size_of::<DeviceSize>()`<br/> if
+    ///   - [`primitive_offset`] + [`primitive_count`] * `size_of::<DeviceSize>()`<br/> if
     ///     [`data`](AccelerationStructureGeometryInstancesData::data) is
     ///     [`AccelerationStructureGeometryInstancesDataType::Pointers`].
     ///
@@ -354,8 +353,8 @@ impl RecordingCommandBuffer {
     ///
     /// - `info.src` must have been built when this command is executed.
     /// - `info.dst` must be large enough to hold the serialized form of `info.src`. This can be
-    ///   queried using [`write_acceleration_structures_properties`] with a query pool whose type is
-    ///   [`QueryType::AccelerationStructureSerializationSize`].
+    ///   queried using [`write_acceleration_structures_properties`] with a query pool whose type
+    ///   is [`QueryType::AccelerationStructureSerializationSize`].
     ///
     /// [`write_acceleration_structures_properties`]: Self::write_acceleration_structures_properties
     #[inline]
@@ -440,8 +439,8 @@ impl RecordingCommandBuffer {
     /// - `info.src` must contain data previously serialized using
     ///   [`copy_acceleration_structure_to_memory`], and must have a format compatible with the
     ///   device (as queried by [`Device::acceleration_structure_is_compatible`]).
-    /// - `info.dst.size()` must be at least the size that the structure in `info.src` had
-    ///   before it was serialized.
+    /// - `info.dst.size()` must be at least the size that the structure in `info.src` had before
+    ///   it was serialized.
     ///
     /// [`copy_acceleration_structure_to_memory`]: Self::copy_acceleration_structure_to_memory
     /// [`Device::acceleration_structure_is_compatible`]: crate::device::Device::acceleration_structure_is_compatible
@@ -528,8 +527,8 @@ impl RecordingCommandBuffer {
     ///
     /// - All elements of `acceleration_structures` must have been built when this command is
     ///   executed.
-    /// - If `query_pool.query_type()` is [`QueryType::AccelerationStructureCompactedSize`],
-    ///   all elements of `acceleration_structures` must have been built with
+    /// - If `query_pool.query_type()` is [`QueryType::AccelerationStructureCompactedSize`], all
+    ///   elements of `acceleration_structures` must have been built with
     ///   [`BuildAccelerationStructureFlags::ALLOW_COMPACTION`].
     /// - The queries must be unavailable, ensured by calling [`reset_query_pool`].
     ///

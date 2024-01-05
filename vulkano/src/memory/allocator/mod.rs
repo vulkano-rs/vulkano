@@ -154,7 +154,7 @@
 //! Now if we free B and D, since these are done out of order, we will be left with holes between
 //! the other allocations, and we won't be able to fit allocation E anywhere:
 //!
-//!  ```plain
+//! ```plain
 //! +-----+-------------------+-------+-----------+-- - - --+       +-------------------------+
 //! |     |                   |       |           |         |   ?   |                         |
 //! |  A  |                   |   C   |           |   •••   |  <==  |            E            |

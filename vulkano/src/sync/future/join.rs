@@ -67,8 +67,9 @@ where
         let first = self.first.build_submission()?;
         let second = self.second.build_submission()?;
 
-        // In some cases below we have to submit previous command buffers already, this s done by flushing previous.
-        // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+        // In some cases below we have to submit previous command buffers already, this s done by
+        // flushing previous. Since the implementation should remember being flushed it's
+        // safe to call build_submission multiple times
         Ok(match (first, second) {
             (SubmitAnyBuilder::Empty, b) => b,
             (a, SubmitAnyBuilder::Empty) => a,

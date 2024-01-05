@@ -6,8 +6,8 @@
 //!
 //! - A *render pass* describes the overall process of drawing a frame. It is subdivided into one
 //!   or more subpasses.
-//! - A *framebuffer* contains the list of image views that are attached during the drawing of
-//!   each subpass.
+//! - A *framebuffer* contains the list of image views that are attached during the drawing of each
+//!   subpass.
 //!
 //! Render passes are typically created at initialization only (for example during a loading
 //! screen) because they can be costly, while framebuffers can be created and destroyed either at
@@ -47,8 +47,8 @@ mod framebuffer;
 /// A render pass in Vulkan is made up of three parts:
 /// - A list of attachments, which are image views that are inputs, outputs or intermediate stages
 ///   in the rendering process.
-/// - One or more subpasses, which are the steps in which the rendering process, takes place,
-///   and the attachments that are used for each step.
+/// - One or more subpasses, which are the steps in which the rendering process, takes place, and
+///   the attachments that are used for each step.
 /// - Dependencies, which describe how the input and output data of each subpass is to be passed
 ///   from one subpass to the next.
 ///
@@ -2141,9 +2141,9 @@ vulkan_bitflags! {
 
 /// Describes one of the subpasses of a render pass.
 ///
-/// A subpass can use zero or more attachments of various types. Attachment types of which there can
-/// be multiple are listed in a `Vec` in this structure. The index in these `Vec`s corresponds to
-/// the index used for that attachment type in the shader.
+/// A subpass can use zero or more attachments of various types. Attachment types of which there
+/// can be multiple are listed in a `Vec` in this structure. The index in these `Vec`s corresponds
+/// to the index used for that attachment type in the shader.
 ///
 /// If a particular index is not used in the shader, it can be set to `None` in this structure.
 /// This is useful if an unused index needs to be skipped but a higher index needs to be specified.
@@ -2158,9 +2158,9 @@ pub struct SubpassDescription {
     /// The default value is empty.
     pub flags: SubpassDescriptionFlags,
 
-    /// If not `0`, enables multiview rendering, and specifies the view indices that are rendered to
-    /// in this subpass. The value is a bitmask, so that that for example `0b11` will draw to the
-    /// first two views and `0b101` will draw to the first and third view.
+    /// If not `0`, enables multiview rendering, and specifies the view indices that are rendered
+    /// to in this subpass. The value is a bitmask, so that that for example `0b11` will draw
+    /// to the first two views and `0b101` will draw to the first and third view.
     ///
     /// If set to a nonzero value, it must be nonzero for all subpasses in the render pass, and the
     /// [`multiview`](crate::device::Features::multiview) feature must be enabled on the device.
@@ -2168,16 +2168,18 @@ pub struct SubpassDescription {
     /// The default value is `0`.
     pub view_mask: u32,
 
-    /// The attachments of the render pass that are to be used as input attachments in this subpass.
+    /// The attachments of the render pass that are to be used as input attachments in this
+    /// subpass.
     ///
     /// If an attachment is used here for the first time in this render pass, and it's is not also
-    /// used as a color or depth/stencil attachment in this subpass, then the attachment's `load_op`
-    /// must not be [`AttachmentLoadOp::Clear`].
+    /// used as a color or depth/stencil attachment in this subpass, then the attachment's
+    /// `load_op` must not be [`AttachmentLoadOp::Clear`].
     ///
     /// The default value is empty.
     pub input_attachments: Vec<Option<AttachmentReference>>,
 
-    /// The attachments of the render pass that are to be used as color attachments in this subpass.
+    /// The attachments of the render pass that are to be used as color attachments in this
+    /// subpass.
     ///
     /// The number of color attachments must be less than the
     /// [`max_color_attachments`](crate::device::Properties::max_color_attachments) limit of the
@@ -3203,9 +3205,9 @@ impl AttachmentReference {
 /// then `by_region` must be activated.
 ///
 /// If `src_subpass` or `dst_subpass` are set to `None`, this specifies an external
-/// dependency. An external dependency specifies a dependency on commands that were submitted before
-/// the render pass instance began (for `src_subpass`), or on commands that will be submitted
-/// after the render pass instance ends (for `dst_subpass`). The values must not both be
+/// dependency. An external dependency specifies a dependency on commands that were submitted
+/// before the render pass instance began (for `src_subpass`), or on commands that will be
+/// submitted after the render pass instance ends (for `dst_subpass`). The values must not both be
 /// `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubpassDependency {
@@ -3249,10 +3251,9 @@ pub struct SubpassDependency {
     /// Dependency flags that modify behavior of the subpass dependency.
     ///
     /// If a `src_subpass` equals `dst_subpass`, then:
-    /// - If `src_stages` and `dst_stages` both contain framebuffer-space stages,
-    ///   this must include [`BY_REGION`].
-    /// - If the subpass's `view_mask` has more than one view,
-    ///   this must include [`VIEW_LOCAL`].
+    /// - If `src_stages` and `dst_stages` both contain framebuffer-space stages, this must include
+    ///   [`BY_REGION`].
+    /// - If the subpass's `view_mask` has more than one view, this must include [`VIEW_LOCAL`].
     ///
     /// The default value is [`DependencyFlags::empty()`].
     ///
