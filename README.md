@@ -195,7 +195,7 @@ Use your package manager to install the required dev-tools and Vulkan drivers
 
 For example on ubuntu:
 ```
-sudo apt-get install build-essential git python cmake libvulkan-dev vulkan-utils
+sudo apt-get install build-essential git python cmake libvulkan-dev vulkan-tools
 ```
 On arch based system
 ```
