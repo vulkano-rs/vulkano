@@ -254,11 +254,16 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                                 }
                             }
                         },
-                    );
+                    )
+                    .collect::<Vec<_>>();
 
-                quote! {
-                    if self.#name {
-                        #(#requires_all_of_items)*
+                if requires_all_of_items.is_empty() {
+                    quote! {}
+                } else {
+                    quote! {
+                        if self.#name {
+                            #(#requires_all_of_items)*
+                        }
                     }
                 }
             },
