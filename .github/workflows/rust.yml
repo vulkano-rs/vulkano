@@ -35,9 +35,7 @@ jobs:
           ~/.cargo/registry/cache
           ~/.cargo/git/db
         key: ${{ matrix.name }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ matrix.name }}-build-cargo-
-          ${{ matrix.name }}-build-
+        restore-keys: ${{ matrix.name }}-build-cargo-
     - name: Build tests
       run: cargo build --tests --verbose
     - name: Run tests
