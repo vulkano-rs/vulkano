@@ -12,23 +12,18 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  windows_stable:
-#   runs-on: windows-latest
-    runs-on: [self-hosted, Windows]
-    steps:
-#   - name: Ninja Install
-#     run: pip install ninja
-    - uses: actions/checkout@v3
-    - name: Build tests
-      run: cargo build --tests --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
-  linux_stable:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        include:
+        - name: windows-latest
+          runs-on: [self-hosted, Windows]
+        - name: ubuntu-latest
+          runs-on: ubuntu-latest
+        - name: macos-latest
+          runs-on: macos-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v3
     - name: Build tests
@@ -36,21 +31,7 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
-  macos_stable:
-    runs-on: macos-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Build tests
-      run: cargo build --tests --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
+      run: cargo build --verbose
   clippy:
     runs-on: ubuntu-latest
     steps:
