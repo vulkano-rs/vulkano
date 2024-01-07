@@ -26,6 +26,18 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v3
+    - name: Cache Cargo home
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: ${{ matrix.name }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ matrix.name }}-build-cargo-
+          ${{ matrix.name }}-build-
     - name: Build tests
       run: cargo build --tests --verbose
     - name: Run tests
