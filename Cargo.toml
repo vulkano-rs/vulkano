@@ -61,3 +61,9 @@ cgmath = "0.18"
 png = "0.17"
 rand = "0.8"
 ron = "0.8"
+
+[profile.CI]
+inherits = "dev"
+debug = 0
+codegen-units = 1
+incremental = false
