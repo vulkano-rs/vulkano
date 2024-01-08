@@ -22,6 +22,7 @@ jobs:
           runs-on: ubuntu-latest
         - name: macos-latest
           runs-on: macos-latest
+      fail-fast: false
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
     steps:
