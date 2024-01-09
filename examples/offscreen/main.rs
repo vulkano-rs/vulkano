@@ -56,7 +56,7 @@ fn main() {
                 p.queue_family_properties()
                     .iter()
                     .enumerate()
-                    .position(|(i, q)| q.queue_flags.intersects(QueueFlags::GRAPHICS))
+                    .position(|(_i, q)| q.queue_flags.intersects(QueueFlags::GRAPHICS))
                     .map(|i| (p, i as u32))
             })
             .min_by_key(|(p, _)| match p.properties().device_type {
