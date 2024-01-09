@@ -50,11 +50,11 @@ fn main() {
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
+            // No need for swapchain extension support
             .filter_map(|p| {
                 p.queue_family_properties()
                     .iter()
-                    .enumerate()
-                    .position(|(_i, q)| q.queue_flags.intersects(QueueFlags::GRAPHICS))
+                    .position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS))
                     .map(|i| (p, i as u32))
             })
             .min_by_key(|(p, _)| match p.properties().device_type {
@@ -90,20 +90,6 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-    let saved_image_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::TRANSFER_DST,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::HOST_RANDOM_ACCESS,
-            ..Default::default()
-        },
-        (0..(1920 * 1080 * 4)).map(|_| 0u8),
-    )
-    .unwrap();
 
     #[derive(BufferContents, Vertex)]
     #[repr(C)]
@@ -187,7 +173,8 @@ fn main() {
     )
     .unwrap();
 
-    let image = Image::new(
+    // Creates offscreen image for rendering into
+    let render_output_image = Image::new(
         memory_allocator.clone(),
         ImageCreateInfo {
             format,
@@ -201,12 +188,13 @@ fn main() {
     )
     .unwrap();
 
-    let image_view = ImageView::new_default(image.clone()).unwrap();
+    let render_output_image_view = ImageView::new_default(render_output_image.clone()).unwrap();
 
     let framebuffer = Framebuffer::new(
         render_pass.clone(),
         FramebufferCreateInfo {
-            attachments: vec![image_view],
+            // Attach offscreen image to framebuffer
+            attachments: vec![render_output_image_view],
             ..Default::default()
         },
     )
@@ -280,12 +268,27 @@ fn main() {
         Default::default(),
     ));
 
+    // Host accessible buffer where offscreen image buffer's contents is copied to after rendering
+    let render_output_buf = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::HOST_LOCAL | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+            ..Default::default()
+        },
+        (0..(1920 * 1080 * 4)).map(|_| 0u8),
+    )
+    .unwrap();
+
     let mut builder = RecordingCommandBuffer::new(
         command_buffer_allocator.clone(),
         queue.queue_family_index(),
         CommandBufferLevel::Primary,
         CommandBufferBeginInfo {
-            usage: CommandBufferUsage::MultipleSubmit,
+            usage: CommandBufferUsage::OneTimeSubmit,
             ..Default::default()
         },
     )
@@ -295,6 +298,7 @@ fn main() {
         .begin_render_pass(
             RenderPassBeginInfo {
                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                // This framebuffer is attached to the offscreen image
                 ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
             },
             SubpassBeginInfo {
@@ -309,17 +313,17 @@ fn main() {
         .unwrap();
 
     unsafe {
-        builder
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)
-            .unwrap();
+        builder.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
     }
 
     builder.end_render_pass(Default::default()).unwrap();
 
+    // Copy from output image located in device accessible memory into output buffer located in
+    // host accessible memory.
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
-            image.clone(),
-            saved_image_buffer.clone(),
+            render_output_image.clone(),
+            render_output_buf.clone(),
         ))
         .unwrap();
 
@@ -333,7 +337,8 @@ fn main() {
         .wait(None)
         .unwrap();
 
-    let buffer_content = saved_image_buffer.read().unwrap();
+    // Access by reference bytes copied into host accessible output buffer
+    let buffer_content = render_output_buf.read().unwrap();
 
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("triangle.png");
     let file = File::create(&path).unwrap();
