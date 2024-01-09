@@ -241,7 +241,6 @@ fn main() {
 
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
-        // Finally, create the pipeline.
         GraphicsPipeline::new(
             device.clone(),
             None,
