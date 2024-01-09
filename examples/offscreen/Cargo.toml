@@ -1,0 +1,19 @@
+[package]
+name = "offscreen"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "offscreen"
+path = "main.rs"
+test = false
+bench = false
+doc = false
+
+[dependencies]
+vulkano = { workspace = true, features = ["macros"]  }
+vulkano-shaders = { workspace = true }
+winit = { workspace = true }
+anyhow = "1.0.79"
+image = "0.24.7"

@@ -1,0 +1,380 @@
+use image::{self, ImageBuffer, Rgba};
+use std::{default::Default, sync::Arc};
+use vulkano::{
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
+        CommandBufferUsage, CopyImageToBufferInfo, RecordingCommandBuffer, RenderPassBeginInfo,
+        SubpassBeginInfo, SubpassContents,
+    },
+    device::{physical::PhysicalDeviceType, Device, DeviceCreateInfo, QueueCreateInfo, QueueFlags},
+    format::Format,
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    pipeline::{
+        graphics::{
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            vertex_input::{Vertex, VertexDefinition},
+            viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
+        },
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
+    sync::GpuFuture,
+    VulkanLibrary,
+};
+
+fn main() -> Result<(), anyhow::Error> {
+    let (device, mut queues) = {
+        let library = VulkanLibrary::new().unwrap();
+
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                // Enable enumerating devices that use non-conformant Vulkan implementations.
+                // (e.g. MoltenVK)
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter_map(|p| {
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| q.queue_flags.intersects(QueueFlags::GRAPHICS))
+                    .map(|i| (p, i as u32))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            })
+            .expect("no suitable physical device found");
+
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        Device::new(
+            physical_device.clone(),
+            DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
+
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    let queue = queues.next().unwrap();
+
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
+    let saved_image_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::HOST_RANDOM_ACCESS,
+            ..Default::default()
+        },
+        (0..(1920 * 1080 * 4)).map(|_| 0u8), // Initialize with zeroes
+    )
+    .unwrap();
+
+    #[derive(BufferContents, Vertex)]
+    #[repr(C)]
+    struct Vertex {
+        #[format(R32G32_SFLOAT)]
+        position: [f32; 2],
+    }
+
+    let vertices = [
+        Vertex {
+            position: [-0.5, -0.25],
+        },
+        Vertex {
+            position: [0.0, 0.5],
+        },
+        Vertex {
+            position: [0.25, -0.1],
+        },
+    ];
+    let vertex_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        vertices,
+    )
+    .unwrap();
+
+    mod vs {
+        vulkano_shaders::shader! {
+            ty: "vertex",
+            src: r"
+                #version 450
+
+                layout(location = 0) in vec2 position;
+
+                void main() {
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }
+            ",
+        }
+    }
+
+    mod fs {
+        vulkano_shaders::shader! {
+            ty: "fragment",
+            src: r"
+                #version 450
+
+                layout(location = 0) out vec4 f_color;
+
+                void main() {
+                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            ",
+        }
+    }
+
+    let format = Format::B8G8R8A8_UNORM;
+
+    let render_pass = vulkano::single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            color: {
+                format: format,
+                samples: 1,
+                load_op: Clear,
+                store_op: Store,
+            }
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {},
+        }
+    )
+    .unwrap();
+
+    let image = Image::new(
+        memory_allocator.clone(),
+        ImageCreateInfo {
+            format,
+            usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
+            extent: [1920, 1080, 1],
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let image_view = ImageView::new_default(image.clone()).unwrap();
+
+    let framebuffer = Framebuffer::new(
+        render_pass.clone(),
+        FramebufferCreateInfo {
+            attachments: vec![image_view],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let pipeline = {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+
+        let stages = [
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
+        ];
+
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
+        // Finally, create the pipeline.
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                // How vertex data is read from the vertex buffers into the vertex shader.
+                vertex_input_state: Some(vertex_input_state),
+                // How vertices are arranged into primitive shapes.
+                // The default primitive shape is a triangle.
+                input_assembly_state: Some(InputAssemblyState::default()),
+                // How primitives are transformed and clipped to fit the framebuffer.
+                // We use a resizable viewport, set to draw over the entire window.
+                viewport_state: Some(ViewportState::default()),
+                // How polygons are culled and converted into a raster of pixels.
+                // The default value does not perform any culling.
+                rasterization_state: Some(RasterizationState::default()),
+                // How multiple fragment shader samples are converted to a single pixel value.
+                // The default value does not perform any multisampling.
+                multisample_state: Some(MultisampleState::default()),
+                // How pixel values are combined with the values already present in the framebuffer.
+                // The default value overwrites the old value with the new one, without any
+                // blending.
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    };
+
+    // Before we can start creating and recording command buffers, we need a way of allocating
+    // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
+    // underneath and provides a safe interface for them.
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+
+    // In order to draw, we have to record a *command buffer*. The command buffer object
+    // holds the list of commands that are going to be executed.
+    //
+    // Recording a command buffer is an expensive operation (usually a few hundred
+    // microseconds), but it is known to be a hot path in the driver and is expected to
+    // be optimized.
+    //
+    // Note that we have to pass a queue family when we create the command buffer. The
+    // command buffer will only be executable on that given queue family.
+    let mut builder = RecordingCommandBuffer::new(
+        command_buffer_allocator.clone(),
+        queue.queue_family_index(),
+        CommandBufferLevel::Primary,
+        CommandBufferBeginInfo {
+            usage: CommandBufferUsage::MultipleSubmit,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    builder
+        // Before we can draw, we have to *enter a render pass*. We specify which
+        // attachments we are going to use for rendering here, which needs to match
+        // what was previously specified when creating the pipeline.
+        .begin_render_pass(
+            RenderPassBeginInfo {
+                // A list of values to clear the attachments with. This list contains
+                // one item for each attachment in the render pass. In this case, there
+                // is only one attachment, and we clear it with a blue color.
+                //
+                // Only attachments that have `AttachmentLoadOp::Clear` are provided
+                // with clear values, any others should use `None` as the clear value.
+                clear_values: vec![Some([1.0, 1.0, 0.0, 1.0].into())],
+                ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+            },
+            SubpassBeginInfo {
+                // The contents of the first (and only) subpass.
+                // This can be either `Inline` or `SecondaryCommandBuffers`.
+                // The latter is a bit more advanced and is not covered here.
+                contents: SubpassContents::Inline,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .set_viewport(
+            0,
+            [{
+                let mut viewport = Viewport::default();
+
+                viewport.extent[0] = 1920.;
+                viewport.extent[1] = 1080.;
+
+                viewport
+            }]
+            .into_iter()
+            .collect(),
+        )
+        .unwrap()
+        .bind_pipeline_graphics(pipeline.clone())
+        .unwrap()
+        .bind_vertex_buffers(0, vertex_buffer.clone())
+        .unwrap();
+
+    unsafe {
+        builder
+            // We add a draw command.
+            .draw(vertex_buffer.len() as u32, 1, 0, 0)
+            .unwrap();
+    }
+
+    builder.end_render_pass(Default::default()).unwrap();
+
+    builder
+        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
+            image.clone(),
+            saved_image_buffer.clone(),
+        ))
+        .unwrap();
+
+    let command_buffer = builder.end().unwrap();
+
+    let finished = command_buffer.clone().execute(queue.clone()).unwrap();
+
+    finished
+        .then_signal_fence_and_flush()
+        .unwrap()
+        .wait(None)
+        .unwrap();
+
+    let buffer_content = saved_image_buffer.read().unwrap();
+
+    let image_buffer =
+        ImageBuffer::<Rgba<u8>, _>::from_raw(1920, 1080, &buffer_content[..]).unwrap();
+    image_buffer.save("rendered_image.png").unwrap();
+
+    Ok(())
+}
