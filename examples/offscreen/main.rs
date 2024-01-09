@@ -237,13 +237,10 @@ fn main() {
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState::default()),
                 viewport_state: Some(ViewportState {
-                    viewports: [{
-                        let mut viewport = Viewport::default();
-
-                        viewport.extent[0] = 1920.;
-                        viewport.extent[1] = 1080.;
-
-                        viewport
+                    viewports: [Viewport {
+                        offset: [0.0, 0.0],
+                        extent: [1920.0, 1080.0],
+                        depth_range: 0.0..=1.0,
                     }]
                     .into_iter()
                     .collect(),
