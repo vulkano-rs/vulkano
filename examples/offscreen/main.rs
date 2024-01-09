@@ -247,7 +247,6 @@ fn main() {
                     }]
                     .into_iter()
                     .collect(),
-                    scissors: [Scissor::default()].into_iter().collect(),
                     ..Default::default()
                 }),
                 rasterization_state: Some(RasterizationState::default()),
