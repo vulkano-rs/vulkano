@@ -1,5 +1,5 @@
-// Offscreen rendering example, renders a blue and red triangle to a buffer in memory then exports
-// to a PNG. No swapchains here!
+// Offscreen rendering example, renders a red triangle on a blue background to a buffer in memory
+// then exports to a PNG. No swapchains here!
 use std::{default::Default, fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
