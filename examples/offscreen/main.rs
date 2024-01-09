@@ -35,57 +35,55 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the `triangle`
     // example if you haven't done so yet.
 
-    let (device, mut queues) = {
-        let library = VulkanLibrary::new().unwrap();
+    let library = VulkanLibrary::new().unwrap();
 
-        let instance = Instance::new(
-            library,
-            InstanceCreateInfo {
-                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
-        let (physical_device, queue_family_index) = instance
-            .enumerate_physical_devices()
-            .unwrap()
-            // No need for swapchain extension support
-            .filter_map(|p| {
-                p.queue_family_properties()
-                    .iter()
-                    .position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS))
-                    .map(|i| (p, i as u32))
-            })
-            .min_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
-                _ => 5,
-            })
-            .expect("no suitable physical device found");
-
-        println!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
-
-        Device::new(
-            physical_device.clone(),
-            DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index,
-                    ..Default::default()
-                }],
-
-                ..Default::default()
-            },
-        )
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
         .unwrap()
-    };
+        // No need for swapchain extension support
+        .filter_map(|p| {
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS))
+                .map(|i| (p, i as u32))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+            _ => 5,
+        })
+        .expect("no suitable physical device found");
+
+    println!(
+        "Using device: {} (type: {:?})",
+        physical_device.properties().device_name,
+        physical_device.properties().device_type,
+    );
+
+    let (device, mut queues) = Device::new(
+        physical_device.clone(),
+        DeviceCreateInfo {
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
+
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let queue = queues.next().unwrap();
 
@@ -272,7 +270,8 @@ fn main() {
             ..Default::default()
         },
         AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()
         },
         (0..(1920 * 1080 * 4)).map(|_| 0u8),
