@@ -1,5 +1,7 @@
-use image::{self, ImageBuffer, Rgba};
 use std::{default::Default, sync::Arc};
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -9,8 +11,8 @@ use vulkano::{
     },
     device::{physical::PhysicalDeviceType, Device, DeviceCreateInfo, QueueCreateInfo, QueueFlags},
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageUsage},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
@@ -19,18 +21,17 @@ use vulkano::{
             multisample::MultisampleState,
             rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
+            viewport::{Scissor, Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        layout::PipelineDescriptorSetLayoutCreateInfo, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     sync::GpuFuture,
     VulkanLibrary,
 };
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() {
     let (device, mut queues) = {
         let library = VulkanLibrary::new().unwrap();
 
@@ -252,7 +253,22 @@ fn main() -> Result<(), anyhow::Error> {
                 input_assembly_state: Some(InputAssemblyState::default()),
                 // How primitives are transformed and clipped to fit the framebuffer.
                 // We use a resizable viewport, set to draw over the entire window.
-                viewport_state: Some(ViewportState::default()),
+                viewport_state: Some({
+                    ViewportState {
+                        viewports: [{
+                            let mut viewport = Viewport::default();
+
+                            viewport.extent[0] = 1920.;
+                            viewport.extent[1] = 1080.;
+
+                            viewport
+                        }]
+                        .into_iter()
+                        .collect(),
+                        scissors: [Scissor::default()].into_iter().collect(),
+                        ..Default::default()
+                    }
+                }),
                 // How polygons are culled and converted into a raster of pixels.
                 // The default value does not perform any culling.
                 rasterization_state: Some(RasterizationState::default()),
@@ -325,20 +341,6 @@ fn main() -> Result<(), anyhow::Error> {
             },
         )
         .unwrap()
-        .set_viewport(
-            0,
-            [{
-                let mut viewport = Viewport::default();
-
-                viewport.extent[0] = 1920.;
-                viewport.extent[1] = 1080.;
-
-                viewport
-            }]
-            .into_iter()
-            .collect(),
-        )
-        .unwrap()
         .bind_pipeline_graphics(pipeline.clone())
         .unwrap()
         .bind_vertex_buffers(0, vertex_buffer.clone())
@@ -372,9 +374,17 @@ fn main() -> Result<(), anyhow::Error> {
 
     let buffer_content = saved_image_buffer.read().unwrap();
 
-    let image_buffer =
-        ImageBuffer::<Rgba<u8>, _>::from_raw(1920, 1080, &buffer_content[..]).unwrap();
-    image_buffer.save("rendered_image.png").unwrap();
 
-    Ok(())
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("triangle.png");
+    let file = File::create(&path).unwrap();
+    let w = &mut BufWriter::new(file);
+    let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(&buffer_content).unwrap();
+
+    if let Ok(path) = path.canonicalize() {
+        println!("Saved to {}", path.display());
+    }
 }
