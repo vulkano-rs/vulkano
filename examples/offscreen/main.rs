@@ -1,7 +1,6 @@
-use std::{default::Default, sync::Arc};
-use std::fs::File;
-use std::io::BufWriter;
-use std::path::Path;
+// Offscreen rendering example, renders a blue and red triangle to a buffer in memory then exports
+// to a PNG. No swapchains here!
+use std::{default::Default, fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
@@ -24,7 +23,8 @@ use vulkano::{
             viewport::{Scissor, Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     sync::GpuFuture,
@@ -32,6 +32,9 @@ use vulkano::{
 };
 
 fn main() {
+    // The start of this example is exactly the same as `triangle`. You should read the `triangle`
+    // example if you haven't done so yet.
+
     let (device, mut queues) = {
         let library = VulkanLibrary::new().unwrap();
 
@@ -100,7 +103,7 @@ fn main() {
             memory_type_filter: MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()
         },
-        (0..(1920 * 1080 * 4)).map(|_| 0u8), // Initialize with zeroes
+        (0..(1920 * 1080 * 4)).map(|_| 0u8),
     )
     .unwrap();
 
@@ -167,7 +170,7 @@ fn main() {
         }
     }
 
-    let format = Format::B8G8R8A8_UNORM;
+    let format = Format::R8G8B8A8_UNORM;
 
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
@@ -246,38 +249,24 @@ fn main() {
             None,
             GraphicsPipelineCreateInfo {
                 stages: stages.into_iter().collect(),
-                // How vertex data is read from the vertex buffers into the vertex shader.
                 vertex_input_state: Some(vertex_input_state),
-                // How vertices are arranged into primitive shapes.
-                // The default primitive shape is a triangle.
                 input_assembly_state: Some(InputAssemblyState::default()),
-                // How primitives are transformed and clipped to fit the framebuffer.
-                // We use a resizable viewport, set to draw over the entire window.
-                viewport_state: Some({
-                    ViewportState {
-                        viewports: [{
-                            let mut viewport = Viewport::default();
+                viewport_state: Some(ViewportState {
+                    viewports: [{
+                        let mut viewport = Viewport::default();
 
-                            viewport.extent[0] = 1920.;
-                            viewport.extent[1] = 1080.;
+                        viewport.extent[0] = 1920.;
+                        viewport.extent[1] = 1080.;
 
-                            viewport
-                        }]
-                        .into_iter()
-                        .collect(),
-                        scissors: [Scissor::default()].into_iter().collect(),
-                        ..Default::default()
-                    }
+                        viewport
+                    }]
+                    .into_iter()
+                    .collect(),
+                    scissors: [Scissor::default()].into_iter().collect(),
+                    ..Default::default()
                 }),
-                // How polygons are culled and converted into a raster of pixels.
-                // The default value does not perform any culling.
                 rasterization_state: Some(RasterizationState::default()),
-                // How multiple fragment shader samples are converted to a single pixel value.
-                // The default value does not perform any multisampling.
                 multisample_state: Some(MultisampleState::default()),
-                // How pixel values are combined with the values already present in the framebuffer.
-                // The default value overwrites the old value with the new one, without any
-                // blending.
                 color_blend_state: Some(ColorBlendState::with_attachment_states(
                     subpass.num_color_attachments(),
                     ColorBlendAttachmentState::default(),
@@ -289,23 +278,11 @@ fn main() {
         .unwrap()
     };
 
-    // Before we can start creating and recording command buffers, we need a way of allocating
-    // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
-    // underneath and provides a safe interface for them.
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
         device.clone(),
         Default::default(),
     ));
 
-    // In order to draw, we have to record a *command buffer*. The command buffer object
-    // holds the list of commands that are going to be executed.
-    //
-    // Recording a command buffer is an expensive operation (usually a few hundred
-    // microseconds), but it is known to be a hot path in the driver and is expected to
-    // be optimized.
-    //
-    // Note that we have to pass a queue family when we create the command buffer. The
-    // command buffer will only be executable on that given queue family.
     let mut builder = RecordingCommandBuffer::new(
         command_buffer_allocator.clone(),
         queue.queue_family_index(),
@@ -318,24 +295,12 @@ fn main() {
     .unwrap();
 
     builder
-        // Before we can draw, we have to *enter a render pass*. We specify which
-        // attachments we are going to use for rendering here, which needs to match
-        // what was previously specified when creating the pipeline.
         .begin_render_pass(
             RenderPassBeginInfo {
-                // A list of values to clear the attachments with. This list contains
-                // one item for each attachment in the render pass. In this case, there
-                // is only one attachment, and we clear it with a blue color.
-                //
-                // Only attachments that have `AttachmentLoadOp::Clear` are provided
-                // with clear values, any others should use `None` as the clear value.
-                clear_values: vec![Some([1.0, 1.0, 0.0, 1.0].into())],
+                clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
                 ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
             },
             SubpassBeginInfo {
-                // The contents of the first (and only) subpass.
-                // This can be either `Inline` or `SecondaryCommandBuffers`.
-                // The latter is a bit more advanced and is not covered here.
                 contents: SubpassContents::Inline,
                 ..Default::default()
             },
@@ -374,11 +339,10 @@ fn main() {
 
     let buffer_content = saved_image_buffer.read().unwrap();
 
-
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("triangle.png");
     let file = File::create(&path).unwrap();
     let w = &mut BufWriter::new(file);
-    let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
+    let mut encoder = png::Encoder::new(w, 1920, 1080);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
