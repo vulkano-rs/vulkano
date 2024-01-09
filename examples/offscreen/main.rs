@@ -41,8 +41,6 @@ fn main() {
         let instance = Instance::new(
             library,
             InstanceCreateInfo {
-                // Enable enumerating devices that use non-conformant Vulkan implementations.
-                // (e.g. MoltenVK)
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 ..Default::default()
             },
