@@ -181,9 +181,7 @@ fn main() {
             extent: [1920, 1080, 1],
             ..Default::default()
         },
-        AllocationCreateInfo {
-            ..Default::default()
-        },
+        AllocationCreateInfo::default(),
     )
     .unwrap();
 
