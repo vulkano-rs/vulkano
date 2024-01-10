@@ -192,7 +192,7 @@ fn main() {
     let framebuffer = Framebuffer::new(
         render_pass.clone(),
         FramebufferCreateInfo {
-            // Attach offscreen image to framebuffer
+            // Attach the offscreen image to the framebuffer.
             attachments: vec![render_output_image_view],
             ..Default::default()
         },
