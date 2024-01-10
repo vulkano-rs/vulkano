@@ -294,7 +294,7 @@ fn main() {
         .begin_render_pass(
             RenderPassBeginInfo {
                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                // This framebuffer is attached to the offscreen image
+                // This framebuffer has the offscreen image attached to it.
                 ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
             },
             SubpassBeginInfo {
