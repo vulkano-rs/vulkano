@@ -312,7 +312,7 @@ fn main() {
 
     builder.end_render_pass(Default::default()).unwrap();
 
-    // Copy from the output image into the host-accessible output buffer so that we can read the 
+    // Copy from the output image into the host-accessible output buffer so that we can read the
     // image data.
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
