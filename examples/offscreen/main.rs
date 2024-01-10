@@ -314,8 +314,8 @@ fn main() {
 
     builder.end_render_pass(Default::default()).unwrap();
 
-    // Copy from output image located in device accessible memory into output buffer located in
-    // host accessible memory.
+    // Copy from the output image into the host-accessible output buffer so that we can read the 
+    // image data.
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
             render_output_image.clone(),
