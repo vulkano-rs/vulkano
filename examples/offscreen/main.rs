@@ -312,8 +312,9 @@ fn main() {
 
     builder.end_render_pass(Default::default()).unwrap();
 
-    // Copy from the output image into the host-accessible output buffer so that we can read the
-    // image data.
+    // The output image stores information in an unknown format (usually non-linear) optimized for
+    // usage in the GPU. This step copies the output image into a host readable linear output
+    // buffer where consecutive pixels in the image are laid out consecutively in memory.
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
             render_output_image.clone(),
