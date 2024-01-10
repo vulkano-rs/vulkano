@@ -172,7 +172,7 @@ fn main() {
     )
     .unwrap();
 
-    // Creates offscreen image for rendering into
+    // Create an offscreen image for rendering into.
     let render_output_image = Image::new(
         memory_allocator.clone(),
         ImageCreateInfo {
