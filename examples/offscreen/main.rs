@@ -163,7 +163,7 @@ fn main() {
                 samples: 1,
                 load_op: Clear,
                 store_op: Store,
-            }
+            },
         },
         pass: {
             color: [color],
