@@ -12,58 +12,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  windows_stable:
-#   runs-on: windows-latest
-    runs-on: [self-hosted, Windows]
-    steps:
-#   - name: Ninja Install
-#     run: pip install ninja
-    - uses: actions/checkout@v3
-    - name: Build tests
-      run: cargo build --tests --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
-  linux_stable:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Build tests
-      run: cargo build --tests --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
-  macos_stable:
-    runs-on: macos-latest
+  build:
+    strategy:
+      matrix:
+        include:
+        - name: windows-latest
+          runs-on: [self-hosted, Windows]
+          self-hosted: true
+        - name: ubuntu-latest
+          runs-on: ubuntu-latest
+          self-hosted: false
+        - name: macos-latest
+          runs-on: macos-latest
+          self-hosted: false
+      fail-fast: false
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v3
+    - run: rustup toolchain install stable
+    - uses: Swatinem/rust-cache@v2
+      if: ${{ ! matrix.self-hosted }}
+      with:
+        shared-key: ${{ matrix.name }}
     - name: Build tests
-      run: cargo build --tests --verbose
+      run: cargo build --profile=CI --verbose --tests
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --profile=CI --verbose
     - name: Build examples
-      run: |
-        cd examples
-        cargo build --verbose
+      run: cargo build --profile=CI --verbose --bins
   clippy:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - run: rustup toolchain install stable --component clippy
+    - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: ubuntu-latest
+        save-if: "false"
     - name: Run clippy check
-      run: |
-        rustup component add clippy
-        cargo clippy -- -Dwarnings
+      run: cargo clippy --profile=CI -- -Dwarnings
   fmt:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - run: rustup toolchain install nightly --component rustfmt
     - name: Run fmt check
-      run: |
-        rustup toolchain install nightly --component rustfmt
-        cargo +nightly fmt --check
+      run: cargo +nightly fmt --check
