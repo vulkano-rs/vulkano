@@ -333,7 +333,7 @@ fn main() {
         .wait(None)
         .unwrap();
 
-    // Access by reference bytes copied into host accessible output buffer
+    // Access the bytes copied into the host-accessible output buffer by reference.
     let buffer_content = render_output_buf.read().unwrap();
 
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("triangle.png");
