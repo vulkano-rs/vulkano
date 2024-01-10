@@ -21,7 +21,7 @@ use vulkano::{
             multisample::MultisampleState,
             rasterization::RasterizationState,
             vertex_input::{Vertex, VertexDefinition},
-            viewport::{Scissor, Viewport, ViewportState},
+            viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
