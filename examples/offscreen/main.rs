@@ -261,7 +261,7 @@ fn main() {
         Default::default(),
     ));
 
-    // Host accessible buffer where offscreen image buffer's contents is copied to after rendering
+    // Host-accessible buffer where the offscreen image's contents are copied to after rendering.
     let render_output_buf = Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
