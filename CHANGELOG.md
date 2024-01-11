@@ -97,6 +97,7 @@ Changes to queries:
 - [#1738](https://github.com/vulkano-rs/vulkano/issues/1738): Validation of shader interface matching is insufficient.
 - Improved and more accurate validation of fragment output.
 - `RawRecordingCommandBuffer::end` being safe to call.
+- Fix wrong comparison in push constant size validation check.
 
 # Version 0.34.1 (2023-10-29)
 
