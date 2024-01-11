@@ -80,7 +80,6 @@ fn main() {
                 queue_family_index,
                 ..Default::default()
             }],
-
             ..Default::default()
         },
     )
