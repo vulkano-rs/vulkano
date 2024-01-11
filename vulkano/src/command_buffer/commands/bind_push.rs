@@ -1065,7 +1065,7 @@ impl RawRecordingCommandBuffer {
         if offset as usize + remaining_size > properties.max_push_constants_size as usize {
             return Err(Box::new(ValidationError {
                 problem: "`offset` + the size of `push_constants` is not less than or \
-                    `equal to the max_push_constants_size` limit"
+                    equal to the `max_push_constants_size` limit"
                     .into(),
                 vuids: &["VUID-vkCmdPushConstants-size-00371"],
                 ..Default::default()
