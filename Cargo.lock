@@ -1489,6 +1489,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "offscreen"
+version = "0.0.0"
+dependencies = [
+ "png",
+ "vulkano",
+ "vulkano-shaders",
+ "winit 0.29.9",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
