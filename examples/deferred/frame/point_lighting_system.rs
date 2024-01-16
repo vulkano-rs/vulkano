@@ -51,8 +51,6 @@ impl PointLightingSystem {
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> PointLightingSystem {
-        // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
-        //       hard-code these values in the shader
         let vertices = [
             LightingVertex {
                 position: [-1.0, -1.0],

@@ -79,7 +79,6 @@ impl FractalApp {
             ),
             place_over_frame: RenderPassPlaceOverFrame::new(
                 gfx_queue,
-                memory_allocator.clone(),
                 command_buffer_allocator,
                 descriptor_set_allocator,
                 image_format,
