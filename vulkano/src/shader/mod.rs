@@ -153,8 +153,8 @@
 //! - For `OpCooperativeMatrixLoadKHR`, `OpCooperativeMatrixStoreKHR`, `OpCooperativeMatrixLoadNV`
 //!   and `OpCooperativeMatrixStoreNV` instructions, the `Pointer` and `Stride` operands must both
 //!   be aligned to the minimum of either 16 bytes or the number of bytes per row/column of the
-//!   matrix (depending on the `ColumnMajor` and `RowMajor` decorations).
-//!   <sup>[\[06324\]] [\[08986\]]</sup>
+//!   matrix (depending on the `ColumnMajor` and `RowMajor` decorations). <sup>[\[06324\]]
+//!   [\[08986\]]</sup>
 //!
 //! ## Image views and buffer views
 //!
@@ -170,8 +170,8 @@
 //!   only if the format of the bound image view or buffer view also has a 64-bit component.
 //!   Otherwise, it must have a `Width` of 32. <sup>[\[04470\]] [\[04471\]] [\[04472\]]
 //!   [\[04473\]]</sup>
-//! - The [`samples`](Image::samples) of the underlying image of the bound image view
-//!   must match the `MS` operand of the `OpImageType`. <sup>[\[08725\]] [\[08726\]]</sup>
+//! - The [`samples`](Image::samples) of the underlying image of the bound image view must match
+//!   the `MS` operand of the `OpImageType`. <sup>[\[08725\]] [\[08726\]]</sup>
 //! - For a storage image/texel buffer declared with `OpTypeImage` with an `Unknown` format:
 //!   - If it is written to in the shader, the format of the bound image view or buffer view must
 //!     have the [`FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT`] format feature. <sup>[\[07027\]]
@@ -223,15 +223,15 @@
 //!
 //! ## Mesh shading
 //!
-//! - If the shader declares the `OutputPoints` execution mode with a value greater than 0,
-//!   and the [`maintenance5`](Features::maintenance5) feature is not enabled on the device,
-//!   then the shader must write to a variable decorated with `PointSize` for each output point.
+//! - If the shader declares the `OutputPoints` execution mode with a value greater than 0, and the
+//!   [`maintenance5`](Features::maintenance5) feature is not enabled on the device, then the
+//!   shader must write to a variable decorated with `PointSize` for each output point.
 //!   <sup>[\[09218\]]</sup>
 //!
 //! For `OpSetMeshOutputsEXT` instructions:
 //!
-//! - The `Vertex Count` operand must be less than or equal to the value declared with the
-//!   shader's `OutputVertices` execution mode. <sup>[\[07332\]]</sup>
+//! - The `Vertex Count` operand must be less than or equal to the value declared with the shader's
+//!   `OutputVertices` execution mode. <sup>[\[07332\]]</sup>
 //! - The `Primitive Count` operand must be less than or equal to the value declared with the
 //!   shader's `OutputPrimitivesEXT` execution mode. <sup>[\[07333\]]</sup>
 //!
@@ -249,26 +249,21 @@
 //!   - `SkipTrianglesKHR`, `CullBackFacingTrianglesKHR` and `CullFrontFacingTrianglesKHR`
 //!     <sup>[\[06889\]] [\[06892\]]</sup>
 //!   - `SkipTrianglesKHR` and `SkipAABBsKHR` <sup>[\[06890\]] [\[06552\]] [\[07712\]]</sup>
-//!   - `OpaqueKHR`, `NoOpaqueKHR`, `CullOpaqueKHR`, and `CullNoOpaqueKHR`
-//!     <sup>[\[06891\]] [\[06893\]]</sup>
-//! - The `RayOrigin` and `RayDirection` operands must not contain infinite or NaN values.
-//!   <sup>
-//!   [\[06348\]] [\[06351\]]
-//!   [\[06355\]] [\[06358\]]
-//!   </sup>
-//! - The `RayTmin` and `RayTmax` operands must not contain negative or NaN values, and
-//!   `RayTmin` must be less than or equal to `RayTmax`.
-//!   <sup>
-//!   [\[06349\]] [\[06350\]] [\[06351\]]
-//!   [\[06356\]] [\[06357\]] [\[06358\]]
-//!   </sup>
+//!   - `OpaqueKHR`, `NoOpaqueKHR`, `CullOpaqueKHR`, and `CullNoOpaqueKHR` <sup>[\[06891\]]
+//!     [\[06893\]]</sup>
+//! - The `RayOrigin` and `RayDirection` operands must not contain infinite or NaN values. <sup>
+//!   [\[06348\]] [\[06351\]] [\[06355\]] [\[06358\]] </sup>
+//! - The `RayTmin` and `RayTmax` operands must not contain negative or NaN values, and `RayTmin`
+//!   must be less than or equal to `RayTmax`. <sup> [\[06349\]] [\[06350\]] [\[06351\]]
+//!   [\[06356\]] [\[06357\]] [\[06358\]] </sup>
 //!
 //! For `OpRayQueryGenerateIntersectionKHR` instructions:
 //!
 //! - The `Hit T` operand must be greater than or equal to the value that would be returned by
 //!   `OpRayQueryGetRayTMinKHR`. <sup>[\[06353\]]</sup>
 //! - The `Hit T` operand must be less than or equal to the value that would be returned by
-//!   `OpRayQueryGetIntersectionTKHR` for the current committed intersection. <sup>[\[06353\]]</sup>
+//!   `OpRayQueryGetIntersectionTKHR` for the current committed intersection.
+//!   <sup>[\[06353\]]</sup>
 //!
 //! For `OpReportIntersectionKHR` instructions:
 //!
@@ -281,8 +276,8 @@
 //! depends on the type of shader being executed:
 //!
 //! - For compute, task and mesh shaders, an invocation group is the same as the (local) workgroup.
-//!   A single `dispatch` command value spawns one distinct invocation group for every element
-//!   in the product of the given `group_counts` argument.
+//!   A single `dispatch` command value spawns one distinct invocation group for every element in
+//!   the product of the given `group_counts` argument.
 //! - For all other graphics shaders, an invocation group is all shaders invoked by a single draw
 //!   command. For indirect draws, each element of the indirect buffer creates one draw call.
 //! - For ray tracing shaders, an invocation group is an implementation-dependent subset of the
