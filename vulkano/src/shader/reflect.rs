@@ -15,6 +15,7 @@ use crate::{
 };
 use ahash::{HashMap, HashSet};
 use half::f16;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
@@ -1440,6 +1441,96 @@ pub(crate) fn get_constant(spirv: &Spirv, id: Id) -> Option<u64> {
             2 => Some(value[0] as u64 | (value[1] as u64) << 32),
             _ => panic!("constant {} is larger than 64 bits", id),
         },
+        _ => None,
+    }
+}
+
+pub(crate) fn get_constant_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[u64; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::Constant { value, .. } => match value.len() {
+                        1 => value[0] as u64,
+                        2 => value[0] as u64 | (value[1] as u64) << 32,
+                        _ => panic!("constant {} is larger than 64 bits", id),
+                    },
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+pub(crate) fn get_constant_float_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[f64; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::Constant { value, .. } => match value.len() {
+                        1 => f32::from_bits(value[0]) as f64,
+                        2 => f64::from_bits(value[0] as u64 | (value[1] as u64) << 32),
+                        _ => panic!("constant {} is larger than 64 bits", id),
+                    },
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+pub(crate) fn get_constant_maybe_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[u64; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::Constant { value, .. } => match value.len() {
+            1 => Some(smallvec![value[0] as u64]),
+            2 => Some(smallvec![value[0] as u64 | (value[1] as u64) << 32]),
+            _ => panic!("constant {} is larger than 64 bits", id),
+        },
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::Constant { value, .. } => match value.len() {
+                        1 => value[0] as u64,
+                        2 => value[0] as u64 | (value[1] as u64) << 32,
+                        _ => panic!("constant {} is larger than 64 bits", id),
+                    },
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+pub(crate) fn get_constant_composite_composite(
+    spirv: &Spirv,
+    id: Id,
+) -> Option<SmallVec<[SmallVec<[u64; 4]>; 4]>> {
+    match spirv.id(id).instruction() {
+        Instruction::ConstantComposite { constituents, .. } => Some(
+            constituents
+                .iter()
+                .map(|&id| match spirv.id(id).instruction() {
+                    Instruction::ConstantComposite { constituents, .. } => constituents
+                        .iter()
+                        .map(|&id| match spirv.id(id).instruction() {
+                            Instruction::Constant { value, .. } => match value.len() {
+                                1 => value[0] as u64,
+                                2 => value[0] as u64 | (value[1] as u64) << 32,
+                                _ => panic!("constant {} is larger than 64 bits", id),
+                            },
+                            _ => unreachable!(),
+                        })
+                        .collect(),
+                    _ => unreachable!(),
+                })
+                .collect(),
+        ),
         _ => None,
     }
 }

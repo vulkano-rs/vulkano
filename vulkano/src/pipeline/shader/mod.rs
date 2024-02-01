@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub(crate) mod inout_interface;
+pub(crate) mod validate_runtime;
 
 /// Specifies a single shader stage when creating a pipeline.
 #[derive(Clone, Debug)]
@@ -62,6 +63,9 @@ impl PipelineShaderStageCreateInfo {
         } = self;
 
         let spirv = entry_point.module().spirv();
+        validate_runtime::validate_runtime(device, spirv, entry_point.id())
+            .map_err(|err| err.add_context("entry_point"))?;
+
         let properties = device.physical_device().properties();
 
         flags.validate_device(device).map_err(|err| {
