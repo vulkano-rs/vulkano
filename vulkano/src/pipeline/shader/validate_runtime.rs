@@ -10,10 +10,9 @@ use crate::{
             get_constant_float_composite, get_constant_maybe_composite, size_of_type,
         },
         spirv::{
-            Capability, ExecutionMode, ExecutionModel, FunctionInfo, Instruction, Scope, Spirv,
-            StorageClass,
+            Capability, Decoration, Dim, ExecutionMode, ExecutionModel, FunctionInfo, Id,
+            ImageFormat, Instruction, Scope, Spirv, StorageClass,
         },
-        spirv::{Decoration, Dim, Id, ImageFormat},
         ShaderStage,
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
@@ -1450,8 +1449,8 @@ impl<'a> RuntimeValidator<'a> {
                                     }
                                 }
 
-                                // Inherit the XfbBuffer and Stream of the parent variable if there is
-                                // one.
+                                // Inherit the XfbBuffer and Stream of the parent variable if there
+                                // is one.
                                 if let (Some(offset), Some(xfb_buffer)) =
                                     (member_offset, member_xfb_buffer.or(xfb_buffer))
                                 {
@@ -2280,7 +2279,8 @@ impl<'a> RuntimeValidator<'a> {
                 // TODO: needs VK_NV_cooperative_matrix support
                 // VUID-RuntimeSpirv-OpTypeCooperativeMatrixNV-06322
                 // OpTypeCooperativeMatrixNV and OpCooperativeMatrix* instructions
-                // must not be used in shader stages not included in VkPhysicalDeviceCooperativeMatrixPropertiesNV::cooperativeMatrixSupportedStages
+                // must not be used in shader stages not included in
+                // VkPhysicalDeviceCooperativeMatrixPropertiesNV::cooperativeMatrixSupportedStages
             }
 
             if let Some(scope) = instruction
@@ -2710,9 +2710,9 @@ impl<'a> RuntimeValidator<'a> {
                     group_count_z,
                     ..
                 } => {
-                    // TODO: If the shader has multiple entry points with different execution models,
-                    // then we really need to use the entry point's call tree,
-                    // instead of a flat iteration over all functions.
+                    // TODO: If the shader has multiple entry points with different execution
+                    // models, then we really need to use the entry point's call
+                    // tree, instead of a flat iteration over all functions.
                     if self.execution_model == ExecutionModel::MeshEXT {
                         let group_count_x = get_constant(self.spirv, group_count_x);
                         let group_count_y = get_constant(self.spirv, group_count_y);
