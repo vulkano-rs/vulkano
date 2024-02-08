@@ -23,7 +23,6 @@ use winit::{
 /// };
 /// use winit::event_loop::EventLoop;
 ///
-/// #[test]
 /// fn test() {
 ///     let context = VulkanoContext::new(VulkanoConfig::default());
 ///     let event_loop = EventLoop::new();
