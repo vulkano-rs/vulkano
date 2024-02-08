@@ -25,7 +25,7 @@ use winit::{
 ///
 /// fn test() {
 ///     let context = VulkanoContext::new(VulkanoConfig::default());
-///     let event_loop = EventLoop::new();
+///     let event_loop = EventLoop::new().unwrap();
 ///     let mut vulkano_windows = VulkanoWindows::default();
 ///     let _id1 =
 ///         vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
