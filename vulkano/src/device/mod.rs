@@ -96,8 +96,8 @@
 //!
 //! TODO: write
 
-use self::physical::PhysicalDevice;
 pub(crate) use self::properties::PropertiesFfi;
+use self::{physical::PhysicalDevice, queue::DeviceQueueInfo};
 pub use self::{
     properties::Properties,
     queue::{Queue, QueueFamilyProperties, QueueFlags, QueueGuard},
@@ -477,12 +477,6 @@ impl Device {
                 .map_or(ptr::null(), |func| func as _)
         });
 
-        struct QueueToGet {
-            flags: QueueCreateFlags,
-            queue_family_index: u32,
-            id: u32,
-        }
-
         let mut active_queue_family_indices: SmallVec<[_; 2]> =
             SmallVec::with_capacity(queue_create_infos.len());
         let mut queues_to_get: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create_infos.len());
@@ -496,10 +490,13 @@ impl Device {
             } = queue_create_info;
 
             active_queue_family_indices.push(queue_family_index);
-            queues_to_get.extend((0..queues.len() as u32).map(move |id| QueueToGet {
-                flags,
-                queue_family_index,
-                id,
+            queues_to_get.extend((0..queues.len() as u32).map(move |queue_index| {
+                DeviceQueueInfo {
+                    flags,
+                    queue_family_index,
+                    queue_index,
+                    ..Default::default()
+                }
             }));
         }
 
@@ -536,15 +533,9 @@ impl Device {
 
         let queues_iter = {
             let device = device.clone();
-            queues_to_get.into_iter().map(move |queue_to_get| unsafe {
-                let QueueToGet {
-                    flags,
-                    queue_family_index,
-                    id,
-                } = queue_to_get;
-
-                Queue::new(device.clone(), flags, queue_family_index, id)
-            })
+            queues_to_get
+                .into_iter()
+                .map(move |queue_info| unsafe { Queue::new(device.clone(), queue_info) })
         };
 
         (device, queues_iter)
