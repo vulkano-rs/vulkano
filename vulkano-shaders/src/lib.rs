@@ -619,7 +619,7 @@ impl Parse for MacroInput {
                         "1.1" => EnvVersion::Vulkan1_1,
                         "1.2" => EnvVersion::Vulkan1_2,
                         "1.3" => EnvVersion::Vulkan1_3,
-                        ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3` found `{ver}`"),
+                        ver => bail!(lit, "expected `1.0`, `1.1`, `1.2` or `1.3`, found `{ver}`"),
                     });
                 }
                 "spirv_version" => {
