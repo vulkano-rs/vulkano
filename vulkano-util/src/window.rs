@@ -16,7 +16,7 @@ use winit::{
 ///
 /// ## Examples
 ///
-/// ```
+/// ```no_run
 /// use vulkano_util::{
 ///     context::{VulkanoConfig, VulkanoContext},
 ///     window::VulkanoWindows,
