@@ -27,7 +27,7 @@ fn include_callback(
     directive_type: IncludeType,
     contained_within_path_raw: &str,
     recursion_depth: usize,
-    include_directories: &[PathBuf],    
+    include_directories: &[PathBuf],
     root_source_has_path: bool,
     base_path: &Path,
     includes: &mut Vec<String>,
