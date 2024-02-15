@@ -75,6 +75,9 @@ Changes to queries:
 - `QueryPoolCreateInfo` now has a `pipeline_statistics` field to specify the pipeline statistics flags.
 - The `CommandBufferInheritanceInfo::query_statistic_flags` field is renamed to `pipeline_statistics` to match Vulkan.
 
+Changes to queues:
+- The `Queue::id_within_family` method is renamed to `queue_index` to match Vulkan.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
@@ -97,6 +100,7 @@ Changes to queries:
 - [#1738](https://github.com/vulkano-rs/vulkano/issues/1738): Validation of shader interface matching is insufficient.
 - Improved and more accurate validation of fragment output.
 - `RawRecordingCommandBuffer::end` being safe to call.
+- Fix wrong comparison in push constant size validation check.
 
 # Version 0.34.1 (2023-10-29)
 

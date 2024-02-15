@@ -168,7 +168,7 @@ impl QueryPool {
     ///
     /// See also [`copy_query_pool_results`].
     ///
-    /// [`self.ty().result_len()`]: QueryType::result_len
+    /// [`self.ty().result_len()`]: QueryPool::result_len
     /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
     /// [`copy_query_pool_results`]: crate::command_buffer::RecordingCommandBuffer::copy_query_pool_results
     #[inline]

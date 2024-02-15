@@ -30,31 +30,45 @@ pub struct Queue {
 
     flags: QueueCreateFlags,
     queue_family_index: u32,
-    id: u32, // id within family
+    queue_index: u32, // index within family
 
     state: Mutex<QueueState>,
 }
 
 impl Queue {
-    pub(super) unsafe fn new(
-        device: Arc<Device>,
-        flags: QueueCreateFlags,
-        queue_family_index: u32,
-        id: u32,
-    ) -> Arc<Self> {
-        let handle = {
-            let fns = device.fns();
-            let mut output = MaybeUninit::uninit();
-            (fns.v1_0.get_device_queue)(
-                device.handle(),
-                queue_family_index,
-                id,
-                output.as_mut_ptr(),
-            );
-            output.assume_init()
+    pub(super) unsafe fn new(device: Arc<Device>, queue_info: DeviceQueueInfo) -> Arc<Self> {
+        let &DeviceQueueInfo {
+            flags,
+            queue_family_index,
+            queue_index,
+            _ne: _,
+        } = &queue_info;
+
+        let queue_info_vk = ash::vk::DeviceQueueInfo2 {
+            flags: flags.into(),
+            queue_family_index,
+            queue_index,
+            ..Default::default()
         };
 
-        Self::from_handle(device, handle, flags, queue_family_index, id)
+        let fns = device.fns();
+        let mut output = MaybeUninit::uninit();
+
+        if device.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_device_queue2)(device.handle(), &queue_info_vk, output.as_mut_ptr());
+        } else {
+            debug_assert!(queue_info_vk.flags.is_empty());
+            debug_assert!(queue_info_vk.p_next.is_null());
+            (fns.v1_0.get_device_queue)(
+                device.handle(),
+                queue_info_vk.queue_family_index,
+                queue_info_vk.queue_index,
+                output.as_mut_ptr(),
+            );
+        }
+
+        let handle = output.assume_init();
+        Self::from_handle(device, handle, queue_info)
     }
 
     // TODO: Make public
@@ -62,16 +76,21 @@ impl Queue {
     pub(super) unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::Queue,
-        flags: QueueCreateFlags,
-        queue_family_index: u32,
-        id: u32,
+        queue_info: DeviceQueueInfo,
     ) -> Arc<Self> {
+        let DeviceQueueInfo {
+            flags,
+            queue_family_index,
+            queue_index,
+            _ne: _,
+        } = queue_info;
+
         Arc::new(Queue {
             handle,
             device: InstanceOwnedDebugWrapper(device),
             flags,
             queue_family_index,
-            id,
+            queue_index,
             state: Mutex::new(Default::default()),
         })
     }
@@ -96,8 +115,8 @@ impl Queue {
 
     /// Returns the index of this queue within its queue family.
     #[inline]
-    pub fn id_within_family(&self) -> u32 {
-        self.id
+    pub fn queue_index(&self) -> u32 {
+        self.queue_index
     }
 
     /// Locks the queue and then calls the provided closure, providing it with an object that
@@ -140,7 +159,7 @@ unsafe impl DeviceOwned for Queue {
 impl PartialEq for Queue {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.queue_index == other.queue_index
             && self.queue_family_index == other.queue_family_index
             && self.device == other.device
     }
@@ -150,9 +169,30 @@ impl Eq for Queue {}
 
 impl Hash for Queue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        self.queue_index.hash(state);
         self.queue_family_index.hash(state);
         self.device.hash(state);
+    }
+}
+
+/// Parameters to retrieve a [`Queue`] from the device.
+#[derive(Clone, Debug)]
+pub(super) struct DeviceQueueInfo {
+    pub(super) flags: QueueCreateFlags,
+    pub(super) queue_family_index: u32,
+    pub(super) queue_index: u32,
+    pub(super) _ne: crate::NonExhaustive,
+}
+
+impl Default for DeviceQueueInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            flags: QueueCreateFlags::empty(),
+            queue_family_index: 0,
+            queue_index: 0,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }
 

@@ -251,7 +251,7 @@ impl RecordingCommandBuffer {
     ///
     /// See also [`get_results`].
     ///
-    /// [`query_pool.ty().result_len()`]: crate::query::QueryType::result_len
+    /// [`query_pool.ty().result_len()`]: crate::query::QueryPool::result_len
     /// [`QueryResultFlags::WITH_AVAILABILITY`]: crate::query::QueryResultFlags::WITH_AVAILABILITY
     /// [`get_results`]: crate::query::QueryPool::get_results
     pub fn copy_query_pool_results<T>(
