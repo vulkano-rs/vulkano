@@ -89,6 +89,7 @@ Changes to queues:
 - Documented the safety requirements of shaders in the `shader` module.
 - Support for the `khr_draw_indirect_count` extension.
 - Support for the `ext_mesh_shader` extension.
+- Vulkano-shaders: Support for Vulkan 1.3 target environment.
 
 ### Bugs fixed
 
