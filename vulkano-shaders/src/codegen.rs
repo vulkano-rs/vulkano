@@ -262,6 +262,7 @@ pub(super) fn reflect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shaderc::SpirvVersion;
     use vulkano::shader::reflect;
 
     fn convert_paths(root_path: &Path, paths: &[PathBuf]) -> Vec<String> {
@@ -579,11 +580,15 @@ mod tests {
     #[test]
     fn descriptor_calculation_with_multiple_functions() {
         let (comp, _) = compile(
-            &MacroInput::empty(),
+            &MacroInput {
+                spirv_version: Some(SpirvVersion::V1_6),
+                vulkan_version: Some(EnvVersion::Vulkan1_3),
+                ..MacroInput::empty()
+            },
             None,
             Path::new(""),
             r#"
-                #version 450
+                #version 460
 
                 layout(set = 1, binding = 0) buffer Buffer {
                     vec3 data;
