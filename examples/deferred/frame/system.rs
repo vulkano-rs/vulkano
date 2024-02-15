@@ -408,11 +408,8 @@ impl<'a> Frame<'a> {
     pub fn next_pass<'f>(&'f mut self) -> Option<Pass<'f, 'a>> {
         // This function reads `num_pass` increments its value, and returns a struct corresponding
         // to that pass that the user will be able to manipulate in order to customize the pass.
-        let current_pass = {
-            let current_pass = self.num_pass;
-            self.num_pass += 1;
-            current_pass
-        };
+        let current_pass = self.num_pass;
+        self.num_pass += 1;
         match current_pass {
             0 => {
                 // If we are in the pass 0 then we haven't start anything yet.
