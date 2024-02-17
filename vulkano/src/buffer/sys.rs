@@ -108,13 +108,11 @@ impl RawBuffer {
         let mut external_memory_info_vk = None;
 
         if !external_memory_handle_types.is_empty() {
-            let _ = external_memory_info_vk.insert(ash::vk::ExternalMemoryBufferCreateInfo {
+            let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryBufferCreateInfo {
                 handle_types: external_memory_handle_types.into(),
                 ..Default::default()
             });
-        }
 
-        if let Some(next) = external_memory_info_vk.as_mut() {
             next.p_next = create_info_vk.p_next;
             create_info_vk.p_next = next as *const _ as *const _;
         }
