@@ -33,7 +33,10 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
-use vulkano_util::{context::{VulkanoConfig, VulkanoContext}, window::VulkanoWindows};
+use vulkano_util::{
+    context::{VulkanoConfig, VulkanoContext},
+    window::VulkanoWindows,
+};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -44,7 +47,7 @@ fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
     // Manages any windows and their rendering.
     let mut windows_manager = VulkanoWindows::default();
-    windows_manager.create_window(&event_loop, &context, &Default::default(), |_|{});
+    windows_manager.create_window(&event_loop, &context, &Default::default(), |_| {});
     let window_renderer = windows_manager.get_primary_renderer_mut().unwrap();
 
     // Some little debug infos.
@@ -280,7 +283,11 @@ fn main() -> Result<(), impl Error> {
     //
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
-    let mut framebuffers = window_size_dependent_setup(window_renderer.final_views(), render_pass.clone(), &mut viewport);
+    let mut framebuffers = window_size_dependent_setup(
+        window_renderer.final_views(),
+        render_pass.clone(),
+        &mut viewport,
+    );
 
     // Before we can start creating and recording command buffers, we need a way of allocating
     // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
@@ -324,17 +331,20 @@ fn main() -> Result<(), impl Error> {
                     return;
                 }
 
-                // 
-                let (previous_frame_end, image_index) = window_renderer.acquire(|swapchain_images| {
-                    // Whenever the window resizes we need to recreate everything dependent on the
-                    // window size. In this example that includes the swapchain, the framebuffers and
-                    // the dynamic state viewport.
-                    framebuffers = window_size_dependent_setup(
-                        swapchain_images,
-                        render_pass.clone(),
-                        &mut viewport,
-                    );
-                }).unwrap();
+                //
+                let (previous_frame_end, image_index) = window_renderer
+                    .acquire(|swapchain_images| {
+                        // Whenever the window resizes we need to recreate everything dependent on
+                        // the window size. In this example that includes
+                        // the swapchain, the framebuffers and the dynamic
+                        // state viewport.
+                        framebuffers = window_size_dependent_setup(
+                            swapchain_images,
+                            render_pass.clone(),
+                            &mut viewport,
+                        );
+                    })
+                    .unwrap();
 
                 // In order to draw, we have to record a *command buffer*. The command buffer object
                 // holds the list of commands that are going to be executed.
@@ -407,7 +417,10 @@ fn main() -> Result<(), impl Error> {
                 // Finish recording the command buffer by calling `end`.
                 let command_buffer = builder.end().unwrap();
 
-                let future = previous_frame_end.then_execute(context.graphics_queue().clone(), command_buffer).unwrap().boxed();
+                let future = previous_frame_end
+                    .then_execute(context.graphics_queue().clone(), command_buffer)
+                    .unwrap()
+                    .boxed();
 
                 // The color output is now expected to contain our triangle. But in order to
                 // show it on the screen, we have to *present* the image by calling

@@ -194,7 +194,7 @@ fn compute_then_render(
     }
 
     // Start the frame.
-    let before_pipeline_future = match window_renderer.acquire(|_|{}) {
+    let before_pipeline_future = match window_renderer.acquire(|_| {}) {
         Err(e) => {
             println!("{e}");
             return;

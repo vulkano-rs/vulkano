@@ -144,7 +144,7 @@ fn compute_then_render(
     target_image_id: usize,
 ) {
     // Start the frame.
-    let before_pipeline_future = match renderer.acquire(|_|{}) {
+    let before_pipeline_future = match renderer.acquire(|_| {}) {
         Err(e) => {
             println!("{e}");
             return;
