@@ -203,6 +203,13 @@ impl VulkanoWindowRenderer {
         dims[0] / dims[1]
     }
 
+    /// Returns a reference to the swapchain images.
+    #[inline]
+    #[must_use]
+    pub fn final_views(&self) -> &Vec<Arc<ImageView>> {
+        &self.final_views
+    }
+
     /// Resize swapchain and camera view images at the beginning of next frame based on window
     /// size.
     #[inline]
@@ -246,15 +253,16 @@ impl VulkanoWindowRenderer {
 
     /// Begin your rendering by calling `acquire`.
     /// Returns a [`GpuFuture`] representing the time after which the
-    /// swapchain image has been acquired and previous frame ended.
+    /// swapchain image has been acquired and previous frame ended, and a u32 representing the swapchain image index.
     /// Execute your command buffers after calling this function and finish rendering by calling
     /// [`VulkanoWindowRenderer::present`].
     #[inline]
-    pub fn acquire(&mut self) -> Result<Box<dyn GpuFuture>, VulkanError> {
+    pub fn acquire<F: FnMut(&Vec<Arc<ImageView>>)>(&mut self, mut if_recreate_swapchain: F) -> Result<(Box<dyn GpuFuture>, u32), VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {
             self.recreate_swapchain_and_views();
+            if_recreate_swapchain(&self.final_views);
         }
 
         // Acquire next image in the swapchain
@@ -277,7 +285,7 @@ impl VulkanoWindowRenderer {
 
         let future = self.previous_frame_end.take().unwrap().join(acquire_future);
 
-        Ok(future.boxed())
+        Ok((future.boxed(), image_index))
     }
 
     /// Finishes rendering by presenting the swapchain. Pass your last future as an input to this

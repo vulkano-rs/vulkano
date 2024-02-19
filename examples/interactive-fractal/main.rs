@@ -144,12 +144,12 @@ fn compute_then_render(
     target_image_id: usize,
 ) {
     // Start the frame.
-    let before_pipeline_future = match renderer.acquire() {
+    let before_pipeline_future = match renderer.acquire(|_|{}) {
         Err(e) => {
             println!("{e}");
             return;
         }
-        Ok(future) => future,
+        Ok(future) => future.0,
     };
 
     // Retrieve the target image.
