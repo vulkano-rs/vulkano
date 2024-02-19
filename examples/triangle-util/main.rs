@@ -284,7 +284,7 @@ fn main() -> Result<(), impl Error> {
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
     let mut framebuffers = window_size_dependent_setup(
-        window_renderer.final_views(),
+        window_renderer.swapchain_image_views(),
         render_pass.clone(),
         &mut viewport,
     );
