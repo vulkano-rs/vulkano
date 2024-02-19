@@ -15,13 +15,8 @@ use vulkano::{
         CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo,
         SubpassContents,
     },
-    device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
-    },
-    image::{view::ImageView, Image, ImageUsage},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    image::view::ImageView,
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
     pipeline::{
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
@@ -36,17 +31,12 @@ use vulkano::{
         DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    swapchain::{
-        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
-    },
-    sync::{self, GpuFuture},
-    Validated, VulkanError, VulkanLibrary,
+    sync::GpuFuture,
 };
 use vulkano_util::{context::{VulkanoConfig, VulkanoContext}, window::VulkanoWindows};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
 };
 
 fn main() -> Result<(), impl Error> {
@@ -437,7 +427,7 @@ fn main() -> Result<(), impl Error> {
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
-    swapchain_images: &Vec<Arc<ImageView>>,
+    swapchain_images: &[Arc<ImageView>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
