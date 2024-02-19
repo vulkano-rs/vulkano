@@ -205,7 +205,7 @@ fn compute_then_render(
     // Compute.
     let after_compute = pipeline
         .compute
-        .compute(before_pipeline_future.0, life_color, dead_color);
+        .compute(before_pipeline_future, life_color, dead_color);
 
     // Render.
     let color_image = pipeline.compute.color_image();

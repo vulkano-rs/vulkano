@@ -260,7 +260,7 @@ impl VulkanoWindowRenderer {
     pub fn acquire<F: FnMut(&Vec<Arc<ImageView>>)>(
         &mut self,
         mut if_recreate_swapchain: F,
-    ) -> Result<(Box<dyn GpuFuture>, u32), VulkanError> {
+    ) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {
@@ -288,7 +288,7 @@ impl VulkanoWindowRenderer {
 
         let future = self.previous_frame_end.take().unwrap().join(acquire_future);
 
-        Ok((future.boxed(), image_index))
+        Ok(future.boxed())
     }
 
     /// Finishes rendering by presenting the swapchain. Pass your last future as an input to this

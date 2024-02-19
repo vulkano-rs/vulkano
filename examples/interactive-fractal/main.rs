@@ -149,7 +149,7 @@ fn compute_then_render(
             println!("{e}");
             return;
         }
-        Ok(future) => future.0,
+        Ok(future) => future,
     };
 
     // Retrieve the target image.

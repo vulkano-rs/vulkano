@@ -332,7 +332,7 @@ fn main() -> Result<(), impl Error> {
                 }
 
                 //
-                let (previous_frame_end, image_index) = window_renderer
+                let previous_frame_end = window_renderer
                     .acquire(|swapchain_images| {
                         // Whenever the window resizes we need to recreate everything dependent on
                         // the window size. In this example that includes
@@ -379,7 +379,7 @@ fn main() -> Result<(), impl Error> {
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
 
                             ..RenderPassBeginInfo::framebuffer(
-                                framebuffers[image_index as usize].clone(),
+                                framebuffers[window_renderer.image_index() as usize].clone(),
                             )
                         },
                         SubpassBeginInfo {
