@@ -102,6 +102,7 @@ Changes to queues:
 - Improved and more accurate validation of fragment output.
 - `RawRecordingCommandBuffer::end` being safe to call.
 - Fix wrong comparison in push constant size validation check.
+- Unnecessarily strict validation that disallowed providing a single DRM format modifier without an explicit layout.
 
 # Version 0.34.1 (2023-10-29)
 
