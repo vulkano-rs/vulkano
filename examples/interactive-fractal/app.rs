@@ -54,7 +54,11 @@ pub struct FractalApp {
 }
 
 impl FractalApp {
-    pub fn new(gfx_queue: Arc<Queue>, image_format: vulkano::format::Format) -> FractalApp {
+    pub fn new(
+        gfx_queue: Arc<Queue>,
+        image_format: vulkano::format::Format,
+        swapchain_image_views: &[Arc<ImageView>],
+    ) -> FractalApp {
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(
             gfx_queue.device().clone(),
         ));
@@ -82,6 +86,7 @@ impl FractalApp {
                 command_buffer_allocator,
                 descriptor_set_allocator,
                 image_format,
+                swapchain_image_views,
             ),
             is_julia: false,
             is_c_paused: false,
