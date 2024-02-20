@@ -9,10 +9,10 @@ use vulkano::{
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
-    format::Format,
 };
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
+    renderer::VulkanoWindowRenderer,
     window::{VulkanoWindows, WindowDescriptor},
 };
 use winit::{event_loop::EventLoop, window::WindowId};
@@ -28,11 +28,11 @@ impl RenderPipeline {
         compute_queue: Arc<Queue>,
         gfx_queue: Arc<Queue>,
         size: [u32; 2],
-        swapchain_format: Format,
+        window_renderer: &VulkanoWindowRenderer,
     ) -> RenderPipeline {
         RenderPipeline {
             compute: GameOfLifeComputePipeline::new(app, compute_queue, size),
-            place_over_frame: RenderPassPlaceOverFrame::new(app, gfx_queue, swapchain_format),
+            place_over_frame: RenderPassPlaceOverFrame::new(app, gfx_queue, window_renderer),
         }
     }
 }
@@ -81,10 +81,7 @@ impl App {
                     (WINDOW_WIDTH / SCALING) as u32,
                     (WINDOW_HEIGHT / SCALING) as u32,
                 ],
-                self.windows
-                    .get_primary_renderer()
-                    .unwrap()
-                    .swapchain_format(),
+                self.windows.get_primary_renderer().unwrap(),
             ),
         );
         self.pipelines.insert(
@@ -97,7 +94,7 @@ impl App {
                     (WINDOW2_WIDTH / SCALING) as u32,
                     (WINDOW2_HEIGHT / SCALING) as u32,
                 ],
-                self.windows.get_renderer(id2).unwrap().swapchain_format(),
+                self.windows.get_renderer(id2).unwrap(),
             ),
         );
     }

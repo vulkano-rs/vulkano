@@ -79,18 +79,6 @@ impl RenderPassPlaceOverFrame {
         // Get dimensions.
         let img_dims: [u32; 2] = target.image().extent()[0..2].try_into().unwrap();
 
-        /*
-        // Create framebuffer (must be in same order as render pass description in `new`.
-        let framebuffer = Framebuffer::new(
-            self.render_pass.clone(),
-            FramebufferCreateInfo {
-                attachments: vec![target],
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        */
-
         // Create primary command buffer builder.
         let mut command_buffer_builder = RecordingCommandBuffer::new(
             self.command_buffer_allocator.clone(),

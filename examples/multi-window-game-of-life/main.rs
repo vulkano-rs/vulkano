@@ -194,7 +194,11 @@ fn compute_then_render(
     }
 
     // Start the frame.
-    let before_pipeline_future = match window_renderer.acquire(|_| {}) {
+    let before_pipeline_future = match window_renderer.acquire(|swapchain_image_views| {
+        pipeline
+            .place_over_frame
+            .recreate_framebuffers(swapchain_image_views)
+    }) {
         Err(e) => {
             println!("{e}");
             return;
@@ -211,9 +215,12 @@ fn compute_then_render(
     let color_image = pipeline.compute.color_image();
     let target_image = window_renderer.swapchain_image_view();
 
-    let after_render = pipeline
-        .place_over_frame
-        .render(after_compute, color_image, target_image);
+    let after_render = pipeline.place_over_frame.render(
+        after_compute,
+        color_image,
+        target_image,
+        window_renderer.image_index(),
+    );
 
     // Finish the frame. Wait for the future so resources are not in use when we render.
     window_renderer.present(after_render, true);
