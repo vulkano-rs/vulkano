@@ -13,6 +13,8 @@ use super::{
     ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount,
     SparseImageMemoryRequirements, SubresourceLayout,
 };
+#[cfg(doc)]
+use crate::format::DrmFormatModifierProperties;
 use crate::{
     cache::OnceCache,
     device::{Device, DeviceOwned},
@@ -158,52 +160,53 @@ impl RawImage {
         let format_list_view_formats_vk: Vec<_>;
         let mut stencil_usage_info_vk = None;
 
-        #[allow(clippy::comparison_chain)]
-        if drm_format_modifiers.len() == 1 {
-            drm_format_modifier_plane_layouts_vk = drm_format_modifier_plane_layouts
-                .iter()
-                .map(|subresource_layout| {
-                    let &SubresourceLayout {
-                        offset,
-                        size,
-                        row_pitch,
-                        array_pitch,
-                        depth_pitch,
-                    } = subresource_layout;
+        if !drm_format_modifiers.is_empty() {
+            if drm_format_modifier_plane_layouts.is_empty() {
+                let next = drm_format_modifier_list_info_vk.insert(
+                    ash::vk::ImageDrmFormatModifierListCreateInfoEXT {
+                        drm_format_modifier_count: drm_format_modifiers.len() as u32,
+                        p_drm_format_modifiers: drm_format_modifiers.as_ptr(),
+                        ..Default::default()
+                    },
+                );
 
-                    ash::vk::SubresourceLayout {
-                        offset,
-                        size,
-                        row_pitch,
-                        array_pitch: array_pitch.unwrap_or(0),
-                        depth_pitch: depth_pitch.unwrap_or(0),
-                    }
-                })
-                .collect();
+                next.p_next = create_info_vk.p_next;
+                create_info_vk.p_next = next as *const _ as *const _;
+            } else {
+                drm_format_modifier_plane_layouts_vk = drm_format_modifier_plane_layouts
+                    .iter()
+                    .map(|subresource_layout| {
+                        let &SubresourceLayout {
+                            offset,
+                            size,
+                            row_pitch,
+                            array_pitch,
+                            depth_pitch,
+                        } = subresource_layout;
 
-            let next = drm_format_modifier_explicit_info_vk.insert(
-                ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT {
-                    drm_format_modifier: drm_format_modifiers[0],
-                    drm_format_modifier_plane_count: drm_format_modifier_plane_layouts_vk.len()
-                        as u32,
-                    p_plane_layouts: drm_format_modifier_plane_layouts_vk.as_ptr(),
-                    ..Default::default()
-                },
-            );
+                        ash::vk::SubresourceLayout {
+                            offset,
+                            size,
+                            row_pitch,
+                            array_pitch: array_pitch.unwrap_or(0),
+                            depth_pitch: depth_pitch.unwrap_or(0),
+                        }
+                    })
+                    .collect();
 
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
-        } else if drm_format_modifiers.len() > 1 {
-            let next = drm_format_modifier_list_info_vk.insert(
-                ash::vk::ImageDrmFormatModifierListCreateInfoEXT {
-                    drm_format_modifier_count: drm_format_modifiers.len() as u32,
-                    p_drm_format_modifiers: drm_format_modifiers.as_ptr(),
-                    ..Default::default()
-                },
-            );
+                let next = drm_format_modifier_explicit_info_vk.insert(
+                    ash::vk::ImageDrmFormatModifierExplicitCreateInfoEXT {
+                        drm_format_modifier: drm_format_modifiers[0],
+                        drm_format_modifier_plane_count: drm_format_modifier_plane_layouts_vk.len()
+                            as u32,
+                        p_plane_layouts: drm_format_modifier_plane_layouts_vk.as_ptr(),
+                        ..Default::default()
+                    },
+                );
 
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+                next.p_next = create_info_vk.p_next;
+                create_info_vk.p_next = next as *const _ as *const _;
+            }
         }
 
         if !external_memory_handle_types.is_empty() {
@@ -1808,29 +1811,36 @@ pub struct ImageCreateInfo {
     /// The default value is [`ImageLayout::Undefined`].
     pub initial_layout: ImageLayout,
 
-    /// The Linux DRM format modifiers that the image should be created with.
+    /// A list of possible Linux DRM format modifiers that the image may be created with. If
+    /// `tiling` is [`ImageTiling::DrmFormatModifier`], then at least one DRM format modifier must
+    /// be provided. Otherwise, this must be empty.
     ///
-    /// If this is not empty, then the
-    /// [`ext_image_drm_format_modifier`](crate::device::DeviceExtensions::ext_image_drm_format_modifier)
-    /// extension must be enabled on the device.
+    /// If more than one DRM format modifier is provided, then the Vulkan driver will choose the
+    /// modifier in an implementation-defined manner. You can query the modifier that has been
+    /// chosen, after creating the image, by calling [`Image::drm_format_modifier`].
+    ///
+    /// If exactly one DRM format modifier is provided, the image will always be created with that
+    /// modifier. You can then optionally specify the subresource layout of each memory plane with
+    /// the `drm_format_modifier_plane_layouts` field.
     ///
     /// The default value is empty.
     pub drm_format_modifiers: Vec<u64>,
 
-    /// If `drm_format_modifiers` contains one element, provides the subresource layouts of each
-    /// memory plane of the image. The number of elements must equal
-    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`], and the following
-    /// additional requirements apply to each element:
+    /// If `drm_format_modifiers` contains exactly one element, optionally specifies an explicit
+    /// subresource layout for each memory plane of the image.
+    ///
+    /// If not empty, the number of provided subresource layouts must equal the number of memory
+    /// planes for `drm_format_modifiers[0]`, as reported by
+    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`]. The following additional
+    /// requirements apply to each element:
     /// - [`SubresourceLayout::size`] must always be 0.
     /// - If `array_layers` is 1, then [`SubresourceLayout::array_pitch`] must be `None`.
     /// - If `image_type` is not [`ImageType::Dim3d`] or `extent[2]` is 1, then
     ///   [`SubresourceLayout::depth_pitch`] must be `None`.
     ///
-    /// If `drm_format_modifiers` does not contain one element, then this must be empty.
+    /// If `drm_format_modifiers` does not contain exactly one element, then this must be empty.
     ///
     /// The default value is empty.
-    ///
-    /// [`DrmFormatModifierProperties::drm_format_modifier_plane_count`]: crate::format::DrmFormatModifierProperties::drm_format_modifier_plane_count
     pub drm_format_modifier_plane_layouts: Vec<SubresourceLayout>,
 
     /// The external memory handle types that are going to be used with the image.
@@ -2683,137 +2693,133 @@ impl ImageCreateInfo {
             }
         }
 
-        if !drm_format_modifiers.is_empty() {
-            // This implicitly checks for the enabled extension too,
-            // so no need to check that separately.
-            if tiling != ImageTiling::DrmFormatModifier {
-                return Err(Box::new(ValidationError {
-                    problem: "`drm_format_modifiers` is not empty, but \
-                        `tiling` is not `ImageTiling::DrmFormatModifier`"
-                        .into(),
-                    vuids: &["VUID-VkImageCreateInfo-pNext-02262"],
-                    ..Default::default()
-                }));
-            }
+        if !(drm_format_modifier_plane_layouts.is_empty() || drm_format_modifiers.len() == 1) {
+            return Err(Box::new(ValidationError {
+                problem: "`drm_format_modifier_plane_layouts` is not empty, but \
+                    `drm_format_modifiers` does not contain exactly one element"
+                    .into(),
+                ..Default::default()
+            }));
+        }
 
-            if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) && view_formats.is_empty() {
-                return Err(Box::new(ValidationError {
-                    problem: "`tiling` is `ImageTiling::DrmFormatModifier`, and \
-                        `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`, but \
-                        `view_formats` is empty"
-                        .into(),
-                    vuids: &["VUID-VkImageCreateInfo-tiling-02353"],
-                    ..Default::default()
-                }));
-            }
-
-            if drm_format_modifiers.len() == 1 {
-                let drm_format_modifier = drm_format_modifiers[0];
-                let drm_format_modifier_properties = format_properties
-                    .drm_format_modifier_properties
-                    .iter()
-                    .find(|properties| properties.drm_format_modifier == drm_format_modifier)
-                    .ok_or_else(|| Box::new(ValidationError {
-                        problem: "`drm_format_modifiers` has a length of 1, but \
-                            `drm_format_modifiers[0]` is not one of the modifiers in \
-                            `FormatProperties::drm_format_properties`, as returned by \
-                            `PhysicalDevice::format_properties` for `format`".into(),
-                        vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
-                        ..Default::default()
-                    }))?;
-
-                if drm_format_modifier_plane_layouts.len()
-                    != drm_format_modifier_properties.drm_format_modifier_plane_count as usize
-                {
+        match (tiling, !drm_format_modifiers.is_empty()) {
+            (ImageTiling::DrmFormatModifier, true) => {
+                if flags.intersects(ImageCreateFlags::MUTABLE_FORMAT) && view_formats.is_empty() {
                     return Err(Box::new(ValidationError {
-                        problem: "`drm_format_modifiers` has a length of 1, but the length of \
-                            `drm_format_modifiers_plane_layouts` does not \
-                            equal `DrmFormatModifierProperties::drm_format_modifier_plane_count` \
-                            for `drm_format_modifiers[0]`, as returned by \
-                            `PhysicalDevice::format_properties` for `format`".into(),
-                        vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                        problem: "`tiling` is `ImageTiling::DrmFormatModifier`, and \
+                            `flags` contains `ImageCreateFlags::MUTABLE_FORMAT`, but \
+                            `view_formats` is empty"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-tiling-02353"],
                         ..Default::default()
                     }));
                 }
 
-                for (index, subresource_layout) in
-                    drm_format_modifier_plane_layouts.iter().enumerate()
-                {
-                    let &SubresourceLayout {
-                        offset: _,
-                        size,
-                        row_pitch: _,
-                        array_pitch,
-                        depth_pitch,
-                    } = subresource_layout;
-
-                    if size != 0 {
-                        return Err(Box::new(ValidationError {
-                            context: format!("drm_format_modifier_plane_layouts[{}].size", index)
-                                .into(),
-                            problem: "is not zero".into(),
-                            vuids: &[
-                                "VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-size-02267",
-                            ],
-                            ..Default::default()
-                        }));
-                    }
-
-                    if array_layers == 1 && array_pitch.is_some() {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "`array_layers` is 1, but \
-                                `drm_format_modifier_plane_layouts[{}].array_pitch` is `Some`",
-                                index
-                            )
-                            .into(),
-                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-arrayPitch-02268"],
-                            ..Default::default()
-                        }));
-                    }
-
-                    if extent[2] == 1 && depth_pitch.is_some() {
-                        return Err(Box::new(ValidationError {
-                            problem: format!(
-                                "`extent[2]` is 1, but \
-                                `drm_format_modifier_plane_layouts[{}].depth_pitch` is `Some`",
-                                index
-                            )
-                            .into(),
-                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-depthPitch-02269"],
-                            ..Default::default()
-                        }));
-                    }
-                }
-            } else {
                 if !drm_format_modifier_plane_layouts.is_empty() {
-                    return Err(Box::new(ValidationError {
-                        problem: "`drm_format_modifiers` does not contain one element, but \
-                            `drm_format_modifier_plane_layouts` is not empty"
-                            .into(),
-                        ..Default::default()
-                    }));
+                    let drm_format_modifier = drm_format_modifiers[0];
+                    let drm_format_modifier_properties = format_properties
+                        .drm_format_modifier_properties
+                        .iter()
+                        .find(|properties| properties.drm_format_modifier == drm_format_modifier)
+                        .ok_or_else(|| Box::new(ValidationError {
+                            problem: "`drm_format_modifier_plane_layouts` is not empty, but \
+                                `drm_format_modifiers[0]` is not one of the modifiers in \
+                                `FormatProperties::drm_format_properties`, as returned by \
+                                `PhysicalDevice::format_properties` for `format`".into(),
+                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                            ..Default::default()
+                        }))?;
+
+                    if drm_format_modifier_plane_layouts.len()
+                        != drm_format_modifier_properties.drm_format_modifier_plane_count as usize
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`drm_format_modifier_plane_layouts` is not empty, but the \
+                                number of provided subresource layouts does not equal the number \
+                                of memory planes for `drm_format_modifiers[0]`, specified in \
+                                `DrmFormatModifierProperties::drm_format_modifier_plane_count`, \
+                                as returned by `PhysicalDevice::format_properties` for `format`"
+                                .into(),
+                            vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-drmFormatModifierPlaneCount-02265"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    for (index, subresource_layout) in
+                        drm_format_modifier_plane_layouts.iter().enumerate()
+                    {
+                        let &SubresourceLayout {
+                            offset: _,
+                            size,
+                            row_pitch: _,
+                            array_pitch,
+                            depth_pitch,
+                        } = subresource_layout;
+
+                        if size != 0 {
+                            return Err(Box::new(ValidationError {
+                                context: format!(
+                                    "drm_format_modifier_plane_layouts[{}].size",
+                                    index
+                                )
+                                .into(),
+                                problem: "is not zero".into(),
+                                vuids: &[
+                                    "VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-size-02267",
+                                ],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if array_layers == 1 && array_pitch.is_some() {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`array_layers` is 1, but \
+                                    `drm_format_modifier_plane_layouts[{}].array_pitch` is `Some`",
+                                    index
+                                )
+                                .into(),
+                                vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-arrayPitch-02268"],
+                                ..Default::default()
+                            }));
+                        }
+
+                        if extent[2] == 1 && depth_pitch.is_some() {
+                            return Err(Box::new(ValidationError {
+                                problem: format!(
+                                    "`extent[2]` is 1, but \
+                                    `drm_format_modifier_plane_layouts[{}].depth_pitch` is `Some`",
+                                    index
+                                )
+                                .into(),
+                                vuids: &["VUID-VkImageDrmFormatModifierExplicitCreateInfoEXT-depthPitch-02269"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
                 }
             }
-        } else {
-            if tiling == ImageTiling::DrmFormatModifier {
+            (ImageTiling::DrmFormatModifier, false) => {
                 return Err(Box::new(ValidationError {
                     problem: "`tiling` is `ImageTiling::DrmFormatModifier`, but \
-                        `drm_format_modifiers` is `None`"
+                        `drm_format_modifiers` is empty"
                         .into(),
                     vuids: &["VUID-VkImageCreateInfo-tiling-02261"],
                     ..Default::default()
                 }));
             }
-
-            if !drm_format_modifier_plane_layouts.is_empty() {
-                return Err(Box::new(ValidationError {
-                    problem: "`drm_format_modifiers` does not contain one element, but \
-                        `drm_format_modifier_plane_layouts` is not empty"
-                        .into(),
-                    ..Default::default()
-                }));
+            (_, true) => {
+                if tiling != ImageTiling::DrmFormatModifier {
+                    return Err(Box::new(ValidationError {
+                        problem: "`drm_format_modifiers` is not empty, but \
+                            `tiling` is not `ImageTiling::DrmFormatModifier`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-pNext-02262"],
+                        ..Default::default()
+                    }));
+                }
             }
+            (_, false) => (),
         }
 
         if !external_memory_handle_types.is_empty() {
