@@ -847,7 +847,7 @@ fn formats_members(
                                 _ => None,
                             }.map(|ty| format_ident!("{}", ty));
 
-                            member.type_glam = ty.map(|ty|quote! { glam::#component_type::#ty }); 
+                            member.type_glam = ty.map(|ty|quote! { glam::#component_type::#ty });
                         }
 
                         member.type_nalgebra = Some(quote! {
