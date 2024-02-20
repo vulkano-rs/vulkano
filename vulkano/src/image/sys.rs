@@ -2629,7 +2629,7 @@ impl ImageCreateInfo {
             if format.planes().len() < 2 {
                 return Err(Box::new(ValidationError {
                     problem: "`flags` contains `ImageCreateFlags::DISJOINT`, but `format` \
-                        is not a multi-planat format"
+                        is not a multi-planar format"
                         .into(),
                     vuids: &["VUID-VkImageCreateInfo-format-01577"],
                     ..Default::default()

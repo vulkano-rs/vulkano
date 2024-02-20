@@ -108,12 +108,15 @@ use crate::{
         AccelerationStructureBuildGeometryInfo, AccelerationStructureBuildSizesInfo,
         AccelerationStructureBuildType, AccelerationStructureGeometries,
     },
+    buffer::BufferCreateInfo,
     descriptor_set::layout::{
         DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutSupport,
     },
+    image::{ImageCreateFlags, ImageCreateInfo, ImageTiling},
     instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
-    memory::ExternalMemoryHandleType,
+    memory::{allocator::DeviceLayout, ExternalMemoryHandleType, MemoryRequirements},
+    sync::Sharing,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
@@ -1003,6 +1006,467 @@ impl Device {
                 .map_or(0, |s| s.max_variable_descriptor_count),
         })
     }
+
+    /// Returns the memory requirements that would apply for a buffer created with the specified
+    /// `create_info`.
+    ///
+    /// The device API version must be at least 1.3, or the [`khr_maintenance4`] extension must
+    /// be enabled on the device.
+    ///
+    /// [`khr_maintenance4`]: DeviceExtensions::khr_maintenance4
+    #[inline]
+    pub fn buffer_memory_requirements(
+        &self,
+        create_info: BufferCreateInfo,
+    ) -> Result<MemoryRequirements, Box<ValidationError>> {
+        self.validate_buffer_memory_requirements(&create_info)?;
+
+        unsafe { Ok(self.buffer_memory_requirements_unchecked(create_info)) }
+    }
+
+    fn validate_buffer_memory_requirements(
+        &self,
+        create_info: &BufferCreateInfo,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.api_version() >= Version::V1_3 || self.enabled_extensions().khr_maintenance4) {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance")]),
+                ]),
+                ..Default::default()
+            }));
+        }
+
+        create_info
+            .validate(self)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn buffer_memory_requirements_unchecked(
+        &self,
+        create_info: BufferCreateInfo,
+    ) -> MemoryRequirements {
+        let &BufferCreateInfo {
+            flags,
+            ref sharing,
+            size,
+            usage,
+            external_memory_handle_types,
+            _ne: _,
+        } = &create_info;
+
+        let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
+            Sharing::Concurrent(queue_family_indices) => (
+                ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.len() as u32,
+                queue_family_indices.as_ptr(),
+            ),
+        };
+
+        let mut create_info_vk = ash::vk::BufferCreateInfo {
+            flags: flags.into(),
+            size,
+            usage: usage.into(),
+            sharing_mode,
+            queue_family_index_count,
+            p_queue_family_indices,
+            ..Default::default()
+        };
+        let mut external_memory_info_vk = None;
+
+        if !external_memory_handle_types.is_empty() {
+            let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryBufferCreateInfo {
+                handle_types: external_memory_handle_types.into(),
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        let info_vk = ash::vk::DeviceBufferMemoryRequirements {
+            p_create_info: &create_info_vk,
+            ..Default::default()
+        };
+
+        let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
+        let mut memory_dedicated_requirements_vk = None;
+
+        // `khr_maintenance4` requires Vulkan 1.1,
+        // which means dedicated allocation support is always available.
+        {
+            let next = memory_dedicated_requirements_vk
+                .insert(ash::vk::MemoryDedicatedRequirements::default());
+
+            next.p_next = memory_requirements2_vk.p_next;
+            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
+        }
+
+        unsafe {
+            let fns = self.fns();
+
+            if self.api_version() >= Version::V1_3 {
+                (fns.v1_3.get_device_buffer_memory_requirements)(
+                    self.handle(),
+                    &info_vk,
+                    &mut memory_requirements2_vk,
+                );
+            } else {
+                debug_assert!(self.enabled_extensions().khr_maintenance4);
+                (fns.khr_maintenance4
+                    .get_device_buffer_memory_requirements_khr)(
+                    self.handle(),
+                    &info_vk,
+                    &mut memory_requirements2_vk,
+                );
+            }
+        }
+
+        MemoryRequirements {
+            layout: DeviceLayout::from_size_alignment(
+                memory_requirements2_vk.memory_requirements.size,
+                memory_requirements2_vk.memory_requirements.alignment,
+            )
+            .unwrap(),
+            memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
+            prefers_dedicated_allocation: memory_dedicated_requirements_vk
+                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
+            requires_dedicated_allocation: memory_dedicated_requirements_vk
+                .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
+        }
+    }
+
+    /// Returns the memory requirements that would apply for an image created with the specified
+    /// `create_info`.
+    ///
+    /// If `create_info.flags` contains [`ImageCreateFlags::DISJOINT`], then `plane` must specify
+    /// the plane number of the format or memory plane (depending on tiling) that memory
+    /// requirements will be returned for. Otherwise, `plane` must be `None`.
+    ///
+    /// The device API version must be at least 1.3, or the [`khr_maintenance4`] extension must
+    /// be enabled on the device.
+    ///
+    /// [`khr_maintenance4`]: DeviceExtensions::khr_maintenance4
+    #[inline]
+    pub fn image_memory_requirements(
+        &self,
+        create_info: ImageCreateInfo,
+        plane: Option<usize>,
+    ) -> Result<MemoryRequirements, Box<ValidationError>> {
+        self.validate_image_memory_requirements(&create_info, plane)?;
+
+        unsafe { Ok(self.image_memory_requirements_unchecked(create_info, plane)) }
+    }
+
+    fn validate_image_memory_requirements(
+        &self,
+        create_info: &ImageCreateInfo,
+        plane: Option<usize>,
+    ) -> Result<(), Box<ValidationError>> {
+        if !(self.api_version() >= Version::V1_3 || self.enabled_extensions().khr_maintenance4) {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("khr_maintenance")]),
+                ]),
+                ..Default::default()
+            }));
+        }
+
+        create_info
+            .validate(self)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        let &ImageCreateInfo {
+            flags,
+            image_type: _,
+            format,
+            view_formats: _,
+            extent: _,
+            array_layers: _,
+            mip_levels: _,
+            samples: _,
+            tiling,
+            usage: _,
+            stencil_usage: _,
+            sharing: _,
+            initial_layout: _,
+            ref drm_format_modifiers,
+            drm_format_modifier_plane_layouts: _,
+            external_memory_handle_types: _,
+            _ne: _,
+        } = create_info;
+
+        if flags.intersects(ImageCreateFlags::DISJOINT) {
+            let Some(plane) = plane else {
+                return Err(Box::new(ValidationError {
+                    problem: "`create_info.flags` contains `ImageCreateFlags::DISJOINT`, but \
+                        `plane` is `None`"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06419",
+                        "VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06420",
+                    ],
+                    ..Default::default()
+                }));
+            };
+
+            match tiling {
+                ImageTiling::Linear | ImageTiling::Optimal => {
+                    if plane >= format.planes().len() {
+                        return Err(Box::new(ValidationError {
+                            problem:
+                                "`create_info.tiling` is not `ImageTiling::DrmFormatModifier`, \
+                                but `plane` is not less than the number of planes in \
+                                `create_info.format`"
+                                    .into(),
+                            vuids: &["VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06419"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                ImageTiling::DrmFormatModifier => {
+                    // TODO: handle the case where `drm_format_modifiers` contains multiple
+                    // elements. See: https://github.com/KhronosGroup/Vulkan-Docs/issues/2309
+
+                    if let &[drm_format_modifier] = drm_format_modifiers.as_slice() {
+                        let format_properties =
+                            unsafe { self.physical_device.format_properties_unchecked(format) };
+                        let drm_format_modifier_properties = format_properties
+                            .drm_format_modifier_properties
+                            .iter()
+                            .find(|properties| {
+                                properties.drm_format_modifier == drm_format_modifier
+                            })
+                            .unwrap();
+
+                        if plane
+                            >= drm_format_modifier_properties.drm_format_modifier_plane_count
+                                as usize
+                        {
+                            return Err(Box::new(ValidationError {
+                                problem: "`create_info.drm_format_modifiers` has a length of 1, \
+                                    but `plane` is not less than `DrmFormatModifierProperties::\
+                                    drm_format_modifier_plane_count` for \
+                                    `drm_format_modifiers[0]`, as returned by \
+                                    `PhysicalDevice::format_properties` for `format`"
+                                    .into(),
+                                vuids: &["VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06420"],
+                                ..Default::default()
+                            }));
+                        }
+                    }
+                }
+            }
+        } else if plane.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`create_info.flags` does not contain `ImageCreateFlags::DISJOINT`, but \
+                    `plane` is `Some`"
+                    .into(),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn image_memory_requirements_unchecked(
+        &self,
+        create_info: ImageCreateInfo,
+        plane: Option<usize>,
+    ) -> MemoryRequirements {
+        let &ImageCreateInfo {
+            flags,
+            image_type,
+            format,
+            ref view_formats,
+            extent,
+            array_layers,
+            mip_levels,
+            samples,
+            tiling,
+            usage,
+            stencil_usage,
+            ref sharing,
+            initial_layout,
+            ref drm_format_modifiers,
+            drm_format_modifier_plane_layouts: _,
+            external_memory_handle_types,
+            _ne: _,
+        } = &create_info;
+
+        let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
+            Sharing::Concurrent(queue_family_indices) => (
+                ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.len() as u32,
+                queue_family_indices.as_ptr(),
+            ),
+        };
+
+        let mut create_info_vk = ash::vk::ImageCreateInfo {
+            flags: flags.into(),
+            image_type: image_type.into(),
+            format: format.into(),
+            extent: ash::vk::Extent3D {
+                width: extent[0],
+                height: extent[1],
+                depth: extent[2],
+            },
+            mip_levels,
+            array_layers,
+            samples: samples.into(),
+            tiling: tiling.into(),
+            usage: usage.into(),
+            sharing_mode,
+            queue_family_index_count,
+            p_queue_family_indices,
+            initial_layout: initial_layout.into(),
+            ..Default::default()
+        };
+        let mut drm_format_modifier_list_info_vk = None;
+        let mut external_memory_info_vk = None;
+        let mut format_list_info_vk = None;
+        let format_list_view_formats_vk: Vec<_>;
+        let mut stencil_usage_info_vk = None;
+
+        if !drm_format_modifiers.is_empty() {
+            let next = drm_format_modifier_list_info_vk.insert(
+                ash::vk::ImageDrmFormatModifierListCreateInfoEXT {
+                    drm_format_modifier_count: drm_format_modifiers.len() as u32,
+                    p_drm_format_modifiers: drm_format_modifiers.as_ptr(),
+                    ..Default::default()
+                },
+            );
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if !external_memory_handle_types.is_empty() {
+            let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryImageCreateInfo {
+                handle_types: external_memory_handle_types.into(),
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if !view_formats.is_empty() {
+            format_list_view_formats_vk = view_formats
+                .iter()
+                .copied()
+                .map(ash::vk::Format::from)
+                .collect();
+
+            let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
+                view_format_count: format_list_view_formats_vk.len() as u32,
+                p_view_formats: format_list_view_formats_vk.as_ptr(),
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if let Some(stencil_usage) = stencil_usage {
+            let next = stencil_usage_info_vk.insert(ash::vk::ImageStencilUsageCreateInfo {
+                stencil_usage: stencil_usage.into(),
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        // This is currently necessary because of an issue with the spec. The plane aspect should
+        // only be needed if the image is disjoint, but the spec currently demands a valid aspect
+        // even for non-disjoint DRM format modifier images.
+        // See: https://github.com/KhronosGroup/Vulkan-Docs/issues/2309
+        // Replace this variable with ash::vk::ImageAspectFlags::NONE when resolved.
+        let default_aspect = if tiling == ImageTiling::DrmFormatModifier {
+            // Hopefully valid for any DrmFormatModifier image?
+            ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT
+        } else {
+            ash::vk::ImageAspectFlags::NONE
+        };
+        let plane_aspect = plane.map_or(default_aspect, |plane| match tiling {
+            ImageTiling::Optimal | ImageTiling::Linear => match plane {
+                0 => ash::vk::ImageAspectFlags::PLANE_0,
+                1 => ash::vk::ImageAspectFlags::PLANE_1,
+                2 => ash::vk::ImageAspectFlags::PLANE_2,
+                _ => unreachable!(),
+            },
+            ImageTiling::DrmFormatModifier => match plane {
+                0 => ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                1 => ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                2 => ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                3 => ash::vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                _ => unreachable!(),
+            },
+        });
+
+        let info_vk = ash::vk::DeviceImageMemoryRequirements {
+            p_create_info: &create_info_vk,
+            plane_aspect,
+            ..Default::default()
+        };
+
+        let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
+        let mut memory_dedicated_requirements_vk = None;
+
+        // `khr_maintenance4` requires Vulkan 1.1,
+        // which means dedicated allocation support is always available.
+        {
+            let next = memory_dedicated_requirements_vk
+                .insert(ash::vk::MemoryDedicatedRequirements::default());
+
+            next.p_next = memory_requirements2_vk.p_next;
+            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
+        }
+
+        unsafe {
+            let fns = self.fns();
+
+            if self.api_version() >= Version::V1_3 {
+                (fns.v1_3.get_device_image_memory_requirements)(
+                    self.handle(),
+                    &info_vk,
+                    &mut memory_requirements2_vk,
+                );
+            } else {
+                debug_assert!(self.enabled_extensions().khr_maintenance4);
+                (fns.khr_maintenance4
+                    .get_device_image_memory_requirements_khr)(
+                    self.handle(),
+                    &info_vk,
+                    &mut memory_requirements2_vk,
+                );
+            }
+        }
+
+        MemoryRequirements {
+            layout: DeviceLayout::from_size_alignment(
+                memory_requirements2_vk.memory_requirements.size,
+                memory_requirements2_vk.memory_requirements.alignment,
+            )
+            .unwrap(),
+            memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
+            prefers_dedicated_allocation: memory_dedicated_requirements_vk
+                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
+            requires_dedicated_allocation: memory_dedicated_requirements_vk
+                .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
+        }
+    }
+
+    // TODO: image_sparse_memory_requirements
 
     /// Retrieves the properties of an external file descriptor when imported as a given external
     /// handle type.
