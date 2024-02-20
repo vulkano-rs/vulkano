@@ -573,6 +573,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         /// let pixel: type_for_format!(cgmath, R32G32B32A32_SFLOAT);
         /// pixel = cgmath::Vector4::new(1.0f32, 0.0, 0.0, 1.0);
         /// ```
+        ///
         /// For [`glam`]:
         ///
         /// ```ignore
