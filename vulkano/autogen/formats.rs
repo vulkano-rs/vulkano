@@ -51,6 +51,7 @@ struct FormatMember {
 
     type_std_array: Option<TokenStream>,
     type_cgmath: Option<TokenStream>,
+    type_glam: Option<TokenStream>,
     type_nalgebra: Option<TokenStream>,
 }
 
@@ -246,6 +247,18 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
          }| {
             (type_cgmath.as_ref().or(type_std_array.as_ref())).map(|ty| {
                 quote! { (cgmath, #name) => { #ty }; }
+            })
+        },
+    );
+    let type_for_format_glam_items = members.iter().filter_map(
+        |FormatMember {
+             name,
+             type_std_array,
+             type_glam,
+             ..
+         }| {
+            (type_glam.as_ref().or(type_std_array.as_ref())).map(|ty| {
+                quote! { (glam, #name) => { #ty }; }
             })
         },
     );
@@ -560,6 +573,12 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         /// let pixel: type_for_format!(cgmath, R32G32B32A32_SFLOAT);
         /// pixel = cgmath::Vector4::new(1.0f32, 0.0, 0.0, 1.0);
         /// ```
+        /// For [`glam`]:
+        ///
+        /// ```ignore
+        /// let pixel: type_for_format!(glam, R32G32B32A32_SFLOAT);
+        /// pixel = glam::Vec4::new(1.0f32, 0.0, 0.0, 1.0);
+        /// ```
         ///
         /// For [`nalgebra`]:
         ///
@@ -569,11 +588,13 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         /// ```
         ///
         /// [`cgmath`]: https://crates.io/crates/cgmath
+        /// [`glam`]: https://crates.io/crates/glam
         /// [`nalgebra`]: https://crates.io/crates/nalgebra
         #[macro_export]
         macro_rules! type_for_format {
             #(#type_for_format_items)*
             #(#type_for_format_cgmath_items)*
+            #(#type_for_format_glam_items)*
             #(#type_for_format_nalgebra_items)*
         }
     }
@@ -614,6 +635,7 @@ fn formats_members(
 
             type_std_array: None,
             type_cgmath: None,
+            type_glam: None,
             type_nalgebra: None,
         }
     ).chain(
@@ -663,6 +685,7 @@ fn formats_members(
 
                 type_std_array: None,
                 type_cgmath: None,
+                type_glam: None,
                 type_nalgebra: None,
             };
 
@@ -777,7 +800,7 @@ fn formats_members(
                         _ => unreachable!(),
                     };
                     let bits = member.components[0];
-                    let component_type = format_ident!("{}{}", prefix, bits);
+                    let component_type: Ident = format_ident!("{}{}", prefix, bits);
 
                     let component_count = if member.components[1] == 2 * bits {
                         // 422 format with repeated G component
@@ -807,6 +830,12 @@ fn formats_members(
                         if matches!(component_count, 1..=4) {
                             let ty = format_ident!("{}", format!("Vector{}", component_count));
                             member.type_cgmath = Some(quote! { cgmath::#ty<#component_type> });
+                        }
+
+                        // glam only has 2, 3 and 4-component vector types. And a limited set of component types.
+                        if matches!(component_count, 2..=4) {
+                            let ty = format_ident!("{}", format!("Vec{}", component_count));
+                            member.type_glam = Some(quote! { glam::#component_type::#ty });
                         }
 
                         member.type_nalgebra = Some(quote! {
