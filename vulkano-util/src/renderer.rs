@@ -261,9 +261,9 @@ impl VulkanoWindowRenderer {
     /// Execute your command buffers after calling this function and
     /// finish rendering by calling [`VulkanoWindowRenderer::present`].
     #[inline]
-    pub fn acquire<F: FnMut(&Vec<Arc<ImageView>>)>(
+    pub fn acquire(
         &mut self,
-        mut on_recreate_swapchain: F,
+        on_recreate_swapchain: impl FnOnce(&Vec<Arc<ImageView>>),
     ) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
