@@ -255,20 +255,21 @@ impl VulkanoWindowRenderer {
     }
 
     /// Begin your rendering by calling `acquire`.
-    /// Returns a [`GpuFuture`] representing the time after which the
-    /// swapchain image has been acquired and previous frame ended, and a u32 representing the
-    /// swapchain image index. Execute your command buffers after calling this function and
+    /// 'on_recreate_swapchain' is called when the swapchain gets recreated, due to being resized,
+    /// suboptimal, or changing the present mode. Returns a [`GpuFuture`] representing the time
+    /// after which the swapchain image has been acquired and previous frame ended.
+    /// Execute your command buffers after calling this function and
     /// finish rendering by calling [`VulkanoWindowRenderer::present`].
     #[inline]
     pub fn acquire<F: FnMut(&Vec<Arc<ImageView>>)>(
         &mut self,
-        mut if_recreate_swapchain: F,
+        mut on_recreate_swapchain: F,
     ) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {
             self.recreate_swapchain_and_views();
-            if_recreate_swapchain(&self.final_views);
+            on_recreate_swapchain(&self.final_views);
         }
 
         // Acquire next image in the swapchain
