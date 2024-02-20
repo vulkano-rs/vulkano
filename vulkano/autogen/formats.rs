@@ -834,8 +834,19 @@ fn formats_members(
 
                         // glam only has 2, 3 and 4-component vector types. And a limited set of component types.
                         if matches!(component_count, 2..=4) {
-                            let ty = format_ident!("{}", format!("Vec{}", component_count));
-                            member.type_glam = Some(quote! { glam::#component_type::#ty });
+                            let ty = match (prefix, bits) {
+                                ("f", 32) => Some(format!("Vec{}", component_count)),
+                                ("f", 64) => Some(format!("DVec{}", component_count)),
+                                ("i", 16) => Some(format!("I16Vec{}", component_count)),
+                                ("i", 32) => Some(format!("IVec{}", component_count)),
+                                ("i", 64) => Some(format!("I64Vec{}", component_count)),
+                                ("u", 16) => Some(format!("U16Vec{}", component_count)),
+                                ("u", 32) => Some(format!("UVec{}", component_count)),
+                                ("u", 64) => Some(format!("U64Vec{}", component_count)),
+                                _ => None,
+                            }.map(|ty| format_ident!("{}", ty));
+
+                            member.type_glam = ty.map(|ty|quote! { glam::#component_type::#ty }); 
                         }
 
                         member.type_nalgebra = Some(quote! {
