@@ -90,6 +90,7 @@ Changes to queues:
 - Support for the `khr_draw_indirect_count` extension.
 - Support for the `ext_mesh_shader` extension.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
+- Support for querying memory requirements directly from the device.
 
 ### Bugs fixed
 
