@@ -3,7 +3,7 @@ use super::{
     directional_lighting_system::DirectionalLightingSystem,
     point_lighting_system::PointLightingSystem,
 };
-use cgmath::{Matrix4, SquareMatrix, Vector3};
+use glam::f32::{Mat4, Vec3};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
@@ -258,7 +258,7 @@ impl FrameSystem {
         &mut self,
         before_future: F,
         final_image_view: Arc<ImageView>,
-        world_to_framebuffer: Matrix4<f32>,
+        world_to_framebuffer: Mat4,
     ) -> Frame
     where
         F: GpuFuture + 'static,
@@ -400,7 +400,7 @@ pub struct Frame<'a> {
     // The command buffer builder that will be built during the lifetime of this object.
     command_buffer_builder: Option<RecordingCommandBuffer>,
     // Matrix that was passed to `frame()`.
-    world_to_framebuffer: Matrix4<f32>,
+    world_to_framebuffer: Mat4,
 }
 
 impl<'a> Frame<'a> {
@@ -506,7 +506,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
 
     /// Returns the 4x4 matrix that turns world coordinates into 2D coordinates on the framebuffer.
     #[allow(dead_code)]
-    pub fn world_to_framebuffer_matrix(&self) -> Matrix4<f32> {
+    pub fn world_to_framebuffer_matrix(&self) -> Mat4 {
         self.frame.world_to_framebuffer
     }
 }
@@ -538,7 +538,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     ///
     /// All the objects will be colored with an intensity varying between `[0, 0, 0]` and `color`,
     /// depending on the dot product of their normal and `direction`.
-    pub fn directional_light(&mut self, direction: Vector3<f32>, color: [f32; 3]) {
+    pub fn directional_light(&mut self, direction: Vec3, color: [f32; 3]) {
         let command_buffer = self.frame.system.directional_lighting_system.draw(
             self.frame.framebuffer.extent(),
             self.frame.system.diffuse_buffer.clone(),
@@ -559,14 +559,14 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// All the objects will be colored with an intensity varying between `[0, 0, 0]` and `color`,
     /// depending on their distance with `position`. Objects that aren't facing `position` won't
     /// receive any light.
-    pub fn point_light(&mut self, position: Vector3<f32>, color: [f32; 3]) {
+    pub fn point_light(&mut self, position: Vec3, color: [f32; 3]) {
         let command_buffer = {
             self.frame.system.point_lighting_system.draw(
                 self.frame.framebuffer.extent(),
                 self.frame.system.diffuse_buffer.clone(),
                 self.frame.system.normals_buffer.clone(),
                 self.frame.system.depth_buffer.clone(),
-                self.frame.world_to_framebuffer.invert().unwrap(),
+                self.frame.world_to_framebuffer.inverse(),
                 position,
                 color,
             )

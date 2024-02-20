@@ -12,7 +12,7 @@ bench = false
 doc = false
 
 [dependencies]
-cgmath = { workspace = true }
+glam = { workspace = true }
 vulkano = { workspace = true, features = ["macros"] }
 vulkano-shaders = { workspace = true }
 winit = { workspace = true }

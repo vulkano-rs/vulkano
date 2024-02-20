@@ -20,7 +20,7 @@ use crate::{
     frame::{FrameSystem, Pass},
     triangle_draw_system::TriangleDrawSystem,
 };
-use cgmath::{Matrix4, SquareMatrix, Vector3};
+use glam::f32::{Mat4, Vec3};
 use std::{error::Error, sync::Arc};
 use vulkano::{
     command_buffer::allocator::{
@@ -240,7 +240,7 @@ fn main() -> Result<(), impl Error> {
                 let mut frame = frame_system.frame(
                     future,
                     images[image_index as usize].clone(),
-                    Matrix4::identity(),
+                    Mat4::IDENTITY,
                 );
                 let mut after_future = None;
                 while let Some(pass) = frame.next_pass() {
@@ -251,11 +251,10 @@ fn main() -> Result<(), impl Error> {
                         }
                         Pass::Lighting(mut lighting) => {
                             lighting.ambient_light([0.1, 0.1, 0.1]);
-                            lighting
-                                .directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6]);
-                            lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0]);
-                            lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0]);
-                            lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0]);
+                            lighting.directional_light(Vec3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6]);
+                            lighting.point_light(Vec3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0]);
+                            lighting.point_light(Vec3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0]);
+                            lighting.point_light(Vec3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0]);
                         }
                         Pass::Finished(af) => {
                             after_future = Some(af);

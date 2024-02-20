@@ -1,4 +1,4 @@
-use cgmath::Vector2;
+use glam::f32::Vec2;
 use rand::Rng;
 use std::sync::Arc;
 use vulkano::{
@@ -128,9 +128,9 @@ impl FractalComputePipeline {
     pub fn compute(
         &self,
         image_view: Arc<ImageView>,
-        c: Vector2<f32>,
-        scale: Vector2<f32>,
-        translation: Vector2<f32>,
+        c: Vec2,
+        scale: Vec2,
+        translation: Vec2,
         max_iters: u32,
         is_julia: bool,
     ) -> Box<dyn GpuFuture> {

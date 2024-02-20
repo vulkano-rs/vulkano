@@ -1,5 +1,8 @@
 use self::model::{Normal, Position, INDICES, NORMALS, POSITIONS};
-use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
+use glam::{
+    f32::{Mat3, Vec3},
+    Mat4,
+};
 use std::{error::Error, sync::Arc, time::Instant};
 use vulkano::{
     buffer::{
@@ -311,29 +314,30 @@ fn main() -> Result<(), impl Error> {
                     let elapsed = rotation_start.elapsed();
                     let rotation =
                         elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0;
-                    let rotation = Matrix3::from_angle_y(Rad(rotation as f32));
+                    let rotation = Mat3::from_rotation_y(rotation as f32);
 
                     // NOTE: This teapot was meant for OpenGL where the origin is at the lower left
                     // instead the origin is at the upper left in Vulkan, so we reverse the Y axis.
                     let aspect_ratio =
                         swapchain.image_extent()[0] as f32 / swapchain.image_extent()[1] as f32;
-                    let proj = cgmath::perspective(
-                        Rad(std::f32::consts::FRAC_PI_2),
+                    // TODO: aaaa
+                    let proj = Mat4::perspective_rh_gl(
+                        std::f32::consts::FRAC_PI_2,
                         aspect_ratio,
                         0.01,
                         100.0,
                     );
-                    let view = Matrix4::look_at_rh(
-                        Point3::new(0.3, 0.3, 1.0),
-                        Point3::new(0.0, 0.0, 0.0),
-                        Vector3::new(0.0, -1.0, 0.0),
+                    let view = Mat4::look_at_rh(
+                        Vec3::new(0.3, 0.3, 1.0),
+                        Vec3::new(0.0, 0.0, 0.0),
+                        Vec3::new(0.0, -1.0, 0.0),
                     );
-                    let scale = Matrix4::from_scale(0.01);
+                    let scale = Mat4::from_scale(Vec3::splat(0.01));
 
                     let uniform_data = vs::Data {
-                        world: Matrix4::from(rotation).into(),
-                        view: (view * scale).into(),
-                        proj: proj.into(),
+                        world: Mat4::from_mat3(rotation).to_cols_array_2d(),
+                        view: (view * scale).to_cols_array_2d(),
+                        proj: proj.to_cols_array_2d(),
                     };
 
                     let subbuffer = uniform_buffer.allocate_sized().unwrap();

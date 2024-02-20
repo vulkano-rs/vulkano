@@ -1,5 +1,5 @@
 use crate::app::App;
-use cgmath::Vector2;
+use glam::IVec2;
 use rand::Rng;
 use std::sync::Arc;
 use vulkano::{
@@ -114,7 +114,7 @@ impl GameOfLifeComputePipeline {
         self.image.clone()
     }
 
-    pub fn draw_life(&self, pos: Vector2<i32>) {
+    pub fn draw_life(&self, pos: IVec2) {
         let mut life_in = self.life_in.write().unwrap();
         let extent = self.image.image().extent();
         if pos.y < 0 || pos.y >= extent[1] as i32 || pos.x < 0 || pos.x >= extent[0] as i32 {

@@ -13,7 +13,7 @@ mod pixels_draw;
 mod render_pass;
 
 use crate::app::{App, RenderPipeline};
-use cgmath::Vector2;
+use glam::{f32::Vec2, IVec2};
 use std::{error::Error, time::Instant};
 use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{
@@ -39,7 +39,7 @@ fn main() -> Result<(), impl Error> {
 
     // Time & inputs...
     let mut time = Instant::now();
-    let mut cursor_pos = Vector2::new(0.0, 0.0);
+    let mut cursor_pos = Vec2::ZERO;
 
     // An extremely crude way to handle input state... but works for this example.
     let mut mouse_is_pressed_w1 = false;
@@ -84,7 +84,7 @@ fn main() -> Result<(), impl Error> {
 pub fn process_event(
     event: &Event<()>,
     app: &mut App,
-    cursor_pos: &mut Vector2<f32>,
+    cursor_pos: &mut Vec2,
     mouse_pressed_w1: &mut bool,
     mouse_pressed_w2: &mut bool,
 ) -> bool {
@@ -109,7 +109,7 @@ pub fn process_event(
             }
             // Handle mouse position events.
             WindowEvent::CursorMoved { position, .. } => {
-                *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                *cursor_pos = Vec2::new(position.x as f32, position.y as f32)
             }
             // Handle mouse button events.
             WindowEvent::MouseInput { state, button, .. } => {
@@ -134,7 +134,7 @@ pub fn process_event(
 
 fn draw_life(
     app: &mut App,
-    cursor_pos: Vector2<f32>,
+    cursor_pos: Vec2,
     mouse_is_pressed_w1: bool,
     mouse_is_pressed_w2: bool,
 ) {
@@ -149,7 +149,7 @@ fn draw_life(
 
         let window_size = window.window_size();
         let compute_pipeline = &mut app.pipelines.get_mut(id).unwrap().compute;
-        let mut normalized_pos = Vector2::new(
+        let mut normalized_pos = Vec2::new(
             (cursor_pos.x / window_size[0]).clamp(0.0, 1.0),
             (cursor_pos.y / window_size[1]).clamp(0.0, 1.0),
         );
@@ -157,7 +157,7 @@ fn draw_life(
         // Flip y.
         normalized_pos.y = 1.0 - normalized_pos.y;
         let image_extent = compute_pipeline.color_image().image().extent();
-        compute_pipeline.draw_life(Vector2::new(
+        compute_pipeline.draw_life(IVec2::new(
             (image_extent[0] as f32 * normalized_pos.x) as i32,
             (image_extent[1] as f32 * normalized_pos.y) as i32,
         ))
