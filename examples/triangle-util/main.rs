@@ -331,7 +331,7 @@ fn main() -> Result<(), impl Error> {
                     return;
                 }
 
-                //
+                // Begin rendering by acquiring the gpu future from the window renderer.
                 let previous_frame_end = window_renderer
                     .acquire(|swapchain_images| {
                         // Whenever the window resizes we need to recreate everything dependent on
