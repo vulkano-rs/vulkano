@@ -320,7 +320,7 @@ fn main() -> Result<(), impl Error> {
                     // instead the origin is at the upper left in Vulkan, so we reverse the Y axis.
                     let aspect_ratio =
                         swapchain.image_extent()[0] as f32 / swapchain.image_extent()[1] as f32;
-                    // TODO: aaaa
+
                     let proj = Mat4::perspective_rh_gl(
                         std::f32::consts::FRAC_PI_2,
                         aspect_ratio,
