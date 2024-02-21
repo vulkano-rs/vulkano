@@ -263,7 +263,7 @@ impl VulkanoWindowRenderer {
     #[inline]
     pub fn acquire(
         &mut self,
-        on_recreate_swapchain: impl FnOnce(&Vec<Arc<ImageView>>),
+        on_recreate_swapchain: impl FnOnce(&[Arc<ImageView>]),
     ) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
