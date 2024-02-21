@@ -1,7 +1,7 @@
 use crate::{
     fractal_compute_pipeline::FractalComputePipeline, place_over_frame::RenderPassPlaceOverFrame,
 };
-use cgmath::Vector2;
+use glam::f32::Vec2;
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     command_buffer::allocator::{
@@ -35,11 +35,11 @@ pub struct FractalApp {
     /// Toggle that stops the movement on Julia.
     is_c_paused: bool,
     /// C is a constant input to Julia escape time algorithm (mouse position).
-    c: Vector2<f32>,
+    c: Vec2,
     /// Our zoom level.
-    scale: Vector2<f32>,
+    scale: Vec2,
     /// Our translation on the complex plane.
-    translation: Vector2<f32>,
+    translation: Vec2,
     /// How long the escape time algorithm should run (higher = less performance, more accurate
     /// image).
     pub max_iters: u32,
@@ -90,9 +90,9 @@ impl FractalApp {
             ),
             is_julia: false,
             is_c_paused: false,
-            c: Vector2::new(0.0, 0.0),
-            scale: Vector2::new(4.0, 4.0),
-            translation: Vector2::new(0.0, 0.0),
+            c: Vec2::new(0.0, 0.0),
+            scale: Vec2::new(4.0, 4.0),
+            translation: Vec2::new(0.0, 0.0),
             max_iters: MAX_ITERS_INIT,
             time: Instant::now(),
             dt: 0.0,
@@ -174,16 +174,16 @@ Usage:
 
         // Panning.
         if self.input_state.pan_up {
-            self.translation += Vector2::new(0.0, move_speed);
+            self.translation += Vec2::new(0.0, move_speed);
         }
         if self.input_state.pan_down {
-            self.translation += Vector2::new(0.0, -move_speed);
+            self.translation += Vec2::new(0.0, -move_speed);
         }
         if self.input_state.pan_right {
-            self.translation += Vector2::new(move_speed, 0.0);
+            self.translation += Vec2::new(move_speed, 0.0);
         }
         if self.input_state.pan_left {
-            self.translation += Vector2::new(-move_speed, 0.0);
+            self.translation += Vec2::new(-move_speed, 0.0);
         }
 
         // Toggle between Julia and Mandelbrot.
@@ -199,7 +199,7 @@ Usage:
         // Update c.
         if !self.is_c_paused {
             // Scale normalized mouse pos between -1.0 and 1.0.
-            let mouse_pos = self.input_state.normalized_mouse_pos() * 2.0 - Vector2::new(1.0, 1.0);
+            let mouse_pos = self.input_state.normalized_mouse_pos() * 2.0 - Vec2::new(1.0, 1.0);
             // Scale by our zoom (scale) level so when zooming in the movement on Julia is not so
             // drastic.
             self.c = mouse_pos * self.scale.x;
@@ -268,7 +268,7 @@ struct InputState {
     pub toggle_c: bool,
     pub should_quit: bool,
     pub scroll_delta: f32,
-    pub mouse_pos: Vector2<f32>,
+    pub mouse_pos: Vec2,
 }
 
 impl InputState {
@@ -290,12 +290,12 @@ impl InputState {
             toggle_c: false,
             should_quit: false,
             scroll_delta: 0.0,
-            mouse_pos: Vector2::new(0.0, 0.0),
+            mouse_pos: Vec2::new(0.0, 0.0),
         }
     }
 
-    fn normalized_mouse_pos(&self) -> Vector2<f32> {
-        Vector2::new(
+    fn normalized_mouse_pos(&self) -> Vec2 {
+        Vec2::new(
             (self.mouse_pos.x / self.window_size[0]).clamp(0.0, 1.0),
             (self.mouse_pos.y / self.window_size[1]).clamp(0.0, 1.0),
         )
@@ -358,7 +358,7 @@ impl InputState {
 
     /// Update mouse position
     fn on_cursor_moved_event(&mut self, pos: &PhysicalPosition<f64>) {
-        self.mouse_pos = Vector2::new(pos.x as f32, pos.y as f32);
+        self.mouse_pos = Vec2::new(pos.x as f32, pos.y as f32);
     }
 
     /// Update toggle julia state (if right mouse is clicked)

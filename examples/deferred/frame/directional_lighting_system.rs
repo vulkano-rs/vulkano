@@ -1,5 +1,5 @@
 use super::LightingVertex;
-use cgmath::Vector3;
+use glam::f32::Vec3;
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -168,7 +168,7 @@ impl DirectionalLightingSystem {
         viewport_dimensions: [u32; 2],
         color_input: Arc<ImageView>,
         normals_input: Arc<ImageView>,
-        direction: Vector3<f32>,
+        direction: Vec3,
         color: [f32; 3],
     ) -> Arc<CommandBuffer> {
         let push_constants = fs::PushConstants {

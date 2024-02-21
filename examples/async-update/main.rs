@@ -27,7 +27,7 @@
 // same data but their consistency is not strict. A replica might be out-of-date for some time
 // before *reaching convergence*, hence becoming consistent, eventually.
 
-use cgmath::{Matrix4, Rad};
+use glam::f32::Mat4;
 use rand::Rng;
 use std::{
     error::Error,
@@ -659,7 +659,7 @@ fn main() -> Result<(), impl Error> {
                         let delta = (remainder / DURATION) as f32;
                         let angle = delta * std::f32::consts::PI * 2.0;
 
-                        Matrix4::from_angle_z(Rad(angle)).into()
+                        Mat4::from_rotation_z(angle).to_cols_array_2d()
                     },
                 };
 

@@ -83,15 +83,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc7eb209b1518d6bb87b283c20095f5228ecda460da70b44f0802523dea6da04"
 
 [[package]]
-name = "approx"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f2a05fd1bd10b2527e20a2cd32d8873d115b8b39fe219ee25f42a8aca6ba278"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -128,7 +119,7 @@ dependencies = [
 name = "async-update"
 version = "0.0.0"
 dependencies = [
- "cgmath",
+ "glam",
  "rand",
  "vulkano",
  "vulkano-shaders",
@@ -332,16 +323,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ced0551234e87afee12411d535648dd89d2e7f34c78b753395567aff3d447ff"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "cgmath"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a98d30140e3296250832bbaaff83b27dcd6fa3cc70fb6f1f3e5c9c0023b5317"
-dependencies = [
- "approx",
- "num-traits",
 ]
 
 [[package]]
@@ -606,7 +587,7 @@ dependencies = [
 name = "deferred"
 version = "0.0.0"
 dependencies = [
- "cgmath",
+ "glam",
  "vulkano",
  "vulkano-shaders",
  "winit 0.29.9",
@@ -829,6 +810,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glam"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "151665d9be52f9bb40fc7966565d39666f2d1e69233571b71b87791c7e0528b3"
+
+[[package]]
 name = "glium"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1023,7 +1010,7 @@ dependencies = [
 name = "interactive-fractal"
 version = "0.0.0"
 dependencies = [
- "cgmath",
+ "glam",
  "rand",
  "vulkano",
  "vulkano-shaders",
@@ -1252,7 +1239,7 @@ dependencies = [
 name = "multi-window-game-of-life"
 version = "0.0.0"
 dependencies = [
- "cgmath",
+ "glam",
  "rand",
  "vulkano",
  "vulkano-shaders",
@@ -1386,15 +1373,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset 0.7.1",
-]
-
-[[package]]
-name = "num-traits"
-version = "0.2.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39e3200413f237f41ab11ad6d161bc7239c84dcb631773ccd7de3dfe4b5c267c"
-dependencies = [
- "autocfg",
 ]
 
 [[package]]
@@ -2157,7 +2135,7 @@ checksum = "36ae8932fcfea38b7d3883ae2ab357b0d57a02caaa18ebb4f5ece08beaec4aa0"
 name = "teapot"
 version = "0.0.0"
 dependencies = [
- "cgmath",
+ "glam",
  "vulkano",
  "vulkano-shaders",
  "winit 0.29.9",

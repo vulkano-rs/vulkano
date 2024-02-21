@@ -1,5 +1,5 @@
 use super::LightingVertex;
-use cgmath::{Matrix4, Vector3};
+use glam::f32::{Mat4, Vec3};
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -178,12 +178,12 @@ impl PointLightingSystem {
         color_input: Arc<ImageView>,
         normals_input: Arc<ImageView>,
         depth_input: Arc<ImageView>,
-        screen_to_world: Matrix4<f32>,
-        position: Vector3<f32>,
+        screen_to_world: Mat4,
+        position: Vec3,
         color: [f32; 3],
     ) -> Arc<CommandBuffer> {
         let push_constants = fs::PushConstants {
-            screen_to_world: screen_to_world.into(),
+            screen_to_world: screen_to_world.to_cols_array_2d(),
             color: [color[0], color[1], color[2], 1.0],
             position: position.extend(0.0).into(),
         };
