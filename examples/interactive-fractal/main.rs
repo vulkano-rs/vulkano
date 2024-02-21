@@ -63,6 +63,7 @@ fn main() -> Result<(), impl Error> {
     let mut app = FractalApp::new(
         gfx_queue.clone(),
         primary_window_renderer.swapchain_format(),
+        primary_window_renderer.swapchain_image_views(),
     );
     app.print_guide();
 
@@ -144,7 +145,10 @@ fn compute_then_render(
     target_image_id: usize,
 ) {
     // Start the frame.
-    let before_pipeline_future = match renderer.acquire() {
+    let before_pipeline_future = match renderer.acquire(|swapchain_image_views| {
+        app.place_over_frame
+            .recreate_framebuffers(swapchain_image_views)
+    }) {
         Err(e) => {
             println!("{e}");
             return;
@@ -159,9 +163,12 @@ fn compute_then_render(
     let after_compute = app.compute(image.clone()).join(before_pipeline_future);
 
     // Render the image over the swapchain image, inputting the previous future.
-    let after_renderpass_future =
-        app.place_over_frame
-            .render(after_compute, image, renderer.swapchain_image_view());
+    let after_renderpass_future = app.place_over_frame.render(
+        after_compute,
+        image,
+        renderer.swapchain_image_view(),
+        renderer.image_index(),
+    );
 
     // Finish the frame (which presents the view), inputting the last future. Wait for the future
     // so resources are not in use when we render.

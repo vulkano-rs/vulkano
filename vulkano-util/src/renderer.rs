@@ -203,6 +203,16 @@ impl VulkanoWindowRenderer {
         dims[0] / dims[1]
     }
 
+    /// Returns a reference to the swapchain image views.
+    #[inline]
+    #[must_use]
+    // swapchain_image_views or swapchain_images_views, neither sounds good.
+    pub fn swapchain_image_views(&self) -> &Vec<Arc<ImageView>> {
+        // Why do we use "final views" as the field name,
+        // yet always externally refer to them as "swapchain image views"?
+        &self.final_views
+    }
+
     /// Resize swapchain and camera view images at the beginning of next frame based on window
     /// size.
     #[inline]
@@ -245,16 +255,21 @@ impl VulkanoWindowRenderer {
     }
 
     /// Begin your rendering by calling `acquire`.
-    /// Returns a [`GpuFuture`] representing the time after which the
-    /// swapchain image has been acquired and previous frame ended.
-    /// Execute your command buffers after calling this function and finish rendering by calling
-    /// [`VulkanoWindowRenderer::present`].
+    /// 'on_recreate_swapchain' is called when the swapchain gets recreated, due to being resized,
+    /// suboptimal, or changing the present mode. Returns a [`GpuFuture`] representing the time
+    /// after which the swapchain image has been acquired and previous frame ended.
+    /// Execute your command buffers after calling this function and
+    /// finish rendering by calling [`VulkanoWindowRenderer::present`].
     #[inline]
-    pub fn acquire(&mut self) -> Result<Box<dyn GpuFuture>, VulkanError> {
+    pub fn acquire(
+        &mut self,
+        on_recreate_swapchain: impl FnOnce(&Vec<Arc<ImageView>>),
+    ) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {
             self.recreate_swapchain_and_views();
+            on_recreate_swapchain(&self.final_views);
         }
 
         // Acquire next image in the swapchain

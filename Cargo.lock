@@ -2316,6 +2316,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "triangle-util"
+version = "0.0.0"
+dependencies = [
+ "vulkano",
+ "vulkano-shaders",
+ "vulkano-util",
+ "winit 0.29.9",
+]
+
+[[package]]
 name = "triangle-v1_3"
 version = "0.0.0"
 dependencies = [
