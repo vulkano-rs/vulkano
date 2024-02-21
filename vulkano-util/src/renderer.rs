@@ -207,7 +207,7 @@ impl VulkanoWindowRenderer {
     #[inline]
     #[must_use]
     // swapchain_image_views or swapchain_images_views, neither sounds good.
-    pub fn swapchain_image_views(&self) -> &Vec<Arc<ImageView>> {
+    pub fn swapchain_image_views(&self) -> &[Arc<ImageView>] {
         // Why do we use "final views" as the field name,
         // yet always externally refer to them as "swapchain image views"?
         &self.final_views
