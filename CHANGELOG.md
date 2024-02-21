@@ -78,6 +78,9 @@ Changes to queries:
 Changes to queues:
 - The `Queue::id_within_family` method is renamed to `queue_index` to match Vulkan.
 
+Changes to vulkano-util:
+- `VulkanoWindowRenderer::acquire` now takes in an `FnOnce(&[Arc<ImageView>])`. This means that a closure can be called when the swapchain gets recreated.
+
 ### Additions
 
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
@@ -91,6 +94,7 @@ Changes to queues:
 - Support for the `ext_mesh_shader` extension.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Support for querying memory requirements directly from the device.
+- Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
 
 ### Bugs fixed
 
