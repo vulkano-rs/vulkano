@@ -906,6 +906,44 @@ impl ToTokens for Serializer<'_, TypeVector> {
                 let vector = format_ident!("Vector{}", component_count);
                 tokens.extend(quote! { ::cgmath::#vector<#component_type> });
             }
+            LinAlgType::Glam => {
+                // jmi2k: ugly
+                let ty = match component_type {
+                    TypeScalar::Float(TypeFloat {
+                        width: FloatWidth::W32,
+                    }) => format_ident!("Vec{}", component_count),
+                    TypeScalar::Float(TypeFloat {
+                        width: FloatWidth::W64,
+                    }) => format_ident!("DVec{}", component_count),
+                    TypeScalar::Int(TypeInt {
+                        width: IntWidth::W16,
+                        signed: true,
+                    }) => format_ident!("I16Vec{}", component_count),
+                    TypeScalar::Int(TypeInt {
+                        width: IntWidth::W32,
+                        signed: true,
+                    }) => format_ident!("IVec{}", component_count),
+                    TypeScalar::Int(TypeInt {
+                        width: IntWidth::W64,
+                        signed: true,
+                    }) => format_ident!("I64Vec{}", component_count),
+                    TypeScalar::Int(TypeInt {
+                        width: IntWidth::W16,
+                        signed: false,
+                    }) => format_ident!("U16Vec{}", component_count),
+                    TypeScalar::Int(TypeInt {
+                        width: IntWidth::W32,
+                        signed: false,
+                    }) => format_ident!("UVec{}", component_count),
+                    TypeScalar::Int(TypeInt {
+                        width: IntWidth::W64,
+                        signed: false,
+                    }) => format_ident!("U64Vec{}", component_count),
+                    // jmi2k: is this ok?
+                    _ => unreachable!(),
+                };
+                tokens.extend(quote! { ::glam::#ty });
+            }
             LinAlgType::Nalgebra => {
                 tokens.extend(quote! {
                     ::nalgebra::base::SVector<#component_type, #component_count>
@@ -935,6 +973,22 @@ impl ToTokens for Serializer<'_, TypeMatrix> {
             {
                 let matrix = format_ident!("Matrix{}", component_count);
                 tokens.extend(quote! { ::cgmath::#matrix<#component_type> });
+            }
+            // glam only has column-major matrices. It also only has square matrices, and its 3x3
+            // matrix is not padded right. Fall back to std for anything else.
+            // jmi2k: is this ok?
+            LinAlgType::Glam
+                if majorness == MatrixMajorness::ColumnMajor
+                    && padding == 0
+                    && vector_count == component_count =>
+            {
+                let ty = match component_type.width {
+                    FloatWidth::W32 => format_ident!("Mat{}", component_count),
+                    FloatWidth::W64 => format_ident!("DMat{}", component_count),
+                    // jmi2k: is this ok?
+                    _ => unreachable!(),
+                };
+                tokens.extend(quote! { ::glam::#ty });
             }
             // nalgebra only has column-major matrices, and its 3xN matrices are not padded right.
             // Fall back to std for anything else.

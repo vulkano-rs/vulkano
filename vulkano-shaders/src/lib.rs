@@ -188,6 +188,7 @@
 //!
 //! - `std`
 //! - `cgmath`
+//! - `glam`
 //! - `nalgebra`
 //!
 //! The default is `std`, which uses arrays to represent vectors and matrices. Note that if the
@@ -681,8 +682,12 @@ impl Parse for MacroInput {
                     linalg_type = Some(match lit.value().as_str() {
                         "std" => LinAlgType::Std,
                         "cgmath" => LinAlgType::CgMath,
+                        "glam" => LinAlgType::Glam,
                         "nalgebra" => LinAlgType::Nalgebra,
-                        ty => bail!(lit, "expected `std`, `cgmath` or `nalgebra`, found `{ty}`"),
+                        ty => bail!(
+                            lit,
+                            "expected `std`, `cgmath`, `glam` or `nalgebra`, found `{ty}`"
+                        ),
                     });
                 }
                 "dump" => {
@@ -749,6 +754,7 @@ enum LinAlgType {
     #[default]
     Std,
     CgMath,
+    Glam,
     Nalgebra,
 }
 
