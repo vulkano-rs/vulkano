@@ -142,7 +142,6 @@ impl<'r> VkRegistryData<'r> {
 
         fn parse_vk_header_major_minor(value: &str) -> IResult<&str, (u16, u16)> {
             let (value, _) = take_until("#define")(value)?;
-            dbg!(value);
             preceded(
                 tuple((
                     tag("#define"),
