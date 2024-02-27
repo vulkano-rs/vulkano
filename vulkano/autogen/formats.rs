@@ -1,6 +1,11 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
-use nom::{bytes::complete::tag, character::complete, sequence::separated_pair};
+use nom::{
+    bytes::complete::tag,
+    character::complete,
+    combinator::eof,
+    sequence::{separated_pair, terminated},
+};
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use std::iter;
@@ -609,7 +614,7 @@ fn formats_members(
         separated_pair(
             complete::u32::<_, ()>,
             tag(","),
-            separated_pair(complete::u32, tag(","), complete::u32),
+            terminated(separated_pair(complete::u32, tag(","), complete::u32), eof),
         )(value)
         .map(|(_, (a, (b, c)))| [a, b, c])
     }
