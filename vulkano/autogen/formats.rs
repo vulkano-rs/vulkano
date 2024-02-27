@@ -1,7 +1,6 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
 use nom::{
-    bytes::complete::tag,
     character::complete,
     combinator::eof,
     sequence::{separated_pair, terminated},
