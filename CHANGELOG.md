@@ -109,6 +109,7 @@ Changes to vulkano-util:
 - `RawRecordingCommandBuffer::end` being safe to call.
 - Fix wrong comparison in push constant size validation check.
 - Unnecessarily strict validation that disallowed providing a single DRM format modifier without an explicit layout.
+- Fixed the alignment check when (sub)allocating buffers that would limit the alignment to 64 at maximum, even though some applications might need buffers with higher alignments that aren't read/written by the host. The check is now only present when reading/writing a buffer.
 
 # Version 0.34.1 (2023-10-29)
 
