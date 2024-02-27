@@ -1,7 +1,13 @@
 use self::spirv_grammar::SpirvGrammar;
 use ahash::HashMap;
-use once_cell::sync::Lazy;
-use regex::Regex;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_until},
+    character::complete::{self, space0, space1},
+    combinator::eof,
+    sequence::{delimited, preceded, tuple},
+    IResult, Parser,
+};
 use std::{
     cmp::min,
     env,
@@ -115,11 +121,60 @@ impl<'r> VkRegistryData<'r> {
     }
 
     fn get_header_version(registry: &Registry) -> (u16, u16, u16) {
-        static VK_HEADER_VERSION: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"#define\s+VK_HEADER_VERSION\s+(\d+)\s*$").unwrap());
-        static VK_HEADER_VERSION_COMPLETE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"#define\s+VK_HEADER_VERSION_COMPLETE\s+VK_MAKE_API_VERSION\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*VK_HEADER_VERSION\s*\)").unwrap()
-        });
+        enum VkHeaderVersion {
+            MajorMinor(u16, u16),
+            Patch(u16),
+        }
+
+        fn spaced_comma(input: &str) -> IResult<&str, ()> {
+            delimited(space0, tag(","), space0)(input).map(|(input, _)| (input, ()))
+        }
+
+        fn parse_vk_header_line(value: &str) -> IResult<&str, VkHeaderVersion> {
+            preceded(
+                tuple((tag("#define"), space1, tag("VK_HEADER_VERSION"))),
+                alt((
+                    preceded(
+                        tuple((tag("_COMPLETE"), space1, tag("VK_MAKE_API_VERSION"))),
+                        delimited(
+                            tuple((space0, tag("("), space0)),
+                            tuple((
+                                complete::u16,
+                                spaced_comma,
+                                complete::u16,
+                                spaced_comma,
+                                complete::u16,
+                                spaced_comma,
+                                tag("VK_HEADER_VERSION"),
+                            ))
+                            .map(
+                                |(_ignored, _, major, _, minor, _, _)| {
+                                    VkHeaderVersion::MajorMinor(major, minor)
+                                },
+                            ),
+                            tuple((space0, tag("("), space0)),
+                        ),
+                    ),
+                    tuple((space1, complete::u16, space0, eof))
+                        .map(|(_, patch, _, _)| VkHeaderVersion::Patch(patch)),
+                )),
+            )(value)
+        }
+
+        // Could be optimised with https://docs.rs/aho-corasick/latest/aho_corasick/
+        fn parse_vk_header(mut value: &str) -> IResult<&str, VkHeaderVersion> {
+            let search_for = "#define";
+            while let Ok((rest, _skip)) = take_until::<&str, &str, ()>(search_for)(value) {
+                match parse_vk_header_line(rest) {
+                    Ok(v) => return Ok(v),
+                    Err(_) => value = &rest[search_for.len()..],
+                }
+            }
+            Err(nom::Err::Error(nom::error::Error::new(
+                value,
+                nom::error::ErrorKind::Eof,
+            )))
+        }
 
         let mut major = None;
         let mut minor = None;
@@ -130,13 +185,13 @@ impl<'r> VkRegistryData<'r> {
                 for ty in types.children.iter() {
                     if let TypesChild::Type(ty) = ty {
                         if let TypeSpec::Code(code) = &ty.spec {
-                            if let Some(captures) = VK_HEADER_VERSION.captures(&code.code) {
-                                patch = Some(captures.get(1).unwrap().as_str().parse().unwrap());
-                            } else if let Some(captures) =
-                                VK_HEADER_VERSION_COMPLETE.captures(&code.code)
-                            {
-                                major = Some(captures.get(2).unwrap().as_str().parse().unwrap());
-                                minor = Some(captures.get(3).unwrap().as_str().parse().unwrap());
+                            match parse_vk_header(&code.code) {
+                                Ok((_, VkHeaderVersion::MajorMinor(m, n))) => {
+                                    major = Some(m);
+                                    minor = Some(n);
+                                }
+                                Ok((_, VkHeaderVersion::Patch(p))) => patch = Some(p),
+                                Err(_) => (),
                             }
                         }
                     }
@@ -430,11 +485,12 @@ pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
 }
 
 fn suffix_key(name: &str) -> u32 {
-    static VENDOR_SUFFIXES: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap());
-
     #[allow(clippy::bool_to_int_with_if)]
-    if VENDOR_SUFFIXES.is_match(name) {
+    if name.ends_with("AMD")
+        || name.ends_with("GOOGLE")
+        || name.ends_with("INTEL")
+        || name.ends_with("NV")
+    {
         3
     } else if name.ends_with("EXT") {
         2
