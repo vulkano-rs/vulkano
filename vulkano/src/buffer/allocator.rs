@@ -252,13 +252,7 @@ where
     }
 
     /// Allocates a subbuffer with the given `layout`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `layout.alignment()` exceeds `64`.
     pub fn allocate(&self, layout: DeviceLayout) -> Result<Subbuffer<[u8]>, MemoryAllocatorError> {
-        assert!(layout.alignment().as_devicesize() <= 64);
-
         unsafe { &mut *self.state.get() }.allocate(layout)
     }
 }

@@ -300,6 +300,8 @@ where
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound
     pub fn read(&self) -> Result<BufferReadGuard<'_, T>, HostAccessError> {
+        assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
+
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::read` doesn't support sparse binding yet"),
@@ -391,6 +393,8 @@ where
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound
     pub fn write(&self) -> Result<BufferWriteGuard<'_, T>, HostAccessError> {
+        assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
+
         let allocation = match self.buffer().memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => todo!("`Subbuffer::write` doesn't support sparse binding yet"),

@@ -376,14 +376,12 @@ impl Buffer {
     /// # Panics
     ///
     /// - Panics if `create_info.size` is not zero.
-    /// - Panics if `layout.alignment()` is greater than 64.
     pub fn new(
         allocator: Arc<dyn MemoryAllocator>,
         mut create_info: BufferCreateInfo,
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
     ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
-        assert!(layout.alignment().as_devicesize() <= 64);
         // TODO: Enable once sparse binding materializes
         // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
 
