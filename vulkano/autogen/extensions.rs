@@ -1,9 +1,13 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
-use once_cell::sync::Lazy;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_while1},
+    combinator::eof,
+    IResult, Parser,
+};
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use regex::Regex;
 use std::fmt::Write as _;
 use vk_parse::Extension;
 
@@ -978,28 +982,32 @@ fn parse_depends(mut depends: &str) -> Result<DependsExpression<'_>, String> {
         PClose,
     }
 
-    static NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9_]+").unwrap());
+    fn parse_name(value: &str) -> IResult<&str, &str> {
+        take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(value)
+    }
+
+    fn parse_symbol(value: &str) -> IResult<&str, Option<Token>> {
+        alt((
+            tag("+").map(|_| Some(Token::Plus)),
+            tag(",").map(|_| Some(Token::Comma)),
+            tag("(").map(|_| Some(Token::POpen)),
+            tag(")").map(|_| Some(Token::PClose)),
+            eof.map(|_| None),
+        ))(value)
+    }
 
     let mut next_token = move || {
-        if let Some(m) = NAME.find(depends) {
-            depends = &depends[m.len()..];
-            Ok(Some(Token::Name(m.as_str())))
+        if let Ok((rest, m)) = parse_name(depends) {
+            depends = rest;
+            Ok(Some(Token::Name(m)))
         } else {
-            depends
-                .chars()
-                .next()
-                .map(|c| {
-                    let token = match c {
-                        '+' => Token::Plus,
-                        ',' => Token::Comma,
-                        '(' => Token::POpen,
-                        ')' => Token::PClose,
-                        _ => return Err(format!("unexpected character: {}", c)),
-                    };
-                    depends = &depends[1..];
-                    Ok(token)
-                })
-                .transpose()
+            match parse_symbol(depends) {
+                Ok((rest, m)) => {
+                    depends = rest;
+                    Ok(m)
+                }
+                Err(c) => Err(format!("unexpected character: {}", c)),
+            }
         }
     };
 
