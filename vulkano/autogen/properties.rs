@@ -3,7 +3,7 @@ use ahash::HashMap;
 use heck::ToSnakeCase;
 use nom::{
     bytes::complete::{tag, take_until, take_while1},
-    character::complete::digit1,
+    character::complete::{self, digit1},
     combinator::eof,
     sequence::tuple,
     IResult,
@@ -433,9 +433,9 @@ struct Member<'a> {
 fn members(ty: &Type) -> Vec<Member> {
     fn parse_array_len(value: &str) -> IResult<&str, &str> {
         let (value, _) = take_until("[")(value)?;
-        let (value, _) = tag("[")(value)?;
+        let (value, _) = complete::char('[')(value)?;
         let (value, len) = take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(value)?;
-        let (value, _) = tag("]")(value)?;
+        let (value, _) = complete::char(']')(value)?;
         let (value, _) = eof(value)?;
         Ok((value, len))
     }

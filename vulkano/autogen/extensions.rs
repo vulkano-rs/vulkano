@@ -1,10 +1,8 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
 use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_while1},
-    combinator::eof,
-    IResult, Parser,
+    branch::alt, bytes::complete::take_while1, character::complete, combinator::eof, IResult,
+    Parser,
 };
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -988,10 +986,10 @@ fn parse_depends(mut depends: &str) -> Result<DependsExpression<'_>, String> {
 
     fn parse_symbol(value: &str) -> IResult<&str, Option<Token>> {
         alt((
-            tag("+").map(|_| Some(Token::Plus)),
-            tag(",").map(|_| Some(Token::Comma)),
-            tag("(").map(|_| Some(Token::POpen)),
-            tag(")").map(|_| Some(Token::PClose)),
+            complete::char('+').map(|_| Some(Token::Plus)),
+            complete::char(',').map(|_| Some(Token::Comma)),
+            complete::char('(').map(|_| Some(Token::POpen)),
+            complete::char(')').map(|_| Some(Token::PClose)),
             eof.map(|_| None),
         ))(value)
     }

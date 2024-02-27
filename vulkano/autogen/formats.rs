@@ -613,8 +613,11 @@ fn formats_members(
     fn parse_block_extent(value: &str) -> Result<[u32; 3], nom::Err<()>> {
         separated_pair(
             complete::u32::<_, ()>,
-            tag(","),
-            terminated(separated_pair(complete::u32, tag(","), complete::u32), eof),
+            complete::char(','),
+            terminated(
+                separated_pair(complete::u32, complete::char(','), complete::u32),
+                eof,
+            ),
         )(value)
         .map(|(_, (a, (b, c)))| [a, b, c])
     }
