@@ -3,7 +3,7 @@ use ahash::HashMap;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_until},
-    character::complete::{self, space0, space1},
+    character::complete::{self, multispace0, multispace1},
     combinator::eof,
     sequence::{delimited, preceded, tuple},
     IResult, Parser,
@@ -120,60 +120,52 @@ impl<'r> VkRegistryData<'r> {
         }
     }
 
+    /// Returns the Vulkan header version in the vk.xml file.
     fn get_header_version(registry: &Registry) -> (u16, u16, u16) {
-        enum VkHeaderVersion {
-            MajorMinor(u16, u16),
-            Patch(u16),
-        }
-
         fn spaced_comma(input: &str) -> IResult<&str, ()> {
-            delimited(space0, tag(","), space0)(input).map(|(input, _)| (input, ()))
+            delimited(multispace0, complete::char(','), multispace0)(input)
+                .map(|(input, _)| (input, ()))
         }
 
-        fn parse_vk_header_line(value: &str) -> IResult<&str, VkHeaderVersion> {
+        fn parse_vk_header_patch(value: &str) -> IResult<&str, u16> {
+            let (value, _) = take_until("#define")(value)?;
             preceded(
-                tuple((tag("#define"), space1, tag("VK_HEADER_VERSION"))),
-                alt((
-                    preceded(
-                        tuple((tag("_COMPLETE"), space1, tag("VK_MAKE_API_VERSION"))),
-                        delimited(
-                            tuple((space0, tag("("), space0)),
-                            tuple((
-                                complete::u16,
-                                spaced_comma,
-                                complete::u16,
-                                spaced_comma,
-                                complete::u16,
-                                spaced_comma,
-                                tag("VK_HEADER_VERSION"),
-                            ))
-                            .map(
-                                |(_ignored, _, major, _, minor, _, _)| {
-                                    VkHeaderVersion::MajorMinor(major, minor)
-                                },
-                            ),
-                            tuple((space0, tag("("), space0)),
-                        ),
-                    ),
-                    tuple((space1, complete::u16, space0, eof))
-                        .map(|(_, patch, _, _)| VkHeaderVersion::Patch(patch)),
+                tuple((
+                    tag("#define"),
+                    multispace1,
+                    tag("VK_HEADER_VERSION"),
+                    multispace0,
                 )),
+                tuple((complete::u16, multispace0, eof)).map(|(patch, _, _)| patch),
             )(value)
         }
 
-        // Could be optimised with https://docs.rs/aho-corasick/latest/aho_corasick/
-        fn parse_vk_header(mut value: &str) -> IResult<&str, VkHeaderVersion> {
-            let search_for = "#define";
-            while let Ok((rest, _skip)) = take_until::<&str, &str, ()>(search_for)(value) {
-                match parse_vk_header_line(rest) {
-                    Ok(v) => return Ok(v),
-                    Err(_) => value = &rest[search_for.len()..],
-                }
-            }
-            Err(nom::Err::Error(nom::error::Error::new(
-                value,
-                nom::error::ErrorKind::Eof,
-            )))
+        fn parse_vk_header_major_minor(value: &str) -> IResult<&str, (u16, u16)> {
+            let (value, _) = take_until("#define")(value)?;
+            dbg!(value);
+            preceded(
+                tuple((
+                    tag("#define"),
+                    multispace1,
+                    tag("VK_HEADER_VERSION_COMPLETE"),
+                    multispace1,
+                    tag("VK_MAKE_API_VERSION"),
+                )),
+                delimited(
+                    tuple((multispace0, complete::char('('), multispace0)),
+                    tuple((
+                        complete::u16,
+                        spaced_comma,
+                        complete::u16,
+                        spaced_comma,
+                        complete::u16,
+                        spaced_comma,
+                        tag("VK_HEADER_VERSION"),
+                    ))
+                    .map(|(_ignored, _, major, _, minor, _, _)| (major, minor)),
+                    tuple((multispace0, complete::char(')'), multispace0)),
+                ),
+            )(value)
         }
 
         let mut major = None;
@@ -184,14 +176,18 @@ impl<'r> VkRegistryData<'r> {
             if let RegistryChild::Types(types) = child {
                 for ty in types.children.iter() {
                     if let TypesChild::Type(ty) = ty {
+                        if ty.api.as_deref() != Some("vulkan") {
+                            continue;
+                        }
                         if let TypeSpec::Code(code) = &ty.spec {
-                            match parse_vk_header(&code.code) {
-                                Ok((_, VkHeaderVersion::MajorMinor(m, n))) => {
-                                    major = Some(m);
-                                    minor = Some(n);
-                                }
-                                Ok((_, VkHeaderVersion::Patch(p))) => patch = Some(p),
-                                Err(_) => (),
+                            if let Ok((_, p)) = parse_vk_header_patch(&code.code) {
+                                assert!(patch.is_none());
+                                patch = Some(p);
+                            } else if let Ok((_, (m, n))) = parse_vk_header_major_minor(&code.code)
+                            {
+                                assert!(major.is_none());
+                                major = Some(m);
+                                minor = Some(n);
                             }
                         }
                     }
