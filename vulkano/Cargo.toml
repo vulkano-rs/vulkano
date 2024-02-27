@@ -39,7 +39,8 @@ indexmap = { workspace = true }
 once_cell = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
-regex = { workspace = true }
+regex = "1.8"
+nom = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 vk-parse = { workspace = true }

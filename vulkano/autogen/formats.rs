@@ -1,9 +1,8 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
-use once_cell::sync::Lazy;
+use nom::{bytes::complete::tag, character::complete, sequence::separated_pair};
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use regex::Regex;
 use std::iter;
 use vk_parse::{
     Enum, EnumSpec, Extension, ExtensionChild, Feature, Format, FormatChild, InterfaceItem,
@@ -606,8 +605,14 @@ fn formats_members(
     features: &IndexMap<&str, &Feature>,
     extensions: &IndexMap<&str, &Extension>,
 ) -> Vec<FormatMember> {
-    static BLOCK_EXTENT_REGEX: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap());
+    fn parse_block_extent(value: &str) -> Result<[u32; 3], nom::Err<()>> {
+        separated_pair(
+            complete::u32::<_, ()>,
+            tag(","),
+            separated_pair(complete::u32, tag(","), complete::u32),
+        )(value)
+        .map(|(_, (a, (b, c)))| [a, b, c])
+    }
 
     iter::once(
         FormatMember {
@@ -763,12 +768,7 @@ fn formats_members(
             }
 
             if let Some(block_extent) = format.blockExtent.as_ref() {
-                let captures = BLOCK_EXTENT_REGEX.captures(block_extent).unwrap();
-                member.block_extent = [
-                    captures.get(1).unwrap().as_str().parse().unwrap(),
-                    captures.get(2).unwrap().as_str().parse().unwrap(),
-                    captures.get(3).unwrap().as_str().parse().unwrap(),
-                ];
+                member.block_extent = parse_block_extent(block_extent).unwrap();
             } else {
                 match format.chroma.as_deref() {
                     Some("420") => member.block_extent = [2, 2, 1],

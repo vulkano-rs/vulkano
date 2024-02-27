@@ -1,9 +1,9 @@
 use super::{write_file, IndexMap, VkRegistryData};
 use ahash::HashMap;
 use heck::ToSnakeCase;
+use nom::{bytes::complete::tag, character::complete::digit1, combinator::eof, sequence::tuple};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use regex::Regex;
 use std::{collections::hash_map::Entry, fmt::Write as _};
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
@@ -740,11 +740,21 @@ fn sorted_structs<'a>(
             ty.structextends.as_deref() == Some("VkPhysicalDeviceFeatures2,VkDeviceCreateInfo")
         })
         .collect();
-    let regex = Regex::new(r"^VkPhysicalDeviceVulkan\d+Features$").unwrap();
+
+    fn is_physical_device_features(name: &str) -> bool {
+        tuple((
+            tag::<_, &str, ()>("VkPhysicalDeviceVulkan"),
+            digit1,
+            tag("Features"),
+            eof,
+        ))(name)
+        .is_ok()
+    }
+
     structs.sort_unstable_by_key(|&(ty, provided_by)| {
         let name = ty.name.as_ref().unwrap();
         (
-            !regex.is_match(name),
+            !is_physical_device_features(name),
             if let Some(version) = provided_by
                 .iter()
                 .find_map(|s| s.strip_prefix("VK_VERSION_"))
