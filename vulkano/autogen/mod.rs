@@ -1,7 +1,6 @@
 use self::spirv_grammar::SpirvGrammar;
 use ahash::HashMap;
 use nom::{
-    branch::alt,
     bytes::complete::{tag, take_until},
     character::complete::{self, multispace0, multispace1},
     combinator::eof,
