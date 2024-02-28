@@ -504,7 +504,7 @@ impl ImageView {
                         `create_info.format` does not have the same components and \
                         number of bits per component as `image.format()`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "image_view_format_reinterpretation",
                     )])]),
                     vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatReinterpretation-04466"],
@@ -822,7 +822,7 @@ pub struct ImageViewCreateInfo {
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `format` does not have the same number of components and bits per component as
     /// the parent image's format, the
-    /// [`image_view_format_reinterpretation`](crate::device::Features::image_view_format_reinterpretation)
+    /// [`image_view_format_reinterpretation`](crate::device::DeviceFeatures::image_view_format_reinterpretation)
     /// feature must be enabled on the device.
     ///
     /// The default value is `Format::UNDEFINED`.
@@ -833,7 +833,7 @@ pub struct ImageViewCreateInfo {
     /// On [portability
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `component_mapping` is not the identity mapping, the
-    /// [`image_view_format_swizzle`](crate::device::Features::image_view_format_swizzle)
+    /// [`image_view_format_swizzle`](crate::device::DeviceFeatures::image_view_format_swizzle)
     /// feature must be enabled on the device.
     ///
     /// The default value is [`ComponentMapping::identity()`].
@@ -987,9 +987,9 @@ impl ImageViewCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "view_type".into(),
                         problem: "is `ImageViewType::CubeArray`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "image_cube_array",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("image_cube_array"),
+                        ])]),
                         vuids: &["VUID-VkImageViewCreateInfo-viewType-01004"],
                     }));
                 }
@@ -1032,7 +1032,7 @@ impl ImageViewCreateInfo {
                 problem: "this device is a portability subset device, and \
                     `component_mapping` is not the identity mapping"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "image_view_format_swizzle",
                 )])]),
                 vuids: &["VUID-VkImageViewCreateInfo-imageViewFormatSwizzle-04465"],

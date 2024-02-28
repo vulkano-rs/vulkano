@@ -138,7 +138,7 @@ pub struct SamplerYcbcrConversion {
 impl SamplerYcbcrConversion {
     /// Creates a new `SamplerYcbcrConversion`.
     ///
-    /// The [`sampler_ycbcr_conversion`](crate::device::Features::sampler_ycbcr_conversion)
+    /// The [`sampler_ycbcr_conversion`](crate::device::DeviceFeatures::sampler_ycbcr_conversion)
     /// feature must be enabled on the device.
     #[inline]
     pub fn new(
@@ -156,7 +156,7 @@ impl SamplerYcbcrConversion {
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().sampler_ycbcr_conversion {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "sampler_ycbcr_conversion",
                 )])]),
                 vuids: &["VUID-vkCreateSamplerYcbcrConversion-None-01648"],
@@ -909,7 +909,7 @@ mod tests {
                 if matches!(
                     *err,
                     ValidationError {
-                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::Feature(
+                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::DeviceFeature(
                             "sampler_ycbcr_conversion"
                         )])]),
                         ..

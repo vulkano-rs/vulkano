@@ -424,8 +424,9 @@ pub struct FramebufferCreateInfo {
     /// must be specified in that case.
     ///
     /// The extent, whether automatically calculated or specified explicitly, must not be larger
-    /// than the [`max_framebuffer_width`](crate::device::Properties::max_framebuffer_width) and
-    /// [`max_framebuffer_height`](crate::device::Properties::max_framebuffer_height) limits.
+    /// than the [`max_framebuffer_width`](crate::device::DeviceProperties::max_framebuffer_width)
+    /// and [`max_framebuffer_height`](crate::device::DeviceProperties::max_framebuffer_height)
+    /// limits.
     ///
     /// The default value is `[0, 0]`.
     pub extent: [u32; 2],
@@ -439,7 +440,7 @@ pub struct FramebufferCreateInfo {
     ///
     /// The number of layers, whether automatically calculated or specified explicitly, must not be
     /// larger than the
-    /// [`max_framebuffer_layers`](crate::device::Properties::max_framebuffer_layers) limit.
+    /// [`max_framebuffer_layers`](crate::device::DeviceProperties::max_framebuffer_layers) limit.
     ///
     /// If the render pass has multiview enabled (`views_used` does not return 0), then this value
     /// must be 0 or 1.

@@ -286,7 +286,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                      api_version,
                      device_extensions,
                      instance_extensions,
-                     features: _,
+                     device_features: _,
                  }| {
                     let condition_items = (api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
@@ -518,7 +518,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             pub(crate) fn validate_device_raw(
                 self,
                 #[allow(unused_variables)] device_api_version: crate::Version,
-                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_features: &crate::device::DeviceFeatures,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), Box<crate::ValidationError>> {

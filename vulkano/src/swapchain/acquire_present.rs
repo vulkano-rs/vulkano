@@ -528,9 +528,9 @@ pub struct SwapchainPresentInfo {
      */
     /// An id used to identify this present operation.
     ///
-    /// If `present_id` is `Some`, the [`present_id`](crate::device::Features::present_id) feature
-    /// must be enabled on the device. The id must be greater than any id previously used for
-    /// `swapchain`. If a swapchain is recreated, this resets.
+    /// If `present_id` is `Some`, the [`present_id`](crate::device::DeviceFeatures::present_id)
+    /// feature must be enabled on the device. The id must be greater than any id previously
+    /// used for `swapchain`. If a swapchain is recreated, this resets.
     ///
     /// The default value is `None`.
     pub present_id: Option<NonZeroU64>,
@@ -604,7 +604,7 @@ impl SwapchainPresentInfo {
             return Err(Box::new(ValidationError {
                 context: "present_id".into(),
                 problem: "is `Some`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "present_id",
                 )])]),
                 vuids: &["VUID-VkPresentInfoKHR-pNext-06235"],

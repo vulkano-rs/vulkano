@@ -390,7 +390,7 @@ impl QueryPoolCreateInfo {
                 return Err(Box::new(ValidationError {
                     context: "query_type".into(),
                     problem: "is `QueryType::PipelineStatistics`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "pipeline_statistics_query",
                     )])]),
                     vuids: &["VUID-VkQueryPoolCreateInfo-queryType-00791"],
@@ -412,7 +412,7 @@ impl QueryPoolCreateInfo {
                     problem: "contains `TASK_SHADER_INVOCATIONS` or \
                         `MESH_SHADER_INVOCATIONS`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader_queries",
                     )])]),
                     vuids: &["VUID-VkQueryPoolCreateInfo-meshShaderQueries-07069"],
@@ -433,7 +433,7 @@ impl QueryPoolCreateInfo {
             return Err(Box::new(ValidationError {
                 context: "query_type".into(),
                 problem: "is `QueryType::MeshPrimitivesGenerated`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "mesh_shader_queries",
                 )])]),
                 vuids: &["VUID-VkQueryPoolCreateInfo-meshShaderQueries-07068"],

@@ -1361,7 +1361,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -1374,7 +1374,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-03929"],
@@ -1392,7 +1392,7 @@ impl RawRecordingCommandBuffer {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-03930"],
@@ -1405,7 +1405,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-03931"],
@@ -1418,7 +1418,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-03932"],
@@ -1431,7 +1431,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-03933"],
@@ -1444,7 +1444,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-03934"],
@@ -1457,7 +1457,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-03935"],
@@ -1473,8 +1473,10 @@ impl RawRecordingCommandBuffer {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        RequiresAllOf(&[Requires::DeviceFeature(
+                            "attachment_fragment_shading_rate",
+                        )]),
+                        RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkImageMemoryBarrier2-shadingRateImage-07316"],
                 }));
@@ -1486,7 +1488,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-04957"],
@@ -1499,7 +1501,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-04995"],
@@ -1514,7 +1516,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-vkCmdResetEvent2-stageMask-07946"],

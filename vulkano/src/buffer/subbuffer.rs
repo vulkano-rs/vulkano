@@ -295,7 +295,7 @@ where
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`invalidate_range`]: crate::memory::ResourceMemory::invalidate_range
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     /// [`write`]: Self::write
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound
@@ -388,7 +388,7 @@ where
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`flush_range`]: crate::memory::ResourceMemory::flush_range
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     /// [`read`]: Self::read
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
     /// [`RawBuffer::assume_bound`]: crate::buffer::sys::RawBuffer::assume_bound

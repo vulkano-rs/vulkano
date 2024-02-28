@@ -140,8 +140,8 @@
 //!
 //! ## Buffers
 //!
-//! - If the [`robust_buffer_access`](Features::robust_buffer_access) feature is not enabled on the
-//!   device, then the shader must not access any values outside the range of the buffer, as
+//! - If the [`robust_buffer_access`](DeviceFeatures::robust_buffer_access) feature is not enabled
+//!   on the device, then the shader must not access any values outside the range of the buffer, as
 //!   specified when writing the descriptor set. <sup>[\[06935\]] [\[06936\]]</sup>
 //! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader, then
 //!   they must point to valid buffer memory of the correct type.
@@ -216,8 +216,8 @@
 //!
 //! [alignment rules]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout
 //! [`GL_EXT_scalar_block_layout`]: https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt
-//! [`scalar_block_layout`]: crate::device::Features::scalar_block_layout
-//! [`uniform_buffer_standard_layout`]: crate::device::Features::uniform_buffer_standard_layout
+//! [`scalar_block_layout`]: DeviceFeatures::scalar_block_layout
+//! [`uniform_buffer_standard_layout`]: DeviceFeatures::uniform_buffer_standard_layout
 //! [\[06935\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-uniformBuffers-06935
 //! [\[06936\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-storageBuffers-06936
 //! [\[07752\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-viewType-07752
@@ -251,7 +251,7 @@ use self::spirv::{Id, Instruction};
 #[cfg(doc)]
 use crate::{
     descriptor_set::layout::DescriptorBindingFlags,
-    device::{physical::PhysicalDevice, Features},
+    device::{physical::PhysicalDevice, DeviceFeatures},
     format::FormatFeatures,
     image::{
         sampler::{Filter, Sampler, SamplerCreateInfo, SamplerMipmapMode, SamplerReductionMode},

@@ -450,7 +450,7 @@ pub struct RequiresOneOf {
     pub api_version: Option<(u32, u32)>,
     pub device_extensions: Vec<String>,
     pub instance_extensions: Vec<String>,
-    pub features: Vec<String>,
+    pub device_features: Vec<String>,
 }
 
 impl RequiresOneOf {
@@ -459,13 +459,13 @@ impl RequiresOneOf {
             api_version,
             device_extensions,
             instance_extensions,
-            features,
+            device_features,
         } = self;
 
         api_version.is_none()
             && device_extensions.is_empty()
             && instance_extensions.is_empty()
-            && features.is_empty()
+            && device_features.is_empty()
     }
 }
 
@@ -489,9 +489,9 @@ impl BitOrAssign<&Self> for RequiresOneOf {
             }
         }
 
-        for rhs in &rhs.features {
-            if !self.features.contains(rhs) {
-                self.features.push(rhs.to_owned());
+        for rhs in &rhs.device_features {
+            if !self.device_features.contains(rhs) {
+                self.device_features.push(rhs.to_owned());
             }
         }
     }

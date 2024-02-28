@@ -98,9 +98,9 @@ include!(concat!(env!("OUT_DIR"), "/formats.rs"));
 impl Format {
     /// Returns whether the format can be used with a storage image, without specifying
     /// the format in the shader, if the
-    /// [`shader_storage_image_read_without_format`](crate::device::Features::shader_storage_image_read_without_format)
+    /// [`shader_storage_image_read_without_format`](crate::device::DeviceFeatures::shader_storage_image_read_without_format)
     /// and/or
-    /// [`shader_storage_image_write_without_format`](crate::device::Features::shader_storage_image_write_without_format)
+    /// [`shader_storage_image_write_without_format`](crate::device::DeviceFeatures::shader_storage_image_write_without_format)
     /// features are enabled on the device.
     #[inline]
     pub fn shader_storage_image_without_format(self) -> bool {

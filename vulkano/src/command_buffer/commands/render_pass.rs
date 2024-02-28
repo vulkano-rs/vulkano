@@ -1497,7 +1497,7 @@ impl RawRecordingCommandBuffer {
 
         if !device.enabled_features().dynamic_rendering {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "dynamic_rendering",
                 )])]),
                 vuids: &["VUID-vkCmdBeginRendering-dynamicRendering-06446"],
@@ -2086,8 +2086,8 @@ pub struct RenderingInfo {
     /// to. The value is a bitmask, so that that for example `0b11` will draw to the first two
     /// views and `0b101` will draw to the first and third view.
     ///
-    /// If set to a nonzero value, the [`multiview`](crate::device::Features::multiview) feature
-    /// must be enabled on the device.
+    /// If set to a nonzero value, the [`multiview`](crate::device::DeviceFeatures::multiview)
+    /// feature must be enabled on the device.
     ///
     /// The default value is `0`.
     pub view_mask: u32,
@@ -2095,8 +2095,8 @@ pub struct RenderingInfo {
     /// The color attachments to use for rendering.
     ///
     /// The number of color attachments must be less than the
-    /// [`max_color_attachments`](crate::device::Properties::max_color_attachments) limit of the
-    /// physical device. All color attachments must have the same `samples` value.
+    /// [`max_color_attachments`](crate::device::DeviceProperties::max_color_attachments) limit of
+    /// the physical device. All color attachments must have the same `samples` value.
     ///
     /// The default value is empty.
     pub color_attachments: Vec<Option<RenderingAttachmentInfo>>,
@@ -2291,7 +2291,9 @@ impl RenderingInfo {
             return Err(Box::new(ValidationError {
                 context: "view_mask".into(),
                 problem: "is not 0".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "multiview",
+                )])]),
                 vuids: &["VUID-VkRenderingInfo-multiview-06127"],
             }));
         }
@@ -2743,7 +2745,7 @@ impl RenderingInfo {
                         `depth_attachment.image_layout` does not equal \
                         `stencil_attachment.attachment_ref.layout`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "separate_depth_stencil_layouts",
                     )])]),
                     ..Default::default()
@@ -2780,9 +2782,9 @@ impl RenderingInfo {
                                 `depth_attachment.resolve_info.image_layout` does not equal \
                                 `stencil_attachment.resolve_info.image_layout`"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "separate_depth_stencil_layouts",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("separate_depth_stencil_layouts"),
+                            ])]),
                             ..Default::default()
                         }));
                     }

@@ -176,8 +176,8 @@ impl RecordingCommandBuffer {
     ///
     /// [`build_acceleration_structure`]: Self::build_acceleration_structure
     /// [`primitive_count`]: AccelerationStructureBuildRangeInfo::primitive_count
-    /// [`max_instance_count`]: crate::device::Properties::max_instance_count
-    /// [`max_primitive_count`]: crate::device::Properties::max_primitive_count
+    /// [`max_instance_count`]: crate::device::DeviceProperties::max_instance_count
+    /// [`max_primitive_count`]: crate::device::DeviceProperties::max_primitive_count
     /// [`primitive_offset`]: AccelerationStructureBuildRangeInfo::primitive_offset
     /// [`index_data.index_type().size()`]: AccelerationStructureGeometryTrianglesData::index_data
     /// [`index_data`]: AccelerationStructureGeometryTrianglesData::index_data
@@ -1620,7 +1620,7 @@ impl RawRecordingCommandBuffer {
             .acceleration_structure_indirect_build
         {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("acceleration_structure_indirect_build")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature("acceleration_structure_indirect_build")])]),
                 vuids: &["VUID-vkCmdBuildAccelerationStructuresIndirectKHR-accelerationStructureIndirectBuild-03650"],
                 ..Default::default()
             }));

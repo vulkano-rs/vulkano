@@ -524,7 +524,7 @@ vulkan_bitflags! {
     ///   [`DescriptorType::StorageBufferDynamic`] or [`DescriptorType::InlineUniformBlock`].
     /// - There must be no bindings with `variable_descriptor_count` enabled.
     /// - The total number of descriptors across all bindings must be less than the
-    ///   [`max_push_descriptors`](crate::device::Properties::max_push_descriptors) limit.
+    ///   [`max_push_descriptors`](crate::device::DeviceProperties::max_push_descriptors) limit.
     PUSH_DESCRIPTOR = PUSH_DESCRIPTOR_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_push_descriptor)]),
@@ -686,7 +686,7 @@ impl DescriptorSetLayoutBinding {
                 return Err(Box::new(ValidationError {
                     context: "descriptor_type".into(),
                     problem: "`DescriptorType::InlineUniformBlock`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "inline_uniform_block",
                     )])]),
                     vuids: &["VUID-VkDescriptorSetLayoutBinding-descriptorType-04604"],
@@ -797,7 +797,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::UniformBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_uniform_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUniformBufferUpdateAfterBind-03005"],
@@ -818,7 +818,7 @@ impl DescriptorSetLayoutBinding {
                                 `descriptor_type` is `DescriptorType::Sampler`, \
                                 `DescriptorType::CombinedImageSampler` or \
                                 `DescriptorType::SampledImage`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_sampled_image_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingSampledImageUpdateAfterBind-03006"],
@@ -835,7 +835,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::StorageImage`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_storage_image_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageImageUpdateAfterBind-03007"],
@@ -852,7 +852,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::StorageBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_storage_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageBufferUpdateAfterBind-03008"],
@@ -869,7 +869,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::UniformTexelBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_uniform_texel_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUniformTexelBufferUpdateAfterBind-03009"],
@@ -886,7 +886,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::StorageTexelBuffer`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_storage_texel_buffer_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingStorageTexelBufferUpdateAfterBind-03010"],
@@ -903,7 +903,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::InlineUniformBlock`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_inline_uniform_block_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingInlineUniformBlockUpdateAfterBind-02211"],
@@ -920,7 +920,7 @@ impl DescriptorSetLayoutBinding {
                             problem: "`binding_flags` contains \
                                 `DescriptorBindingFlags::UPDATE_AFTER_BIND`, and \
                                 `descriptor_type` is `DescriptorType::AccelerationStructure`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "descriptor_binding_acceleration_structure_update_after_bind"
                             )])]),
                             vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingAccelerationStructureUpdateAfterBind-03570"],
@@ -953,7 +953,7 @@ impl DescriptorSetLayoutBinding {
             return Err(Box::new(ValidationError {
                 context: "binding_flags".into(),
                 problem: "contains `DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "descriptor_binding_update_unused_while_pending"
                 )])]),
                 vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingUpdateUnusedWhilePending-03012"],
@@ -966,7 +966,7 @@ impl DescriptorSetLayoutBinding {
             return Err(Box::new(ValidationError {
                 context: "binding_flags".into(),
                 problem: "contains `DescriptorBindingFlags::PARTIALLY_BOUND`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "descriptor_binding_partially_bound"
                 )])]),
                 vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingPartiallyBound-03013"],
@@ -981,7 +981,7 @@ impl DescriptorSetLayoutBinding {
                 return Err(Box::new(ValidationError {
                     context: "binding_flags".into(),
                     problem: "contains `DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "descriptor_binding_variable_descriptor_count"
                     )])]),
                     vuids: &["VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014"],
@@ -1062,7 +1062,7 @@ vulkan_bitflags! {
     /// flag is also set. If it is set, then only *dynamic use* by a shader invocation counts as
     /// being used, otherwise all *static use* by a shader invocation is considered used.
     ///
-    /// [`descriptor_binding_update_unused_while_pending`]: crate::device::Features::descriptor_binding_update_unused_while_pending
+    /// [`descriptor_binding_update_unused_while_pending`]: crate::device::DeviceFeatures::descriptor_binding_update_unused_while_pending
     UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
@@ -1077,7 +1077,7 @@ vulkan_bitflags! {
     ///
     /// The [`descriptor_binding_partially_bound`] feature must be enabled on the device.
     ///
-    /// [`descriptor_binding_partially_bound`]: crate::device::Features::descriptor_binding_partially_bound
+    /// [`descriptor_binding_partially_bound`]: crate::device::DeviceFeatures::descriptor_binding_partially_bound
     PARTIALLY_BOUND = PARTIALLY_BOUND
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
@@ -1094,7 +1094,7 @@ vulkan_bitflags! {
     /// binding with the highest binding number. The `descriptor_type` must not be
     /// [`DescriptorType::UniformBufferDynamic`] or [`DescriptorType::StorageBufferDynamic`].
     ///
-    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
+    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::DeviceFeatures::descriptor_binding_variable_descriptor_count
     VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_2)]),
@@ -1248,7 +1248,7 @@ pub struct DescriptorSetLayoutSupport {
     /// [`descriptor_binding_variable_descriptor_count`] feature isn't enabled on the device, this
     /// will be 0.
     ///
-    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::Features::descriptor_binding_variable_descriptor_count
+    /// [`descriptor_binding_variable_descriptor_count`]: crate::device::DeviceFeatures::descriptor_binding_variable_descriptor_count
     pub max_variable_descriptor_count: u32,
 }
 

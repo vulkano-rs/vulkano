@@ -49,7 +49,7 @@ impl PrivateDataSlot {
     ) -> Result<(), Box<ValidationError>> {
         if !device.enabled_features().private_data {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "private_data",
                 )])]),
                 vuids: &["VUID-vkCreatePrivateDataSlot-privateData-04564"],

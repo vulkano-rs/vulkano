@@ -45,7 +45,7 @@ impl Event {
     /// On [portability
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, the
-    /// [`events`](crate::device::Features::events)
+    /// [`events`](crate::device::DeviceFeatures::events)
     /// feature must be enabled on the device.
     #[inline]
     pub fn new(
@@ -64,7 +64,9 @@ impl Event {
         if device.enabled_extensions().khr_portability_subset && !device.enabled_features().events {
             return Err(Box::new(ValidationError {
                 problem: "this device is a portability subset device".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("events")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "events",
+                )])]),
                 vuids: &["VUID-vkCreateEvent-events-04468"],
                 ..Default::default()
             }));

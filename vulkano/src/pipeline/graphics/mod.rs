@@ -2124,9 +2124,9 @@ impl GraphicsPipelineCreateInfo {
                         return Err(Box::new(ValidationError {
                             context: "subpass".into(),
                             problem: "is `PipelineRenderPassType::BeginRendering`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "dynamic_rendering",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("dynamic_rendering"),
+                            ])]),
                             vuids: &["VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576"],
                         }));
                     }
@@ -2309,7 +2309,7 @@ impl GraphicsPipelineCreateInfo {
                 return Err(Box::new(ValidationError {
                     context: "rasterization_state.line_width".into(),
                     problem: "is not 1.0".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "wide_lines",
                     )])]),
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00749"],
@@ -2330,9 +2330,9 @@ impl GraphicsPipelineCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "rasterization_state.depth_bias.clamp".into(),
                         problem: "is not 0.0".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "depth_bias_clamp",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("depth_bias_clamp"),
+                        ])]),
                         vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00754"],
                     }));
                 }
@@ -2561,7 +2561,7 @@ impl GraphicsPipelineCreateInfo {
                                 `rasterization_state.cull_mode` is `CullMode::None`, and \
                                 `depth_stencil_state.stencil.front.reference` does not equal \
                                 `depth_stencil_state.stencil.back.reference`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "separate_stencil_mask_ref",
                             )])]),
                             vuids: &["VUID-VkPipelineDepthStencilStateCreateInfo-separateStencilMaskRef-04453"],
@@ -2713,9 +2713,9 @@ impl GraphicsPipelineCreateInfo {
                         problem: "`stages` contains tessellation shaders, and \
                             `subpass` has a non-zero `view_mask`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "multiview_tessellation_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("multiview_tessellation_shader"),
+                        ])]),
                         vuids: &[
                             "VUID-VkGraphicsPipelineCreateInfo-renderPass-06047",
                             "VUID-VkGraphicsPipelineCreateInfo-renderPass-06057",
@@ -2731,9 +2731,9 @@ impl GraphicsPipelineCreateInfo {
                         problem: "`stages` contains a geometry shader, and \
                             `subpass` has a non-zero `view_mask`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "multiview_geometry_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("multiview_geometry_shader"),
+                        ])]),
                         vuids: &[
                             "VUID-VkGraphicsPipelineCreateInfo-renderPass-06048",
                             "VUID-VkGraphicsPipelineCreateInfo-renderPass-06058",
@@ -2749,9 +2749,9 @@ impl GraphicsPipelineCreateInfo {
                         problem: "`stages` contains a mesh shader, and \
                             `subpass` has a non-zero `view_mask`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "multiview_mesh_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("multiview_mesh_shader"),
+                        ])]),
                         vuids: &[
                             "VUID-VkGraphicsPipelineCreateInfo-renderPass-07064",
                             "VUID-VkGraphicsPipelineCreateInfo-renderPass-07720",

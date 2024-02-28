@@ -42,8 +42,8 @@ impl BuffersDefinition {
     /// `divisor` can be 0 if the [`vertex_attribute_instance_rate_zero_divisor`] feature is also
     /// enabled. This means that every vertex will use the same vertex and instance data.
     ///
-    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::Features::vertex_attribute_instance_rate_divisor
-    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::Features::vertex_attribute_instance_rate_zero_divisor
+    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::DeviceFeatures::vertex_attribute_instance_rate_divisor
+    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::DeviceFeatures::vertex_attribute_instance_rate_zero_divisor
     pub fn instance_with_divisor<V: Vertex>(mut self, divisor: u32) -> Self {
         self.0.push(V::per_instance_with_divisor(divisor));
         self

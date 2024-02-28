@@ -80,7 +80,7 @@ impl RecordingCommandBuffer {
         {
             return Err(Box::new(ValidationError {
                 problem: "a query is active".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "inherited_queries",
                 )])]),
                 vuids: &["VUID-vkCmdExecuteCommands-commandBuffer-00101"],

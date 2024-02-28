@@ -666,7 +666,7 @@ impl Display for RequiresAllOf {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Requires {
     APIVersion(Version),
-    Feature(&'static str),
+    DeviceFeature(&'static str),
     DeviceExtension(&'static str),
     InstanceExtension(&'static str),
 }
@@ -677,7 +677,9 @@ impl Display for Requires {
             Requires::APIVersion(Version { major, minor, .. }) => {
                 write!(f, "Vulkan API version {}.{}", major, minor)
             }
-            Requires::Feature(feature) => write!(f, "feature `{}`", feature),
+            Requires::DeviceFeature(device_feature) => {
+                write!(f, "device feature `{}`", device_feature)
+            }
             Requires::DeviceExtension(device_extension) => {
                 write!(f, "device extension `{}`", device_extension)
             }

@@ -114,7 +114,7 @@ impl DepthStencilState {
                 return Err(Box::new(ValidationError {
                     context: "depth_bounds".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "depth_bounds",
                     )])]),
                     vuids: &[
@@ -305,7 +305,7 @@ pub struct StencilOpState {
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if culling is disabled, and the `reference` values of the front and back face
     /// are not equal, then the
-    /// [`separate_stencil_mask_ref`](crate::device::Features::separate_stencil_mask_ref)
+    /// [`separate_stencil_mask_ref`](crate::device::DeviceFeatures::separate_stencil_mask_ref)
     /// feature must be enabled on the device.
     ///
     /// The default value is [`u32::MAX`].

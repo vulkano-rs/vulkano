@@ -118,7 +118,7 @@ impl AccelerationStructure {
     /// - `create_info.buffer` (and any subbuffer it overlaps with) must not be accessed while it
     ///   is bound to the acceleration structure.
     ///
-    /// [`acceleration_structure`]: crate::device::Features::acceleration_structure
+    /// [`acceleration_structure`]: crate::device::DeviceFeatures::acceleration_structure
     #[inline]
     pub unsafe fn new(
         device: Arc<Device>,
@@ -144,7 +144,7 @@ impl AccelerationStructure {
 
         if !device.enabled_features().acceleration_structure {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "acceleration_structure",
                 )])]),
                 vuids: &["VUID-vkCreateAccelerationStructureKHR-accelerationStructure-03611"],

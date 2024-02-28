@@ -1552,7 +1552,7 @@ impl Swapchain {
     ) -> Result<(), Box<ValidationError>> {
         if !self.device.enabled_features().present_wait {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "present_wait",
                 )])]),
                 vuids: &["VUID-vkWaitForPresentKHR-presentWait-06234"],

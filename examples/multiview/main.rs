@@ -12,7 +12,7 @@ use vulkano::{
         RenderPassBeginInfo,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
         QueueCreateInfo, QueueFlags,
     },
     format::Format,
@@ -63,11 +63,11 @@ fn main() {
     let device_extensions = DeviceExtensions {
         ..DeviceExtensions::empty()
     };
-    let features = Features {
+    let features = DeviceFeatures {
         // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on Vulkan 1.0
         // and the device feature on Vulkan 1.1+.
         multiview: true,
-        ..Features::empty()
+        ..DeviceFeatures::empty()
     };
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()

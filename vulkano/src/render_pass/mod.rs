@@ -1646,7 +1646,7 @@ pub struct AttachmentDescription {
     /// or both `Some`.
     ///
     /// If this is `Some`, then the
-    /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
+    /// [`separate_depth_stencil_layouts`](crate::device::DeviceFeatures::separate_depth_stencil_layouts)
     /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
@@ -1658,7 +1658,7 @@ pub struct AttachmentDescription {
     /// or both `Some`.
     ///
     /// If this is `Some`, then the
-    /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
+    /// [`separate_depth_stencil_layouts`](crate::device::DeviceFeatures::separate_depth_stencil_layouts)
     /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
@@ -1764,7 +1764,7 @@ impl AttachmentDescription {
                     problem: "specifies a layout for only the depth aspect or only the \
                         stencil aspect"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "separate_depth_stencil_layouts",
                     )])]),
                     vuids: &["VUID-VkAttachmentDescription2-separateDepthStencilLayouts-03284"],
@@ -1783,7 +1783,7 @@ impl AttachmentDescription {
                     problem: "specifies a layout for only the depth aspect or only the \
                         stencil aspect"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "separate_depth_stencil_layouts",
                     )])]),
                     vuids: &["VUID-VkAttachmentDescription2-separateDepthStencilLayouts-03285"],
@@ -1819,7 +1819,7 @@ impl AttachmentDescription {
                 return Err(Box::new(ValidationError {
                     context: "stencil_initial_layout".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "separate_depth_stencil_layouts",
                     )])]),
                     ..Default::default()
@@ -1860,7 +1860,7 @@ impl AttachmentDescription {
                 return Err(Box::new(ValidationError {
                     context: "stencil_final_layout".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "separate_depth_stencil_layouts",
                     )])]),
                     ..Default::default()
@@ -2164,7 +2164,8 @@ pub struct SubpassDescription {
     /// to the first two views and `0b101` will draw to the first and third view.
     ///
     /// If set to a nonzero value, it must be nonzero for all subpasses in the render pass, and the
-    /// [`multiview`](crate::device::Features::multiview) feature must be enabled on the device.
+    /// [`multiview`](crate::device::DeviceFeatures::multiview) feature must be enabled on the
+    /// device.
     ///
     /// The default value is `0`.
     pub view_mask: u32,
@@ -2183,8 +2184,8 @@ pub struct SubpassDescription {
     /// subpass.
     ///
     /// The number of color attachments must be less than the
-    /// [`max_color_attachments`](crate::device::Properties::max_color_attachments) limit of the
-    /// physical device. All color attachments must have the same `samples` value.
+    /// [`max_color_attachments`](crate::device::DeviceProperties::max_color_attachments) limit of
+    /// the physical device. All color attachments must have the same `samples` value.
     ///
     /// The default value is empty.
     pub color_attachments: Vec<Option<AttachmentReference>>,
@@ -2934,7 +2935,9 @@ impl SubpassDescription {
             return Err(Box::new(ValidationError {
                 context: "view_mask".into(),
                 problem: "is not 0".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "multiview",
+                )])]),
                 vuids: &["VUID-VkSubpassDescription2-multiview-06558"],
             }));
         }
@@ -3035,7 +3038,7 @@ pub struct AttachmentReference {
     /// [the Vulkan specification](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap8.html#attachment-type-imagelayout).
     ///
     /// If this is `Some`, then the
-    /// [`separate_depth_stencil_layouts`](crate::device::Features::separate_depth_stencil_layouts)
+    /// [`separate_depth_stencil_layouts`](crate::device::DeviceFeatures::separate_depth_stencil_layouts)
     /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
@@ -3114,7 +3117,7 @@ impl AttachmentReference {
                 context: "layout".into(),
                 problem: "specifies a layout for only the depth aspect or only the stencil aspect"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "separate_depth_stencil_layouts",
                 )])]),
                 vuids: &["VUID-VkAttachmentReference2-separateDepthStencilLayouts-03313"],
@@ -3126,7 +3129,7 @@ impl AttachmentReference {
                 return Err(Box::new(ValidationError {
                     context: "stencil_layout".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "separate_depth_stencil_layouts",
                     )])]),
                     ..Default::default()
@@ -3380,7 +3383,7 @@ impl SubpassDependency {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "is empty".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     vuids: &["VUID-VkSubpassDependency2-srcStageMask-03937"],
@@ -3391,7 +3394,7 @@ impl SubpassDependency {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "is empty".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     vuids: &["VUID-VkSubpassDependency2-dstStageMask-03937"],

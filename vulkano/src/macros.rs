@@ -229,7 +229,7 @@ macro_rules! vulkan_bitflags {
             $(RequiresOneOf([
                 $(RequiresAllOf([
                     $(APIVersion($api_version:ident) $(,)?)?
-                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceFeature($device_feature:ident)),+ $(,)?)?
                     $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
                     $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
                 ])),+ $(,)?
@@ -340,7 +340,7 @@ macro_rules! vulkan_bitflags {
             pub(crate) fn validate_device_raw(
                 self,
                 #[allow(unused_variables)] device_api_version: crate::Version,
-                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_features: &crate::device::DeviceFeatures,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), Box<crate::ValidationError>> {
@@ -352,7 +352,7 @@ macro_rules! vulkan_bitflags {
                                     device_api_version >= crate::Version::$api_version,
                                 )?
                                 $($(
-                                    device_features.$feature,
+                                    device_features.$device_feature,
                                 )+)?
                                 $($(
                                     device_extensions.$device_extension,
@@ -370,7 +370,7 @@ macro_rules! vulkan_bitflags {
                                             crate::Requires::APIVersion(crate::Version::$api_version),
                                         )?
                                         $($(
-                                            crate::Requires::Feature(stringify!($feature)),
+                                            crate::Requires::DeviceFeature(stringify!($device_feature)),
                                         )+)?
                                         $($(
                                             crate::Requires::DeviceExtension(stringify!($device_extension)),
@@ -623,7 +623,7 @@ macro_rules! vulkan_enum {
             $(RequiresOneOf([
                 $(RequiresAllOf([
                     $(APIVersion($api_version:ident) $(,)?)?
-                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceFeature($device_feature:ident)),+ $(,)?)?
                     $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
                     $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
                 ])),+ $(,)?
@@ -680,7 +680,7 @@ macro_rules! vulkan_enum {
             pub(crate) fn validate_device_raw(
                 self,
                 #[allow(unused_variables)] device_api_version: crate::Version,
-                #[allow(unused_variables)] device_features: &crate::device::Features,
+                #[allow(unused_variables)] device_features: &crate::device::DeviceFeatures,
                 #[allow(unused_variables)] device_extensions: &crate::device::DeviceExtensions,
                 #[allow(unused_variables)] instance_extensions: &crate::instance::InstanceExtensions,
             ) -> Result<(), Box<crate::ValidationError>> {
@@ -694,7 +694,7 @@ macro_rules! vulkan_enum {
                                             device_api_version >= crate::Version::$api_version,
                                         )?
                                         $($(
-                                            device_features.$feature,
+                                            device_features.$device_feature,
                                         )+)?
                                         $($(
                                             device_extensions.$device_extension,
@@ -712,7 +712,7 @@ macro_rules! vulkan_enum {
                                                     crate::Requires::APIVersion(crate::Version::$api_version),
                                                 )?
                                                 $($(
-                                                    crate::Requires::Feature(stringify!($feature)),
+                                                    crate::Requires::DeviceFeature(stringify!($device_feature)),
                                                 )+)?
                                                 $($(
                                                     crate::Requires::DeviceExtension(stringify!($device_extension)),
@@ -840,7 +840,7 @@ macro_rules! vulkan_bitflags_enum {
             $(RequiresOneOf([
                 $(RequiresAllOf([
                     $(APIVersion($api_version:ident) $(,)?)?
-                    $($(Feature($feature:ident)),+ $(,)?)?
+                    $($(DeviceFeature($device_feature:ident)),+ $(,)?)?
                     $($(DeviceExtension($device_extension:ident)),+ $(,)?)?
                     $($(InstanceExtension($instance_extension:ident)),+ $(,)?)?
                 ])),+ $(,)?
@@ -870,7 +870,7 @@ macro_rules! vulkan_bitflags_enum {
                 $(RequiresOneOf([
                     $(RequiresAllOf([
                         $(APIVersion($api_version) ,)?
-                        $($(Feature($feature)),+ ,)?
+                        $($(DeviceFeature($device_feature)),+ ,)?
                         $($(DeviceExtension($device_extension)),+ ,)?
                         $($(InstanceExtension($instance_extension)),+ ,)?
                     ])),+ ,
@@ -893,7 +893,7 @@ macro_rules! vulkan_bitflags_enum {
                 $(RequiresOneOf([
                     $(RequiresAllOf([
                         $(APIVersion($api_version) ,)?
-                        $($(Feature($feature)),+ ,)?
+                        $($(DeviceFeature($device_feature)),+ ,)?
                         $($(DeviceExtension($device_extension)),+ ,)?
                         $($(InstanceExtension($instance_extension)),+ ,)?
                     ])),+ ,

@@ -487,7 +487,7 @@ impl Buffer {
 
         if !device.enabled_features().buffer_device_address {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "buffer_device_address",
                 )])]),
                 vuids: &["VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324"],
@@ -820,7 +820,7 @@ vulkan_bitflags! {
     /// The [`sparse_binding`] feature must be enabled on the device.
     ///
     /// [`bind_memory`]: sys::RawBuffer::bind_memory
-    /// [`sparse_binding`]: crate::device::Features::sparse_binding
+    /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
     SPARSE_BINDING = SPARSE_BINDING,*/
 
     /* TODO: enable
@@ -830,7 +830,7 @@ vulkan_bitflags! {
     ///
     /// The [`sparse_residency_buffer`] feature must be enabled on the device.
     ///
-    /// [`sparse_residency_buffer`]: crate::device::Features::sparse_residency_buffer
+    /// [`sparse_residency_buffer`]: crate::device::DeviceFeatures::sparse_residency_buffer
     SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
 
     /* TODO: enable
@@ -840,7 +840,7 @@ vulkan_bitflags! {
     ///
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
-    /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
+    /// [`sparse_residency_aliased`]: crate::device::DeviceFeatures::sparse_residency_aliased
     SPARSE_ALIASED = SPARSE_ALIASED,*/
 
     /* TODO: enable
@@ -984,7 +984,7 @@ pub enum IndexBuffer {
     ///
     /// The [`index_type_uint8`] feature must be enabled on the device.
     ///
-    /// [`index_type_uint8`]: crate::device::Features::index_type_uint8
+    /// [`index_type_uint8`]: crate::device::DeviceFeatures::index_type_uint8
     U8(Subbuffer<[u8]>),
 
     /// An index buffer containing unsigned 16-bit indices.

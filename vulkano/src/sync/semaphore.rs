@@ -62,7 +62,7 @@
 //!   [`max_timeline_semaphore_value_difference`] device limit.
 //!
 //! [fence]: crate::sync::fence
-//! [`max_timeline_semaphore_value_difference`]: crate::device::Properties::max_timeline_semaphore_value_difference
+//! [`max_timeline_semaphore_value_difference`]: crate::device::DeviceProperties::max_timeline_semaphore_value_difference
 
 use crate::{
     device::{physical::PhysicalDevice, Device, DeviceOwned},
@@ -1221,9 +1221,9 @@ impl SemaphoreCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "semaphore_type".into(),
                         problem: "is `SemaphoreType::Timeline`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "timeline_semaphore",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("timeline_semaphore"),
+                        ])]),
                         vuids: &["VUID-VkSemaphoreTypeCreateInfo-timelineSemaphore-03252"],
                     }));
                 }
@@ -1918,9 +1918,9 @@ impl ExternalSemaphoreInfo {
                     return Err(Box::new(ValidationError {
                         context: "semaphore_type".into(),
                         problem: "is `SemaphoreType::Timeline`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "timeline_semaphore",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("timeline_semaphore"),
+                        ])]),
                         vuids: &["VUID-VkSemaphoreTypeCreateInfo-timelineSemaphore-03252"],
                     }));
                 }

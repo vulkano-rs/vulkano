@@ -450,7 +450,7 @@ impl WriteDescriptorSet {
                                         )
                                         .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("image2_d_view_of3_d"),
+                                            Requires::DeviceFeature("image2_d_view_of3_d"),
                                         ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06713"],
                                     }));
@@ -468,7 +468,7 @@ impl WriteDescriptorSet {
                                         )
                                         .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("sampler2_d_view_of3_d"),
+                                            Requires::DeviceFeature("sampler2_d_view_of3_d"),
                                         ])]),
                                         vuids: &["VUID-VkDescriptorImageInfo-descriptorType-06714"],
                                     }));
@@ -557,7 +557,7 @@ impl WriteDescriptorSet {
                                     the sampler has depth comparison enabled"
                                     .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("mutable_comparison_samplers"),
+                                    Requires::DeviceFeature("mutable_comparison_samplers"),
                                 ])]),
                                 vuids: &[
                                     "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
@@ -678,7 +678,7 @@ impl WriteDescriptorSet {
                                     the sampler has depth comparison enabled"
                                     .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("mutable_comparison_samplers"),
+                                    Requires::DeviceFeature("mutable_comparison_samplers"),
                                 ])]),
                                 vuids: &[
                                     "VUID-VkDescriptorImageInfo-mutableComparisonSamplers-04450",
