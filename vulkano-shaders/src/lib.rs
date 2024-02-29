@@ -241,6 +241,7 @@ use syn::{
 };
 
 mod codegen;
+mod rust_gpu;
 mod structs;
 
 #[proc_macro]
