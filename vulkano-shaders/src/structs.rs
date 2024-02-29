@@ -90,6 +90,10 @@ pub(super) fn write_structs(
     shader: &Shader,
     type_registry: &mut TypeRegistry,
 ) -> Result<TokenStream> {
+    if !input.generate_structs {
+        return Ok(TokenStream::new());
+    }
+
     let mut structs = TokenStream::new();
 
     for (struct_id, member_type_ids) in shader

@@ -172,6 +172,13 @@
 //! The generated code must be supported by the device at runtime. If not, then an error will be
 //! returned when calling `load`.
 //!
+//! ## `generate_structs: true`
+//!
+//! Generate rust structs that represent the structs contained in the shader. They all implement
+//! [`BufferContents`], which allows then to be passed to the shader, without having to worry about
+//! the layout of the struct manually. However, some use-cases, such as Rust-GPU, may not have any
+//! use for such structs, and may choose to disable them.
+//!
 //! ## `custom_derives: [Clone, Default, PartialEq, ...]`
 //!
 //! Extends the list of derive macros that are added to the `derive` attribute of Rust structs that
@@ -375,6 +382,7 @@ struct MacroInput {
     shaders: HashMap<String, (ShaderKind, SourceKind)>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
+    generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
     dump: LitBool,
@@ -390,6 +398,7 @@ impl MacroInput {
             shaders: HashMap::default(),
             vulkan_version: None,
             spirv_version: None,
+            generate_structs: true,
             custom_derives: Vec::new(),
             linalg_type: LinAlgType::default(),
             dump: LitBool::new(false, Span::call_site()),
@@ -407,6 +416,7 @@ impl Parse for MacroInput {
         let mut shaders = HashMap::default();
         let mut vulkan_version = None;
         let mut spirv_version = None;
+        let mut generate_structs = true;
         let mut custom_derives = None;
         let mut linalg_type = None;
         let mut dump = None;
@@ -644,6 +654,10 @@ impl Parse for MacroInput {
                         ),
                     });
                 }
+                "generate_structs" => {
+                    let lit = input.parse::<LitBool>()?;
+                    generate_structs = lit.value;
+                }
                 "custom_derives" => {
                     let in_brackets;
                     bracketed!(in_brackets in input);
@@ -697,8 +711,8 @@ impl Parse for MacroInput {
                 field => bail!(
                     field_ident,
                     "expected `bytes`, `src`, `path`, `ty`, `shaders`, `define`, `include`, \
-                    `vulkan_version`, `spirv_version`, `custom_derives`, `linalg_type` or `dump` \
-                    as a field, found `{field}`",
+                    `vulkan_version`, `spirv_version`, `generate_structs`, `custom_derives`, \
+                    `linalg_type` or `dump` as a field, found `{field}`",
                 ),
             }
 
@@ -733,6 +747,7 @@ impl Parse for MacroInput {
                 .collect(),
             vulkan_version,
             spirv_version,
+            generate_structs,
             custom_derives: custom_derives.unwrap_or_else(|| {
                 vec![
                     parse_quote! { ::std::clone::Clone },
