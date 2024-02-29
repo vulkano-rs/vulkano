@@ -122,8 +122,8 @@
 //! ## `bytes: "..."`
 //!
 //! Provides the path to precompiled SPIR-V bytecode, relative to your `Cargo.toml`. Cannot be used
-//! in conjunction with the `src` or `path` field. This allows using shaders compiled through a
-//! separate build system.
+//! in conjunction with the `src` or `path` field, and may also not specify a shader `ty` type.
+//! This allows using shaders compiled through a separate build system.
 //!
 //! ## `root_path_env: "..."`
 //!
@@ -291,9 +291,14 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     for (name, (shader_kind, source_kind)) in shaders {
         let (code, types) = match source_kind {
             SourceKind::Src(source) => {
-                let (artifact, includes) =
-                    codegen::compile(&input, None, root_path, &source.value(), shader_kind)
-                        .map_err(|err| Error::new_spanned(&source, err))?;
+                let (artifact, includes) = codegen::compile(
+                    &input,
+                    None,
+                    root_path,
+                    &source.value(),
+                    shader_kind.unwrap(),
+                )
+                .map_err(|err| Error::new_spanned(&source, err))?;
 
                 let words = artifact.as_binary();
 
@@ -318,7 +323,7 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                     Some(path.value()),
                     root_path,
                     &source_code,
-                    shader_kind,
+                    shader_kind.unwrap(),
                 )
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
@@ -376,7 +381,7 @@ struct MacroInput {
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     macro_defines: Vec<(String, String)>,
-    shaders: HashMap<String, (ShaderKind, SourceKind)>,
+    shaders: HashMap<String, (Option<ShaderKind>, SourceKind)>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
     generate_structs: bool,
@@ -723,6 +728,13 @@ impl Parse for MacroInput {
         }
 
         match shaders.get("") {
+            // if source is bytes, the shader type should not be declared
+            Some((None, Some(SourceKind::Bytes(_)))) => {}
+            Some((_, Some(SourceKind::Bytes(_)))) => {
+                bail!(
+                    r#"one may not specify a shader type when including precompiled SPIR-V binaries. Please remove the `ty:` declaration"#
+                );
+            }
             Some((None, _)) => {
                 bail!(r#"please specify the type of the shader e.g. `ty: "vertex"`"#);
             }
@@ -739,7 +751,7 @@ impl Parse for MacroInput {
             shaders: shaders
                 .into_iter()
                 .map(|(key, (shader_kind, shader_source))| {
-                    (key, (shader_kind.unwrap(), shader_source.unwrap()))
+                    (key, (shader_kind, shader_source.unwrap()))
                 })
                 .collect(),
             vulkan_version,
