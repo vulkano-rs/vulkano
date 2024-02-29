@@ -685,7 +685,13 @@ impl TypeStruct {
             .names()
             .iter()
             .find_map(|instruction| match instruction {
-                Instruction::Name { name, .. } => Some(Ident::new(name, Span::call_site())),
+                Instruction::Name { name, .. } => {
+                    // rust-gpu uses fully qualified rust paths as names which contain `:`.
+                    // I sady don't know how to check against all kinds of invalid ident chars.
+                    let name = name.replace(':', "_");
+                    // Worst case: invalid idents will get the UnnamedX name below
+                    syn::parse_str(&name).ok()
+                }
                 _ => None,
             })
             .unwrap_or_else(|| format_ident!("Unnamed{}", struct_id.as_raw()));
