@@ -1,7 +1,7 @@
 use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
 use ahash::HashMap;
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, TokenStreamExt};
+use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use std::{cmp::Ordering, num::NonZeroUsize};
 use syn::{Error, Ident, Result};
 use vulkano::shader::spirv::{Decoration, Id, Instruction};

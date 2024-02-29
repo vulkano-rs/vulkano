@@ -39,7 +39,7 @@
 //!   appropriate features enabled.
 //! - If the `shaders` option is used, then instead of one `load` constructor, there is one for
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
-//! - A Rust struct translated from each struct contained in the shader data. By default each
+//! - A Rust struct translated from each struct contained in the shader data. By default, each
 //!   structure has a `Clone` and a `Copy` implementation. This behavior could be customized
 //!   through the `custom_derives` macro option (see below for details). Each struct also has an
 //!   implementation of [`BufferContents`], so that it can be read from/written to a buffer.
@@ -143,7 +143,7 @@
 //!
 //! With these options the user can compile several shaders in a single macro invocation. Each
 //! entry key will be the suffix of the generated `load` function (`load_first` in this case).
-//! However all other Rust structs translated from the shader source will be shared between
+//! However, all other Rust structs translated from the shader source will be shared between
 //! shaders. The macro checks that the source structs with the same names between different shaders
 //! have the same declaration signature, and throws a compile-time error if they don't.
 //!
@@ -184,9 +184,9 @@
 //! Extends the list of derive macros that are added to the `derive` attribute of Rust structs that
 //! represent shader structs.
 //!
-//! By default each generated struct has a derive for `Clone` and `Copy`. If the struct has unsized
-//! members none of the derives are applied on the struct, except [`BufferContents`], which is
-//! always derived.
+//! By default, each generated struct derives `Clone` and `Copy`. If the struct has unsized members
+//! none of the derives are applied on the struct, except [`BufferContents`], which is always
+//! derived.
 //!
 //! ## `linalg_type: "..."`
 //!
@@ -228,14 +228,10 @@
 #![allow(clippy::needless_borrowed_reference)]
 #![warn(rust_2018_idioms, rust_2021_compatibility)]
 
-#[macro_use]
-extern crate quote;
-#[macro_use]
-extern crate syn;
-
 use crate::codegen::ShaderKind;
 use ahash::HashMap;
 use proc_macro2::{Span, TokenStream};
+use quote::quote;
 use shaderc::{EnvVersion, SpirvVersion};
 use std::{
     env, fs, mem,
@@ -243,8 +239,9 @@ use std::{
 };
 use structs::TypeRegistry;
 use syn::{
+    braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
-    Error, Ident, LitBool, LitStr, Path as SynPath,
+    parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
 
 mod codegen;

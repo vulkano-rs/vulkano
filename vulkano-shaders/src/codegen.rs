@@ -4,6 +4,7 @@ use crate::{
 };
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, TargetEnv};
 use std::{
