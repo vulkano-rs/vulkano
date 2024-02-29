@@ -63,7 +63,10 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)>
             spirv,
             interface,
             StorageClass::Output,
-            matches!(execution_model, ExecutionModel::TessellationControl),
+            matches!(
+                execution_model,
+                ExecutionModel::TessellationControl | ExecutionModel::MeshEXT
+            ),
         );
 
         Some((
