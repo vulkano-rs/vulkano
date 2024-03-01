@@ -1381,6 +1381,9 @@ fn shader_interface_type_of(
         Instruction::TypePointer { ty, .. } => {
             shader_interface_type_of(spirv, ty, ignore_first_array)
         }
+        Instruction::TypeStruct { .. } => {
+            panic!("Structs are not yet supported in shader in/out interface!");
+        }
         _ => panic!("Type {} not found or invalid", id),
     }
 }
