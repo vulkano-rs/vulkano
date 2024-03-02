@@ -96,6 +96,7 @@ Changes to vulkano-util:
 - Support for querying memory requirements directly from the device.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
 - Support for the `glam` crate in the `type_for_format` macro.
+- Added `DepthState::reverse` helper method.
 
 ### Bugs fixed
 
