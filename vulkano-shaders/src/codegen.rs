@@ -711,7 +711,7 @@ mod tests {
                 Span::call_site(),
             ),
             String::new(),
-            &artifact.as_binary(),
+            artifact.as_binary(),
             Vec::new(),
             &mut type_registry,
         )
