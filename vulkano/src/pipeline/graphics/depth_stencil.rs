@@ -216,6 +216,15 @@ impl DepthState {
         }
     }
 
+    /// Returns a `DepthState` with a `Greater` depth test and depth writes enabled.
+    #[inline]
+    pub fn reverse() -> Self {
+        Self {
+            compare_op: CompareOp::Greater,
+            write_enable: true,
+        }
+    }
+
     pub(crate) fn validate(self, device: &Device) -> Result<(), Box<ValidationError>> {
         let Self {
             write_enable: _,
