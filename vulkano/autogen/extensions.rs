@@ -1,13 +1,8 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
 use nom::{
-    branch::alt,
-    bytes::complete::take_while1,
-    character::complete,
-    combinator::{all_consuming, map, opt},
-    multi::separated_list1,
-    sequence::{delimited, preceded},
-    IResult, Parser,
+    branch::alt, bytes::complete::take_while1, character::complete, combinator::all_consuming,
+    multi::separated_list1, sequence::delimited, IResult, Parser,
 };
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -988,30 +983,21 @@ fn parse_depends(depends: &str) -> Result<DependsExpression<'_>, String> {
     }
 
     fn expression(input: &str) -> IResult<&str, DependsExpression> {
-        map(
-            term.and(opt(alt((
-                preceded(
-                    complete::char('+'),
-                    separated_list1(complete::char('+'), term).map(DependsExpression::AllOf),
-                ),
-                preceded(
-                    complete::char(','),
-                    separated_list1(complete::char(','), term).map(DependsExpression::OneOf),
-                ),
-            )))),
-            |(first, terms)| match terms {
-                Some(DependsExpression::AllOf(mut all_of)) => {
-                    all_of.insert(0, first);
-                    DependsExpression::AllOf(all_of)
-                }
-                Some(DependsExpression::OneOf(mut one_of)) => {
-                    one_of.insert(0, first);
-                    DependsExpression::OneOf(one_of)
-                }
-                Some(DependsExpression::Name(_)) => unreachable!("Name after operator"),
-                None => first,
-            },
-        )(input)
+        let (input, first) = term(input)?;
+
+        if let Some(input) = input.strip_prefix('+') {
+            let (input, mut all_of) = separated_list1(complete::char('+'), term)(input)?;
+            all_of.insert(0, first);
+
+            Ok((input, DependsExpression::AllOf(all_of)))
+        } else if let Some(input) = input.strip_prefix(',') {
+            let (input, mut one_of) = separated_list1(complete::char(','), term)(input)?;
+            one_of.insert(0, first);
+
+            Ok((input, DependsExpression::OneOf(one_of)))
+        } else {
+            Ok((input, first))
+        }
     }
 
     match all_consuming(expression)(depends) {
