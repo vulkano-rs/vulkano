@@ -1,8 +1,13 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
 use nom::{
-    branch::alt, bytes::complete::take_while1, character::complete, combinator::eof, IResult,
-    Parser,
+    branch::alt,
+    bytes::complete::take_while1,
+    character::complete,
+    combinator::eof,
+    multi::separated_list1,
+    sequence::{delimited, preceded},
+    IResult, Parser,
 };
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -970,113 +975,63 @@ enum DependsExpression<'a> {
     AllOf(Vec<Self>),
 }
 
-fn parse_depends(mut depends: &str) -> Result<DependsExpression<'_>, String> {
-    #[derive(Debug, PartialEq)]
-    enum Token<'a> {
-        Name(&'a str),
-        Plus,
-        Comma,
-        POpen,
-        PClose,
+enum ParseExpressionPart<'a> {
+    AllOf(Vec<DependsExpression<'a>>),
+    OneOf(Vec<DependsExpression<'a>>),
+    End,
+}
+impl<'a> ParseExpressionPart<'a> {
+    fn finish(self, first: DependsExpression<'a>) -> DependsExpression<'a> {
+        match self {
+            ParseExpressionPart::AllOf(all_of) => {
+                DependsExpression::AllOf(std::iter::once(first).chain(all_of).collect())
+            }
+            ParseExpressionPart::OneOf(one_of) => {
+                DependsExpression::OneOf(std::iter::once(first).chain(one_of).collect())
+            }
+            ParseExpressionPart::End => first,
+        }
     }
+}
 
+fn parse_depends(depends: &str) -> Result<DependsExpression<'_>, String> {
     fn parse_name(value: &str) -> IResult<&str, &str> {
         take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(value)
     }
 
-    fn parse_symbol(value: &str) -> IResult<&str, Option<Token>> {
+    fn parse_expression_start(value: &str) -> IResult<&str, DependsExpression> {
         alt((
-            complete::char('+').map(|_| Some(Token::Plus)),
-            complete::char(',').map(|_| Some(Token::Comma)),
-            complete::char('(').map(|_| Some(Token::POpen)),
-            complete::char(')').map(|_| Some(Token::PClose)),
-            eof.map(|_| None),
+            parse_name.map(DependsExpression::Name),
+            delimited(
+                complete::char('('),
+                parse_expression_root,
+                complete::char(')'),
+            ),
         ))(value)
     }
 
-    let mut next_token = move || {
-        if let Ok((rest, m)) = parse_name(depends) {
-            depends = rest;
-            Ok(Some(Token::Name(m)))
-        } else {
-            match parse_symbol(depends) {
-                Ok((rest, m)) => {
-                    depends = rest;
-                    Ok(m)
-                }
-                Err(c) => Err(format!("unexpected character: {}", c)),
-            }
-        }
-    };
+    fn parse_expression_root(value: &str) -> IResult<&str, DependsExpression> {
+        let (value, first) = parse_expression_start(value)?;
 
-    fn parse_expression<'a>(
-        next_token: &mut impl FnMut() -> Result<Option<Token<'a>>, String>,
-        expect_pclose: bool,
-    ) -> Result<DependsExpression<'a>, String> {
-        let first = match next_token()? {
-            Some(Token::Name(name)) => DependsExpression::Name(name),
-            Some(Token::POpen) => parse_expression(next_token, true)?,
-            Some(token) => return Err(format!("unexpected token: {:?}", token)),
-            None => return Err("unexpected end of string".into()),
-        };
-
-        match next_token()? {
-            Some(separator @ (Token::Plus | Token::Comma)) => {
-                let mut subexpr = vec![first];
-
-                loop {
-                    match next_token()? {
-                        Some(Token::Name(name)) => subexpr.push(DependsExpression::Name(name)),
-                        Some(Token::POpen) => subexpr.push(parse_expression(next_token, true)?),
-                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
-                        None => return Err("unexpected end of string".into()),
-                    }
-
-                    match next_token()? {
-                        Some(Token::PClose) => {
-                            if expect_pclose {
-                                break;
-                            } else {
-                                return Err(format!("unexpected token: {:?}", Token::PClose));
-                            }
-                        }
-                        Some(token) if token == separator => (),
-                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
-                        None => {
-                            if expect_pclose {
-                                return Err("unexpected end of string".into());
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                Ok(match separator {
-                    Token::Plus => DependsExpression::AllOf(subexpr),
-                    Token::Comma => DependsExpression::OneOf(subexpr),
-                    _ => unreachable!(),
-                })
-            }
-            Some(Token::PClose) => {
-                if expect_pclose {
-                    Ok(first)
-                } else {
-                    Err(format!("unexpected token: {:?}", Token::PClose))
-                }
-            }
-            Some(token) => Err(format!("unexpected token: {:?}", token)),
-            None => {
-                if expect_pclose {
-                    Err("unexpected end of string".into())
-                } else {
-                    Ok(first)
-                }
-            }
-        }
+        alt((
+            preceded(
+                complete::char('+'),
+                separated_list1(complete::char('+'), parse_expression_start),
+            )
+            .map(ParseExpressionPart::AllOf),
+            preceded(
+                complete::char(','),
+                separated_list1(complete::char(','), parse_expression_start),
+            )
+            .map(ParseExpressionPart::OneOf),
+            eof.map(|_| ParseExpressionPart::End),
+        ))(value)
+        .map(|(rest, v)| (rest, v.finish(first)))
     }
 
-    parse_expression(&mut next_token, false)
+    parse_expression_root(depends)
+        .map(|(_, expr)| expr)
+        .map_err(|err| format!("{:?}", err))
 }
 
 fn make_doc(ext: &mut ExtensionsMember) {
