@@ -5,12 +5,11 @@ use super::{
 use heck::ToSnakeCase;
 use indexmap::map::Entry;
 use nom::{
-    branch::alt,
     bytes::complete::tag,
-    character::complete::{self},
-    combinator::eof,
-    sequence::tuple,
-    IResult,
+    character::complete,
+    combinator::all_consuming,
+    sequence::{preceded, separated_pair},
+    IResult, Parser,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -309,15 +308,11 @@ fn spirv_extensions_members(extensions: &[&SpirvExtOrCap]) -> Vec<SpirvReqsMembe
 }
 
 fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresProperty>) {
-    fn parse_vk_api_version(value: &str) -> IResult<&str, (u32, u32)> {
-        tuple((
-            alt((tag("VK_API_VERSION_"), tag("VK_VERSION_"))),
-            complete::u32,
-            complete::char('_'),
-            complete::u32,
-            eof,
-        ))(value)
-        .map(|(rest, (_, major, _, minor, _))| (rest, (major, minor)))
+    fn parse_vk_api_version(input: &str) -> IResult<&str, (u32, u32)> {
+        all_consuming(preceded(
+            tag("VK_API_VERSION_").or(tag("VK_VERSION_")),
+            separated_pair(complete::u32, complete::char('_'), complete::u32),
+        ))(input)
     }
 
     let mut requires_one_of = RequiresOneOf::default();

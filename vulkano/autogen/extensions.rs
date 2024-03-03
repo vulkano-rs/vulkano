@@ -4,9 +4,9 @@ use nom::{
     branch::alt,
     bytes::complete::take_while1,
     character::complete,
-    combinator::{all_consuming, eof, map, opt},
+    combinator::{all_consuming, map, opt},
     multi::separated_list1,
-    sequence::{delimited, pair, preceded, tuple},
+    sequence::{delimited, preceded},
     IResult, Parser,
 };
 use proc_macro2::{Ident, Literal, TokenStream};

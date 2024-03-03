@@ -1,10 +1,6 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
-use nom::{
-    character::complete,
-    combinator::eof,
-    sequence::{separated_pair, terminated},
-};
+use nom::{character::complete, combinator::eof, sequence::tuple};
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use std::iter;
@@ -609,16 +605,16 @@ fn formats_members(
     features: &IndexMap<&str, &Feature>,
     extensions: &IndexMap<&str, &Extension>,
 ) -> Vec<FormatMember> {
-    fn parse_block_extent(value: &str) -> Result<[u32; 3], nom::Err<()>> {
-        separated_pair(
+    fn parse_block_extent(input: &str) -> Result<[u32; 3], nom::Err<()>> {
+        tuple((
             complete::u32::<_, ()>,
             complete::char(','),
-            terminated(
-                separated_pair(complete::u32, complete::char(','), complete::u32),
-                eof,
-            ),
-        )(value)
-        .map(|(_, (a, (b, c)))| [a, b, c])
+            complete::u32,
+            complete::char(','),
+            complete::u32,
+            eof,
+        ))(input)
+        .map(|(_, (a, _, b, _, c, _))| [a, b, c])
     }
 
     iter::once(

@@ -4,8 +4,8 @@ use heck::ToSnakeCase;
 use nom::{
     bytes::complete::{tag, take_until, take_while1},
     character::complete::{self, digit1},
-    combinator::eof,
-    sequence::tuple,
+    combinator::{all_consuming, eof},
+    sequence::{delimited, tuple},
     IResult,
 };
 use proc_macro2::{Ident, TokenStream};
@@ -431,13 +431,13 @@ struct Member<'a> {
 }
 
 fn members(ty: &Type) -> Vec<Member> {
-    fn parse_array_len(value: &str) -> IResult<&str, &str> {
-        let (value, _) = take_until("[")(value)?;
-        let (value, _) = complete::char('[')(value)?;
-        let (value, len) = take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(value)?;
-        let (value, _) = complete::char(']')(value)?;
-        let (value, _) = eof(value)?;
-        Ok((value, len))
+    fn array_len(input: &str) -> IResult<&str, &str> {
+        let (input, _) = take_until("[")(input)?;
+        all_consuming(delimited(
+            complete::char('['),
+            take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_'),
+            complete::char(']'),
+        ))(input)
     }
 
     if let TypeSpec::Members(members) = &ty.spec {
@@ -460,7 +460,7 @@ fn members(ty: &Type) -> Vec<Member> {
                             TypeMemberMarkup::Enum(len) => Some(len.as_str()),
                             _ => None,
                         })
-                        .or_else(|| parse_array_len(&def.code).map(|(_, len)| len).ok());
+                        .or_else(|| array_len(&def.code).map(|(_, len)| len).ok());
                     if name != Some("sType") && name != Some("pNext") {
                         return name.map(|name| Member {
                             name,
