@@ -39,7 +39,7 @@
 //!   appropriate features enabled.
 //! - If the `shaders` option is used, then instead of one `load` constructor, there is one for
 //!   each shader. They are named based on the provided names, `load_first`, `load_second` etc.
-//! - A Rust struct translated from each struct contained in the shader data. By default each
+//! - A Rust struct translated from each struct contained in the shader data. By default, each
 //!   structure has a `Clone` and a `Copy` implementation. This behavior could be customized
 //!   through the `custom_derives` macro option (see below for details). Each struct also has an
 //!   implementation of [`BufferContents`], so that it can be read from/written to a buffer.
@@ -122,8 +122,8 @@
 //! ## `bytes: "..."`
 //!
 //! Provides the path to precompiled SPIR-V bytecode, relative to your `Cargo.toml`. Cannot be used
-//! in conjunction with the `src` or `path` field. This allows using shaders compiled through a
-//! separate build system.
+//! in conjunction with the `src` or `path` field, and may also not specify a shader `ty` type.
+//! This allows using shaders compiled through a separate build system.
 //!
 //! ## `root_path_env: "..."`
 //!
@@ -143,7 +143,7 @@
 //!
 //! With these options the user can compile several shaders in a single macro invocation. Each
 //! entry key will be the suffix of the generated `load` function (`load_first` in this case).
-//! However all other Rust structs translated from the shader source will be shared between
+//! However, all other Rust structs translated from the shader source will be shared between
 //! shaders. The macro checks that the source structs with the same names between different shaders
 //! have the same declaration signature, and throws a compile-time error if they don't.
 //!
@@ -172,14 +172,21 @@
 //! The generated code must be supported by the device at runtime. If not, then an error will be
 //! returned when calling `load`.
 //!
+//! ## `generate_structs: true`
+//!
+//! Generate rust structs that represent the structs contained in the shader. They all implement
+//! [`BufferContents`], which allows then to be passed to the shader, without having to worry about
+//! the layout of the struct manually. However, some use-cases, such as Rust-GPU, may not have any
+//! use for such structs, and may choose to disable them.
+//!
 //! ## `custom_derives: [Clone, Default, PartialEq, ...]`
 //!
 //! Extends the list of derive macros that are added to the `derive` attribute of Rust structs that
 //! represent shader structs.
 //!
-//! By default each generated struct has a derive for `Clone` and `Copy`. If the struct has unsized
-//! members none of the derives are applied on the struct, except [`BufferContents`], which is
-//! always derived.
+//! By default, each generated struct derives `Clone` and `Copy`. If the struct has unsized members
+//! none of the derives are applied on the struct, except [`BufferContents`], which is always
+//! derived.
 //!
 //! ## `linalg_type: "..."`
 //!
@@ -221,14 +228,10 @@
 #![allow(clippy::needless_borrowed_reference)]
 #![warn(rust_2018_idioms, rust_2021_compatibility)]
 
-#[macro_use]
-extern crate quote;
-#[macro_use]
-extern crate syn;
-
 use crate::codegen::ShaderKind;
 use ahash::HashMap;
 use proc_macro2::{Span, TokenStream};
+use quote::quote;
 use shaderc::{EnvVersion, SpirvVersion};
 use std::{
     env, fs, mem,
@@ -236,11 +239,13 @@ use std::{
 };
 use structs::TypeRegistry;
 use syn::{
+    braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
-    Error, Ident, LitBool, LitStr, Path as SynPath,
+    parse_macro_input, parse_quote, Error, Ident, LitBool, LitStr, Path as SynPath, Token,
 };
 
 mod codegen;
+mod rust_gpu;
 mod structs;
 
 #[proc_macro]
@@ -286,9 +291,14 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
     for (name, (shader_kind, source_kind)) in shaders {
         let (code, types) = match source_kind {
             SourceKind::Src(source) => {
-                let (artifact, includes) =
-                    codegen::compile(&input, None, root_path, &source.value(), shader_kind)
-                        .map_err(|err| Error::new_spanned(&source, err))?;
+                let (artifact, includes) = codegen::compile(
+                    &input,
+                    None,
+                    root_path,
+                    &source.value(),
+                    shader_kind.unwrap(),
+                )
+                .map_err(|err| Error::new_spanned(&source, err))?;
 
                 let words = artifact.as_binary();
 
@@ -313,7 +323,7 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                     Some(path.value()),
                     root_path,
                     &source_code,
-                    shader_kind,
+                    shader_kind.unwrap(),
                 )
                 .map_err(|err| Error::new_spanned(&path, err))?;
 
@@ -371,9 +381,10 @@ struct MacroInput {
     root_path_env: Option<LitStr>,
     include_directories: Vec<PathBuf>,
     macro_defines: Vec<(String, String)>,
-    shaders: HashMap<String, (ShaderKind, SourceKind)>,
+    shaders: HashMap<String, (Option<ShaderKind>, SourceKind)>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
+    generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
     dump: LitBool,
@@ -389,6 +400,7 @@ impl MacroInput {
             shaders: HashMap::default(),
             vulkan_version: None,
             spirv_version: None,
+            generate_structs: true,
             custom_derives: Vec::new(),
             linalg_type: LinAlgType::default(),
             dump: LitBool::new(false, Span::call_site()),
@@ -406,6 +418,7 @@ impl Parse for MacroInput {
         let mut shaders = HashMap::default();
         let mut vulkan_version = None;
         let mut spirv_version = None;
+        let mut generate_structs = true;
         let mut custom_derives = None;
         let mut linalg_type = None;
         let mut dump = None;
@@ -643,6 +656,10 @@ impl Parse for MacroInput {
                         ),
                     });
                 }
+                "generate_structs" => {
+                    let lit = input.parse::<LitBool>()?;
+                    generate_structs = lit.value;
+                }
                 "custom_derives" => {
                     let in_brackets;
                     bracketed!(in_brackets in input);
@@ -696,8 +713,8 @@ impl Parse for MacroInput {
                 field => bail!(
                     field_ident,
                     "expected `bytes`, `src`, `path`, `ty`, `shaders`, `define`, `include`, \
-                    `vulkan_version`, `spirv_version`, `custom_derives`, `linalg_type` or `dump` \
-                    as a field, found `{field}`",
+                    `vulkan_version`, `spirv_version`, `generate_structs`, `custom_derives`, \
+                    `linalg_type` or `dump` as a field, found `{field}`",
                 ),
             }
 
@@ -711,6 +728,13 @@ impl Parse for MacroInput {
         }
 
         match shaders.get("") {
+            // if source is bytes, the shader type should not be declared
+            Some((None, Some(SourceKind::Bytes(_)))) => {}
+            Some((_, Some(SourceKind::Bytes(_)))) => {
+                bail!(
+                    r#"one may not specify a shader type when including precompiled SPIR-V binaries. Please remove the `ty:` declaration"#
+                );
+            }
             Some((None, _)) => {
                 bail!(r#"please specify the type of the shader e.g. `ty: "vertex"`"#);
             }
@@ -727,11 +751,12 @@ impl Parse for MacroInput {
             shaders: shaders
                 .into_iter()
                 .map(|(key, (shader_kind, shader_source))| {
-                    (key, (shader_kind.unwrap(), shader_source.unwrap()))
+                    (key, (shader_kind, shader_source.unwrap()))
                 })
                 .collect(),
             vulkan_version,
             spirv_version,
+            generate_structs,
             custom_derives: custom_derives.unwrap_or_else(|| {
                 vec![
                     parse_quote! { ::std::clone::Clone },
