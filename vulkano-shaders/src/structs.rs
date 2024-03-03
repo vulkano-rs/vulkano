@@ -90,7 +90,7 @@ pub(super) fn write_structs(
     shader: &Shader,
     type_registry: &mut TypeRegistry,
 ) -> Result<TokenStream> {
-    if !input.generate_structs {
+    if !input.generate_structs.unwrap_or(true) {
         return Ok(TokenStream::new());
     }
 

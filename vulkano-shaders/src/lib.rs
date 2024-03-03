@@ -384,7 +384,7 @@ struct MacroInput {
     shaders: HashMap<String, (Option<ShaderKind>, SourceKind)>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
-    generate_structs: bool,
+    generate_structs: Option<bool>,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
     dump: LitBool,
@@ -400,7 +400,7 @@ impl MacroInput {
             shaders: HashMap::default(),
             vulkan_version: None,
             spirv_version: None,
-            generate_structs: true,
+            generate_structs: Some(true),
             custom_derives: Vec::new(),
             linalg_type: LinAlgType::default(),
             dump: LitBool::new(false, Span::call_site()),
@@ -418,7 +418,7 @@ impl Parse for MacroInput {
         let mut shaders = HashMap::default();
         let mut vulkan_version = None;
         let mut spirv_version = None;
-        let mut generate_structs = true;
+        let mut generate_structs = None;
         let mut custom_derives = None;
         let mut linalg_type = None;
         let mut dump = None;
@@ -658,7 +658,10 @@ impl Parse for MacroInput {
                 }
                 "generate_structs" => {
                     let lit = input.parse::<LitBool>()?;
-                    generate_structs = lit.value;
+                    if generate_structs.is_some() {
+                        bail!(lit, "field `generate_structs` is already defined");
+                    }
+                    generate_structs = Some(lit.value);
                 }
                 "custom_derives" => {
                     let in_brackets;
