@@ -418,7 +418,7 @@ impl Parse for MacroInput {
         let mut shaders = HashMap::default();
         let mut vulkan_version = None;
         let mut spirv_version = None;
-        let mut generate_structs = true;
+        let mut generate_structs = None;
         let mut custom_derives = None;
         let mut linalg_type = None;
         let mut dump = None;
@@ -658,7 +658,10 @@ impl Parse for MacroInput {
                 }
                 "generate_structs" => {
                     let lit = input.parse::<LitBool>()?;
-                    generate_structs = lit.value;
+                    if generate_structs.is_some() {
+                        bail!(lit, "field `generate_structs` is already defined");
+                    }
+                    generate_structs = Some(lit.value);
                 }
                 "custom_derives" => {
                     let in_brackets;
@@ -756,7 +759,7 @@ impl Parse for MacroInput {
                 .collect(),
             vulkan_version,
             spirv_version,
-            generate_structs,
+            generate_structs: generate_structs.unwrap_or(true),
             custom_derives: custom_derives.unwrap_or_else(|| {
                 vec![
                     parse_quote! { ::std::clone::Clone },
