@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::{tag, take_until},
     character::complete::{self, multispace0, multispace1},
     combinator::eof,
-    sequence::{delimited, preceded, tuple},
+    sequence::{delimited, tuple},
     IResult, Parser,
 };
 use std::{
