@@ -4,9 +4,9 @@ use nom::{
     branch::alt,
     bytes::complete::take_while1,
     character::complete,
-    combinator::eof,
+    combinator::{all_consuming, eof, map, opt},
     multi::separated_list1,
-    sequence::{delimited, preceded},
+    sequence::{delimited, pair, preceded, tuple},
     IResult, Parser,
 };
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -975,63 +975,49 @@ enum DependsExpression<'a> {
     AllOf(Vec<Self>),
 }
 
-enum ParseExpressionPart<'a> {
-    AllOf(Vec<DependsExpression<'a>>),
-    OneOf(Vec<DependsExpression<'a>>),
-    End,
-}
-impl<'a> ParseExpressionPart<'a> {
-    fn finish(self, first: DependsExpression<'a>) -> DependsExpression<'a> {
-        match self {
-            ParseExpressionPart::AllOf(all_of) => {
-                DependsExpression::AllOf(std::iter::once(first).chain(all_of).collect())
-            }
-            ParseExpressionPart::OneOf(one_of) => {
-                DependsExpression::OneOf(std::iter::once(first).chain(one_of).collect())
-            }
-            ParseExpressionPart::End => first,
-        }
-    }
-}
-
 fn parse_depends(depends: &str) -> Result<DependsExpression<'_>, String> {
-    fn parse_name(value: &str) -> IResult<&str, &str> {
-        take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(value)
+    fn name(input: &str) -> IResult<&str, &str> {
+        take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(input)
     }
 
-    fn parse_expression_start(value: &str) -> IResult<&str, DependsExpression> {
+    fn term(input: &str) -> IResult<&str, DependsExpression> {
         alt((
-            parse_name.map(DependsExpression::Name),
-            delimited(
-                complete::char('('),
-                parse_expression_root,
-                complete::char(')'),
-            ),
-        ))(value)
+            name.map(DependsExpression::Name),
+            delimited(complete::char('('), expression, complete::char(')')),
+        ))(input)
     }
 
-    fn parse_expression_root(value: &str) -> IResult<&str, DependsExpression> {
-        let (value, first) = parse_expression_start(value)?;
-
-        alt((
-            preceded(
-                complete::char('+'),
-                separated_list1(complete::char('+'), parse_expression_start),
-            )
-            .map(ParseExpressionPart::AllOf),
-            preceded(
-                complete::char(','),
-                separated_list1(complete::char(','), parse_expression_start),
-            )
-            .map(ParseExpressionPart::OneOf),
-            eof.map(|_| ParseExpressionPart::End),
-        ))(value)
-        .map(|(rest, v)| (rest, v.finish(first)))
+    fn expression(input: &str) -> IResult<&str, DependsExpression> {
+        map(
+            term.and(opt(alt((
+                preceded(
+                    complete::char('+'),
+                    separated_list1(complete::char('+'), term).map(DependsExpression::AllOf),
+                ),
+                preceded(
+                    complete::char(','),
+                    separated_list1(complete::char(','), term).map(DependsExpression::OneOf),
+                ),
+            )))),
+            |(first, terms)| match terms {
+                Some(DependsExpression::AllOf(mut all_of)) => {
+                    all_of.insert(0, first);
+                    DependsExpression::AllOf(all_of)
+                }
+                Some(DependsExpression::OneOf(mut one_of)) => {
+                    one_of.insert(0, first);
+                    DependsExpression::OneOf(one_of)
+                }
+                Some(DependsExpression::Name(_)) => unreachable!("Name after operator"),
+                None => first,
+            },
+        )(input)
     }
 
-    parse_expression_root(depends)
-        .map(|(_, expr)| expr)
-        .map_err(|err| format!("{:?}", err))
+    match all_consuming(expression)(depends) {
+        Ok((_, expr)) => Ok(expr),
+        Err(err) => Err(format!("{:?}", err)),
+    }
 }
 
 fn make_doc(ext: &mut ExtensionsMember) {
