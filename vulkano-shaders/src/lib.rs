@@ -384,7 +384,7 @@ struct MacroInput {
     shaders: HashMap<String, (Option<ShaderKind>, SourceKind)>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
-    generate_structs: Option<bool>,
+    generate_structs: bool,
     custom_derives: Vec<SynPath>,
     linalg_type: LinAlgType,
     dump: LitBool,
@@ -400,7 +400,7 @@ impl MacroInput {
             shaders: HashMap::default(),
             vulkan_version: None,
             spirv_version: None,
-            generate_structs: Some(true),
+            generate_structs: true,
             custom_derives: Vec::new(),
             linalg_type: LinAlgType::default(),
             dump: LitBool::new(false, Span::call_site()),
@@ -759,7 +759,7 @@ impl Parse for MacroInput {
                 .collect(),
             vulkan_version,
             spirv_version,
-            generate_structs,
+            generate_structs: generate_structs.unwrap_or(true),
             custom_derives: custom_derives.unwrap_or_else(|| {
                 vec![
                     parse_quote! { ::std::clone::Clone },
