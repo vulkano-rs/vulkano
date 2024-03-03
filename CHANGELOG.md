@@ -101,6 +101,7 @@ Changes to vulkano-util:
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
+- Validation between shader code and device extensions, features and properties.
 
 ### Bugs fixed
 
