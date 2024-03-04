@@ -56,6 +56,8 @@ Changes to surface creation and support functions:
 
 Changes to vertex input:
 - `VertexInputBindingDescription` and `VertexInputAttributeDescription` are now non-exhaustive, and must be created with the `Default` trait.
+- The `VertexDefinition::definition` trait method now takes an `EntryPoint` instead of a `ShaderInterface`.
+- `VertexMemberInfo` now has a `stride` member and its `offset` member now has the type `u32`.
 
 Changes to render passes:
 - The `is_compatible_with_shader` methods of `RenderPass` and `Subpass` are removed.
@@ -83,6 +85,9 @@ Changes to queries:
 Changes to queues:
 - The `Queue::id_within_family` method is renamed to `queue_index` to match Vulkan.
 
+Changes to shaders:
+- `ShaderInterface` and subtypes are removed. `EntryPointInfo` no longer has `input_interface` and `output_interface` members.
+
 Changes to vulkano-shaders:
 - Shaders included via `bytes: <path-to-spv>` **must** no longer specify a shader type, e.g. `ty: <vertex>`.
 
@@ -104,6 +109,8 @@ Changes to vulkano-util:
 - Support for the `glam` crate in the `type_for_format` macro.
 - Added `DepthState::reverse` helper method.
 - Support for the `ext_host_query_reset` extension.
+- `VertexDefinition` now fully supports 64-bit types and struct types in input/output interfaces.
+- `VertexDefinition` now uses a placeholder name if a name is not present in the shader, instead of panicking.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
