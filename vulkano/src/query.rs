@@ -9,8 +9,8 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
-    VulkanObject,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
+    VulkanError, VulkanObject,
 };
 use std::{
     ffi::c_void,
@@ -296,6 +296,89 @@ impl QueryPool {
             ash::vk::Result::SUCCESS => Ok(true),
             ash::vk::Result::NOT_READY => Ok(false),
             err => Err(VulkanError::from(err)),
+        }
+    }
+
+    /// Resets a range of queries.
+    ///
+    /// The [`host_query_reset`] feature must be enabled on the device.
+    ///
+    /// # Safety
+    ///
+    /// For the queries indicated by `range`:
+    /// - There must be no operations pending or executing on the device.
+    /// - There must be no calls to `reset*` or `get_results*` executing concurrently on another
+    ///   thread.
+    ///
+    /// [`host_query_reset`]: Features::host_query_reset
+    #[inline]
+    pub unsafe fn reset(&self, range: Range<u32>) -> Result<(), Box<ValidationError>> {
+        self.validate_reset(range.clone())?;
+
+        unsafe {
+            self.reset_unchecked(range);
+        }
+
+        Ok(())
+    }
+
+    fn validate_reset(&self, range: Range<u32>) -> Result<(), Box<ValidationError>> {
+        if !self.device.enabled_features().host_query_reset {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "host_query_reset",
+                )])]),
+                vuids: &["VUID-vkResetQueryPool-None-02665"],
+                ..Default::default()
+            }));
+        }
+
+        if range.is_empty() {
+            return Err(Box::new(ValidationError {
+                context: "range".into(),
+                problem: "is empty".into(),
+                // vuids?
+                ..Default::default()
+            }));
+        }
+
+        if range.end > self.query_count {
+            return Err(Box::new(ValidationError {
+                problem: "`range.end` is greater than `self.query_count`".into(),
+                vuids: &[
+                    "VUID-vkResetQueryPool-firstQuery-09436",
+                    "VUID-vkResetQueryPool-firstQuery-09437",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        // unsafe
+        // VUID-vkResetQueryPool-firstQuery-02741
+        // VUID-vkResetQueryPool-firstQuery-02742
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reset_unchecked(&self, range: Range<u32>) {
+        let fns = self.device.fns();
+
+        if self.device.api_version() >= Version::V1_2 {
+            (fns.v1_2.reset_query_pool)(
+                self.device.handle(),
+                self.handle(),
+                range.start,
+                range.len() as u32,
+            );
+        } else {
+            debug_assert!(self.device.enabled_extensions().ext_host_query_reset);
+            (fns.ext_host_query_reset.reset_query_pool_ext)(
+                self.device.handle(),
+                self.handle(),
+                range.start,
+                range.len() as u32,
+            );
         }
     }
 }
