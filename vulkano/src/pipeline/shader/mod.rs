@@ -26,12 +26,12 @@ pub struct PipelineShaderStageCreateInfo {
 
     /// The required subgroup size.
     ///
-    /// Requires [`subgroup_size_control`](crate::device::Features::subgroup_size_control). The
-    /// shader stage must be included in
-    /// [`required_subgroup_size_stages`](crate::device::Properties::required_subgroup_size_stages).
+    /// Requires [`subgroup_size_control`](crate::device::DeviceFeatures::subgroup_size_control).
+    /// The shader stage must be included in
+    /// [`required_subgroup_size_stages`](crate::device::DeviceProperties::required_subgroup_size_stages).
     /// Subgroup size must be power of 2 and within
-    /// [`min_subgroup_size`](crate::device::Properties::min_subgroup_size)
-    /// and [`max_subgroup_size`](crate::device::Properties::max_subgroup_size).
+    /// [`min_subgroup_size`](crate::device::DeviceProperties::min_subgroup_size)
+    /// and [`max_subgroup_size`](crate::device::DeviceProperties::max_subgroup_size).
     ///
     /// For compute shaders, `max_compute_workgroup_subgroups * required_subgroup_size` must be
     /// greater than or equal to `workgroup_size.x * workgroup_size.y * workgroup_size.z`.
@@ -104,9 +104,9 @@ impl PipelineShaderStageCreateInfo {
                         problem: "specifies a `ShaderStage::TessellationControl` or \
                             `ShaderStage::TessellationEvaluation` entry point"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("tessellation_shader"),
+                        ])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00705"],
                     }));
                 }
@@ -119,9 +119,9 @@ impl PipelineShaderStageCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "entry_point".into(),
                         problem: "specifies a `ShaderStage::Geometry` entry point".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("geometry_shader"),
+                        ])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-00704"],
                     }));
                 }
@@ -148,9 +148,9 @@ impl PipelineShaderStageCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "entry_point".into(),
                         problem: "specifies a `ShaderStage::Mesh` entry point".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "mesh_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("mesh_shader"),
+                        ])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02091"],
                     }));
                 }
@@ -160,9 +160,9 @@ impl PipelineShaderStageCreateInfo {
                     return Err(Box::new(ValidationError {
                         context: "entry_point".into(),
                         problem: "specifies a `ShaderStage::Task` entry point".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "task_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("task_shader"),
+                        ])]),
                         vuids: &["VUID-VkPipelineShaderStageCreateInfo-stage-02092"],
                     }));
                 }
@@ -415,7 +415,7 @@ impl PipelineShaderStageCreateInfo {
                 return Err(Box::new(ValidationError {
                     context: "required_subgroup_size".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subgroup_size_control",
                     )])]),
                     vuids: &["VUID-VkPipelineShaderStageCreateInfo-pNext-02755"],

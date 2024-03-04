@@ -10,7 +10,7 @@ use vulkano::{
         WriteDescriptorSet,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
         QueueCreateInfo, QueueFlags,
     },
     format::Format,
@@ -111,12 +111,12 @@ fn main() -> Result<(), impl Error> {
                 ..Default::default()
             }],
             enabled_extensions: device_extensions,
-            enabled_features: Features {
+            enabled_features: DeviceFeatures {
                 descriptor_indexing: true,
                 shader_uniform_buffer_array_non_uniform_indexing: true,
                 runtime_descriptor_array: true,
                 descriptor_binding_variable_descriptor_count: true,
-                ..Features::empty()
+                ..DeviceFeatures::empty()
             },
             ..Default::default()
         },

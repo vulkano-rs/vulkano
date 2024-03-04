@@ -1923,7 +1923,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -1934,7 +1934,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -1945,7 +1945,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -1956,7 +1956,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -1969,7 +1969,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03929"],
@@ -1980,7 +1980,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03929"],
@@ -1998,7 +1998,7 @@ impl MemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03930"],
@@ -2014,7 +2014,7 @@ impl MemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03930"],
@@ -2027,7 +2027,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03931"],
@@ -2038,7 +2038,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03931"],
@@ -2051,7 +2051,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03932"],
@@ -2062,7 +2062,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03932"],
@@ -2075,7 +2075,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03933"],
@@ -2086,7 +2086,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03933"],
@@ -2099,7 +2099,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03934"],
@@ -2110,7 +2110,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03934"],
@@ -2123,7 +2123,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-03935"],
@@ -2134,7 +2134,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-03935"],
@@ -2150,8 +2150,10 @@ impl MemoryBarrier {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        RequiresAllOf(&[Requires::DeviceFeature(
+                            "attachment_fragment_shading_rate",
+                        )]),
+                        RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
                 }));
@@ -2162,8 +2164,10 @@ impl MemoryBarrier {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        RequiresAllOf(&[Requires::DeviceFeature(
+                            "attachment_fragment_shading_rate",
+                        )]),
+                        RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
                 }));
@@ -2175,7 +2179,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04957"],
@@ -2186,7 +2190,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04957"],
@@ -2199,7 +2203,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-04995"],
@@ -2210,7 +2214,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-04995"],
@@ -2225,7 +2229,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-srcStageMask-07946"],
@@ -2236,7 +2240,7 @@ impl MemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkMemoryBarrier2-dstStageMask-07946"],
@@ -2439,7 +2443,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -2450,7 +2454,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -2461,7 +2465,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -2472,7 +2476,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -2485,7 +2489,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03929"],
@@ -2496,7 +2500,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03929"],
@@ -2514,7 +2518,7 @@ impl BufferMemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03930"],
@@ -2530,7 +2534,7 @@ impl BufferMemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03930"],
@@ -2543,7 +2547,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03931"],
@@ -2554,7 +2558,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03931"],
@@ -2567,7 +2571,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03932"],
@@ -2578,7 +2582,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03932"],
@@ -2591,7 +2595,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03933"],
@@ -2602,7 +2606,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03933"],
@@ -2615,7 +2619,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03934"],
@@ -2626,7 +2630,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03934"],
@@ -2639,7 +2643,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-03935"],
@@ -2650,7 +2654,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-03935"],
@@ -2666,8 +2670,10 @@ impl BufferMemoryBarrier {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        RequiresAllOf(&[Requires::DeviceFeature(
+                            "attachment_fragment_shading_rate",
+                        )]),
+                        RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-shadingRateImage-07316"],
                 }));
@@ -2678,8 +2684,10 @@ impl BufferMemoryBarrier {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        RequiresAllOf(&[Requires::DeviceFeature(
+                            "attachment_fragment_shading_rate",
+                        )]),
+                        RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-shadingRateImage-07316"],
                 }));
@@ -2691,7 +2699,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-04957"],
@@ -2702,7 +2710,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-04957"],
@@ -2715,7 +2723,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-04995"],
@@ -2726,7 +2734,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-04995"],
@@ -2741,7 +2749,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-srcStageMask-07946"],
@@ -2752,7 +2760,7 @@ impl BufferMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkBufferMemoryBarrier2-dstStageMask-07946"],
@@ -3113,7 +3121,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -3124,7 +3132,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -3135,7 +3143,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -3146,7 +3154,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_access".into(),
                     problem: "contains flags from `VkAccessFlagBits2`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     ..Default::default()
@@ -3159,7 +3167,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03929"],
@@ -3170,7 +3178,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "geometry_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03929"],
@@ -3188,7 +3196,7 @@ impl ImageMemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03930"],
@@ -3204,7 +3212,7 @@ impl ImageMemoryBarrier {
                     problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                         `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "tessellation_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03930"],
@@ -3217,7 +3225,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03931"],
@@ -3228,7 +3236,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "conditional_rendering",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03931"],
@@ -3241,7 +3249,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03932"],
@@ -3252,7 +3260,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "fragment_density_map",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03932"],
@@ -3265,7 +3273,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03933"],
@@ -3276,7 +3284,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "transform_feedback",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03933"],
@@ -3289,7 +3297,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03934"],
@@ -3300,7 +3308,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "mesh_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03934"],
@@ -3313,7 +3321,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-03935"],
@@ -3324,7 +3332,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "task_shader",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-03935"],
@@ -3340,8 +3348,10 @@ impl ImageMemoryBarrier {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        RequiresAllOf(&[Requires::DeviceFeature(
+                            "attachment_fragment_shading_rate",
+                        )]),
+                        RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkImageMemoryBarrier2-shadingRateImage-07316"],
                 }));
@@ -3352,8 +3362,10 @@ impl ImageMemoryBarrier {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                        RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                        RequiresAllOf(&[Requires::DeviceFeature(
+                            "attachment_fragment_shading_rate",
+                        )]),
+                        RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                     ]),
                     vuids: &["VUID-VkImageMemoryBarrier2-shadingRateImage-07316"],
                 }));
@@ -3365,7 +3377,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-04957"],
@@ -3376,7 +3388,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-04957"],
@@ -3389,7 +3401,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-04995"],
@@ -3400,7 +3412,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "invocation_mask",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-04995"],
@@ -3415,7 +3427,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-srcStageMask-07946"],
@@ -3426,7 +3438,7 @@ impl ImageMemoryBarrier {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
                     problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ray_tracing_pipeline",
                     )])]),
                     vuids: &["VUID-VkImageMemoryBarrier2-dstStageMask-07946"],
@@ -3620,7 +3632,7 @@ impl ImageMemoryBarrier {
                     `subresource_range.aspects` does not contain both \
                     `ImageAspects::DEPTH` and `ImageAspects::STENCIL`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "separate_depth_stencil_layouts",
                 )])]),
                 vuids: &["VUID-VkImageMemoryBarrier2-image-03320"],
@@ -4071,8 +4083,8 @@ impl ImageMemoryBarrier {
 ///
 /// [`Instance`]: crate::instance::Instance
 /// [`Device`]: crate::device::Device
-/// [`device_uuid`]: crate::device::Properties::device_uuid
-/// [`driver_uuid`]: crate::device::Properties::driver_uuid
+/// [`device_uuid`]: crate::device::DeviceProperties::device_uuid
+/// [`driver_uuid`]: crate::device::DeviceProperties::driver_uuid
 #[derive(Clone, Copy, Debug)]
 pub enum QueueFamilyOwnershipTransfer {
     /// For a resource with [`Sharing::Exclusive`], transfers ownership between two local queues.

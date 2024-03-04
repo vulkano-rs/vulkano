@@ -1318,7 +1318,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetCullMode-None-03384"],
                 ..Default::default()
@@ -1396,7 +1396,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 context: "clamp".into(),
                 problem: "is not `0.0`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "depth_bias_clamp",
                 )])]),
                 vuids: &["VUID-vkCmdSetDepthBias-depthBiasClamp-00790"],
@@ -1436,7 +1436,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state2")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthBiasEnable-None-04872"],
                 ..Default::default()
@@ -1561,7 +1561,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthBoundsTestEnable-None-03349"],
                 ..Default::default()
@@ -1619,7 +1619,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthCompareOp-None-03353"],
                 ..Default::default()
@@ -1681,7 +1681,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthTestEnable-None-03352"],
                 ..Default::default()
@@ -1738,7 +1738,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetDepthWriteEnable-None-03354"],
                 ..Default::default()
@@ -1872,7 +1872,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetFrontFace-None-03383"],
                 ..Default::default()
@@ -2002,7 +2002,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 context: "line_width".into(),
                 problem: "is not 1.0".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "wide_lines",
                 )])]),
                 vuids: &["VUID-vkCmdSetLineWidth-lineWidth-00788"],
@@ -2037,7 +2037,7 @@ impl RawRecordingCommandBuffer {
             .extended_dynamic_state2_logic_op
         {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "extended_dynamic_state2_logic_op",
                 )])]),
                 vuids: &["VUID-vkCmdSetLogicOpEXT-None-04867"],
@@ -2092,7 +2092,7 @@ impl RawRecordingCommandBuffer {
             .extended_dynamic_state2_patch_control_points
         {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "extended_dynamic_state2_patch_control_points",
                 )])]),
                 vuids: &["VUID-vkCmdSetPatchControlPointsEXT-None-04873"],
@@ -2166,7 +2166,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state2")]),
                 ]),
                 vuids: &["VUID-vkCmdSetPrimitiveRestartEnable-None-04866"],
                 ..Default::default()
@@ -2224,7 +2224,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetPrimitiveTopology-None-03347"],
                 ..Default::default()
@@ -2262,9 +2262,9 @@ impl RawRecordingCommandBuffer {
                         problem: "this device is a portability subset device, and `topology` \
                             is `PrimitiveTopology::TriangleFan`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "triangle_fans",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("triangle_fans"),
+                        ])]),
                         ..Default::default()
                     }));
                 }
@@ -2276,9 +2276,9 @@ impl RawRecordingCommandBuffer {
                 if !self.device().enabled_features().geometry_shader {
                     return Err(Box::new(ValidationError {
                         problem: "`topology` is `PrimitiveTopology::*WithAdjacency`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("geometry_shader"),
+                        ])]),
                         ..Default::default()
                     }));
                 }
@@ -2287,9 +2287,9 @@ impl RawRecordingCommandBuffer {
                 if !self.device().enabled_features().tessellation_shader {
                     return Err(Box::new(ValidationError {
                         problem: "`topology` is `PrimitiveTopology::PatchList`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("tessellation_shader"),
+                        ])]),
                         ..Default::default()
                     }));
                 }
@@ -2337,7 +2337,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state2")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state2")]),
                 ]),
                 vuids: &["VUID-vkCmdSetRasterizerDiscardEnable-None-04871"],
                 ..Default::default()
@@ -2420,7 +2420,7 @@ impl RawRecordingCommandBuffer {
             if first_scissor != 0 {
                 return Err(Box::new(ValidationError {
                     problem: "`first_scissor` is not 0".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetScissor-firstScissor-00593"],
@@ -2431,7 +2431,7 @@ impl RawRecordingCommandBuffer {
             if scissors.len() > 1 {
                 return Err(Box::new(ValidationError {
                     problem: "`scissors.len()` is greater than 1".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetScissor-scissorCount-00594"],
@@ -2488,7 +2488,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetScissorWithCount-None-03396"],
                 ..Default::default()
@@ -2522,7 +2522,7 @@ impl RawRecordingCommandBuffer {
         if !self.device().enabled_features().multi_viewport && scissors.len() > 1 {
             return Err(Box::new(ValidationError {
                 problem: "`scissors.len()` is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-vkCmdSetScissorWithCount-scissorCount-03398"],
@@ -2641,7 +2641,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetStencilOp-None-03351"],
                 ..Default::default()
@@ -2793,7 +2793,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetStencilTestEnable-None-03350"],
                 ..Default::default()
@@ -2900,8 +2900,8 @@ impl RawRecordingCommandBuffer {
         {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::Feature("vertex_input_dynamic_state")]),
-                    RequiresAllOf(&[Requires::Feature("shader_object")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("vertex_input_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
                 ]),
                 vuids: &["VUID-vkCmdSetVertexInputEXT-None-08546"],
                 ..Default::default()
@@ -3041,7 +3041,7 @@ impl RawRecordingCommandBuffer {
             if first_viewport != 0 {
                 return Err(Box::new(ValidationError {
                     problem: "`first_viewport` is not 0".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetViewport-firstViewport-01224"],
@@ -3052,7 +3052,7 @@ impl RawRecordingCommandBuffer {
             if viewports.len() > 1 {
                 return Err(Box::new(ValidationError {
                     problem: "`viewports.len()` is greater than 1".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_viewport",
                     )])]),
                     vuids: &["VUID-vkCmdSetViewport-viewportCount-01225"],
@@ -3109,7 +3109,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
                     RequiresAllOf(&[Requires::APIVersion(Version::V1_3)]),
-                    RequiresAllOf(&[Requires::Feature("extended_dynamic_state")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state")]),
                 ]),
                 vuids: &["VUID-vkCmdSetViewportWithCount-None-03393"],
                 ..Default::default()
@@ -3143,7 +3143,7 @@ impl RawRecordingCommandBuffer {
         if viewports.len() > 1 && !self.device().enabled_features().multi_viewport {
             return Err(Box::new(ValidationError {
                 problem: "`viewports.len()` is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-vkCmdSetViewportWithCount-viewportCount-03395"],

@@ -104,23 +104,23 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
         /// available extensions, not every property may be available. For that reason, some
         /// properties are wrapped in an `Option`.
         #[derive(Clone, Debug)]
-        pub struct Properties {
+        pub struct DeviceProperties {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
         }
 
-        impl Default for Properties {
+        impl Default for DeviceProperties {
             fn default() -> Self {
-                Properties {
+                DeviceProperties {
                     #(#default_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
         }
 
-        impl From<&PropertiesFfi> for Properties {
-            fn from(properties_ffi: &PropertiesFfi) -> Self {
-                Properties {
+        impl From<&DevicePropertiesFfi> for DeviceProperties {
+            fn from(properties_ffi: &DevicePropertiesFfi) -> Self {
+                DeviceProperties {
                     #(#from_items)*
                     _ne: crate::NonExhaustive(()),
                 }
@@ -279,12 +279,12 @@ fn properties_ffi_output(members: &[PropertiesFfiMember]) -> TokenStream {
 
     quote! {
         #[derive(Default)]
-        pub(crate) struct PropertiesFfi {
+        pub(crate) struct DevicePropertiesFfi {
             properties_vulkan10: ash::vk::PhysicalDeviceProperties2KHR,
             #(#struct_items)*
         }
 
-        impl PropertiesFfi {
+        impl DevicePropertiesFfi {
             pub(crate) fn make_chain(
                 &mut self,
                 api_version: Version,

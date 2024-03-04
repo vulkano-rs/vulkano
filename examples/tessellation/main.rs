@@ -20,7 +20,7 @@ use vulkano::{
         CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
         QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, Image, ImageUsage},
@@ -172,10 +172,10 @@ fn main() -> Result<(), impl Error> {
         khr_swapchain: true,
         ..DeviceExtensions::empty()
     };
-    let features = Features {
+    let features = DeviceFeatures {
         tessellation_shader: true,
         fill_mode_non_solid: true,
-        ..Features::empty()
+        ..DeviceFeatures::empty()
     };
     let (physical_device, queue_family_index) = instance
         .enumerate_physical_devices()

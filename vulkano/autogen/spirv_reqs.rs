@@ -92,7 +92,7 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], is_extension: bool) -> TokenSt
                     api_version,
                     ref device_extensions,
                     instance_extensions: _,
-                    ref features,
+                    ref device_features,
                 } = requires_one_of;
 
                 let condition_items = (api_version.iter().map(|version| {
@@ -103,9 +103,9 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], is_extension: bool) -> TokenSt
                     let ident = format_ident!("{}", name);
                     quote! { device_extensions.#ident }
                 }))
-                .chain(features.iter().map(|name| {
+                .chain(device_features.iter().map(|name| {
                     let ident = format_ident!("{}", name);
-                    quote! { features.#ident }
+                    quote! { device_features.#ident }
                 }));
                 let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
                     let version = format_ident!("V{}_{}", major, minor);
@@ -122,10 +122,10 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], is_extension: bool) -> TokenSt
                         ]),
                     }
                 }))
-                .chain(features.iter().map(|name| {
+                .chain(device_features.iter().map(|name| {
                     quote! {
                         crate::RequiresAllOf(&[
-                            crate::Requires::Feature(#name),
+                            crate::Requires::DeviceFeature(#name),
                         ]),
                     }
                 }));
@@ -215,7 +215,7 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], is_extension: bool) -> TokenSt
             #[allow(unused_variables)]
             let device_extensions = device.enabled_extensions();
             #[allow(unused_variables)]
-            let features = device.enabled_features();
+            let device_features = device.enabled_features();
             #[allow(unused_variables)]
             let properties = device.physical_device().properties();
 
@@ -329,7 +329,7 @@ fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresPr
             }
             vk_parse::Enable::Feature(feature) => {
                 requires_one_of
-                    .features
+                    .device_features
                     .push(feature.feature.to_snake_case());
             }
             vk_parse::Enable::Property(property) => {
@@ -358,8 +358,8 @@ fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresPr
     requires_one_of.device_extensions.sort_unstable();
     requires_one_of.device_extensions.dedup();
 
-    requires_one_of.features.sort_unstable();
-    requires_one_of.features.dedup();
+    requires_one_of.device_features.sort_unstable();
+    requires_one_of.device_features.dedup();
 
     (requires_one_of, requires_properties)
 }

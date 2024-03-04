@@ -307,7 +307,7 @@ impl ResourceMemory {
     ///   `memory_range`.
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn invalidate_range(
         &self,
@@ -341,7 +341,7 @@ impl ResourceMemory {
     ///   portion of the specified `memory_range`.
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn flush_range(
         &self,

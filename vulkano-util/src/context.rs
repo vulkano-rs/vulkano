@@ -4,7 +4,8 @@ use vulkano::instance::InstanceCreateFlags;
 use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags,
+        Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo,
+        QueueFlags,
     },
     instance::{
         debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
@@ -33,7 +34,7 @@ pub struct VulkanoConfig {
 
     pub device_extensions: DeviceExtensions,
 
-    pub device_features: Features,
+    pub device_features: DeviceFeatures,
 
     /// Print your selected device name at start.
     pub print_device_name: bool,
@@ -73,7 +74,7 @@ impl Default for VulkanoConfig {
             }),
             print_device_name: false,
             device_extensions,
-            device_features: Features::empty(),
+            device_features: DeviceFeatures::empty(),
         }
     }
 }
@@ -195,7 +196,7 @@ impl VulkanoContext {
     fn create_device(
         physical_device: Arc<PhysicalDevice>,
         device_extensions: DeviceExtensions,
-        features: Features,
+        device_features: DeviceFeatures,
     ) -> (Arc<Device>, Arc<Queue>, Arc<Queue>) {
         let queue_family_graphics = physical_device
             .queue_family_properties()
@@ -241,7 +242,7 @@ impl VulkanoContext {
                 DeviceCreateInfo {
                     queue_create_infos,
                     enabled_extensions: device_extensions,
-                    enabled_features: features,
+                    enabled_features: device_features,
                     ..Default::default()
                 },
             )

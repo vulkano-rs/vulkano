@@ -24,7 +24,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
         QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, Image, ImageUsage},
@@ -139,9 +139,9 @@ fn main() -> Result<(), impl Error> {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            enabled_features: Features {
+            enabled_features: DeviceFeatures {
                 mesh_shader: true,
-                ..Features::default()
+                ..DeviceFeatures::default()
             },
             queue_create_infos: vec![QueueCreateInfo {
                 queue_family_index,

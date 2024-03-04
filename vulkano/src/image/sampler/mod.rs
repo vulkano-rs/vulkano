@@ -632,13 +632,13 @@ pub struct SamplerCreateInfo {
     /// The bias value to be added to the base LOD before clamping.
     ///
     /// The absolute value of the provided value must not exceed the
-    /// [`max_sampler_lod_bias`](crate::device::Properties::max_sampler_lod_bias) limit of the
-    /// device.
+    /// [`max_sampler_lod_bias`](crate::device::DeviceProperties::max_sampler_lod_bias) limit of
+    /// the device.
     ///
     /// On [portability
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `mip_lod_bias` is not `0.0`, the
-    /// [`sampler_mip_lod_bias`](crate::device::Features::sampler_mip_lod_bias)
+    /// [`sampler_mip_lod_bias`](crate::device::DeviceFeatures::sampler_mip_lod_bias)
     /// feature must be enabled on the device.
     ///
     /// The default value is `0.0`.
@@ -650,10 +650,11 @@ pub struct SamplerCreateInfo {
     /// Anisotropic filtering is a special filtering mode that takes into account the differences
     /// in scaling between the horizontal and vertical framebuffer axes.
     ///
-    /// If set to `Some`, the [`sampler_anisotropy`](crate::device::Features::sampler_anisotropy)
-    /// feature must be enabled on the device, the provided maximum value must not exceed the
-    /// [`max_sampler_anisotropy`](crate::device::Properties::max_sampler_anisotropy) limit, and
-    /// the [`Cubic`](Filter::Cubic) filter must not be used.
+    /// If set to `Some`, the
+    /// [`sampler_anisotropy`](crate::device::DeviceFeatures::sampler_anisotropy) feature must
+    /// be enabled on the device, the provided maximum value must not exceed the
+    /// [`max_sampler_anisotropy`](crate::device::DeviceProperties::max_sampler_anisotropy) limit,
+    /// and the [`Cubic`](Filter::Cubic) filter must not be used.
     ///
     /// The default value is `None`.
     pub anisotropy: Option<f32>,
@@ -674,7 +675,7 @@ pub struct SamplerCreateInfo {
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if the sampler is going to be used as a mutable sampler (written to descriptor
     /// sets rather than being an immutable part of a descriptor set layout), the
-    /// [`mutable_comparison_samplers`](crate::device::Features::mutable_comparison_samplers)
+    /// [`mutable_comparison_samplers`](crate::device::DeviceFeatures::mutable_comparison_samplers)
     /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
@@ -859,7 +860,7 @@ impl SamplerCreateInfo {
                     context: "address_mode".into(),
                     problem: "contains `SamplerAddressMode::MirrorClampToEdge`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("sampler_mirror_clamp_to_edge")]),
+                        RequiresAllOf(&[Requires::DeviceFeature("sampler_mirror_clamp_to_edge")]),
                         RequiresAllOf(&[Requires::DeviceExtension(
                             "khr_sampler_mirror_clamp_to_edge",
                         )]),
@@ -896,7 +897,7 @@ impl SamplerCreateInfo {
                 problem: "this device is a portability subset device, and \
                     `mip_lod_bias` is not zero"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "sampler_mip_lod_bias",
                 )])]),
                 vuids: &["VUID-VkSamplerCreateInfo-samplerMipLodBias-04467"],
@@ -909,7 +910,7 @@ impl SamplerCreateInfo {
                 return Err(Box::new(ValidationError {
                     context: "anisotropy".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "sampler_anisotropy",
                     )])]),
                     vuids: &["VUID-VkSamplerCreateInfo-anisotropyEnable-01070"],
@@ -1035,7 +1036,7 @@ impl SamplerCreateInfo {
                     context: "reduction_mode".into(),
                     problem: "is not `SamplerReductionMode::WeightedAverage`".into(),
                     requires_one_of: RequiresOneOf(&[
-                        RequiresAllOf(&[Requires::Feature("sampler_filter_minmax")]),
+                        RequiresAllOf(&[Requires::DeviceFeature("sampler_filter_minmax")]),
                         RequiresAllOf(&[Requires::DeviceExtension("ext_sampler_filter_minmax")]),
                     ]),
                     ..Default::default()
@@ -1376,7 +1377,7 @@ vulkan_enum! {
     /// Similar to `MirroredRepeat`, except that coordinates are clamped to the range
     /// `[-1.0, 1.0]`.
     ///
-    /// The [`sampler_mirror_clamp_to_edge`](crate::device::Features::sampler_mirror_clamp_to_edge)
+    /// The [`sampler_mirror_clamp_to_edge`](crate::device::DeviceFeatures::sampler_mirror_clamp_to_edge)
     /// feature or the
     /// [`khr_sampler_mirror_clamp_to_edge`](crate::device::DeviceExtensions::khr_sampler_mirror_clamp_to_edge)
     /// extension must be enabled on the device.
@@ -1444,7 +1445,7 @@ vulkan_enum! {
 
     /// Calculates the minimum of the selected pixels.
     ///
-    /// The [`sampler_filter_minmax`](crate::device::Features::sampler_filter_minmax)
+    /// The [`sampler_filter_minmax`](crate::device::DeviceFeatures::sampler_filter_minmax)
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
@@ -1452,7 +1453,7 @@ vulkan_enum! {
 
     /// Calculates the maximum of the selected pixels.
     ///
-    /// The [`sampler_filter_minmax`](crate::device::Features::sampler_filter_minmax)
+    /// The [`sampler_filter_minmax`](crate::device::DeviceFeatures::sampler_filter_minmax)
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
@@ -1673,7 +1674,9 @@ mod tests {
                     *err,
                     ValidationError {
                         requires_one_of: RequiresOneOf([
-                            RequiresAllOf([Requires::Feature("sampler_mirror_clamp_to_edge")]),
+                            RequiresAllOf([Requires::DeviceFeature(
+                                "sampler_mirror_clamp_to_edge"
+                            )]),
                             RequiresAllOf([Requires::DeviceExtension(
                                 "khr_sampler_mirror_clamp_to_edge"
                             )],)
@@ -1705,7 +1708,7 @@ mod tests {
                     *err,
                     ValidationError {
                         requires_one_of: RequiresOneOf([
-                            RequiresAllOf([Requires::Feature("sampler_filter_minmax")]),
+                            RequiresAllOf([Requires::DeviceFeature("sampler_filter_minmax")]),
                             RequiresAllOf([Requires::DeviceExtension("ext_sampler_filter_minmax")])
                         ],),
                         ..

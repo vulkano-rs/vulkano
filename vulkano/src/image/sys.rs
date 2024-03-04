@@ -1759,7 +1759,7 @@ pub struct ImageCreateInfo {
     /// On [portability
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
-    /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// the [`multisample_array_image`](crate::device::DeviceFeatures::multisample_array_image)
     /// feature must be enabled on the device.
     ///
     /// The default value is `1`.
@@ -1775,7 +1775,7 @@ pub struct ImageCreateInfo {
     /// On [portability
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if `samples` is not [`SampleCount::Sample1`] and `array_layers` is not 1,
-    /// the [`multisample_array_image`](crate::device::Features::multisample_array_image)
+    /// the [`multisample_array_image`](crate::device::DeviceFeatures::multisample_array_image)
     /// feature must be enabled on the device.
     ///
     /// The default value is [`SampleCount::Sample1`].
@@ -2212,7 +2212,7 @@ impl ImageCreateInfo {
                         `samples` is not `SampleCount::Sample1`, and \
                         `array_layers` is greater than 1"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multisample_array_image",
                     )])]),
                     vuids: &["VUID-VkImageCreateInfo-multisampleArrayImage-04460"],
@@ -2258,7 +2258,7 @@ impl ImageCreateInfo {
                     problem: "`format` is is a YCbCr format, and \
                         `array_layers` is greater than 1"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "ycbcr_image_arrays",
                     )])]),
                     vuids: &["VUID-VkImageCreateInfo-format-06413"],
@@ -2310,7 +2310,7 @@ impl ImageCreateInfo {
                 problem: "`usage` contains `ImageUsage::STORAGE`, but \
                     `samples` is not `SampleCount::Sample1`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "shader_storage_image_multisample",
                 )])]),
                 vuids: &["VUID-VkImageCreateInfo-usage-00968"],
@@ -2530,9 +2530,9 @@ impl ImageCreateInfo {
                         problem: "`stencil_usage` contains `ImageUsage::STORAGE`, but \
                             `samples` is not `SampleCount::Sample1`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "shader_storage_image_multisample",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("shader_storage_image_multisample"),
+                        ])]),
                         vuids: &["VUID-VkImageCreateInfo-format-02538"],
                         ..Default::default()
                     }));
@@ -2592,7 +2592,7 @@ impl ImageCreateInfo {
                     problem: "this device is a portability subset device, and \
                         `flags` contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "image_view2_d_on3_d_image",
                     )])]),
                     vuids: &["VUID-VkImageCreateInfo-imageView2DOn3DImage-04459"],
@@ -3118,7 +3118,7 @@ mod tests {
                 if matches!(
                     *err,
                     ValidationError {
-                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::Feature(
+                        requires_one_of: RequiresOneOf([RequiresAllOf([Requires::DeviceFeature(
                             "shader_storage_image_multisample"
                         )])],),
                         ..

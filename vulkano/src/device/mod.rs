@@ -8,7 +8,7 @@
 //! ```no_run
 //! use vulkano::{
 //!     device::{
-//!         physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, Features,
+//!         physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
 //!         QueueCreateInfo,
 //!     },
 //!     instance::{Instance, InstanceExtensions},
@@ -31,7 +31,7 @@
 //!
 //! // Here is the device-creating code.
 //! let device = {
-//!     let features = Features::empty();
+//!     let features = DeviceFeatures::empty();
 //!     let extensions = DeviceExtensions::empty();
 //!
 //!     match Device::new(
@@ -96,10 +96,10 @@
 //!
 //! TODO: write
 
-pub(crate) use self::properties::PropertiesFfi;
+pub(crate) use self::properties::DevicePropertiesFfi;
 use self::{physical::PhysicalDevice, queue::DeviceQueueInfo};
 pub use self::{
-    properties::Properties,
+    properties::DeviceProperties,
     queue::{Queue, QueueFamilyProperties, QueueFlags, QueueGuard},
 };
 pub use crate::fns::DeviceFunctions;
@@ -154,7 +154,7 @@ pub struct Device {
     id: NonZeroU64,
 
     enabled_extensions: DeviceExtensions,
-    enabled_features: Features,
+    enabled_features: DeviceFeatures,
     physical_devices: SmallVec<[InstanceOwnedDebugWrapper<Arc<PhysicalDevice>>; 2]>,
 
     // The highest version that is supported for this device.
@@ -245,9 +245,9 @@ impl Device {
                 if create_info.enabled_extensions.$extension {
                     assert!(
                         physical_device.supported_features().$feature_to_enable,
-                        "The device extension `{}` is enabled, and it requires the `{}` feature \
-                        to be also enabled, but the device does not support the required feature. \
-                        This is a bug in the Vulkan driver for this device.",
+                        "The device extension `{}` is enabled, and it requires the `{}` device \
+                        feature to be also enabled, but the device does not support the required \
+                        feature. This is a bug in the Vulkan driver for this device.",
                         stringify!($extension),
                         stringify!($feature_to_enable),
                     );
@@ -369,7 +369,7 @@ impl Device {
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
 
-        let mut features_ffi = FeaturesFfi::default();
+        let mut features_ffi = DeviceFeaturesFfi::default();
         features_ffi.make_chain(
             physical_device.api_version(),
             enabled_extensions,
@@ -610,7 +610,7 @@ impl Device {
     /// This includes both the features specified in [`DeviceCreateInfo::enabled_features`],
     /// and any features that are required by the enabled extensions.
     #[inline]
-    pub fn enabled_features(&self) -> &Features {
+    pub fn enabled_features(&self) -> &DeviceFeatures {
         &self.enabled_features
     }
 
@@ -676,7 +676,7 @@ impl Device {
 
         if !self.enabled_features().acceleration_structure {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "acceleration_structure",
                 )])]),
                 vuids: &[
@@ -829,7 +829,7 @@ impl Device {
         if !self.enabled_features().acceleration_structure {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::Feature("acceleration_structure")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("acceleration_structure")]),
                 ]),
                 vuids: &["VUID-vkGetDeviceAccelerationStructureCompatibilityKHR-accelerationStructure-08928"],
                 ..Default::default()
@@ -872,7 +872,7 @@ impl Device {
     /// The device API version must be at least 1.1, or the [`khr_maintenance3`] extension must
     /// be enabled on the device.
     ///
-    /// [`max_per_set_descriptors`]: crate::device::Properties::max_per_set_descriptors
+    /// [`max_per_set_descriptors`]: crate::device::DeviceProperties::max_per_set_descriptors
     /// [`khr_maintenance3`]: crate::device::DeviceExtensions::khr_maintenance3
     #[inline]
     pub fn descriptor_set_layout_support(
@@ -1711,8 +1711,8 @@ pub struct DeviceCreateInfo {
     /// You only need to enable the features that you need. If the extensions you specified
     /// require certain features to be enabled, they will be automatically enabled as well.
     ///
-    /// The default value is [`Features::empty()`].
-    pub enabled_features: Features,
+    /// The default value is [`DeviceFeatures::empty()`].
+    pub enabled_features: DeviceFeatures,
 
     /// A list of physical devices to create this device from, to act together as a single
     /// logical device. The physical devices must all belong to the same device group, as returned
@@ -1763,7 +1763,7 @@ impl Default for DeviceCreateInfo {
         Self {
             queue_create_infos: Vec::new(),
             enabled_extensions: DeviceExtensions::empty(),
-            enabled_features: Features::empty(),
+            enabled_features: DeviceFeatures::empty(),
             physical_devices: SmallVec::new(),
             private_data_slot_request_count: 0,
             _ne: crate::NonExhaustive(()),
@@ -2135,7 +2135,7 @@ impl QueueCreateInfo {
         &self,
         physical_device: &PhysicalDevice,
         device_extensions: &DeviceExtensions,
-        device_features: &Features,
+        device_features: &DeviceFeatures,
     ) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
@@ -2298,7 +2298,9 @@ pub struct MemoryFdProperties {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo};
+    use crate::device::{
+        Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, QueueCreateInfo,
+    };
     use std::{ffi::CString, sync::Arc};
 
     #[test]
@@ -2324,9 +2326,9 @@ mod tests {
 
     #[test]
     fn features_into_iter() {
-        let features = Features {
+        let features = DeviceFeatures {
             tessellation_shader: true,
-            ..Features::empty()
+            ..DeviceFeatures::empty()
         };
         for (name, enabled) in features {
             if name == "tessellationShader" {
@@ -2383,7 +2385,7 @@ mod tests {
             None => return,
         };
 
-        let features = Features::all();
+        let features = DeviceFeatures::all();
         // In the unlikely situation where the device supports everything, we ignore the test.
         if physical_device.supported_features().contains(&features) {
             return;

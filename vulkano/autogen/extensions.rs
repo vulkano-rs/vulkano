@@ -93,7 +93,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                          api_version,
                          device_extensions,
                          instance_extensions,
-                         features: _,
+                         device_features: _,
                      }| {
                         device_extensions.is_empty()
                             && (api_version.is_some() || !instance_extensions.is_empty())
@@ -104,7 +104,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                          api_version,
                          device_extensions: _,
                          instance_extensions,
-                         features: _,
+                         device_features: _,
                      }| {
                         let condition_items = (api_version.iter().map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
@@ -188,7 +188,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              api_version: _,
                              device_extensions,
                              instance_extensions: _,
-                             features: _,
+                             device_features: _,
                          }| (!device_extensions.is_empty()),
                     )
                     .map(
@@ -196,7 +196,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              api_version,
                              device_extensions,
                              instance_extensions: _,
-                             features: _,
+                             device_features: _,
                          }| {
                             let condition_items = api_version
                                 .iter()
@@ -313,7 +313,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                      api_version,
                      device_extensions: _,
                      instance_extensions,
-                     features: _,
+                     device_features: _,
                  }| {
                     api_version.filter(|_| instance_extensions.is_empty()).map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
@@ -379,7 +379,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              api_version: _,
                              device_extensions: _,
                              instance_extensions,
-                             features: _,
+                             device_features: _,
                          }| (!instance_extensions.is_empty()),
                     )
                     .map(
@@ -387,7 +387,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              api_version,
                              device_extensions: _,
                              instance_extensions,
-                             features: _,
+                             device_features: _,
                          }| {
                             let condition_items = api_version
                                 .iter()

@@ -185,7 +185,7 @@ impl ViewportState {
             return Err(Box::new(ValidationError {
                 context: "viewports".into(),
                 problem: "the length is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-viewportCount-01216"],
@@ -196,7 +196,7 @@ impl ViewportState {
             return Err(Box::new(ValidationError {
                 context: "scissors".into(),
                 problem: "the length is greater than 1".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "multi_viewport",
                 )])]),
                 vuids: &["VUID-VkPipelineViewportStateCreateInfo-scissorCount-01217"],

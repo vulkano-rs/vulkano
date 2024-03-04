@@ -20,7 +20,7 @@ use vulkano::{
         CommandBufferUsage, RecordingCommandBuffer, RenderingAttachmentInfo, RenderingInfo,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
         QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, Image, ImageUsage},
@@ -202,9 +202,9 @@ fn main() -> Result<(), impl Error> {
             // standard triangle example. The feature is required to be supported by the device if
             // it supports Vulkan 1.3 and higher, or if the `khr_dynamic_rendering` extension is
             // available, so we don't need to check for support.
-            enabled_features: Features {
+            enabled_features: DeviceFeatures {
                 dynamic_rendering: true,
-                ..Features::empty()
+                ..DeviceFeatures::empty()
             },
 
             ..Default::default()

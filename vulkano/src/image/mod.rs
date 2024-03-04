@@ -989,7 +989,7 @@ vulkan_bitflags! {
     /// The [`sparse_binding`] feature must be enabled on the device.
     ///
     /// [`bind_memory`]: sys::RawImage::bind_memory
-    /// [`sparse_binding`]: crate::device::Features::sparse_binding
+    /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
     SPARSE_BINDING = SPARSE_BINDING,*/
 
     /* TODO: enable
@@ -1004,13 +1004,13 @@ vulkan_bitflags! {
     /// [`sparse_residency16_samples`], corresponding to the sample count of the image, must
     /// be enabled on the device.
     ///
-    /// [`sparse_binding`]: crate::device::Features::sparse_binding
-    /// [`sparse_residency_image2_d`]: crate::device::Features::sparse_residency_image2_d
-    /// [`sparse_residency_image2_3`]: crate::device::Features::sparse_residency_image3_d
-    /// [`sparse_residency2_samples`]: crate::device::Features::sparse_residency2_samples
-    /// [`sparse_residency4_samples`]: crate::device::Features::sparse_residency4_samples
-    /// [`sparse_residency8_samples`]: crate::device::Features::sparse_residency8_samples
-    /// [`sparse_residency16_samples`]: crate::device::Features::sparse_residency16_samples
+    /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
+    /// [`sparse_residency_image2_d`]: crate::device::DeviceFeatures::sparse_residency_image2_d
+    /// [`sparse_residency_image2_3`]: crate::device::DeviceFeatures::sparse_residency_image3_d
+    /// [`sparse_residency2_samples`]: crate::device::DeviceFeatures::sparse_residency2_samples
+    /// [`sparse_residency4_samples`]: crate::device::DeviceFeatures::sparse_residency4_samples
+    /// [`sparse_residency8_samples`]: crate::device::DeviceFeatures::sparse_residency8_samples
+    /// [`sparse_residency16_samples`]: crate::device::DeviceFeatures::sparse_residency16_samples
     SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
 
     /* TODO: enable
@@ -1020,7 +1020,7 @@ vulkan_bitflags! {
     ///
     /// The [`sparse_residency_aliased`] feature must be enabled on the device.
     ///
-    /// [`sparse_residency_aliased`]: crate::device::Features::sparse_residency_aliased
+    /// [`sparse_residency_aliased`]: crate::device::DeviceFeatures::sparse_residency_aliased
     SPARSE_ALIASED = SPARSE_ALIASED,*/
 
     /// For non-multi-planar formats, whether an image view wrapping the image can have a
@@ -1067,7 +1067,7 @@ vulkan_bitflags! {
     /// [`ImageViewType::Dim2dArray`]: crate::image::view::ImageViewType::Dim2dArray
     /// [`DIM2D_VIEW_COMPATIBLE`]: ImageCreateFlags::DIM2D_VIEW_COMPATIBLE
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
-    /// [`image_view2_d_on3_d_image`]: crate::device::Features::image_view2_d_on3_d_image
+    /// [`image_view2_d_on3_d_image`]: crate::device::DeviceFeatures::image_view2_d_on3_d_image
     DIM2D_ARRAY_COMPATIBLE = TYPE_2D_ARRAY_COMPATIBLE
     RequiresOneOf([
         RequiresAllOf([APIVersion(V1_1)]),
@@ -1148,8 +1148,8 @@ vulkan_bitflags! {
     ///
     /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
     /// [`DIM2D_ARRAY_COMPATIBLE`]: ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE
-    /// [`image2_d_view_of3_d`]: crate::device::Features::image2_d_view_of3_d
-    /// [`sampler2_d_view_of3_d`]: crate::device::Features::sampler2_d_view_of3_d
+    /// [`image2_d_view_of3_d`]: crate::device::DeviceFeatures::image2_d_view_of3_d
+    /// [`sampler2_d_view_of3_d`]: crate::device::DeviceFeatures::sampler2_d_view_of3_d
     DIM2D_VIEW_COMPATIBLE = TYPE_2D_VIEW_COMPATIBLE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_image_2d_view_of_3d)]),

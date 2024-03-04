@@ -18,7 +18,7 @@ pub struct InputAssemblyState {
     /// The default value is [`PrimitiveTopology::TriangleList`].
     ///
     /// [`DynamicState::PrimitiveTopology`]: crate::pipeline::DynamicState::PrimitiveTopology
-    /// [`dynamic_primitive_topology_unrestricted`]: crate::device::Properties::dynamic_primitive_topology_unrestricted
+    /// [`dynamic_primitive_topology_unrestricted`]: crate::device::DeviceProperties::dynamic_primitive_topology_unrestricted
     pub topology: PrimitiveTopology,
 
     /// If true, then when drawing with an index buffer, the special index value consisting of the
@@ -98,9 +98,9 @@ impl InputAssemblyState {
                         problem: "this device is a portability subset device, and \
                             `topology` is `PrimitiveTopology::TriangleFan`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "triangle_fans",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("triangle_fans"),
+                        ])]),
                         vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-triangleFans-04452"],
                         ..Default::default()
                     }));
@@ -114,9 +114,9 @@ impl InputAssemblyState {
                     return Err(Box::new(ValidationError {
                         context: "topology".into(),
                         problem: "is `PrimitiveTopology::*WithAdjacency`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("geometry_shader"),
+                        ])]),
                         vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429"],
                     }));
                 }
@@ -126,9 +126,9 @@ impl InputAssemblyState {
                     return Err(Box::new(ValidationError {
                         context: "topology".into(),
                         problem: "is `PrimitiveTopology::PatchList`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("tessellation_shader"),
+                        ])]),
                         vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430"],
                     }));
                 }
@@ -148,9 +148,9 @@ impl InputAssemblyState {
                             problem: "`topology` is `PrimitiveTopology::*List`, and \
                                 `primitive_restart_enable` is `true`"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "primitive_topology_list_restart",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("primitive_topology_list_restart"),
+                            ])]),
                             vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252"],
                             ..Default::default()
                         }));
@@ -165,9 +165,9 @@ impl InputAssemblyState {
                             problem: "`topology` is `PrimitiveTopology::PatchList`, and \
                                 `primitive_restart_enable` is `true`"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "primitive_topology_patch_list_restart",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("primitive_topology_patch_list_restart"),
+                            ])]),
                             vuids: &["VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06253"],
                             ..Default::default()
                         }));
@@ -195,14 +195,14 @@ vulkan_enum! {
     /// When enabling primitive restart, "list" topologies require a feature to be enabled on the
     /// device:
     /// - The `PatchList` topology requires the
-    ///   [`primitive_topology_patch_list_restart`](crate::device::Features::primitive_topology_patch_list_restart)
+    ///   [`primitive_topology_patch_list_restart`](crate::device::DeviceFeatures::primitive_topology_patch_list_restart)
     ///   feature.
     /// - All other "list" topologies require the
-    ///   [`primitive_topology_list_restart`](crate::device::Features::primitive_topology_list_restart)
+    ///   [`primitive_topology_list_restart`](crate::device::DeviceFeatures::primitive_topology_list_restart)
     ///   feature.
     ///
     /// [`DynamicState::PrimitiveTopology`]: crate::pipeline::DynamicState::PrimitiveTopology
-    /// [`dynamic_primitive_topology_unrestricted`]: crate::device::Properties::dynamic_primitive_topology_unrestricted
+    /// [`dynamic_primitive_topology_unrestricted`]: crate::device::DeviceProperties::dynamic_primitive_topology_unrestricted
     PrimitiveTopology = PrimitiveTopology(i32);
 
     /// A series of separate point primitives.
@@ -233,38 +233,38 @@ vulkan_enum! {
     /// A series of consecutive triangle primitives, with all triangles sharing a common vertex (the first).
     ///
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
-    /// devices, the [`triangle_fans`](crate::device::Features::triangle_fans)
+    /// devices, the [`triangle_fans`](crate::device::DeviceFeatures::triangle_fans)
     /// feature must be enabled on the device.
     ///
     /// Topology class: Triangle
     TriangleFan = TRIANGLE_FAN,
 
     /// As `LineList, but with adjacency, used in combination with geometry shaders. Requires the
-    /// [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    /// [`geometry_shader`](crate::device::DeviceFeatures::geometry_shader) feature.
     ///
     /// Topology class: Line
     LineListWithAdjacency = LINE_LIST_WITH_ADJACENCY,
 
     /// As `LineStrip`, but with adjacency, used in combination with geometry shaders. Requires the
-    /// [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    /// [`geometry_shader`](crate::device::DeviceFeatures::geometry_shader) feature.
     ///
     /// Topology class: Line
     LineStripWithAdjacency = LINE_STRIP_WITH_ADJACENCY,
 
     /// As `TriangleList`, but with adjacency, used in combination with geometry shaders. Requires
-    /// the [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    /// the [`geometry_shader`](crate::device::DeviceFeatures::geometry_shader) feature.
     ///
     /// Topology class: Triangle
     TriangleListWithAdjacency = TRIANGLE_LIST_WITH_ADJACENCY,
 
     /// As `TriangleStrip`, but with adjacency, used in combination with geometry shaders. Requires
-    /// the [`geometry_shader`](crate::device::Features::geometry_shader) feature.
+    /// the [`geometry_shader`](crate::device::DeviceFeatures::geometry_shader) feature.
     ///
     /// Topology class: Triangle
     TriangleStripWithAdjacency = TRIANGLE_STRIP_WITH_ADJACENCY,
 
     /// Separate patch primitives, used in combination with tessellation shaders. Requires the
-    /// [`tessellation_shader`](crate::device::Features::tessellation_shader) feature.
+    /// [`tessellation_shader`](crate::device::DeviceFeatures::tessellation_shader) feature.
     ///
     /// Topology class: Patch
     PatchList = PATCH_LIST,

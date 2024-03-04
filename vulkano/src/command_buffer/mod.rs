@@ -121,7 +121,7 @@ use crate::{
 };
 #[cfg(doc)]
 use crate::{
-    device::{Features, Properties},
+    device::{DeviceFeatures, DeviceProperties},
     pipeline::graphics::vertex_input::VertexInputRate,
 };
 use ahash::HashMap;
@@ -141,7 +141,7 @@ mod traits;
 /// # Safety
 ///
 /// - The `x`, `y` and `z` values must not be greater than the respective elements of the
-/// [`max_compute_work_group_count`](Properties::max_compute_work_group_count) device limit.
+/// [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) device limit.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DispatchIndirectCommand {
@@ -159,11 +159,11 @@ pub struct DispatchIndirectCommand {
 ///   vertex-rate vertex buffers.
 /// - Every instance number within the specified range must fall within the range of the bound
 ///   instance-rate vertex buffers.
-/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature is
-///   not enabled, then `first_instance` must be `0`.
+/// - If the [`draw_indirect_first_instance`](DeviceFeatures::draw_indirect_first_instance) feature
+///   is not enabled, then `first_instance` must be `0`.
 /// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and the
-///   [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance) device
-///   property is `false`, then `first_instance` must be `0`.
+///   [`supports_non_zero_first_instance`](DeviceProperties::supports_non_zero_first_instance)
+///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
@@ -180,15 +180,15 @@ pub struct DrawIndirectCommand {
 ///
 /// - If the graphics pipeline **does not** include a task shader, then the `group_count_x`,
 ///   `group_count_y` and `group_count_z` values must not be greater than the respective elements
-///   of the [`max_mesh_work_group_count`](Properties::max_mesh_work_group_count) device limit, and
-///   the product of these three values must not be greater than the
-///   [`max_mesh_work_group_total_count`](Properties::max_mesh_work_group_total_count) device
+///   of the [`max_mesh_work_group_count`](DeviceProperties::max_mesh_work_group_count) device
+///   limit, and the product of these three values must not be greater than the
+///   [`max_mesh_work_group_total_count`](DeviceProperties::max_mesh_work_group_total_count) device
 ///   limit.
 /// - If the graphics pipeline **does** include a task shader, then the `group_count_x`,
 ///   `group_count_y` and `group_count_z` values must not be greater than the respective elements
-///   of the [`max_task_work_group_count`](Properties::max_task_work_group_count) device limit, and
-///   the product of these three values must not be greater than the
-///   [`max_task_work_group_total_count`](Properties::max_task_work_group_total_count) device
+///   of the [`max_task_work_group_count`](DeviceProperties::max_task_work_group_count) device
+///   limit, and the product of these three values must not be greater than the
+///   [`max_task_work_group_total_count`](DeviceProperties::max_task_work_group_total_count) device
 ///   limit.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
@@ -208,14 +208,15 @@ pub struct DrawMeshTasksIndirectCommand {
 ///   bound vertex-rate vertex buffers.
 /// - Every vertex number that is retrieved from the index buffer, if it is not the special
 ///   primitive restart value, must be no greater than the
-///   [`max_draw_indexed_index_value`](Properties::max_draw_indexed_index_value) device limit.
+///   [`max_draw_indexed_index_value`](DeviceProperties::max_draw_indexed_index_value) device
+///   limit.
 /// - Every instance number within the specified range must fall within the range of the bound
 ///   instance-rate vertex buffers.
-/// - If the [`draw_indirect_first_instance`](Features::draw_indirect_first_instance) feature is
-///   not enabled, then `first_instance` must be `0`.
+/// - If the [`draw_indirect_first_instance`](DeviceFeatures::draw_indirect_first_instance) feature
+///   is not enabled, then `first_instance` must be `0`.
 /// - If an [instance divisor](VertexInputRate::Instance) other than 1 is used, and the
-///   [`supports_non_zero_first_instance`](Properties::supports_non_zero_first_instance) device
-///   property is `false`, then `first_instance` must be `0`.
+///   [`supports_non_zero_first_instance`](DeviceProperties::supports_non_zero_first_instance)
+///   device property is `false`, then `first_instance` must be `0`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndexedIndirectCommand {
@@ -293,7 +294,7 @@ pub struct CommandBufferInheritanceInfo {
     ///
     /// The default value is [`QueryPipelineStatisticFlags::empty()`].
     ///
-    /// [`pipeline_statistics_query`]: crate::device::Features::pipeline_statistics_query
+    /// [`pipeline_statistics_query`]: crate::device::DeviceFeatures::pipeline_statistics_query
     pub pipeline_statistics: QueryPipelineStatisticFlags,
 
     pub _ne: crate::NonExhaustive,
@@ -349,7 +350,7 @@ impl CommandBufferInheritanceInfo {
                 return Err(Box::new(ValidationError {
                     context: "occlusion_query".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "inherited_queries",
                     )])]),
                     vuids: &["VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056"],
@@ -362,7 +363,7 @@ impl CommandBufferInheritanceInfo {
                 return Err(Box::new(ValidationError {
                     context: "occlusion_query".into(),
                     problem: "contains `QueryControlFlags::PRECISE`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "occlusion_query_precise",
                     )])]),
                     vuids: &["VUID-vkBeginCommandBuffer-commandBuffer-00052"],
@@ -379,7 +380,7 @@ impl CommandBufferInheritanceInfo {
             return Err(Box::new(ValidationError {
                 context: "pipeline_statistics".into(),
                 problem: "is not empty".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "pipeline_statistics_query",
                 )])]),
                 vuids: &["VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058"],
@@ -501,7 +502,7 @@ pub struct CommandBufferInheritanceRenderingInfo {
     ///
     /// The default value is `0`.
     ///
-    /// [`multiview`]: crate::device::Features::multiview
+    /// [`multiview`]: crate::device::DeviceFeatures::multiview
     pub view_mask: u32,
 
     /// The formats of the color attachments that will be used during rendering.
@@ -560,7 +561,9 @@ impl CommandBufferInheritanceRenderingInfo {
             return Err(Box::new(ValidationError {
                 context: "view_mask".into(),
                 problem: "is not zero".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "multiview",
+                )])]),
                 vuids: &["VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008"],
             }));
         }
@@ -838,7 +841,7 @@ impl SubmitInfo {
                 return Err(Box::new(ValidationError {
                     context: format!("signal_semaphores[{}].stages", index).into(),
                     problem: "is not `PipelineStages::ALL_COMMANDS`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "synchronization2",
                     )])]),
                     vuids: &["VUID-vkQueueSubmit2-synchronization2-03866"],
@@ -931,7 +934,7 @@ pub struct SemaphoreSubmitInfo {
     /// The default value is [`ALL_COMMANDS`].
     ///
     /// [`ALL_COMMANDS`]: PipelineStages::ALL_COMMANDS
-    /// [`synchronization2`]: crate::device::Features::synchronization2
+    /// [`synchronization2`]: crate::device::DeviceFeatures::synchronization2
     pub stages: PipelineStages,
 
     pub _ne: crate::NonExhaustive,
@@ -983,7 +986,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains flags from `VkPipelineStageFlagBits2`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "synchronization2",
                 )])]),
                 ..Default::default()
@@ -996,7 +999,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::GEOMETRY_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "geometry_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03929"],
@@ -1014,7 +1017,7 @@ impl SemaphoreSubmitInfo {
                 problem: "contains `PipelineStages::TESSELLATION_CONTROL_SHADER` or \
                     `PipelineStages::TESSELLATION_EVALUATION_SHADER`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "tessellation_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03930"],
@@ -1027,7 +1030,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::CONDITIONAL_RENDERING`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "conditional_rendering",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03931"],
@@ -1040,7 +1043,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::FRAGMENT_DENSITY_PROCESS`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "fragment_density_map",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03932"],
@@ -1053,7 +1056,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::TRANSFORM_FEEDBACK`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "transform_feedback",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03933"],
@@ -1065,7 +1068,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::MESH_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "mesh_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03934"],
@@ -1077,7 +1080,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::TASK_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "task_shader",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-03935"],
@@ -1092,8 +1095,8 @@ impl SemaphoreSubmitInfo {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::FRAGMENT_SHADING_RATE_ATTACHMENT`".into(),
                 requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                    RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("attachment_fragment_shading_rate")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                 ]),
                 vuids: &["VUID-VkMemoryBarrier2-shadingRateImage-07316"],
             }));
@@ -1105,7 +1108,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "subpass_shading",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-04957"],
@@ -1118,7 +1121,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::INVOCATION_MASK`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "invocation_mask",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-04995"],
@@ -1132,7 +1135,7 @@ impl SemaphoreSubmitInfo {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
                 problem: "contains `PipelineStages::RAY_TRACING_SHADER`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "ray_tracing_pipeline",
                 )])]),
                 vuids: &["VUID-VkSemaphoreSubmitInfo-stageMask-07946"],

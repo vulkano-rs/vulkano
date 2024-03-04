@@ -35,7 +35,7 @@ pub struct ColorBlendState {
     /// Sets the logical operation to perform between the incoming fragment color and the existing
     /// fragment in the framebuffer attachment.
     ///
-    /// If set to `Some`, the [`logic_op`](crate::device::Features::logic_op) feature must be
+    /// If set to `Some`, the [`logic_op`](crate::device::DeviceFeatures::logic_op) feature must be
     /// enabled on the device.
     ///
     /// The default value is `None`.
@@ -45,8 +45,9 @@ pub struct ColorBlendState {
     /// match the number of color attachments in the subpass.
     ///
     /// If there are multiple elements, and the `blend` and `color_write_mask` members of each
-    /// element differ, then the [`independent_blend`](crate::device::Features::independent_blend)
-    /// feature must be enabled on the device.
+    /// element differ, then the
+    /// [`independent_blend`](crate::device::DeviceFeatures::independent_blend) feature must be
+    /// enabled on the device.
     ///
     /// The default value is empty,
     /// which must be overridden if the subpass has color attachments.
@@ -178,7 +179,7 @@ impl ColorBlendState {
                 return Err(Box::new(ValidationError {
                     context: "logic_op".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "logic_op",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606"],
@@ -210,9 +211,9 @@ impl ColorBlendState {
                             index
                         )
                         .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "independent_blend",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("independent_blend"),
+                        ])]),
                         vuids: &["VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605"],
                         ..Default::default()
                     }));
@@ -565,8 +566,8 @@ pub struct ColorBlendAttachmentState {
     /// and nothing is written.
     ///
     /// If set to anything other than `Fixed(true)`, the
-    /// [`color_write_enable`](crate::device::Features::color_write_enable) feature must be enabled
-    /// on the device.
+    /// [`color_write_enable`](crate::device::DeviceFeatures::color_write_enable) feature must be
+    /// enabled on the device.
     ///
     /// The default value is `true`.
     pub color_write_enable: bool,
@@ -601,7 +602,7 @@ impl ColorBlendAttachmentState {
             return Err(Box::new(ValidationError {
                 context: "color_write_enable".into(),
                 problem: "is `false`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "color_write_enable",
                 )])]),
                 vuids: &["VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801"],
@@ -768,7 +769,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "src_color_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-00608"],
@@ -785,7 +786,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "dst_color_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-00609"],
@@ -802,7 +803,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "src_alpha_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-00610"],
@@ -819,7 +820,7 @@ impl AttachmentBlend {
                 return Err(Box::new(ValidationError {
                     context: "dst_alpha_blend_factor".into(),
                     problem: "is `BlendFactor::Src1*`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "dual_src_blend",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-00611"],
@@ -838,7 +839,7 @@ impl AttachmentBlend {
                     problem: "this device is a portability subset device, and \
                         `src_color_blend_factor` is `BlendFactor::ConstantAlpha` or \
                         `BlendFactor::OneMinusConstantAlpha`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "constant_alpha_color_blend_factors",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04454"],
@@ -854,7 +855,7 @@ impl AttachmentBlend {
                     problem: "this device is a portability subset device, and \
                         `dst_color_blend_factor` is `BlendFactor::ConstantAlpha` or \
                         `BlendFactor::OneMinusConstantAlpha`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "constant_alpha_color_blend_factors",
                     )])]),
                     vuids: &["VUID-VkPipelineColorBlendAttachmentState-constantAlphaColorBlendFactors-04455"],
@@ -891,7 +892,7 @@ vulkan_enum! {
     /// and produces new inputs to be fed to `BlendOp`.
     ///
     /// Some operations take `source1` as an input, representing the second source value. The
-    /// [`dual_src_blend`](crate::device::Features::dual_src_blend) feature must be enabled on the
+    /// [`dual_src_blend`](crate::device::DeviceFeatures::dual_src_blend) feature must be enabled on the
     /// device when these are used.
     BlendFactor = BlendFactor(i32);
 
@@ -936,7 +937,7 @@ vulkan_enum! {
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if this value is used for the `color_source` or `color_destination` blend factors,
     /// then the
-    /// [`constant_alpha_color_blend_factors`](crate::device::Features::constant_alpha_color_blend_factors)
+    /// [`constant_alpha_color_blend_factors`](crate::device::DeviceFeatures::constant_alpha_color_blend_factors)
     /// feature must be enabled on the device.
     ConstantAlpha = CONSTANT_ALPHA,
 
@@ -945,7 +946,7 @@ vulkan_enum! {
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if this value is used for the `color_source` or `color_destination` blend factors,
     /// then the
-    /// [`constant_alpha_color_blend_factors`](crate::device::Features::constant_alpha_color_blend_factors)
+    /// [`constant_alpha_color_blend_factors`](crate::device::DeviceFeatures::constant_alpha_color_blend_factors)
     /// feature must be enabled on the device.
     OneMinusConstantAlpha = ONE_MINUS_CONSTANT_ALPHA,
 

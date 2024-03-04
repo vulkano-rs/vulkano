@@ -545,7 +545,7 @@ vulkan_enum! {
 
     /// The validation layer will reserve and use one descriptor set slot for its own use.
     /// The limit reported by
-    /// [`max_bound_descriptor_sets`](crate::device::Properties::max_bound_descriptor_sets)
+    /// [`max_bound_descriptor_sets`](crate::device::DeviceProperties::max_bound_descriptor_sets)
     /// will be reduced by 1.
     ///
     /// `GpuAssisted` must also be enabled.

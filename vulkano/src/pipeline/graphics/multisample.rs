@@ -25,7 +25,8 @@ pub struct MultisampleState {
     /// samples will run through the shader and the other half will get their values from the
     /// ones which went through the shader.
     ///
-    /// If set to `Some`, the [`sample_rate_shading`](crate::device::Features::sample_rate_shading)
+    /// If set to `Some`, the
+    /// [`sample_rate_shading`](crate::device::DeviceFeatures::sample_rate_shading)
     /// feature must be enabled on the device.
     ///
     /// The default value is `None`.
@@ -49,7 +50,7 @@ pub struct MultisampleState {
     /// Controls whether the alpha value of all the samples will be forced to 1.0 (or the
     /// maximum possible value) after the effects of `alpha_to_coverage` have been applied.
     ///
-    /// If set to `true`, the [`alpha_to_one`](crate::device::Features::alpha_to_one)
+    /// If set to `true`, the [`alpha_to_one`](crate::device::DeviceFeatures::alpha_to_one)
     /// feature must be enabled on the device.
     ///
     /// The default value is `false`.
@@ -103,7 +104,7 @@ impl MultisampleState {
                 return Err(Box::new(ValidationError {
                     context: "min_sample_shading".into(),
                     problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "sample_rate_shading",
                     )])]),
                     vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-sampleShadingEnable-00784"],
@@ -124,7 +125,7 @@ impl MultisampleState {
             return Err(Box::new(ValidationError {
                 context: "alpha_to_one_enable".into(),
                 problem: "is `true`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "alpha_to_one",
                 )])]),
                 vuids: &["VUID-VkPipelineMultisampleStateCreateInfo-alphaToOneEnable-00785"],

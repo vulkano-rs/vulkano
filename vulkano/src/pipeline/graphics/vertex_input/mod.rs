@@ -288,7 +288,7 @@ impl VertexInputState {
                         location,
                     )
                     .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "vertex_attribute_access_beyond_stride",
                     )])]),
                     vuids: &[
@@ -538,7 +538,7 @@ impl VertexInputBindingDescription {
                         context: "input_rate".into(),
                         problem: "is `VertexInputRate::Instance`, and \
                             its `divisor` value is not 1".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "vertex_attribute_instance_rate_divisor",
                             )])]),
                         vuids: &[
@@ -557,7 +557,7 @@ impl VertexInputBindingDescription {
                         context: "input_rate".into(),
                         problem: "is `VertexInputRate::Instance`, and \
                             its `divisor` value is 0".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "vertex_attribute_instance_rate_zero_divisor",
                             )])]),
                         vuids: &[
@@ -607,7 +607,7 @@ pub struct VertexInputAttributeDescription {
     /// subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, if the sum of `offset + format.block_size()` is greater than the `stride` of
     /// `binding`, the
-    /// [`vertex_attribute_access_beyond_stride`](crate::device::Features::vertex_attribute_access_beyond_stride)
+    /// [`vertex_attribute_access_beyond_stride`](crate::device::DeviceFeatures::vertex_attribute_access_beyond_stride)
     /// feature must be enabled on the device.
     ///
     /// The default value is `0`.
@@ -709,8 +709,8 @@ pub enum VertexInputRate {
     /// `divisor` can be 0 if the [`vertex_attribute_instance_rate_zero_divisor`] feature is also
     /// enabled. This means that every vertex will use the same vertex and instance data.
     ///
-    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::Features::vertex_attribute_instance_rate_divisor
-    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::Features::vertex_attribute_instance_rate_zero_divisor
+    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::DeviceFeatures::vertex_attribute_instance_rate_divisor
+    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::DeviceFeatures::vertex_attribute_instance_rate_zero_divisor
     Instance { divisor: u32 },
 }
 

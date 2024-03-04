@@ -752,7 +752,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 context: "index_buffer".into(),
                 problem: "is `IndexBuffer::U8`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "index_type_uint8",
                 )])]),
                 vuids: &["VUID-vkCmdBindIndexBuffer-indexType-02765"],

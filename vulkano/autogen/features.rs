@@ -244,17 +244,17 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// # Examples
         ///
         /// ```
-        /// use vulkano::device::Features;
+        /// use vulkano::device::DeviceFeatures;
         /// # let physical_device: vulkano::device::physical::PhysicalDevice = return;
-        /// let minimal_features = Features {
+        /// let minimal_features = DeviceFeatures {
         ///     geometry_shader: true,
-        ///     ..Features::empty()
+        ///     ..DeviceFeatures::empty()
         /// };
         ///
-        /// let optimal_features = vulkano::device::Features {
+        /// let optimal_features = vulkano::device::DeviceFeatures {
         ///     geometry_shader: true,
         ///     tessellation_shader: true,
-        ///     ..Features::empty()
+        ///     ..DeviceFeatures::empty()
         /// };
         ///
         /// if !physical_device.supported_features().contains(&minimal_features) {
@@ -265,29 +265,29 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-        pub struct Features {
+        pub struct DeviceFeatures {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
         }
 
-        impl Default for Features {
+        impl Default for DeviceFeatures {
             #[inline]
             fn default() -> Self {
                 Self::empty()
             }
         }
 
-        impl Features {
+        impl DeviceFeatures {
             /// Checks enabled features against the features supported by the physical device.
             pub(super) fn check_requirements(
                 &self,
-                supported: &Features,
+                supported: &DeviceFeatures,
             ) -> Result<(), Box<crate::ValidationError>> {
                 #(#check_requirements_items)*
                 Ok(())
             }
 
-            /// Returns an `Features` object with none of the members set.
+            /// Returns a `DeviceFeatures` object with none of the members set.
             #[inline]
             pub const fn empty() -> Self {
                 Self {
@@ -296,10 +296,10 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 }
             }
 
-            /// Returns a `Features` object with all of the members set.
+            /// Returns a `DeviceFeatures` object with all of the members set.
             #[cfg(test)]
-            pub(crate) const fn all() -> Features {
-                Features {
+            pub(crate) const fn all() -> DeviceFeatures {
+                Self {
                     #(#all_items)*
                     _ne: crate::NonExhaustive(()),
                 }
@@ -354,8 +354,8 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl std::ops::BitAnd for Features {
-            type Output = Features;
+        impl std::ops::BitAnd for DeviceFeatures {
+            type Output = DeviceFeatures;
 
             #[inline]
             fn bitand(self, rhs: Self) -> Self::Output {
@@ -363,15 +363,15 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl std::ops::BitAndAssign for Features {
+        impl std::ops::BitAndAssign for DeviceFeatures {
             #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
                 *self = self.intersection(&rhs);
             }
         }
 
-        impl std::ops::BitOr for Features {
-            type Output = Features;
+        impl std::ops::BitOr for DeviceFeatures {
+            type Output = DeviceFeatures;
 
             #[inline]
             fn bitor(self, rhs: Self) -> Self::Output {
@@ -379,15 +379,15 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl std::ops::BitOrAssign for Features {
+        impl std::ops::BitOrAssign for DeviceFeatures {
             #[inline]
             fn bitor_assign(&mut self, rhs: Self) {
                 *self = self.union(&rhs);
             }
         }
 
-        impl std::ops::BitXor for Features {
-            type Output = Features;
+        impl std::ops::BitXor for DeviceFeatures {
+            type Output = DeviceFeatures;
 
             #[inline]
             fn bitxor(self, rhs: Self) -> Self::Output {
@@ -395,15 +395,15 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl std::ops::BitXorAssign for Features {
+        impl std::ops::BitXorAssign for DeviceFeatures {
             #[inline]
             fn bitxor_assign(&mut self, rhs: Self) {
                 *self = self.symmetric_difference(&rhs);
             }
         }
 
-        impl std::ops::Sub for Features {
-            type Output = Features;
+        impl std::ops::Sub for DeviceFeatures {
+            type Output = DeviceFeatures;
 
             #[inline]
             fn sub(self, rhs: Self) -> Self::Output {
@@ -411,14 +411,14 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl std::ops::SubAssign for Features {
+        impl std::ops::SubAssign for DeviceFeatures {
             #[inline]
             fn sub_assign(&mut self, rhs: Self) {
                 *self = self.difference(&rhs);
             }
         }
 
-        impl std::fmt::Debug for Features {
+        impl std::fmt::Debug for DeviceFeatures {
             #[allow(unused_assignments)]
             fn fmt(&self, f: &mut std::fmt:: Formatter<'_>) -> Result<(), std::fmt::Error> {
                 write!(f, "[")?;
@@ -430,22 +430,22 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl FeaturesFfi {
-            pub(crate) fn write(&mut self, features: &Features) {
+        impl DeviceFeaturesFfi {
+            pub(crate) fn write(&mut self, features: &DeviceFeatures) {
                 #(#write_items)*
             }
         }
 
-        impl From<&FeaturesFfi> for Features {
-            fn from(features_ffi: &FeaturesFfi) -> Self {
-                Features {
+        impl From<&DeviceFeaturesFfi> for DeviceFeatures {
+            fn from(features_ffi: &DeviceFeaturesFfi) -> Self {
+                DeviceFeatures {
                     #(#from_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
         }
 
-        impl IntoIterator for Features {
+        impl IntoIterator for DeviceFeatures {
             type Item = (&'static str, bool);
             type IntoIter = std::array::IntoIter<Self::Item, #arr_len>;
 
@@ -551,7 +551,7 @@ fn make_doc(feat: &mut FeaturesMember, vulkan_ty_name: &str) {
         let links: Vec<_> = feat
             .requires_features
             .iter()
-            .map(|ext| format!("[`{}`](crate::device::Features::{0})", ext))
+            .map(|ext| format!("[`{}`](crate::device::DeviceFeatures::{0})", ext))
             .collect();
         write!(
             writer,
@@ -589,7 +589,7 @@ fn make_doc(feat: &mut FeaturesMember, vulkan_ty_name: &str) {
         let links: Vec<_> = feat
             .conflicts_features
             .iter()
-            .map(|ext| format!("[`{}`](crate::device::Features::{0})", ext))
+            .map(|ext| format!("[`{}`](crate::device::DeviceFeatures::{0})", ext))
             .collect();
         write!(
             writer,
@@ -639,12 +639,12 @@ fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
 
     quote! {
         #[derive(Default)]
-        pub(crate) struct FeaturesFfi {
+        pub(crate) struct DeviceFeaturesFfi {
             features_vulkan10: ash::vk::PhysicalDeviceFeatures2KHR,
             #(#struct_items)*
         }
 
-        impl FeaturesFfi {
+        impl DeviceFeaturesFfi {
             pub(crate) fn make_chain(
                 &mut self,
                 api_version: crate::Version,

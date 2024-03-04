@@ -2,7 +2,10 @@ use super::QueueFamilyProperties;
 use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     cache::{OnceCache, WeakArcOnceCache},
-    device::{properties::Properties, DeviceExtensions, Features, FeaturesFfi, PropertiesFfi},
+    device::{
+        properties::DeviceProperties, DeviceExtensions, DeviceFeatures, DeviceFeaturesFfi,
+        DevicePropertiesFfi,
+    },
     display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
     format::{DrmFormatModifierProperties, Format, FormatProperties},
     image::{
@@ -64,8 +67,8 @@ pub struct PhysicalDevice {
     // Data queried at `PhysicalDevice` creation.
     api_version: Version,
     supported_extensions: DeviceExtensions,
-    supported_features: Features,
-    properties: Properties,
+    supported_features: DeviceFeatures,
+    properties: DeviceProperties,
     extension_properties: Vec<ExtensionProperties>,
     memory_properties: MemoryProperties,
     queue_family_properties: Vec<QueueFamilyProperties>,
@@ -193,13 +196,13 @@ impl PhysicalDevice {
         }
     }
 
-    unsafe fn get_features(handle: ash::vk::PhysicalDevice, instance: &Instance) -> Features {
-        let mut output = FeaturesFfi::default();
+    unsafe fn get_features(handle: ash::vk::PhysicalDevice, instance: &Instance) -> DeviceFeatures {
+        let mut output = DeviceFeaturesFfi::default();
 
         let fns = instance.fns();
         (fns.v1_0.get_physical_device_features)(handle, &mut output.head_as_mut().features);
 
-        Features::from(&output)
+        DeviceFeatures::from(&output)
     }
 
     unsafe fn get_features2(
@@ -207,8 +210,8 @@ impl PhysicalDevice {
         instance: &Instance,
         api_version: Version,
         supported_extensions: &DeviceExtensions,
-    ) -> Features {
-        let mut output = FeaturesFfi::default();
+    ) -> DeviceFeatures {
+        let mut output = DeviceFeaturesFfi::default();
         output.make_chain(
             api_version,
             supported_extensions,
@@ -224,7 +227,7 @@ impl PhysicalDevice {
                 .get_physical_device_features2_khr)(handle, output.head_as_mut());
         }
 
-        Features::from(&output)
+        DeviceFeatures::from(&output)
     }
 
     unsafe fn get_properties(
@@ -232,8 +235,8 @@ impl PhysicalDevice {
         instance: &Instance,
         api_version: Version,
         supported_extensions: &DeviceExtensions,
-    ) -> Properties {
-        let mut output = PropertiesFfi::default();
+    ) -> DeviceProperties {
+        let mut output = DevicePropertiesFfi::default();
         output.make_chain(
             api_version,
             supported_extensions,
@@ -243,7 +246,7 @@ impl PhysicalDevice {
         let fns = instance.fns();
         (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties);
 
-        Properties::from(&output)
+        DeviceProperties::from(&output)
     }
 
     unsafe fn get_properties2(
@@ -251,8 +254,8 @@ impl PhysicalDevice {
         instance: &Instance,
         api_version: Version,
         supported_extensions: &DeviceExtensions,
-    ) -> Properties {
-        let mut output = PropertiesFfi::default();
+    ) -> DeviceProperties {
+        let mut output = DevicePropertiesFfi::default();
         output.make_chain(
             api_version,
             supported_extensions,
@@ -268,7 +271,7 @@ impl PhysicalDevice {
                 .get_physical_device_properties2_khr)(handle, output.head_as_mut());
         }
 
-        Properties::from(&output)
+        DeviceProperties::from(&output)
     }
 
     unsafe fn get_memory_properties(
@@ -384,7 +387,7 @@ impl PhysicalDevice {
 
     /// Returns the properties reported by the physical device.
     #[inline]
-    pub fn properties(&self) -> &Properties {
+    pub fn properties(&self) -> &DeviceProperties {
         &self.properties
     }
 
@@ -402,7 +405,7 @@ impl PhysicalDevice {
 
     /// Returns the features that are supported by the physical device.
     #[inline]
-    pub fn supported_features(&self) -> &Features {
+    pub fn supported_features(&self) -> &DeviceFeatures {
         &self.supported_features
     }
 

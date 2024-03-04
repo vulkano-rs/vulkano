@@ -591,7 +591,7 @@ impl DeviceMemory {
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`map`]: Self::map
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn invalidate_range(
         &self,
@@ -646,7 +646,7 @@ impl DeviceMemory {
     ///
     /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
     /// [`map`]: Self::map
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn flush_range(
         &self,
@@ -965,7 +965,7 @@ impl<'d> MemoryAllocateInfo<'d> {
                 problem: "refers to a memory type where `property_flags` contains \
                     `MemoryPropertyFlags::PROTECTED`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "protected_memory",
                 )])]),
                 vuids: &["VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872"],
@@ -982,7 +982,7 @@ impl<'d> MemoryAllocateInfo<'d> {
                 problem: "refers to a memory type where `property_flags` contains \
                     `MemoryPropertyFlags::DEVICE_COHERENT`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "device_coherent_memory",
                 )])]),
                 vuids: &["VUID-vkAllocateMemory-deviceCoherentMemory-02790"],
@@ -1096,11 +1096,11 @@ impl<'d> MemoryAllocateInfo<'d> {
                         requires_one_of: RequiresOneOf(&[
                             RequiresAllOf(&[
                                 Requires::APIVersion(Version::V1_2),
-                                Requires::Feature("buffer_device_address"),
+                                Requires::DeviceFeature("buffer_device_address"),
                             ]),
                             RequiresAllOf(&[
                                 Requires::DeviceExtension("khr_buffer_device_address"),
-                                Requires::Feature("buffer_device_address"),
+                                Requires::DeviceFeature("buffer_device_address"),
                             ]),
                         ]),
                         vuids: &["VUID-VkMemoryAllocateInfo-flags-03331"],
@@ -1352,7 +1352,7 @@ vulkan_bitflags! {
     /// the device.
     ///
     /// [`SHADER_DEVICE_ADDRESS`]: crate::buffer::BufferUsage::SHADER_DEVICE_ADDRESS
-    /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
+    /// [`buffer_device_address`]: crate::device::DeviceFeatures::buffer_device_address
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     DEVICE_ADDRESS = DEVICE_ADDRESS,
 
@@ -1372,7 +1372,7 @@ pub struct MemoryMapInfo {
     /// The default value is `0`.
     ///
     /// [`allocation_size`]: DeviceMemory::allocation_size
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub offset: DeviceSize,
 
     /// The size (in bytes) of the mapping.
@@ -1385,7 +1385,7 @@ pub struct MemoryMapInfo {
     /// The default value is `0`, which must be overridden.
     ///
     /// [`allocation_size`]: DeviceMemory::allocation_size
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub size: DeviceSize,
 
     pub _ne: crate::NonExhaustive,
@@ -1584,7 +1584,7 @@ pub struct MappedMemoryRange {
     ///
     /// The default value is `0`.
     ///
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub offset: DeviceSize,
 
     /// The size (in bytes) of the range.
@@ -1594,7 +1594,7 @@ pub struct MappedMemoryRange {
     ///
     /// The default value is `0`.
     ///
-    /// [`non_coherent_atom_size`]: crate::device::Properties::non_coherent_atom_size
+    /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub size: DeviceSize,
 
     pub _ne: crate::NonExhaustive,
@@ -1734,7 +1734,7 @@ impl MappedDeviceMemory {
     /// `range` is specified in bytes relative to the start of the memory allocation, and must fall
     /// within the range of the allocation (`0..allocation_size`). If `memory` was not allocated
     /// from host-coherent memory, then the start and end of `range` must be a multiple of the
-    /// [`non_coherent_atom_size`](crate::device::Properties::non_coherent_atom_size) device
+    /// [`non_coherent_atom_size`](crate::device::DeviceProperties::non_coherent_atom_size) device
     /// property, but `range.end` can also the memory's `allocation_size`.
     ///
     /// # Panics
@@ -1888,7 +1888,7 @@ impl MappedDeviceMemory {
     /// `range` is specified in bytes relative to the start of the memory allocation, and must fall
     /// within the range of the memory mapping given to `new`. If the memory was not allocated
     /// from host-coherent memory, then the start and end of `range` must be a multiple of the
-    /// [`non_coherent_atom_size`](crate::device::Properties::non_coherent_atom_size) device
+    /// [`non_coherent_atom_size`](crate::device::DeviceProperties::non_coherent_atom_size) device
     /// property, but `range.end` can also equal the memory's `allocation_size`.
     ///
     /// # Safety
@@ -1943,7 +1943,7 @@ impl MappedDeviceMemory {
     /// `range` is specified in bytes relative to the start of the memory allocation, and must fall
     /// within the range of the memory mapping given to `map`. If the memory was not allocated
     /// from host-coherent memory, then the start and end of `range` must be a multiple of the
-    /// [`non_coherent_atom_size`](crate::device::Properties::non_coherent_atom_size) device
+    /// [`non_coherent_atom_size`](crate::device::DeviceProperties::non_coherent_atom_size) device
     /// property, but `range.end` can also equal the memory's `allocation_size`.
     ///
     /// # Safety
@@ -1993,7 +1993,7 @@ impl MappedDeviceMemory {
     /// `range` is specified in bytes relative to the start of the memory allocation, and must fall
     /// within the range of the memory mapping given to `map`. If the memory was not allocated
     /// from host-coherent memory, then the start and end of `range` must be a multiple of the
-    /// [`non_coherent_atom_size`](crate::device::Properties::non_coherent_atom_size) device
+    /// [`non_coherent_atom_size`](crate::device::DeviceProperties::non_coherent_atom_size) device
     /// property, but `range.end` can also equal the memory's `allocation_size`.
     ///
     /// # Safety
@@ -2027,7 +2027,7 @@ impl MappedDeviceMemory {
     /// `range` is specified in bytes relative to the start of the memory allocation, and must fall
     /// within the range of the memory mapping given to `map`. If the memory was not allocated
     /// from host-coherent memory, then the start and end of `range` must be a multiple of the
-    /// [`non_coherent_atom_size`](crate::device::Properties::non_coherent_atom_size) device
+    /// [`non_coherent_atom_size`](crate::device::DeviceProperties::non_coherent_atom_size) device
     /// property, but `range.end` can also equal the memory's `allocation_size`.
     ///
     /// # Safety

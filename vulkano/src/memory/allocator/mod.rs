@@ -201,7 +201,7 @@
 //!
 //! [suballocators]: Suballocator
 //! [hierarchy]: Suballocator#memory-hierarchies
-//! [buffer-image granularity]: crate::device::Properties::buffer_image_granularity
+//! [buffer-image granularity]: crate::device::DeviceProperties::buffer_image_granularity
 //! [cyclic references]: Arc#breaking-cycles-with-weak
 //! [`Rc`]: std::rc::Rc
 //! [`mem::forget`]: std::mem::forget
@@ -267,7 +267,7 @@ use std::{
 /// [buffer-image granularity]: self#buffer-image-granularity
 /// [host-visible]: MemoryPropertyFlags::HOST_VISIBLE
 /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
-/// [non-coherent atom size]: crate::device::Properties::non_coherent_atom_size
+/// [non-coherent atom size]: crate::device::DeviceProperties::non_coherent_atom_size
 pub unsafe trait MemoryAllocator: DeviceOwned + Send + Sync + 'static {
     /// Finds the most suitable memory type index in `memory_type_bits` using the given `filter`.
     /// Returns [`None`] if the requirements are too strict and no memory type is able to satisfy
@@ -1676,7 +1676,7 @@ pub struct GenericMemoryAllocatorCreateInfo<'a> {
     ///
     /// [`DEVICE_ADDRESS`]: MemoryAllocateFlags::DEVICE_ADDRESS
     /// [`SHADER_DEVICE_ADDRESS`]: crate::buffer::BufferUsage::SHADER_DEVICE_ADDRESS
-    /// [`buffer_device_address`]: crate::device::Features::buffer_device_address
+    /// [`buffer_device_address`]: crate::device::DeviceFeatures::buffer_device_address
     /// [`ext_buffer_device_address`]: crate::device::DeviceExtensions::ext_buffer_device_address
     /// [`khr_device_group`]: crate::device::DeviceExtensions::khr_device_group
     pub device_address: bool,

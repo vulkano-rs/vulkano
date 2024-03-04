@@ -35,8 +35,8 @@ pub struct PipelineRenderingCreateInfo {
     /// indices that are rendered to. The value is a bitmask, so that that for example `0b11` will
     /// draw to the first two views and `0b101` will draw to the first and third view.
     ///
-    /// If set to a nonzero value, the [`multiview`](crate::device::Features::multiview) feature
-    /// must be enabled on the device.
+    /// If set to a nonzero value, the [`multiview`](crate::device::DeviceFeatures::multiview)
+    /// feature must be enabled on the device.
     ///
     /// The default value is `0`.
     pub view_mask: u32,
@@ -151,7 +151,9 @@ impl PipelineRenderingCreateInfo {
             return Err(Box::new(ValidationError {
                 context: "view_mask".into(),
                 problem: "is not zero".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature("multiview")])]),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "multiview",
+                )])]),
                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-multiview-06577"],
             }));
         }

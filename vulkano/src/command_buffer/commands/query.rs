@@ -541,7 +541,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "flags".into(),
                     problem: "contains `QueryControlFlags::PRECISE`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "occlusion_query_precise",
                     )])]),
                     vuids: &["VUID-vkCmdBeginQuery-queryType-00800"],
@@ -681,7 +681,7 @@ impl RawRecordingCommandBuffer {
             return Err(Box::new(ValidationError {
                 context: "stage".into(),
                 problem: "is a stage flag from `VkPipelineStageFlagBits2`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "synchronization2",
                 )])]),
                 ..Default::default()
@@ -706,9 +706,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::GeometryShader`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "geometry_shadere",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("geometry_shadere"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03929"],
                     }));
                 }
@@ -721,9 +721,9 @@ impl RawRecordingCommandBuffer {
                         problem: "is `PipelineStage::TessellationControlShader` or \
                             `PipelineStage::TessellationEvaluationShader`"
                             .into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "tessellation_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("tessellation_shader"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03930"],
                     }));
                 }
@@ -733,9 +733,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::ConditionalRendering`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "conditional_rendering",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("conditional_rendering"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03931"],
                     }));
                 }
@@ -745,9 +745,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::FragmentDensityProcess`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "fragment_density_map",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("fragment_density_map"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03932"],
                     }));
                 }
@@ -757,9 +757,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::TransformFeedback`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "transform_feedback",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("transform_feedback"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03933"],
                     }));
                 }
@@ -769,9 +769,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::MeshShader`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "mesh_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("mesh_shader"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03934"],
                     }));
                 }
@@ -781,9 +781,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::TaskShader`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "task_shader",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("task_shader"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-03935"],
                     }));
                 }
@@ -796,8 +796,10 @@ impl RawRecordingCommandBuffer {
                         context: "stage".into(),
                         problem: "is `PipelineStage::FragmentShadingRateAttachment`".into(),
                         requires_one_of: RequiresOneOf(&[
-                            RequiresAllOf(&[Requires::Feature("attachment_fragment_shading_rate")]),
-                            RequiresAllOf(&[Requires::Feature("shading_rate_image")]),
+                            RequiresAllOf(&[Requires::DeviceFeature(
+                                "attachment_fragment_shading_rate",
+                            )]),
+                            RequiresAllOf(&[Requires::DeviceFeature("shading_rate_image")]),
                         ]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-shadingRateImage-07316"],
                     }));
@@ -808,9 +810,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::SubpassShading`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "subpass_shading",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("subpass_shading"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-04957"],
                     }));
                 }
@@ -820,9 +822,9 @@ impl RawRecordingCommandBuffer {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
                         problem: "is `PipelineStage::InvocationMask`".into(),
-                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                            "invocation_mask",
-                        )])]),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("invocation_mask"),
+                        ])]),
                         vuids: &["VUID-vkCmdWriteTimestamp2-stage-04995"],
                     }));
                 }

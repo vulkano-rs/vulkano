@@ -140,8 +140,8 @@
 //!
 //! ## Buffers and memory accesses
 //!
-//! - If the [`robust_buffer_access`](Features::robust_buffer_access) feature is not enabled on the
-//!   device, then the shader must not access any values outside the range of the buffer, as
+//! - If the [`robust_buffer_access`](DeviceFeatures::robust_buffer_access) feature is not enabled
+//!   on the device, then the shader must not access any values outside the range of the buffer, as
 //!   specified when writing the descriptor set. <sup>[\[06935\]] [\[06936\]]</sup>
 //! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader,
 //!   then:
@@ -317,8 +317,8 @@
 //!
 //! [alignment rules]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout
 //! [`GL_EXT_scalar_block_layout`]: https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt
-//! [`scalar_block_layout`]: Features::scalar_block_layout
-//! [`uniform_buffer_standard_layout`]: Features::uniform_buffer_standard_layout
+//! [`scalar_block_layout`]: DeviceFeatures::scalar_block_layout
+//! [`uniform_buffer_standard_layout`]: DeviceFeatures::uniform_buffer_standard_layout
 //! [dynamically uniform]: https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#_uniformity
 //! [\[02691\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02691
 //! [\[02692\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02692
@@ -406,7 +406,7 @@ use self::spirv::{Id, Instruction};
 use crate::{
     acceleration_structure::BuildAccelerationStructureFlags,
     descriptor_set::layout::DescriptorBindingFlags,
-    device::{physical::PhysicalDevice, Features, Properties},
+    device::{physical::PhysicalDevice, DeviceFeatures, DeviceProperties},
     format::FormatFeatures,
     image::{
         sampler::{Filter, Sampler, SamplerCreateInfo, SamplerMipmapMode, SamplerReductionMode},

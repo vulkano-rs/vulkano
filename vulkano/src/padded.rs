@@ -158,7 +158,7 @@ use std::{
 /// You may also want to consider using [the `uniform_buffer_standard_layout` feature].
 ///
 /// [the `shader` module documentation]: crate::shader
-/// [the `uniform_buffer_standard_layout` feature]: crate::device::Features::uniform_buffer_standard_layout
+/// [the `uniform_buffer_standard_layout` feature]: crate::device::DeviceFeatures::uniform_buffer_standard_layout
 #[repr(C)]
 pub struct Padded<T, const N: usize> {
     value: T,

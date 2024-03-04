@@ -61,7 +61,7 @@ use crate::{
         DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags,
         DescriptorSetLayoutCreateInfo, DescriptorType,
     },
-    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper, Properties},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper, DeviceProperties},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     shader::{DescriptorBindingRequirements, ShaderStage, ShaderStages},
@@ -465,10 +465,10 @@ impl PipelineLayoutCreateInfo {
 
         struct DescriptorLimit {
             descriptor_types: &'static [DescriptorType],
-            get_limit_all: fn(&Properties) -> Option<u32>,
+            get_limit_all: fn(&DeviceProperties) -> Option<u32>,
             limit_name_all: &'static str,
             vuids_all: &'static [&'static str],
-            get_limit_not_uab: fn(&Properties) -> u32,
+            get_limit_not_uab: fn(&DeviceProperties) -> u32,
             limit_name_not_uab: &'static str,
             vuids_not_uab: &'static [&'static str],
         }

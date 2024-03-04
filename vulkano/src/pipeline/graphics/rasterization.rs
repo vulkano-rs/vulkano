@@ -10,7 +10,7 @@ pub struct RasterizationState {
     /// If true, then the depth value of the vertices will be clamped to the range [0.0, 1.0]. If
     /// false, fragments whose depth is outside of this range will be discarded.
     ///
-    /// If enabled, the [`depth_clamp`](crate::device::Features::depth_clamp) feature must be
+    /// If enabled, the [`depth_clamp`](crate::device::DeviceFeatures::depth_clamp) feature must be
     /// enabled on the device.
     ///
     /// The default value is `false`.
@@ -27,7 +27,7 @@ pub struct RasterizationState {
     /// into points.
     ///
     /// If set to a value other than `Fill`, the
-    /// [`fill_mode_non_solid`](crate::device::Features::fill_mode_non_solid) feature must be
+    /// [`fill_mode_non_solid`](crate::device::DeviceFeatures::fill_mode_non_solid) feature must be
     /// enabled on the device.
     ///
     /// The default value is [`PolygonMode::Fill`].
@@ -54,7 +54,7 @@ pub struct RasterizationState {
     /// Width, in pixels, of lines when drawing lines.
     ///
     /// Setting this to a value other than 1.0 requires the
-    /// [`wide_lines`](crate::device::Features::wide_lines) feature to be enabled on
+    /// [`wide_lines`](crate::device::DeviceFeatures::wide_lines) feature to be enabled on
     /// the device.
     ///
     /// The default value is `1.0`.
@@ -162,7 +162,7 @@ impl RasterizationState {
             return Err(Box::new(ValidationError {
                 context: "depth_clamp_enable".into(),
                 problem: "is `true`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "depth_clamp",
                 )])]),
                 vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782"],
@@ -173,7 +173,7 @@ impl RasterizationState {
             return Err(Box::new(ValidationError {
                 context: "polygon_mode".into(),
                 problem: "is not `PolygonMode::Fill`".into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "fill_mode_non_solid",
                 )])]),
                 vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-01507"],
@@ -190,7 +190,7 @@ impl RasterizationState {
                     `rasterizer_discard_enable` is `false`, and \
                     `polygon_mode` is `PolygonMode::Point`"
                     .into(),
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "point_polygons",
                 )])]),
                 vuids: &["VUID-VkPipelineRasterizationStateCreateInfo-pointPolygons-04458"],
@@ -227,7 +227,7 @@ impl RasterizationState {
                         return Err(Box::new(ValidationError {
                             context: "line_rasterization_mode".into(),
                             problem: "is `LineRasterizationMode::Rectangular`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "rectangular_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02768"],
@@ -239,7 +239,7 @@ impl RasterizationState {
                         return Err(Box::new(ValidationError {
                             context: "line_rasterization_mode".into(),
                             problem: "is `LineRasterizationMode::Bresenham`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "bresenham_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02769"],
@@ -251,7 +251,7 @@ impl RasterizationState {
                         return Err(Box::new(ValidationError {
                             context: "line_rasterization_mode".into(),
                             problem: "is `LineRasterizationMode::RectangularSmooth`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "smooth_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02770"],
@@ -280,7 +280,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::Default`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_rectangular_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774"],
@@ -305,7 +305,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::Rectangular`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_rectangular_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02771"],
@@ -319,7 +319,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::Bresenham`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_bresenham_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02772"],
@@ -333,7 +333,7 @@ impl RasterizationState {
                             problem: "`line_stipple` is `Some`, and \
                                 `line_rasterization_mode` is \
                                 `LineRasterizationMode::RectangularSmooth`".into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                                 "stippled_smooth_lines",
                             )])]),
                             vuids: &["VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02773"],
@@ -359,8 +359,8 @@ pub struct DepthBiasState {
     /// The maximum (or minimum) depth bias of a fragment.
     ///
     /// Setting this to a value other than 0.0 requires the
-    /// [`depth_bias_clamp`](crate::device::Features::depth_bias_clamp) feature to be enabled on
-    /// the device.
+    /// [`depth_bias_clamp`](crate::device::DeviceFeatures::depth_bias_clamp) feature to be enabled
+    /// on the device.
     ///
     /// The default value is `0.0`.
     pub clamp: f32,
@@ -450,7 +450,7 @@ vulkan_enum! {
     // TODO: document further
     /// On [portability subset](crate::instance#portability-subset-devices-and-the-enumerate_portability-flag)
     /// devices, unless `rasterizer_discard_enable` is active, the
-    /// [`point_polygons`](crate::device::Features::point_polygons)
+    /// [`point_polygons`](crate::device::DeviceFeatures::point_polygons)
     /// feature must be enabled on the device.
     Point = POINT,
 
@@ -475,36 +475,36 @@ vulkan_enum! {
     /// The rasterization mode to use for lines.
     LineRasterizationMode = LineRasterizationModeEXT(i32);
 
-    /// If the [`strict_lines`](crate::device::Properties::strict_lines) device property is `true`,
+    /// If the [`strict_lines`](crate::device::DeviceProperties::strict_lines) device property is `true`,
     /// then this is the same as `Rectangular`. Otherwise, lines are drawn as parallelograms.
     ///
     /// If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`strict_lines`](crate::device::Properties::strict_lines) property must be `true` and the
-    /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) feature
+    /// [`strict_lines`](crate::device::DeviceProperties::strict_lines) property must be `true` and the
+    /// [`stippled_rectangular_lines`](crate::device::DeviceFeatures::stippled_rectangular_lines) feature
     /// must be enabled on the device.
     Default = DEFAULT,
 
     /// Lines are drawn as if they were rectangles extruded from the line.
     ///
-    /// The [`rectangular_lines`](crate::device::Features::rectangular_lines) feature must be
+    /// The [`rectangular_lines`](crate::device::DeviceFeatures::rectangular_lines) feature must be
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) must
+    /// [`stippled_rectangular_lines`](crate::device::DeviceFeatures::stippled_rectangular_lines) must
     /// also be enabled.
     Rectangular = RECTANGULAR,
 
     /// Lines are drawn by determining which pixel diamonds the line intersects and exits.
     ///
-    /// The [`bresenham_lines`](crate::device::Features::bresenham_lines) feature must be
+    /// The [`bresenham_lines`](crate::device::DeviceFeatures::bresenham_lines) feature must be
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`stippled_bresenham_lines`](crate::device::Features::stippled_bresenham_lines) must
+    /// [`stippled_bresenham_lines`](crate::device::DeviceFeatures::stippled_bresenham_lines) must
     /// also be enabled.
     Bresenham = BRESENHAM,
 
     /// As `Rectangular`, but with alpha falloff.
     ///
-    /// The [`smooth_lines`](crate::device::Features::smooth_lines) feature must be
+    /// The [`smooth_lines`](crate::device::DeviceFeatures::smooth_lines) feature must be
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
-    /// [`stippled_smooth_lines`](crate::device::Features::stippled_smooth_lines) must
+    /// [`stippled_smooth_lines`](crate::device::DeviceFeatures::stippled_smooth_lines) must
     /// also be enabled.
     RectangularSmooth = RECTANGULAR_SMOOTH,
 }

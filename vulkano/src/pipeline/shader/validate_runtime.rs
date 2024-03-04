@@ -1,6 +1,6 @@
 use crate::{
     descriptor_set::layout::DescriptorType,
-    device::{physical::ShaderFloatControlsIndependence, Device, Features},
+    device::{physical::ShaderFloatControlsIndependence, Device, DeviceFeatures},
     pipeline::inout_interface::{
         input_output_map, shader_interface_analyze_type, InputOutputData, InputOutputKey,
     },
@@ -481,9 +481,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "this device is a portability subset device, and \
                                 the entry point has an `IsoLines` execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "tessellation_isolines",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("tessellation_isolines"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-tessellationShader-06326"],
                             ..Default::default()
                         }));
@@ -498,9 +498,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "this device is a portability subset device, and \
                                 the entry point has an `PointMode` execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "tessellation_point_mode",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("tessellation_point_mode"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-tessellationShader-06327"],
                             ..Default::default()
                         }));
@@ -523,7 +523,7 @@ impl<'a> RuntimeValidator<'a> {
                                     problem: "the entry point has a `LocalSizeId` execution mode"
                                         .into(),
                                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                        Requires::Feature("maintenance4"),
+                                        Requires::DeviceFeature("maintenance4"),
                                     ])]),
                                     vuids: &["VUID-RuntimeSpirv-LocalSizeId-06434"],
                                     ..Default::default()
@@ -734,9 +734,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `SubgroupUniformControlFlowKHR` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_subgroup_uniform_control_flow",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_subgroup_uniform_control_flow"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-SubgroupUniformControlFlowKHR-06379"],
                             ..Default::default()
                         }));
@@ -767,9 +767,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `EarlyAndLateFragmentTestsAMD` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_early_and_late_fragment_tests",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_early_and_late_fragment_tests"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderEarlyAndLateFragmentTests-06767"],
                             ..Default::default()
                         }));
@@ -785,9 +785,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `StencilRefUnchangedFrontAMD` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_early_and_late_fragment_tests",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_early_and_late_fragment_tests"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderEarlyAndLateFragmentTests-06768"],
                             ..Default::default()
                         }));
@@ -803,9 +803,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `StencilRefUnchangedBackAMD` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_early_and_late_fragment_tests",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_early_and_late_fragment_tests"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderEarlyAndLateFragmentTests-06769"],
                             ..Default::default()
                         }));
@@ -821,9 +821,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `StencilRefGreaterFrontAMD` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_early_and_late_fragment_tests",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_early_and_late_fragment_tests"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderEarlyAndLateFragmentTests-06770"],
                             ..Default::default()
                         }));
@@ -839,9 +839,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `StencilRefGreaterBackAMD` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_early_and_late_fragment_tests",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_early_and_late_fragment_tests"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderEarlyAndLateFragmentTests-06771"],
                             ..Default::default()
                         }));
@@ -857,9 +857,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `StencilRefLessFrontAMD` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_early_and_late_fragment_tests",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_early_and_late_fragment_tests"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderEarlyAndLateFragmentTests-06772"],
                             ..Default::default()
                         }));
@@ -875,9 +875,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "the entry point has a `StencilRefLessBackAMD` \
                                 execution mode"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_early_and_late_fragment_tests",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_early_and_late_fragment_tests"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderEarlyAndLateFragmentTests-06773"],
                             ..Default::default()
                         }));
@@ -1170,9 +1170,9 @@ impl<'a> RuntimeValidator<'a> {
                                 result_id,
                             )
                             .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_zero_initialize_workgroup_memory",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_zero_initialize_workgroup_memory"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderZeroInitializeWorkgroupMemory-06372"],
                             ..Default::default()
                         }));
@@ -1203,9 +1203,9 @@ impl<'a> RuntimeValidator<'a> {
                                 result_id,
                             )
                             .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "storage_buffer8_bit_access",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("storage_buffer8_bit_access"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-storageBuffer8BitAccess-06328"],
                             ..Default::default()
                         }));
@@ -1221,9 +1221,9 @@ impl<'a> RuntimeValidator<'a> {
                                 result_id,
                             )
                             .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "storage_buffer16_bit_access",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("storage_buffer16_bit_access"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-storageBuffer16BitAccess-06331"],
                             ..Default::default()
                         }));
@@ -1247,7 +1247,9 @@ impl<'a> RuntimeValidator<'a> {
                                 )
                                 .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("uniform_and_storage_buffer8_bit_access"),
+                                    Requires::DeviceFeature(
+                                        "uniform_and_storage_buffer8_bit_access",
+                                    ),
                                 ])]),
                                 vuids: &[
                                     "VUID-RuntimeSpirv-uniformAndStorageBuffer8BitAccess-06329",
@@ -1271,7 +1273,9 @@ impl<'a> RuntimeValidator<'a> {
                                 )
                                 .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("uniform_and_storage_buffer16_bit_access"),
+                                    Requires::DeviceFeature(
+                                        "uniform_and_storage_buffer16_bit_access",
+                                    ),
                                 ])]),
                                 vuids: &[
                                     "VUID-RuntimeSpirv-uniformAndStorageBuffer16BitAccess-06332",
@@ -1291,9 +1295,9 @@ impl<'a> RuntimeValidator<'a> {
                                 result_id,
                             )
                             .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "storage_push_constant8",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("storage_push_constant8"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-storagePushConstant8-06330"],
                             ..Default::default()
                         }));
@@ -1307,9 +1311,9 @@ impl<'a> RuntimeValidator<'a> {
                                 result_id,
                             )
                             .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "storage_push_constant16",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("storage_push_constant16"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-storagePushConstant16-06333"],
                             ..Default::default()
                         }));
@@ -1326,9 +1330,9 @@ impl<'a> RuntimeValidator<'a> {
                                 result_id,
                             )
                             .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "storage_input_output16",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("storage_input_output16"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-storageInputOutput16-06334"],
                             ..Default::default()
                         }));
@@ -1529,7 +1533,7 @@ impl<'a> RuntimeValidator<'a> {
                                 )
                                 .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("fragment_stores_and_atomics"),
+                                    Requires::DeviceFeature("fragment_stores_and_atomics"),
                                 ])]),
                                 vuids: &["VUID-RuntimeSpirv-NonWritable-06340"],
                                 ..Default::default()
@@ -1556,7 +1560,7 @@ impl<'a> RuntimeValidator<'a> {
                                 )
                                 .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("vertex_pipeline_stores_and_atomics"),
+                                    Requires::DeviceFeature("vertex_pipeline_stores_and_atomics"),
                                 ])]),
                                 vuids: &["VUID-RuntimeSpirv-NonWritable-06341"],
                                 ..Default::default()
@@ -1606,7 +1610,7 @@ impl<'a> RuntimeValidator<'a> {
                                 RequiresAllOf(&[Requires::DeviceExtension(
                                     "khr_format_feature_flags2",
                                 )]),
-                                RequiresAllOf(&[Requires::Feature("storage_input_output16")]),
+                                RequiresAllOf(&[Requires::DeviceFeature("storage_input_output16")]),
                             ]),
                             vuids: &["VUID-RuntimeSpirv-apiVersion-07954"],
                             ..Default::default()
@@ -1632,7 +1636,7 @@ impl<'a> RuntimeValidator<'a> {
                                 RequiresAllOf(&[Requires::DeviceExtension(
                                     "khr_format_feature_flags2",
                                 )]),
-                                RequiresAllOf(&[Requires::Feature("storage_input_output16")]),
+                                RequiresAllOf(&[Requires::DeviceFeature("storage_input_output16")]),
                             ]),
                             vuids: &["VUID-RuntimeSpirv-apiVersion-07955"],
                             ..Default::default()
@@ -1957,7 +1961,7 @@ impl<'a> RuntimeValidator<'a> {
                                         `StorageClass::StorageBuffer` or `StorageClass::Uniform`"
                                         .into(),
                                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                        Requires::Feature("shader_buffer_int64_atomics"),
+                                        Requires::DeviceFeature("shader_buffer_int64_atomics"),
                                     ])]),
                                     vuids: &["VUID-RuntimeSpirv-None-06278"],
                                     ..Default::default()
@@ -1972,7 +1976,7 @@ impl<'a> RuntimeValidator<'a> {
                                         `StorageClass::Workgroup`"
                                         .into(),
                                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                        Requires::Feature("shader_shared_int64_atomics"),
+                                        Requires::DeviceFeature("shader_shared_int64_atomics"),
                                     ])]),
                                     vuids: &["VUID-RuntimeSpirv-None-06279"],
                                     ..Default::default()
@@ -1987,7 +1991,7 @@ impl<'a> RuntimeValidator<'a> {
                                         `StorageClass::Image`"
                                         .into(),
                                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                        Requires::Feature("shader_image_int64_atomics"),
+                                        Requires::DeviceFeature("shader_image_int64_atomics"),
                                     ])]),
                                     vuids: &["VUID-RuntimeSpirv-None-06288"],
                                     ..Default::default()
@@ -1999,36 +2003,36 @@ impl<'a> RuntimeValidator<'a> {
                     Instruction::TypeFloat { width, .. } => {
                         match width {
                             16 => {
-                                if !self.device.enabled_features().intersects(&Features {
+                                if !self.device.enabled_features().intersects(&DeviceFeatures {
                                     shader_buffer_float16_atomics: true,
                                     shader_buffer_float16_atomic_add: true,
                                     shader_buffer_float16_atomic_min_max: true,
                                     shader_shared_float16_atomics: true,
                                     shader_shared_float16_atomic_add: true,
                                     shader_shared_float16_atomic_min_max: true,
-                                    ..Features::empty()
+                                    ..DeviceFeatures::empty()
                                 }) {
                                     return Err(Box::new(ValidationError {
                                         problem: "an atomic operation is performed on a \
                                             16-bit floating point value"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float16_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float16_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float16_atomic_min_max",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float16_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float16_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float16_atomic_min_max",
                                             )]),
                                         ]),
@@ -2038,36 +2042,36 @@ impl<'a> RuntimeValidator<'a> {
                                 }
                             }
                             32 => {
-                                if !self.device.enabled_features().intersects(&Features {
+                                if !self.device.enabled_features().intersects(&DeviceFeatures {
                                     shader_buffer_float32_atomics: true,
                                     shader_buffer_float32_atomic_add: true,
                                     shader_buffer_float32_atomic_min_max: true,
                                     shader_shared_float32_atomics: true,
                                     shader_shared_float32_atomic_add: true,
                                     shader_shared_float32_atomic_min_max: true,
-                                    ..Features::empty()
+                                    ..DeviceFeatures::empty()
                                 }) {
                                     return Err(Box::new(ValidationError {
                                         problem: "an atomic operation is performed on a \
                                             32-bit floating point value"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float32_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float32_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float32_atomic_min_max",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float32_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float32_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float32_atomic_min_max",
                                             )]),
                                         ]),
@@ -2077,36 +2081,36 @@ impl<'a> RuntimeValidator<'a> {
                                 }
                             }
                             64 => {
-                                if !self.device.enabled_features().intersects(&Features {
+                                if !self.device.enabled_features().intersects(&DeviceFeatures {
                                     shader_buffer_float64_atomics: true,
                                     shader_buffer_float64_atomic_add: true,
                                     shader_buffer_float64_atomic_min_max: true,
                                     shader_shared_float64_atomics: true,
                                     shader_shared_float64_atomic_add: true,
                                     shader_shared_float64_atomic_min_max: true,
-                                    ..Features::empty()
+                                    ..DeviceFeatures::empty()
                                 }) {
                                     return Err(Box::new(ValidationError {
                                         problem: "an atomic operation is performed on a \
                                             64-bit floating point value"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float64_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float64_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float64_atomic_min_max",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float64_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float64_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float64_atomic_min_max",
                                             )]),
                                         ]),
@@ -2120,7 +2124,7 @@ impl<'a> RuntimeValidator<'a> {
 
                         match storage_class {
                             StorageClass::StorageBuffer => {
-                                if !self.device.enabled_features().intersects(&Features {
+                                if !self.device.enabled_features().intersects(&DeviceFeatures {
                                     shader_buffer_float16_atomics: true,
                                     shader_buffer_float16_atomic_add: true,
                                     shader_buffer_float16_atomic_min_max: true,
@@ -2130,7 +2134,7 @@ impl<'a> RuntimeValidator<'a> {
                                     shader_buffer_float64_atomics: true,
                                     shader_buffer_float64_atomic_add: true,
                                     shader_buffer_float64_atomic_min_max: true,
-                                    ..Features::empty()
+                                    ..DeviceFeatures::empty()
                                 }) {
                                     return Err(Box::new(ValidationError {
                                         problem: "an atomic operation is performed on a \
@@ -2138,31 +2142,31 @@ impl<'a> RuntimeValidator<'a> {
                                             `StorageClass::StorageBuffer`"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float16_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float16_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float16_atomic_min_max",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float32_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float32_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float32_atomic_min_max",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float64_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float64_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_buffer_float64_atomic_min_max",
                                             )]),
                                         ]),
@@ -2172,7 +2176,7 @@ impl<'a> RuntimeValidator<'a> {
                                 }
                             }
                             StorageClass::Workgroup => {
-                                if !self.device.enabled_features().intersects(&Features {
+                                if !self.device.enabled_features().intersects(&DeviceFeatures {
                                     shader_shared_float16_atomics: true,
                                     shader_shared_float16_atomic_add: true,
                                     shader_shared_float16_atomic_min_max: true,
@@ -2182,7 +2186,7 @@ impl<'a> RuntimeValidator<'a> {
                                     shader_shared_float64_atomics: true,
                                     shader_shared_float64_atomic_add: true,
                                     shader_shared_float64_atomic_min_max: true,
-                                    ..Features::empty()
+                                    ..DeviceFeatures::empty()
                                 }) {
                                     return Err(Box::new(ValidationError {
                                         problem: "an atomic operation is performed on a \
@@ -2190,31 +2194,31 @@ impl<'a> RuntimeValidator<'a> {
                                             `StorageClass::Workgroup`"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float16_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float16_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float16_atomic_min_max",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float32_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float32_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float32_atomic_min_max",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float64_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float64_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_shared_float64_atomic_min_max",
                                             )]),
                                         ]),
@@ -2225,11 +2229,11 @@ impl<'a> RuntimeValidator<'a> {
                             }
                             StorageClass::Image => {
                                 if width == 32
-                                    && !self.device.enabled_features().intersects(&Features {
+                                    && !self.device.enabled_features().intersects(&DeviceFeatures {
                                         shader_image_float32_atomics: true,
                                         shader_image_float32_atomic_add: true,
                                         shader_image_float32_atomic_min_max: true,
-                                        ..Features::empty()
+                                        ..DeviceFeatures::empty()
                                     })
                                 {
                                     return Err(Box::new(ValidationError {
@@ -2238,13 +2242,13 @@ impl<'a> RuntimeValidator<'a> {
                                             class of `StorageClass::Image`"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_image_float32_atomics",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_image_float32_atomic_add",
                                             )]),
-                                            RequiresAllOf(&[Requires::Feature(
+                                            RequiresAllOf(&[Requires::DeviceFeature(
                                                 "shader_image_float32_atomic_min_max",
                                             )]),
                                         ]),
@@ -2301,7 +2305,7 @@ impl<'a> RuntimeValidator<'a> {
                                     the `vulkan_memory_model` feature is enabled"
                                     .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("vulkan_memory_model_device_scope"),
+                                    Requires::DeviceFeature("vulkan_memory_model_device_scope"),
                                 ])]),
                                 vuids: &["VUID-RuntimeSpirv-vulkanMemoryModel-06265"],
                                 ..Default::default()
@@ -2314,7 +2318,7 @@ impl<'a> RuntimeValidator<'a> {
                                 problem: "an instruction uses `QueueFamily` as the memory scope"
                                     .into(),
                                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                    Requires::Feature("vulkan_memory_model"),
+                                    Requires::DeviceFeature("vulkan_memory_model"),
                                 ])]),
                                 vuids: &["VUID-RuntimeSpirv-vulkanMemoryModel-06266"],
                                 ..Default::default()
@@ -2381,7 +2385,9 @@ impl<'a> RuntimeValidator<'a> {
                                             on an 8-bit integer or vector"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("shader_subgroup_extended_types"),
+                                            Requires::DeviceFeature(
+                                                "shader_subgroup_extended_types",
+                                            ),
                                         ])]),
                                         vuids: &["VUID-RuntimeSpirv-None-06275"],
                                         ..Default::default()
@@ -2393,7 +2399,9 @@ impl<'a> RuntimeValidator<'a> {
                                             on a 16-bit integer or vector"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("shader_subgroup_extended_types"),
+                                            Requires::DeviceFeature(
+                                                "shader_subgroup_extended_types",
+                                            ),
                                         ])]),
                                         vuids: &["VUID-RuntimeSpirv-None-06275"],
                                         ..Default::default()
@@ -2405,7 +2413,9 @@ impl<'a> RuntimeValidator<'a> {
                                             on an 64-bit integer or vector"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("shader_subgroup_extended_types"),
+                                            Requires::DeviceFeature(
+                                                "shader_subgroup_extended_types",
+                                            ),
                                         ])]),
                                         vuids: &["VUID-RuntimeSpirv-None-06275"],
                                         ..Default::default()
@@ -2419,7 +2429,7 @@ impl<'a> RuntimeValidator<'a> {
                                         on an 16-bit floating point scalar or vector"
                                         .into(),
                                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                        Requires::Feature("shader_subgroup_extended_types"),
+                                        Requires::DeviceFeature("shader_subgroup_extended_types"),
                                     ])]),
                                     vuids: &["VUID-RuntimeSpirv-None-06275"],
                                     ..Default::default()
@@ -2561,7 +2571,7 @@ impl<'a> RuntimeValidator<'a> {
                                             with a scope of `Scope::Subgroup`"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("shader_subgroup_clock"),
+                                            Requires::DeviceFeature("shader_subgroup_clock"),
                                         ])]),
                                         vuids: &["VUID-RuntimeSpirv-shaderSubgroupClock-06267"],
                                         ..Default::default()
@@ -2575,7 +2585,7 @@ impl<'a> RuntimeValidator<'a> {
                                         with a scope of `Scope::Device`"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("shader_device_clock"),
+                                            Requires::DeviceFeature("shader_device_clock"),
                                         ])]),
                                         vuids: &["VUID-RuntimeSpirv-shaderDeviceClock-06268"],
                                         ..Default::default()
@@ -2597,9 +2607,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "an `OpGroupNonUniformQuadBroadcast` instruction is \
                                 performed, and its `index` operand is not a constant"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "subgroup_broadcast_dynamic_id",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("subgroup_broadcast_dynamic_id"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-subgroupBroadcastDynamicId-06276"],
                             ..Default::default()
                         }));
@@ -2616,9 +2626,9 @@ impl<'a> RuntimeValidator<'a> {
                             problem: "an `OpGroupNonUniformBroadcast` instruction is \
                                 performed, and its `id` operand is not a constant"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "subgroup_broadcast_dynamic_id",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("subgroup_broadcast_dynamic_id"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-subgroupBroadcastDynamicId-06277"],
                             ..Default::default()
                         }));
@@ -2807,9 +2817,9 @@ impl<'a> RuntimeValidator<'a> {
                         return Err(Box::new(ValidationError {
                             problem: "an `OpColorAttachmentReadEXT` instruction is performed"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_tile_image_color_read_access",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_tile_image_color_read_access"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderTileImageColorReadAccess-08728"],
                             ..Default::default()
                         }));
@@ -2824,9 +2834,9 @@ impl<'a> RuntimeValidator<'a> {
                         return Err(Box::new(ValidationError {
                             problem: "an `OpDepthAttachmentReadEXT` instruction is performed"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_tile_image_depth_read_access",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_tile_image_depth_read_access"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderTileImageDepthReadAccess-08729"],
                             ..Default::default()
                         }));
@@ -2841,9 +2851,9 @@ impl<'a> RuntimeValidator<'a> {
                         return Err(Box::new(ValidationError {
                             problem: "an `OpStencilAttachmentReadEXT` instruction is performed"
                                 .into(),
-                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                                "shader_tile_image_stencil_read_access",
-                            )])]),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("shader_tile_image_stencil_read_access"),
+                            ])]),
                             vuids: &["VUID-RuntimeSpirv-shaderTileImageStencilReadAccess-08730"],
                             ..Default::default()
                         }));

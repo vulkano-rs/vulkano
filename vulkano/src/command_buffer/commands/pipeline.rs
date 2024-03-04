@@ -1,5 +1,5 @@
 #[cfg(doc)]
-use crate::device::{Features, Properties};
+use crate::device::{DeviceFeatures, DeviceProperties};
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::{view::BufferView, BufferUsage, Subbuffer},
@@ -398,9 +398,9 @@ impl RecordingCommandBuffer {
     ///
     /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
-    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
+    /// [`multi_draw_indirect`](DeviceFeatures::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// A primitive shading graphics pipeline must have been bound using
@@ -508,7 +508,7 @@ impl RecordingCommandBuffer {
     /// `indirect_buffer`. The number of draws to perform is read from `count_buffer`, or
     /// specified by `max_draw_count`, whichever is lower.
     /// This number is limited by the
-    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) limit.
     ///
     /// A primitive shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
@@ -522,7 +522,7 @@ impl RecordingCommandBuffer {
     /// - The general [shader safety requirements](crate::shader#safety) apply.
     /// - The [safety requirements for `DrawIndirectCommand`](DrawIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
-    ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
+    ///   [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) device limit.
     /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
     pub unsafe fn draw_indirect_count(
         &mut self,
@@ -663,7 +663,8 @@ impl RecordingCommandBuffer {
     ///   the bound vertex-rate vertex buffers.
     /// - Every vertex number that is retrieved from the index buffer, if it is not the special
     ///   primitive restart value, must be no greater than the
-    ///   [`max_draw_indexed_index_value`](Properties::max_draw_indexed_index_value) device limit.
+    ///   [`max_draw_indexed_index_value`](DeviceProperties::max_draw_indexed_index_value) device
+    ///   limit.
     pub unsafe fn draw_indexed(
         &mut self,
         index_count: u32,
@@ -755,7 +756,7 @@ impl RecordingCommandBuffer {
                         multiplied by the size of the indices in the bound index buffer, \
                         is greater than the size of the bound index buffer"
                         .into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "robust_buffer_access2",
                     )])]),
                     vuids: &["VUID-vkCmdDrawIndexed-robustBufferAccess2-07825"],
@@ -878,9 +879,9 @@ impl RecordingCommandBuffer {
     ///
     /// One draw is performed for each [`DrawIndexedIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
-    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
+    /// [`multi_draw_indirect`](DeviceFeatures::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// An index buffer must have been bound using
@@ -1003,7 +1004,7 @@ impl RecordingCommandBuffer {
     /// `indirect_buffer`. The number of draws to perform is read from `count_buffer`, or
     /// specified by `max_draw_count`, whichever is lower.
     /// This number is limited by the
-    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) limit.
     ///
     /// An index buffer must have been bound using
     /// [`bind_index_buffer`](Self::bind_index_buffer), and the index ranges of each
@@ -1023,7 +1024,7 @@ impl RecordingCommandBuffer {
     /// - The [safety requirements for
     ///   `DrawIndexedIndirectCommand`](DrawIndexedIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
-    ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
+    ///   [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) device limit.
     /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
     pub unsafe fn draw_indexed_indirect_count(
         &mut self,
@@ -1337,9 +1338,9 @@ impl RecordingCommandBuffer {
     ///
     /// One draw is performed for each [`DrawMeshTasksIndirectCommand`] struct in
     /// `indirect_buffer`. The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
-    /// [`multi_draw_indirect`](Features::multi_draw_indirect) feature has been
+    /// [`multi_draw_indirect`](DeviceFeatures::multi_draw_indirect) feature has been
     /// enabled.
     ///
     /// A mesh shading graphics pipeline must have been bound using
@@ -1455,7 +1456,7 @@ impl RecordingCommandBuffer {
     /// `indirect_buffer`. The number of draws to perform is read from `count_buffer`, or
     /// specified by `max_draw_count`, whichever is lower.
     /// This number is limited by the
-    /// [`max_draw_indirect_count`](Properties::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) limit.
     ///
     /// A mesh shading graphics pipeline must have been bound using
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the
@@ -1468,7 +1469,7 @@ impl RecordingCommandBuffer {
     /// - The [safety requirements for
     ///   `DrawMeshTasksIndirectCommand`](DrawMeshTasksIndirectCommand#safety) apply.
     /// - The count stored in `count_buffer` must not be greater than the
-    ///   [`max_draw_indirect_count`](Properties::max_draw_indirect_count) device limit.
+    ///   [`max_draw_indirect_count`](DeviceProperties::max_draw_indirect_count) device limit.
     /// - The count stored in `count_buffer` must fall within the range of `indirect_buffer`.
     pub unsafe fn draw_mesh_tasks_indirect_count(
         &mut self,
@@ -2750,7 +2751,9 @@ impl RecordingCommandBuffer {
                                             `PrimitiveTopology::*List`"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature("primitive_topology_list_restart"),
+                                            Requires::DeviceFeature(
+                                                "primitive_topology_list_restart",
+                                            ),
                                         ])]),
                                         // vuids?
                                         ..Default::default()
@@ -2769,7 +2772,7 @@ impl RecordingCommandBuffer {
                                             `PrimitiveTopology::PatchList`"
                                             .into(),
                                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
-                                            Requires::Feature(
+                                            Requires::DeviceFeature(
                                                 "primitive_topology_patch_list_restart",
                                             ),
                                         ])]),
@@ -3890,7 +3893,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "draw_count".into(),
                     problem: "is greater than 1".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_draw_indirect",
                     )])]),
                     vuids: &["VUID-vkCmdDrawIndirect-drawCount-02718"],
@@ -4007,7 +4010,7 @@ impl RawRecordingCommandBuffer {
     ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_features().draw_indirect_count {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "draw_indirect_count",
                 )])]),
                 vuids: &["VUID-vkCmdDrawIndirectCount-None-04445"],
@@ -4261,7 +4264,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "draw_count".into(),
                     problem: "is greater than 1".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_draw_indirect",
                     )])]),
                     vuids: &["VUID-vkCmdDrawIndexedIndirect-drawCount-02718"],
@@ -4378,7 +4381,7 @@ impl RawRecordingCommandBuffer {
     ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_features().draw_indirect_count {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "draw_indirect_count",
                 )])]),
                 vuids: &["VUID-vkCmdDrawIndexedIndirectCount-None-04445"],
@@ -4636,7 +4639,7 @@ impl RawRecordingCommandBuffer {
                 return Err(Box::new(ValidationError {
                     context: "draw_count".into(),
                     problem: "is greater than 1".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "multi_draw_indirect",
                     )])]),
                     vuids: &["VUID-vkCmdDrawMeshTasksIndirectEXT-drawCount-02718"],
@@ -4762,7 +4765,7 @@ impl RawRecordingCommandBuffer {
 
         if !self.device().enabled_features().draw_indirect_count {
             return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "draw_indirect_count",
                 )])]),
                 vuids: &["VUID-vkCmdDrawMeshTasksIndirectCountEXT-None-04445"],
