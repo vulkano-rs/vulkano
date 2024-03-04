@@ -1,9 +1,15 @@
 use super::{write_file, IndexMap, VkRegistryData};
 use ahash::HashMap;
 use heck::ToSnakeCase;
+use nom::{
+    bytes::complete::{tag, take_until, take_while1},
+    character::complete::{self, digit1},
+    combinator::{all_consuming, eof},
+    sequence::{delimited, tuple},
+    IResult,
+};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use regex::Regex;
 use std::{collections::hash_map::Entry, fmt::Write as _};
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
@@ -374,11 +380,21 @@ fn sorted_structs<'a>(
         .values()
         .filter(|(ty, _)| ty.structextends.as_deref() == Some("VkPhysicalDeviceProperties2"))
         .collect();
-    let regex = Regex::new(r"^VkPhysicalDeviceVulkan\d+Properties$").unwrap();
+
+    fn is_physical_device_properties(name: &str) -> bool {
+        tuple((
+            tag::<_, &str, ()>("VkPhysicalDeviceVulkan"),
+            digit1,
+            tag("Properties"),
+            eof,
+        ))(name)
+        .is_ok()
+    }
+
     structs.sort_unstable_by_key(|&(ty, provided_by)| {
         let name = ty.name.as_ref().unwrap();
         (
-            !regex.is_match(name),
+            !is_physical_device_properties(name),
             if let Some(version) = provided_by
                 .iter()
                 .find_map(|s| s.strip_prefix("VK_VERSION_"))
@@ -415,7 +431,15 @@ struct Member<'a> {
 }
 
 fn members(ty: &Type) -> Vec<Member> {
-    let regex = Regex::new(r"\[([A-Za-z0-9_]+)\]\s*$").unwrap();
+    fn array_len(input: &str) -> IResult<&str, &str> {
+        let (input, _) = take_until("[")(input)?;
+        all_consuming(delimited(
+            complete::char('['),
+            take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_'),
+            complete::char(']'),
+        ))(input)
+    }
+
     if let TypeSpec::Members(members) = &ty.spec {
         members
             .iter()
@@ -436,12 +460,7 @@ fn members(ty: &Type) -> Vec<Member> {
                             TypeMemberMarkup::Enum(len) => Some(len.as_str()),
                             _ => None,
                         })
-                        .or_else(|| {
-                            regex
-                                .captures(&def.code)
-                                .and_then(|cap| cap.get(1))
-                                .map(|m| m.as_str())
-                        });
+                        .or_else(|| array_len(&def.code).map(|(_, len)| len).ok());
                     if name != Some("sType") && name != Some("pNext") {
                         return name.map(|name| Member {
                             name,

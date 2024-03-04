@@ -1,9 +1,11 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
 use heck::ToSnakeCase;
-use once_cell::sync::Lazy;
+use nom::{
+    branch::alt, bytes::complete::take_while1, character::complete, combinator::all_consuming,
+    multi::separated_list1, sequence::delimited, IResult, Parser,
+};
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use regex::Regex;
 use std::fmt::Write as _;
 use vk_parse::Extension;
 
@@ -968,109 +970,40 @@ enum DependsExpression<'a> {
     AllOf(Vec<Self>),
 }
 
-fn parse_depends(mut depends: &str) -> Result<DependsExpression<'_>, String> {
-    #[derive(Debug, PartialEq)]
-    enum Token<'a> {
-        Name(&'a str),
-        Plus,
-        Comma,
-        POpen,
-        PClose,
+fn parse_depends(depends: &str) -> Result<DependsExpression<'_>, String> {
+    fn name(input: &str) -> IResult<&str, &str> {
+        take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(input)
     }
 
-    static NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9_]+").unwrap());
+    fn term(input: &str) -> IResult<&str, DependsExpression> {
+        alt((
+            name.map(DependsExpression::Name),
+            delimited(complete::char('('), expression, complete::char(')')),
+        ))(input)
+    }
 
-    let mut next_token = move || {
-        if let Some(m) = NAME.find(depends) {
-            depends = &depends[m.len()..];
-            Ok(Some(Token::Name(m.as_str())))
+    fn expression(input: &str) -> IResult<&str, DependsExpression> {
+        let (input, first) = term(input)?;
+
+        if let Some(input) = input.strip_prefix('+') {
+            let (input, mut all_of) = separated_list1(complete::char('+'), term)(input)?;
+            all_of.insert(0, first);
+
+            Ok((input, DependsExpression::AllOf(all_of)))
+        } else if let Some(input) = input.strip_prefix(',') {
+            let (input, mut one_of) = separated_list1(complete::char(','), term)(input)?;
+            one_of.insert(0, first);
+
+            Ok((input, DependsExpression::OneOf(one_of)))
         } else {
-            depends
-                .chars()
-                .next()
-                .map(|c| {
-                    let token = match c {
-                        '+' => Token::Plus,
-                        ',' => Token::Comma,
-                        '(' => Token::POpen,
-                        ')' => Token::PClose,
-                        _ => return Err(format!("unexpected character: {}", c)),
-                    };
-                    depends = &depends[1..];
-                    Ok(token)
-                })
-                .transpose()
-        }
-    };
-
-    fn parse_expression<'a>(
-        next_token: &mut impl FnMut() -> Result<Option<Token<'a>>, String>,
-        expect_pclose: bool,
-    ) -> Result<DependsExpression<'a>, String> {
-        let first = match next_token()? {
-            Some(Token::Name(name)) => DependsExpression::Name(name),
-            Some(Token::POpen) => parse_expression(next_token, true)?,
-            Some(token) => return Err(format!("unexpected token: {:?}", token)),
-            None => return Err("unexpected end of string".into()),
-        };
-
-        match next_token()? {
-            Some(separator @ (Token::Plus | Token::Comma)) => {
-                let mut subexpr = vec![first];
-
-                loop {
-                    match next_token()? {
-                        Some(Token::Name(name)) => subexpr.push(DependsExpression::Name(name)),
-                        Some(Token::POpen) => subexpr.push(parse_expression(next_token, true)?),
-                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
-                        None => return Err("unexpected end of string".into()),
-                    }
-
-                    match next_token()? {
-                        Some(Token::PClose) => {
-                            if expect_pclose {
-                                break;
-                            } else {
-                                return Err(format!("unexpected token: {:?}", Token::PClose));
-                            }
-                        }
-                        Some(token) if token == separator => (),
-                        Some(token) => return Err(format!("unexpected token: {:?}", token)),
-                        None => {
-                            if expect_pclose {
-                                return Err("unexpected end of string".into());
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                Ok(match separator {
-                    Token::Plus => DependsExpression::AllOf(subexpr),
-                    Token::Comma => DependsExpression::OneOf(subexpr),
-                    _ => unreachable!(),
-                })
-            }
-            Some(Token::PClose) => {
-                if expect_pclose {
-                    Ok(first)
-                } else {
-                    Err(format!("unexpected token: {:?}", Token::PClose))
-                }
-            }
-            Some(token) => Err(format!("unexpected token: {:?}", token)),
-            None => {
-                if expect_pclose {
-                    Err("unexpected end of string".into())
-                } else {
-                    Ok(first)
-                }
-            }
+            Ok((input, first))
         }
     }
 
-    parse_expression(&mut next_token, false)
+    match all_consuming(expression)(depends) {
+        Ok((_, expr)) => Ok(expr),
+        Err(err) => Err(format!("{:?}", err)),
+    }
 }
 
 fn make_doc(ext: &mut ExtensionsMember) {

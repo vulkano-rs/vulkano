@@ -1,7 +1,12 @@
 use self::spirv_grammar::SpirvGrammar;
 use ahash::HashMap;
-use once_cell::sync::Lazy;
-use regex::Regex;
+use nom::{
+    bytes::complete::{tag, take_until},
+    character::complete::{self, multispace0, multispace1},
+    combinator::eof,
+    sequence::{delimited, tuple},
+    IResult, Parser,
+};
 use std::{
     cmp::min,
     env,
@@ -114,12 +119,52 @@ impl<'r> VkRegistryData<'r> {
         }
     }
 
+    /// Returns the Vulkan header version in the vk.xml file.
     fn get_header_version(registry: &Registry) -> (u16, u16, u16) {
-        static VK_HEADER_VERSION: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"#define\s+VK_HEADER_VERSION\s+(\d+)\s*$").unwrap());
-        static VK_HEADER_VERSION_COMPLETE: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"#define\s+VK_HEADER_VERSION_COMPLETE\s+VK_MAKE_API_VERSION\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*VK_HEADER_VERSION\s*\)").unwrap()
-        });
+        fn spaced_comma(input: &str) -> IResult<&str, char> {
+            delimited(multispace0, complete::char(','), multispace0)(input)
+        }
+
+        fn vk_header_patch(input: &str) -> IResult<&str, u16> {
+            let (input, _) = take_until("#define")(input)?;
+            delimited(
+                tuple((
+                    tag("#define"),
+                    multispace1,
+                    tag("VK_HEADER_VERSION"),
+                    multispace0,
+                )),
+                complete::u16,
+                tuple((multispace0, eof)),
+            )(input)
+        }
+
+        fn vk_header_major_minor(input: &str) -> IResult<&str, (u16, u16)> {
+            let (input, _) = take_until("#define")(input)?;
+            delimited(
+                tuple((
+                    tag("#define"),
+                    multispace1,
+                    tag("VK_HEADER_VERSION_COMPLETE"),
+                    multispace1,
+                    tag("VK_MAKE_API_VERSION"),
+                    multispace0,
+                    complete::char('('),
+                    multispace0,
+                )),
+                tuple((
+                    complete::u16,
+                    spaced_comma,
+                    complete::u16,
+                    spaced_comma,
+                    complete::u16,
+                    spaced_comma,
+                    tag("VK_HEADER_VERSION"),
+                ))
+                .map(|(_ignored, _, major, _, minor, _, _)| (major, minor)),
+                tuple((multispace0, complete::char(')'), multispace0)),
+            )(input)
+        }
 
         let mut major = None;
         let mut minor = None;
@@ -129,14 +174,17 @@ impl<'r> VkRegistryData<'r> {
             if let RegistryChild::Types(types) = child {
                 for ty in types.children.iter() {
                     if let TypesChild::Type(ty) = ty {
+                        if ty.api.as_deref() != Some("vulkan") {
+                            continue;
+                        }
                         if let TypeSpec::Code(code) = &ty.spec {
-                            if let Some(captures) = VK_HEADER_VERSION.captures(&code.code) {
-                                patch = Some(captures.get(1).unwrap().as_str().parse().unwrap());
-                            } else if let Some(captures) =
-                                VK_HEADER_VERSION_COMPLETE.captures(&code.code)
-                            {
-                                major = Some(captures.get(2).unwrap().as_str().parse().unwrap());
-                                minor = Some(captures.get(3).unwrap().as_str().parse().unwrap());
+                            if let Ok((_, p)) = vk_header_patch(&code.code) {
+                                assert!(patch.is_none());
+                                patch = Some(p);
+                            } else if let Ok((_, (m, n))) = vk_header_major_minor(&code.code) {
+                                assert!(major.is_none());
+                                major = Some(m);
+                                minor = Some(n);
                             }
                         }
                     }
@@ -430,11 +478,12 @@ pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
 }
 
 fn suffix_key(name: &str) -> u32 {
-    static VENDOR_SUFFIXES: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap());
-
     #[allow(clippy::bool_to_int_with_if)]
-    if VENDOR_SUFFIXES.is_match(name) {
+    if name.ends_with("AMD")
+        || name.ends_with("GOOGLE")
+        || name.ends_with("INTEL")
+        || name.ends_with("NV")
+    {
         3
     } else if name.ends_with("EXT") {
         2
