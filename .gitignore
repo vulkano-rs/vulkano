@@ -4,7 +4,7 @@ examples/dynamic-local-size/mandelbrot.png
 examples/msaa-renderpass/triangle.png
 examples/multiview/multiview1.png
 examples/multiview/multiview2.png
-examples/offscreen
+examples/offscreen/triangle.png
 examples/pipeline-caching/pipeline_cache.bin
 .idea
 *.swp
