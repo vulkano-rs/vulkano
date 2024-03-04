@@ -58,6 +58,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_depth_stencil_resolve`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_depth_stencil_resolve.html)
 - [`VK_KHR_draw_indirect_count`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_draw_indirect_count.html)
 - [`VK_KHR_driver_properties`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_driver_properties.html)
+- [`VK_EXT_host_query_reset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_host_query_reset.html)
 - [`VK_KHR_image_format_list`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_image_format_list.html)
 - [`VK_KHR_sampler_mirror_clamp_to_edge`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_sampler_mirror_clamp_to_edge.html)
 - [`VK_KHR_separate_depth_stencil_layouts`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_separate_depth_stencil_layouts.html)
@@ -85,7 +86,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 ### Unsupported
 
 - [`VK_KHR_imageless_framebuffer`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_imageless_framebuffer.html)
-- [`VK_EXT_host_query_reset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_host_query_reset.html)
 - `framebufferIntegerColorSampleCounts`
 
 ## Vulkan 1.3

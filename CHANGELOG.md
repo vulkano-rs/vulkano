@@ -103,6 +103,7 @@ Changes to vulkano-util:
 - Support for querying memory requirements directly from the device.
 - Support for the `glam` crate in the `type_for_format` macro.
 - Added `DepthState::reverse` helper method.
+- Support for the `ext_host_query_reset` extension.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
