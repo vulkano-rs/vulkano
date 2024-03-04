@@ -308,7 +308,7 @@ fn spirv_extensions_members(extensions: &[&SpirvExtOrCap]) -> Vec<SpirvReqsMembe
 }
 
 fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresProperty>) {
-    fn parse_vk_api_version(input: &str) -> IResult<&str, (u32, u32)> {
+    fn vk_api_version(input: &str) -> IResult<&str, (u32, u32)> {
         all_consuming(preceded(
             tag("VK_API_VERSION_").or(tag("VK_VERSION_")),
             separated_pair(complete::u32, complete::char('_'), complete::u32),
@@ -322,7 +322,7 @@ fn make_requires(enables: &[vk_parse::Enable]) -> (RequiresOneOf, Vec<RequiresPr
         match enable {
             vk_parse::Enable::Version(version) => {
                 if version != "VK_VERSION_1_0" {
-                    requires_one_of.api_version = Some(parse_vk_api_version(version).unwrap().1);
+                    requires_one_of.api_version = Some(vk_api_version(version).unwrap().1);
                 }
             }
             vk_parse::Enable::Extension(extension) => {
