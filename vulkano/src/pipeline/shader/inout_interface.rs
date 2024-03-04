@@ -8,7 +8,7 @@ use crate::{
     ValidationError,
 };
 use ahash::HashMap;
-use std::collections::hash_map::Entry;
+use std::{collections::hash_map::Entry, convert::Infallible};
 
 pub(crate) fn validate_interfaces_compatible(
     out_spirv: &Spirv,
@@ -208,7 +208,7 @@ fn get_variables_by_key<'a>(
             execution_model,
             variable_id,
             filter_storage_class,
-            |key, data| {
+            |key, data| -> Result<(), Infallible> {
                 if let InputOutputKey::User(InputOutputUserKey {
                     location,
                     component,
@@ -241,8 +241,11 @@ fn get_variables_by_key<'a>(
                         },
                     );
                 }
+
+                Ok(())
             },
-        );
+        )
+        .unwrap();
     }
 
     variables_by_key
@@ -723,13 +726,16 @@ pub(crate) fn shader_interface_location_info(
             execution_model,
             variable_id,
             filter_storage_class,
-            |key, data| {
+            |key, data| -> Result<(), Infallible> {
                 if let InputOutputKey::User(key) = key {
                     let InputOutputData { type_id, .. } = data;
                     shader_interface_analyze_type(spirv, type_id, key, &mut scalar_func);
                 }
+
+                Ok(())
             },
-        );
+        )
+        .unwrap();
     }
 
     locations
@@ -864,13 +870,13 @@ pub(crate) struct InputOutputVariableBlock {
     pub(crate) member_index: usize,
 }
 
-pub(crate) fn input_output_map(
+pub(crate) fn input_output_map<E>(
     spirv: &Spirv,
     execution_model: ExecutionModel,
     variable_id: Id,
     filter_storage_class: StorageClass,
-    mut func: impl FnMut(InputOutputKey, InputOutputData),
-) {
+    mut func: impl FnMut(InputOutputKey, InputOutputData) -> Result<(), E>,
+) -> Result<(), E> {
     let variable_id_info = spirv.id(variable_id);
     let (pointer_type_id, storage_class) = match *variable_id_info.instruction() {
         Instruction::Variable {
@@ -878,7 +884,7 @@ pub(crate) fn input_output_map(
             storage_class,
             ..
         } if storage_class == filter_storage_class => (result_type_id, storage_class),
-        _ => return,
+        _ => return Ok(()),
     };
     let pointer_type_id_info = spirv.id(pointer_type_id);
     let type_id = match *pointer_type_id_info.instruction() {
@@ -918,7 +924,7 @@ pub(crate) fn input_output_map(
                 block: None,
                 type_id,
             },
-        );
+        )
     } else if let Some(built_in) = built_in {
         func(
             InputOutputKey::BuiltIn(built_in),
@@ -928,13 +934,13 @@ pub(crate) fn input_output_map(
                 block: None,
                 type_id,
             },
-        );
+        )
     } else {
         let block_type_id = type_id;
         let block_type_id_info = spirv.id(block_type_id);
         let member_types = match block_type_id_info.instruction() {
             Instruction::TypeStruct { member_types, .. } => member_types,
-            _ => return,
+            _ => return Ok(()),
         };
 
         for (member_index, (&type_id, member_info)) in member_types
@@ -975,7 +981,7 @@ pub(crate) fn input_output_map(
                         }),
                         type_id,
                     },
-                );
+                )?;
             } else if let Some(built_in) = built_in {
                 func(
                     InputOutputKey::BuiltIn(built_in),
@@ -988,9 +994,11 @@ pub(crate) fn input_output_map(
                         }),
                         type_id,
                     },
-                );
+                )?;
             }
         }
+
+        Ok(())
     }
 }
 

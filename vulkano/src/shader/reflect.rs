@@ -6,17 +6,15 @@ use crate::{
     image::view::ImageViewType,
     pipeline::layout::PushConstantRange,
     shader::{
-        spirv::{Decoration, Dim, ExecutionModel, Id, Instruction, Spirv, StorageClass},
-        DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, NumericType, ShaderInterface,
-        ShaderInterfaceEntry, ShaderInterfaceEntryType, ShaderStage, ShaderStages,
-        SpecializationConstant,
+        spirv::{Decoration, Dim, Id, Instruction, Spirv, StorageClass},
+        DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, NumericType, ShaderStage,
+        ShaderStages, SpecializationConstant,
     },
     DeviceSize, Version,
 };
 use ahash::{HashMap, HashSet};
 use half::f16;
 use smallvec::{smallvec, SmallVec};
-use std::borrow::Cow;
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
 #[inline]
@@ -24,15 +22,14 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)>
     let interface_variables = interface_variables(spirv);
 
     spirv.entry_points().iter().filter_map(move |instruction| {
-        let (execution_model, function_id, entry_point_name, interface) = match *instruction {
-            Instruction::EntryPoint {
-                execution_model,
-                entry_point,
-                ref name,
-                ref interface,
-                ..
-            } => (execution_model, entry_point, name, interface),
-            _ => return None,
+        let &Instruction::EntryPoint {
+            execution_model,
+            entry_point,
+            ref name,
+            ..
+        } = instruction
+        else {
+            return None;
         };
 
         let stage = ShaderStage::from(execution_model);
@@ -41,44 +38,22 @@ pub fn entry_points(spirv: &Spirv) -> impl Iterator<Item = (Id, EntryPointInfo)>
             &interface_variables.descriptor_binding,
             spirv,
             stage,
-            function_id,
+            entry_point,
         );
         let push_constant_requirements = push_constant_requirements(
             &interface_variables.push_constant,
             spirv,
             stage,
-            function_id,
-        );
-        let input_interface = shader_interface(
-            spirv,
-            interface,
-            StorageClass::Input,
-            matches!(
-                execution_model,
-                ExecutionModel::TessellationControl
-                    | ExecutionModel::TessellationEvaluation
-                    | ExecutionModel::Geometry
-            ),
-        );
-        let output_interface = shader_interface(
-            spirv,
-            interface,
-            StorageClass::Output,
-            matches!(
-                execution_model,
-                ExecutionModel::TessellationControl | ExecutionModel::MeshEXT
-            ),
+            entry_point,
         );
 
         Some((
-            function_id,
+            entry_point,
             EntryPointInfo {
-                name: entry_point_name.clone(),
+                name: name.clone(),
                 execution_model,
                 descriptor_binding_requirements,
                 push_constant_requirements,
-                input_interface,
-                output_interface,
             },
         ))
     })
@@ -1066,118 +1041,6 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
         .collect()
 }
 
-/// Extracts the `ShaderInterface` with the given storage class from `spirv`.
-fn shader_interface(
-    spirv: &Spirv,
-    interface: &[Id],
-    filter_storage_class: StorageClass,
-    ignore_first_array: bool,
-) -> ShaderInterface {
-    let elements: Vec<_> = interface
-        .iter()
-        .filter_map(|&id| {
-            let (result_type_id, result_id) = match *spirv.id(id).instruction() {
-                Instruction::Variable {
-                    result_type_id,
-                    result_id,
-                    storage_class,
-                    ..
-                } if storage_class == filter_storage_class => (result_type_id, result_id),
-                _ => return None,
-            };
-
-            if is_builtin(spirv, result_id) {
-                return None;
-            }
-
-            let id_info = spirv.id(result_id);
-
-            let name = id_info
-                .names()
-                .iter()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Name { ref name, .. } => Some(Cow::Owned(name.clone())),
-                    _ => None,
-                });
-
-            let location = id_info
-                .decorations()
-                .iter()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::Location { location },
-                        ..
-                    } => Some(location),
-                    _ => None,
-                })
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Input/output variable with id {} (name {:?}) is missing a location",
-                        result_id, name,
-                    )
-                });
-            let component = id_info
-                .decorations()
-                .iter()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::Component { component },
-                        ..
-                    } => Some(component),
-                    _ => None,
-                })
-                .unwrap_or(0);
-            let index = id_info
-                .decorations()
-                .iter()
-                .find_map(|instruction| match *instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::Index { index },
-                        ..
-                    } => Some(index),
-                    _ => None,
-                })
-                .unwrap_or(0);
-
-            let ty = shader_interface_type_of(spirv, result_type_id, ignore_first_array);
-            assert!(ty.num_elements >= 1);
-
-            Some(ShaderInterfaceEntry {
-                location,
-                index,
-                component,
-                ty,
-                name,
-            })
-        })
-        .collect();
-
-    // Checking for overlapping elements.
-    for (offset, element1) in elements.iter().enumerate() {
-        for element2 in elements.iter().skip(offset + 1) {
-            if element1.index == element2.index
-                && (element1.location == element2.location
-                    || (element1.location < element2.location
-                        && element1.location + element1.ty.num_locations() > element2.location)
-                    || (element2.location < element1.location
-                        && element2.location + element2.ty.num_locations() > element1.location))
-            {
-                panic!(
-                    "The locations of attributes `{:?}` ({}..{}) and `{:?}` ({}..{}) overlap",
-                    element1.name,
-                    element1.location,
-                    element1.location + element1.ty.num_locations(),
-                    element2.name,
-                    element2.location,
-                    element2.location + element2.ty.num_locations(),
-                );
-            }
-        }
-    }
-
-    ShaderInterface { elements }
-}
-
 /// Returns the size of a type, or `None` if its size cannot be determined.
 pub(crate) fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
     let id_info = spirv.id(id);
@@ -1300,144 +1163,6 @@ fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
         })
         .min()
         .unwrap_or(0)
-}
-
-/// If `ignore_first_array` is true, the function expects the outermost instruction to be
-/// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
-/// panic.
-fn shader_interface_type_of(
-    spirv: &Spirv,
-    id: Id,
-    ignore_first_array: bool,
-) -> ShaderInterfaceEntryType {
-    match *spirv.id(id).instruction() {
-        Instruction::TypeInt {
-            width, signedness, ..
-        } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                base_type: match signedness {
-                    0 => NumericType::Uint,
-                    1 => NumericType::Int,
-                    _ => unreachable!(),
-                },
-                num_components: 1,
-                num_elements: 1,
-                is_64bit: match width {
-                    8 | 16 | 32 => false,
-                    64 => true,
-                    _ => unimplemented!(),
-                },
-            }
-        }
-        Instruction::TypeFloat { width, .. } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                base_type: NumericType::Float,
-                num_components: 1,
-                num_elements: 1,
-                is_64bit: match width {
-                    16 | 32 => false,
-                    64 => true,
-                    _ => unimplemented!(),
-                },
-            }
-        }
-        Instruction::TypeVector {
-            component_type,
-            component_count,
-            ..
-        } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                num_components: component_count,
-                ..shader_interface_type_of(spirv, component_type, false)
-            }
-        }
-        Instruction::TypeMatrix {
-            column_type,
-            column_count,
-            ..
-        } => {
-            assert!(!ignore_first_array);
-            ShaderInterfaceEntryType {
-                num_elements: column_count,
-                ..shader_interface_type_of(spirv, column_type, false)
-            }
-        }
-        Instruction::TypeArray {
-            element_type,
-            length,
-            ..
-        } => {
-            if ignore_first_array {
-                shader_interface_type_of(spirv, element_type, false)
-            } else {
-                let mut ty = shader_interface_type_of(spirv, element_type, false);
-                let length = get_constant(spirv, length).expect("failed to find array length");
-                ty.num_elements *= length as u32;
-                ty
-            }
-        }
-        Instruction::TypePointer { ty, .. } => {
-            shader_interface_type_of(spirv, ty, ignore_first_array)
-        }
-        Instruction::TypeStruct { .. } => {
-            panic!("Structs are not yet supported in shader in/out interface!");
-        }
-        _ => panic!("Type {} not found or invalid", id),
-    }
-}
-
-/// Returns true if a `BuiltIn` decorator is applied on an id.
-fn is_builtin(spirv: &Spirv, id: Id) -> bool {
-    let id_info = spirv.id(id);
-
-    if id_info.decorations().iter().any(|instruction| {
-        matches!(
-            instruction,
-            Instruction::Decorate {
-                decoration: Decoration::BuiltIn { .. },
-                ..
-            }
-        )
-    }) {
-        return true;
-    }
-
-    if id_info
-        .members()
-        .iter()
-        .flat_map(|member_info| member_info.decorations())
-        .any(|instruction| {
-            matches!(
-                instruction,
-                Instruction::MemberDecorate {
-                    decoration: Decoration::BuiltIn { .. },
-                    ..
-                }
-            )
-        })
-    {
-        return true;
-    }
-
-    match id_info.instruction() {
-        Instruction::Variable {
-            result_type_id: ty, ..
-        }
-        | Instruction::TypeArray {
-            element_type: ty, ..
-        }
-        | Instruction::TypeRuntimeArray {
-            element_type: ty, ..
-        }
-        | Instruction::TypePointer { ty, .. } => is_builtin(spirv, *ty),
-        Instruction::TypeStruct { member_types, .. } => {
-            member_types.iter().any(|ty| is_builtin(spirv, *ty))
-        }
-        _ => false,
-    }
 }
 
 pub(crate) fn get_constant(spirv: &Spirv, id: Id) -> Option<u64> {

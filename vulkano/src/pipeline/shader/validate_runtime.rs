@@ -18,7 +18,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
 };
 use ahash::HashMap;
-use std::cmp::max;
+use std::{cmp::max, convert::Infallible};
 
 pub(crate) fn validate_runtime(
     device: &Device,
@@ -1366,7 +1366,7 @@ impl<'a> RuntimeValidator<'a> {
                             self.execution_model,
                             result_id,
                             storage_class,
-                            |key, data| {
+                            |key, data| -> Result<(), Infallible> {
                                 let InputOutputData { type_id, .. } = data;
 
                                 match key {
@@ -1386,8 +1386,11 @@ impl<'a> RuntimeValidator<'a> {
                                         // https://github.com/KhronosGroup/Vulkan-Docs/issues/2293
                                     }
                                 }
+
+                                Ok(())
                             },
-                        );
+                        )
+                        .unwrap();
                     }
 
                     if is_in_interface && storage_class == StorageClass::Output {

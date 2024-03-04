@@ -1,7 +1,7 @@
-use super::VertexBufferDescription;
+use super::{definition::VertexDefinition, VertexBufferDescription};
 use crate::{
-    pipeline::graphics::vertex_input::{Vertex, VertexDefinition, VertexInputState},
-    shader::ShaderInterface,
+    pipeline::graphics::vertex_input::{Vertex, VertexInputState},
+    shader::EntryPoint,
     ValidationError,
 };
 
@@ -55,8 +55,8 @@ unsafe impl VertexDefinition for BuffersDefinition {
     #[inline]
     fn definition(
         &self,
-        interface: &ShaderInterface,
+        entry_point: &EntryPoint,
     ) -> Result<VertexInputState, Box<ValidationError>> {
-        self.0.definition(interface)
+        self.0.definition(entry_point)
     }
 }

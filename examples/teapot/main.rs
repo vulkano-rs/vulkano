@@ -497,7 +497,7 @@ fn window_size_dependent_setup(
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = {
         let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
-            .definition(&vs.info().input_interface)
+            .definition(&vs)
             .unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),

@@ -433,7 +433,6 @@ use half::f16;
 use smallvec::SmallVec;
 use spirv::ExecutionModel;
 use std::{
-    borrow::Cow,
     collections::hash_map::Entry,
     mem::{discriminant, size_of_val, MaybeUninit},
     num::NonZeroU64,
@@ -1150,8 +1149,6 @@ pub struct EntryPointInfo {
     pub execution_model: ExecutionModel,
     pub descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     pub push_constant_requirements: Option<PushConstantRange>,
-    pub input_interface: ShaderInterface,
-    pub output_interface: ShaderInterface,
 }
 
 /// Represents a shader entry point in a shader module.
@@ -1369,86 +1366,6 @@ impl DescriptorRequirements {
         *sampler_no_ycbcr_conversion |= other.sampler_no_ycbcr_conversion;
         sampler_with_images.extend(&other.sampler_with_images);
         *storage_image_atomic |= other.storage_image_atomic;
-    }
-}
-
-/// Type that contains the definition of an interface between two shader stages, or between
-/// the outside and a shader stage.
-#[derive(Clone, Debug)]
-pub struct ShaderInterface {
-    elements: Vec<ShaderInterfaceEntry>,
-}
-
-impl ShaderInterface {
-    /// Constructs a new `ShaderInterface`.
-    ///
-    /// # Safety
-    ///
-    /// - Must only provide one entry per location.
-    /// - The format of each element must not be larger than 128 bits.
-    // TODO: 4x64 bit formats are possible, but they require special handling.
-    // TODO: could this be made safe?
-    #[inline]
-    pub unsafe fn new_unchecked(elements: Vec<ShaderInterfaceEntry>) -> ShaderInterface {
-        ShaderInterface { elements }
-    }
-
-    /// Creates a description of an empty shader interface.
-    #[inline]
-    pub const fn empty() -> ShaderInterface {
-        ShaderInterface {
-            elements: Vec::new(),
-        }
-    }
-
-    /// Returns a slice containing the elements of the interface.
-    #[inline]
-    pub fn elements(&self) -> &[ShaderInterfaceEntry] {
-        self.elements.as_ref()
-    }
-}
-
-/// Entry of a shader interface definition.
-#[derive(Debug, Clone)]
-pub struct ShaderInterfaceEntry {
-    /// The location slot that the variable starts at.
-    pub location: u32,
-
-    /// The index within the location slot that the variable is located.
-    /// Only meaningful for fragment outputs.
-    pub index: u32,
-
-    /// The component slot that the variable starts at. Must be in the range 0..=3.
-    pub component: u32,
-
-    /// Name of the element, or `None` if the name is unknown.
-    pub name: Option<Cow<'static, str>>,
-
-    /// The type of the variable.
-    pub ty: ShaderInterfaceEntryType,
-}
-
-/// The type of a variable in a shader interface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ShaderInterfaceEntryType {
-    /// The base numeric type.
-    pub base_type: NumericType,
-
-    /// The number of vector components. Must be in the range 1..=4.
-    pub num_components: u32,
-
-    /// The number of array elements or matrix columns.
-    pub num_elements: u32,
-
-    /// Whether the base type is 64 bits wide. If true, each item of the base type takes up two
-    /// component slots instead of one.
-    pub is_64bit: bool,
-}
-
-impl ShaderInterfaceEntryType {
-    pub(crate) fn num_locations(&self) -> u32 {
-        assert!(!self.is_64bit); // TODO: implement
-        self.num_elements
     }
 }
 

@@ -187,9 +187,7 @@ fn main() -> Result<(), impl Error> {
             module.entry_point("main").unwrap()
         };
 
-        let vertex_input_state = Vertex::per_vertex()
-            .definition(&vs.info().input_interface)
-            .unwrap();
+        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),
             PipelineShaderStageCreateInfo::new(fs),

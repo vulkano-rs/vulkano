@@ -290,7 +290,7 @@ fn main() -> Result<(), impl Error> {
             .entry_point("main")
             .unwrap();
         let vertex_input_state = [TriangleVertex::per_vertex(), InstanceData::per_instance()]
-            .definition(&vs.info().input_interface)
+            .definition(&vs)
             .unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),

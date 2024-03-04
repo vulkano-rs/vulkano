@@ -197,9 +197,7 @@ fn main() -> Result<(), impl Error> {
 
         // Automatically generate a vertex input state from the vertex shader's input interface,
         // that takes a single vertex buffer containing `Vertex` structs.
-        let vertex_input_state = Vertex::per_vertex()
-            .definition(&vs.info().input_interface)
-            .unwrap();
+        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
 
         // Make a list of the shader stages that the pipeline will have.
         let stages = [
