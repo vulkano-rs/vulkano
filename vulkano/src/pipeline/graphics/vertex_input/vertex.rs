@@ -83,13 +83,19 @@ impl VertexBufferDescription {
 /// Information about a member of a vertex struct.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VertexMemberInfo {
-    /// Offset of the member in bytes from the start of the struct.
-    pub offset: usize,
-    /// Attribute format of the member. Implicitly provides number of components.
+    /// The offset of the member in bytes from the start of the struct.
+    pub offset: u32,
+
+    /// The attribute format of the member. Implicitly provides the number of components.
     pub format: Format,
-    /// Number of consecutive array elements or matrix columns using format. The corresponding
-    /// number of locations might defer depending on the size of the format.
+
+    /// The number of consecutive array elements or matrix columns using `format`.
+    /// The corresponding number of locations might differ depending on the size of the format.
     pub num_elements: u32,
+
+    /// If `num_elements` is greater than 1, the stride in bytes between the start of consecutive
+    /// elements.
+    pub stride: u32,
 }
 
 impl VertexMemberInfo {

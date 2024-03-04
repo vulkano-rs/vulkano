@@ -694,9 +694,7 @@ mod linux {
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let vertex_input_state = MyVertex::per_vertex()
-                .definition(&vs.info().input_interface)
-                .unwrap();
+            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(vs),
                 PipelineShaderStageCreateInfo::new(fs),

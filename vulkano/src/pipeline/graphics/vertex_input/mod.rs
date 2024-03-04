@@ -304,7 +304,7 @@ impl VertexInputState {
         // the location following it needs to be empty.
         let unassigned_locations = attributes
             .iter()
-            .filter(|&(_, attribute_desc)| attribute_desc.format.block_size() > 16)
+            .filter(|&(_, attribute_desc)| attribute_desc.format.locations() == 2)
             .map(|(location, _)| location + 1);
 
         for location in unassigned_locations {
@@ -342,12 +342,7 @@ impl VertexInputState {
                         location.checked_sub(1).and_then(|location| {
                             self.attributes
                                 .get(&location)
-                                .filter(|attribute_desc| {
-                                    attribute_desc
-                                        .format
-                                        .components()
-                                        .starts_with(&[64, 64, 64])
-                                })
+                                .filter(|attribute_desc| attribute_desc.format.locations() == 2)
                                 .map(|d| (true, d))
                         })
                     })

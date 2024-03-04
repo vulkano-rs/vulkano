@@ -144,6 +144,19 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             }
         },
     );
+    let locations_items = members.iter().filter_map(
+        |FormatMember {
+             name, components, ..
+         }| {
+            if components.starts_with(&[64, 64, 64]) {
+                Some(quote! {
+                    Self::#name => 2,
+                })
+            } else {
+                None
+            }
+        },
+    );
     let compression_items = members.iter().filter_map(
         |FormatMember {
              name, compression, ..
@@ -416,6 +429,15 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             pub fn components(self) -> [u8; 4] {
                 match self {
                     #(#components_items)*
+                }
+            }
+
+            /// Returns the number of shader input/output locations that a single element of this
+            /// format takes up.
+            pub fn locations(self) -> u32 {
+                match self {
+                    #(#locations_items)*
+                    _ => 1,
                 }
             }
 

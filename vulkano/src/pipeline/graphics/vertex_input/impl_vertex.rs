@@ -57,9 +57,10 @@ macro_rules! impl_vertex {
                         let member_ptr = (&dummy.$member) as *const _;
 
                         members.insert(stringify!($member).to_string(), VertexMemberInfo {
-                            offset: member_ptr as usize - dummy_ptr as usize,
+                            offset: u32::try_from(member_ptr as usize - dummy_ptr as usize).unwrap(),
                             format,
                             num_elements,
+                            stride: format_size,
                         });
                     }
                 )*

@@ -77,9 +77,7 @@ impl TriangleDrawSystem {
                 .expect("failed to create shader module")
                 .entry_point("main")
                 .expect("shader entry point not found");
-            let vertex_input_state = TriangleVertex::per_vertex()
-                .definition(&vs.info().input_interface)
-                .unwrap();
+            let vertex_input_state = TriangleVertex::per_vertex().definition(&vs).unwrap();
             let stages = [
                 PipelineShaderStageCreateInfo::new(vs),
                 PipelineShaderStageCreateInfo::new(fs),
