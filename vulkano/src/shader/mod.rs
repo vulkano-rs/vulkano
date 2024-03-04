@@ -138,13 +138,23 @@
 //!   then if the shader accesses a descriptor in that binding, the descriptor must be initialized
 //!   and contain a valid resource.
 //!
-//! ## Buffers
+//! ## Buffers and memory accesses
 //!
 //! - If the [`robust_buffer_access`](DeviceFeatures::robust_buffer_access) feature is not enabled
 //!   on the device, then the shader must not access any values outside the range of the buffer, as
 //!   specified when writing the descriptor set. <sup>[\[06935\]] [\[06936\]]</sup>
-//! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader, then
-//!   they must point to valid buffer memory of the correct type.
+//! - If any `PhysicalStorageBuffer` pointers to device memory are dereferenced in the shader,
+//!   then:
+//!   - The pointer must point to valid memory of the correct type.
+//!   - The pointer must be aligned to a multiple of the largest scalar type within the type that
+//!     it points to. <sup>[\[06314\]]</sup>
+//!   - If the instruction has `Aligned` as one of its memory operands, the pointer must be aligned
+//!     to the specified alignment. <sup>[\[06315\]]</sup>
+//! - For `OpCooperativeMatrixLoadKHR`, `OpCooperativeMatrixStoreKHR`, `OpCooperativeMatrixLoadNV`
+//!   and `OpCooperativeMatrixStoreNV` instructions, the `Pointer` and `Stride` operands must both
+//!   be aligned to the minimum of either 16 bytes or the number of bytes per row/column of the
+//!   matrix (depending on the `ColumnMajor` and `RowMajor` decorations). <sup>[\[06324\]]
+//!   [\[08986\]]</sup>
 //!
 //! ## Image views and buffer views
 //!
@@ -160,6 +170,8 @@
 //!   only if the format of the bound image view or buffer view also has a 64-bit component.
 //!   Otherwise, it must have a `Width` of 32. <sup>[\[04470\]] [\[04471\]] [\[04472\]]
 //!   [\[04473\]]</sup>
+//! - The [`samples`](Image::samples) of the underlying image of the bound image view must match
+//!   the `MS` operand of the `OpImageType`. <sup>[\[08725\]] [\[08726\]]</sup>
 //! - For a storage image/texel buffer declared with `OpTypeImage` with an `Unknown` format:
 //!   - If it is written to in the shader, the format of the bound image view or buffer view must
 //!     have the [`FormatFeatures::STORAGE_WRITE_WITHOUT_FORMAT`] format feature. <sup>[\[07027\]]
@@ -209,54 +221,197 @@
 //! - The sampler must not be used with the `ConstOffset` or `Offset` image operands.
 //!   <sup>[\[06551\]]</sup>
 //!
-//! ## Acceleration structures
+//! ## Mesh shading
 //!
+//! - If the shader declares the `OutputPoints` execution mode with a value greater than 0, and the
+//!   [`maintenance5`](Features::maintenance5) feature is not enabled on the device, then the
+//!   shader must write to a variable decorated with `PointSize` for each output point.
+//!   <sup>[\[09218\]]</sup>
+//!
+//! For `OpSetMeshOutputsEXT` instructions:
+//!
+//! - The `Vertex Count` operand must be less than or equal to the value declared with the shader's
+//!   `OutputVertices` execution mode. <sup>[\[07332\]]</sup>
+//! - The `Primitive Count` operand must be less than or equal to the value declared with the
+//!   shader's `OutputPrimitivesEXT` execution mode. <sup>[\[07333\]]</sup>
+//!
+//! ## Acceleration structures, ray queries and ray tracing
+//!
+//! - Acceleration structures that are used as operands to an instruction must have been built as a
+//!   top-level acceleration structure. <sup>[\[06352\]] [\[06359\]] [\[06365\]] [\[07709\]]</sup>
 //! - In any top-level acceleration structure, the pointers that refer to the contained
-//!   bottom-level acceleration structure instances must point to valid acceleration structures.
+//!   bottom-level acceleration structure instances must point to valid bottom-level acceleration
+//!   structures.
+//!
+//! For `OpRayQueryInitializeKHR` and `OpTraceRayKHR` instructions:
+//!
+//! - The `Rayflags` operand must not contain more than one of:
+//!   - `SkipTrianglesKHR`, `CullBackFacingTrianglesKHR` and `CullFrontFacingTrianglesKHR`
+//!     <sup>[\[06889\]] [\[06892\]]</sup>
+//!   - `SkipTrianglesKHR` and `SkipAABBsKHR` <sup>[\[06890\]] [\[06552\]] [\[07712\]]</sup>
+//!   - `OpaqueKHR`, `NoOpaqueKHR`, `CullOpaqueKHR`, and `CullNoOpaqueKHR` <sup>[\[06891\]]
+//!     [\[06893\]]</sup>
+//! - The `RayOrigin` and `RayDirection` operands must not contain infinite or NaN values. <sup>
+//!   [\[06348\]] [\[06351\]] [\[06355\]] [\[06358\]] </sup>
+//! - The `RayTmin` and `RayTmax` operands must not contain negative or NaN values, and `RayTmin`
+//!   must be less than or equal to `RayTmax`. <sup> [\[06349\]] [\[06350\]] [\[06351\]]
+//!   [\[06356\]] [\[06357\]] [\[06358\]] </sup>
+//!
+//! For `OpRayQueryGenerateIntersectionKHR` instructions:
+//!
+//! - The `Hit T` operand must be greater than or equal to the value that would be returned by
+//!   `OpRayQueryGetRayTMinKHR`. <sup>[\[06353\]]</sup>
+//! - The `Hit T` operand must be less than or equal to the value that would be returned by
+//!   `OpRayQueryGetIntersectionTKHR` for the current committed intersection.
+//!   <sup>[\[06353\]]</sup>
+//!
+//! For `OpReportIntersectionKHR` instructions:
+//!
+//! - The `Hit Kind` operand must be between 0 and 127 inclusive. <sup>[\[06998\]]</sup>
+//!
+//! ## Dynamically uniform values and control flow
+//!
+//! In a shader, a value (expression, variable) is *[dynamically uniform]* if its value is the same
+//! for all shader invocations within an *invocation group*. What counts as an invocation group
+//! depends on the type of shader being executed:
+//!
+//! - For compute, task and mesh shaders, an invocation group is the same as the (local) workgroup.
+//!   A single `dispatch` command value spawns one distinct invocation group for every element in
+//!   the product of the given `group_counts` argument.
+//! - For all other graphics shaders, an invocation group is all shaders invoked by a single draw
+//!   command. For indirect draws, each element of the indirect buffer creates one draw call.
+//! - For ray tracing shaders, an invocation group is an implementation-dependent subset of the
+//!   shaders invoked by a single ray tracing command.
+//!
+//! Vulkan and SPIR-V assume that certain values within a shader are dynamically uniform, and will
+//! optimize the generated shader code accordingly. If such a value is not actually dynamically
+//! uniform, this results in undefined behavior. This concerns the following values:
+//!
+//! - The index into an arrayed descriptor binding. If the index is not dynamically uniform, you
+//!   must explicitly mark it with the `NonUniform` decoration in SPIR-V, or the `nonuniformEXT`
+//!   function in GLSL. <sup>[\[06274\]]</sup>
+//! - The `Index` argument of the `OpGroupNonUniformQuadBroadcast` instruction.
+//!   <sup>[\[06276\]]</sup>
+//! - The `Id` argument of the `OpGroupNonUniformBroadcast` instruction. <sup>[\[06277\]]</sup>
+//! - The arguments of the `OpEmitMeshTasksEXT` and `OpSetMeshOutputsEXT` instructions.
+//!   <sup>[\[07117\]] [\[07118\]]</sup>
+//! - The `Texture Sampled Image` and `Weight Image` arguments of the `OpImageWeightedSampleQCOM`
+//!   instruction. <sup>[\[06979\]]</sup>
+//! - The `Texture Sampled Image`, `Reference Sampled Image` and `Block Size` arguments of the
+//!   `OpImageBlockMatchSADQCOM` and `OpImageBlockMatchSSDQCOM` instructions.
+//!   <sup>[\[06982\]]</sup>
+//! - The `Sampled Texture Image` and `Box Size` arguments of the `OpImageBoxFilterQCOM`
+//!   instruction. <sup>[\[06990\]]</sup>
+//! - The `Target Sampled Image`, `Reference Sampled Image` and `Block Size` arguments of any
+//!   `OpImageBlockMatchWindow*QCOM` or `OpImageBlockMatchGather*QCOM` instructions.
+//!   <sup>[\[09219\]]</sup>
+//!
+//! Some operations have specific requirements for control flow within the shader:
+//!
+//! - The `OpEmitMeshTasksEXT` and `OpSetMeshOutputsEXT` instructions must be executed uniformly
+//!   within the invocation group. That means that, either all shader invocations within the
+//!   invocation group must execute the instruction, or none of them must execute it.
+//!   <sup>[\[07117\]] [\[07118\]]</sup>
+//! - If the `PointSize` built-in is written to, then all execution paths must write to it.
+//!   <sup>[\[09190\]]</sup>
 //!
 //! [alignment rules]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap15.html#interfaces-resources-layout
 //! [`GL_EXT_scalar_block_layout`]: https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_scalar_block_layout.txt
 //! [`scalar_block_layout`]: DeviceFeatures::scalar_block_layout
 //! [`uniform_buffer_standard_layout`]: DeviceFeatures::uniform_buffer_standard_layout
-//! [\[06935\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-uniformBuffers-06935
-//! [\[06936\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-storageBuffers-06936
-//! [\[07752\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-viewType-07752
-//! [\[07753\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-format-07753
+//! [dynamically uniform]: https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#_uniformity
+//! [\[02691\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02691
+//! [\[02692\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02692
+//! [\[02694\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubic-02694
+//! [\[02695\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubicMinmax-02695
 //! [\[04469\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-04469
-//! [\[08795\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08795
-//! [\[08796\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08796
 //! [\[04470\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04470
 //! [\[04471\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04471
 //! [\[04472\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04472
 //! [\[04473\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-SampledType-04473
+//! [\[04553\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-magFilter-04553
+//! [\[04770\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-mipmapMode-04770
+//! [\[06274\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-NonUniform-06274
+//! [\[06276\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-subgroupBroadcastDynamicId-06276
+//! [\[06277\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-subgroupBroadcastDynamicId-06277
+//! [\[06314\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-PhysicalStorageBuffer64-06314
+//! [\[06315\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-PhysicalStorageBuffer64-06315
+//! [\[06324\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpCooperativeMatrixLoadNV-06324
+//! [\[06348\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06348
+//! [\[06349\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06349
+//! [\[06350\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06350
+//! [\[06351\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06351
+//! [\[06352\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06352
+//! [\[06353\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryGenerateIntersectionKHR-06353
+//! [\[06355\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06355
+//! [\[06356\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06356
+//! [\[06357\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06357
+//! [\[06358\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06358
+//! [\[06359\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06359
+//! [\[06361\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06361
+//! [\[06362\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06362
+//! [\[06363\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06363
+//! [\[06364\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06364
+//! [\[06365\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06365
+//! [\[06366\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayMotionNV-06366
+//! [\[06479\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06479
+//! [\[06550\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06550
+//! [\[06551\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-ConstOffset-06551
+//! [\[06552\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06552
+//! [\[06889\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06889
+//! [\[06890\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06890
+//! [\[06891\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpRayQueryInitializeKHR-06891
+//! [\[06892\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06892
+//! [\[06893\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpTraceRayKHR-06893
+//! [\[06935\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-uniformBuffers-06935
+//! [\[06936\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-storageBuffers-06936
+//! [\[06979\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageWeightedSampleQCOM-06979
+//! [\[06982\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageBlockMatchSADQCOM-06982
+//! [\[06990\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageBoxFilterQCOM-06990
+//! [\[06998\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpReportIntersectionKHR-06998
 //! [\[07027\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07027
 //! [\[07029\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07029
 //! [\[07028\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07028
 //! [\[07030\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpTypeImage-07030
-//! [\[02691\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02691
+//! [\[07117\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-TaskEXT-07117
+//! [\[07118\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-07118
+//! [\[07332\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-07332
+//! [\[07333\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-07333
+//! [\[07705\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07705
+//! [\[07706\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07706
+//! [\[07707\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07707
+//! [\[07708\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07708
+//! [\[07709\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayMotionNV-07709
+//! [\[07710\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07710
+//! [\[07712\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07712
+//! [\[07713\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07713
+//! [\[07714\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpHitObjectTraceRayNV-07714
+//! [\[07752\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-viewType-07752
+//! [\[07753\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-format-07753
 //! [\[07888\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-07888
-//! [\[04553\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-magFilter-04553
-//! [\[04770\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-mipmapMode-04770
-//! [\[02692\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-02692
-//! [\[02694\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubic-02694
-//! [\[02695\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-filterCubicMinmax-02695
-//! [\[06479\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06479
 //! [\[08609\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08609
 //! [\[08610\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08610
 //! [\[08611\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-08611
-//! [\[06550\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-None-06550
-//! [\[06551\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-ConstOffset-06551
+//! [\[08725\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-samples-08725
+//! [\[08726\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-samples-08726
+//! [\[08795\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08795
+//! [\[08796\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-vkCmdDispatch-OpImageWrite-08796
+//! [\[08986\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpCooperativeMatrixLoadKHR-08986
+//! [\[09190\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-maintenance5-09190
+//! [\[09218\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-MeshEXT-09218
+//! [\[09219\]]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-RuntimeSpirv-OpImageBlockMatchWindow-09219
 
 use self::spirv::{Id, Instruction};
 #[cfg(doc)]
 use crate::{
+    acceleration_structure::BuildAccelerationStructureFlags,
     descriptor_set::layout::DescriptorBindingFlags,
-    device::{physical::PhysicalDevice, DeviceFeatures},
+    device::{physical::PhysicalDevice, DeviceFeatures, DeviceProperties},
     format::FormatFeatures,
     image::{
         sampler::{Filter, Sampler, SamplerCreateInfo, SamplerMipmapMode, SamplerReductionMode},
         view::ImageView,
-        ImageFormatProperties,
+        Image, ImageFormatProperties,
     },
 };
 use crate::{

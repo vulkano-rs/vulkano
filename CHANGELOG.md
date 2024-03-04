@@ -78,6 +78,9 @@ Changes to queries:
 Changes to queues:
 - The `Queue::id_within_family` method is renamed to `queue_index` to match Vulkan.
 
+Changes to vulkano-shaders:
+- Shaders included via `bytes: <path-to-spv>` **must** no longer specify a shader type, e.g. `ty: <vertex>`.
+
 Changes to vulkano-util:
 - `VulkanoWindowRenderer::acquire` now takes in an `FnOnce(&[Arc<ImageView>])`. This means that a closure can be called when the swapchain gets recreated.
 
@@ -92,10 +95,13 @@ Changes to vulkano-util:
 - Documented the safety requirements of shaders in the `shader` module.
 - Support for the `khr_draw_indirect_count` extension.
 - Support for the `ext_mesh_shader` extension.
-- Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Support for querying memory requirements directly from the device.
-- Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
 - Support for the `glam` crate in the `type_for_format` macro.
+- Added `DepthState::reverse` helper method.
+- Vulkano-shaders: Support for Vulkan 1.3 target environment.
+- Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
+- Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
+- Validation between shader code and device extensions, features and properties.
 
 ### Bugs fixed
 
@@ -110,6 +116,7 @@ Changes to vulkano-util:
 - Fix wrong comparison in push constant size validation check.
 - Unnecessarily strict validation that disallowed providing a single DRM format modifier without an explicit layout.
 - Fixed the alignment check when (sub)allocating buffers that would limit the alignment to 64 at maximum, even though some applications might need buffers with higher alignments that aren't read/written by the host. The check is now only present when reading/writing a buffer.
+- Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
 

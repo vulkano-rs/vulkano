@@ -209,11 +209,11 @@ fn get_variables_by_key<'a>(
             variable_id,
             filter_storage_class,
             |key, data| {
-                if let InputOutputKey::Location {
+                if let InputOutputKey::User(InputOutputUserKey {
                     location,
                     component,
                     ..
-                } = key
+                }) = key
                 {
                     let InputOutputData {
                         variable_id,
@@ -646,6 +646,15 @@ pub(crate) enum ShaderInterfaceLocationWidth {
     Bits64,
 }
 
+impl ShaderInterfaceLocationWidth {
+    pub(crate) fn component_count(self) -> u32 {
+        match self {
+            ShaderInterfaceLocationWidth::Bits32 => 1,
+            ShaderInterfaceLocationWidth::Bits64 => 2,
+        }
+    }
+}
+
 impl From<u32> for ShaderInterfaceLocationWidth {
     #[inline]
     fn from(value: u32) -> Self {
@@ -662,138 +671,6 @@ pub(crate) fn shader_interface_location_info(
     entry_point_id: Id,
     filter_storage_class: StorageClass,
 ) -> HashMap<u32, ShaderInterfaceLocationInfo> {
-    fn add_type(
-        locations: &mut HashMap<u32, ShaderInterfaceLocationInfo>,
-        spirv: &Spirv,
-        mut location: u32,
-        mut component: u32,
-        index: u32,
-        type_id: Id,
-    ) -> (u32, u32) {
-        debug_assert!(component < 4);
-
-        let mut add_scalar = |numeric_type: NumericType, width: u32| -> (u32, u32) {
-            let width = ShaderInterfaceLocationWidth::from(width);
-            let components_to_add = match width {
-                ShaderInterfaceLocationWidth::Bits32 => {
-                    ColorComponents::from_index(component as usize)
-                }
-                ShaderInterfaceLocationWidth::Bits64 => {
-                    debug_assert!(component & 1 == 0);
-                    ColorComponents::from_index(component as usize)
-                        | ColorComponents::from_index(component as usize + 1)
-                }
-            };
-
-            let location_info = match locations.entry(location) {
-                Entry::Occupied(entry) => {
-                    let location_info = entry.into_mut();
-                    debug_assert_eq!(location_info.numeric_type, numeric_type);
-                    debug_assert_eq!(location_info.width, width);
-                    location_info
-                }
-                Entry::Vacant(entry) => entry.insert(ShaderInterfaceLocationInfo {
-                    numeric_type,
-                    width,
-                    components: [ColorComponents::empty(); 2],
-                }),
-            };
-
-            let components = &mut location_info.components[index as usize];
-            debug_assert!(!components.intersects(components_to_add));
-            *components |= components_to_add;
-
-            (components_to_add.count(), 1)
-        };
-
-        match *spirv.id(type_id).instruction() {
-            Instruction::TypeInt {
-                width, signedness, ..
-            } => {
-                let numeric_type = if signedness == 1 {
-                    NumericType::Int
-                } else {
-                    NumericType::Uint
-                };
-
-                add_scalar(numeric_type, width)
-            }
-            Instruction::TypeFloat { width, .. } => add_scalar(NumericType::Float, width),
-            Instruction::TypeVector {
-                component_type,
-                component_count,
-                ..
-            } => {
-                let mut total_locations_added = 1;
-
-                for _ in 0..component_count {
-                    // Overflow into next location
-                    if component == 4 {
-                        component = 0;
-                        location += 1;
-                        total_locations_added += 1;
-                    } else {
-                        debug_assert!(component < 4);
-                    }
-
-                    let (_, components_added) =
-                        add_type(locations, spirv, location, component, index, component_type);
-                    component += components_added;
-                }
-
-                (total_locations_added, 0)
-            }
-            Instruction::TypeMatrix {
-                column_type,
-                column_count,
-                ..
-            } => {
-                let mut total_locations_added = 0;
-
-                for _ in 0..column_count {
-                    let (locations_added, _) =
-                        add_type(locations, spirv, location, component, index, column_type);
-                    location += locations_added;
-                    total_locations_added += locations_added;
-                }
-
-                (total_locations_added, 0)
-            }
-            Instruction::TypeArray {
-                element_type,
-                length,
-                ..
-            } => {
-                let length = get_constant(spirv, length).unwrap();
-                let mut total_locations_added = 0;
-
-                for _ in 0..length {
-                    let (locations_added, _) =
-                        add_type(locations, spirv, location, component, index, element_type);
-                    location += locations_added;
-                    total_locations_added += locations_added;
-                }
-
-                (total_locations_added, 0)
-            }
-            Instruction::TypeStruct {
-                ref member_types, ..
-            } => {
-                let mut total_locations_added = 0;
-
-                for &member_type in member_types {
-                    let (locations_added, _) =
-                        add_type(locations, spirv, location, component, index, member_type);
-                    location += locations_added;
-                    total_locations_added += locations_added;
-                }
-
-                (total_locations_added, 0)
-            }
-            _ => unimplemented!(),
-        }
-    }
-
     let (execution_model, interface) = match spirv.function(entry_point_id).entry_point() {
         Some(&Instruction::EntryPoint {
             execution_model,
@@ -803,7 +680,42 @@ pub(crate) fn shader_interface_location_info(
         _ => unreachable!(),
     };
 
-    let mut locations = HashMap::default();
+    let mut locations: HashMap<u32, ShaderInterfaceLocationInfo> = HashMap::default();
+    let mut scalar_func = |key: InputOutputUserKey,
+                           width: ShaderInterfaceLocationWidth,
+                           numeric_type: NumericType| {
+        let InputOutputUserKey {
+            location,
+            component,
+            index,
+        } = key;
+
+        let location_info = match locations.entry(location) {
+            Entry::Occupied(entry) => {
+                let location_info = entry.into_mut();
+                debug_assert_eq!(location_info.numeric_type, numeric_type);
+                debug_assert_eq!(location_info.width, width);
+                location_info
+            }
+            Entry::Vacant(entry) => entry.insert(ShaderInterfaceLocationInfo {
+                numeric_type,
+                width,
+                components: [ColorComponents::empty(); 2],
+            }),
+        };
+        let components = &mut location_info.components[index as usize];
+
+        let components_to_add = match width {
+            ShaderInterfaceLocationWidth::Bits32 => ColorComponents::from_index(component as usize),
+            ShaderInterfaceLocationWidth::Bits64 => {
+                debug_assert!(component & 1 == 0);
+                ColorComponents::from_index(component as usize)
+                    | ColorComponents::from_index(component as usize + 1)
+            }
+        };
+        debug_assert!(!components.intersects(components_to_add));
+        *components |= components_to_add;
+    };
 
     for &variable_id in interface {
         input_output_map(
@@ -812,14 +724,9 @@ pub(crate) fn shader_interface_location_info(
             variable_id,
             filter_storage_class,
             |key, data| {
-                if let InputOutputKey::Location {
-                    location,
-                    component,
-                    index,
-                } = key
-                {
+                if let InputOutputKey::User(key) = key {
                     let InputOutputData { type_id, .. } = data;
-                    add_type(&mut locations, spirv, location, component, index, type_id);
+                    shader_interface_analyze_type(spirv, type_id, key, &mut scalar_func);
                 }
             },
         );
@@ -828,16 +735,121 @@ pub(crate) fn shader_interface_location_info(
     locations
 }
 
+/// Recursively analyzes the type `type_id` with the given `key`. Calls `scalar_func` on every
+/// scalar type that is encountered, and returns the number of locations and components to advance.
+pub(crate) fn shader_interface_analyze_type(
+    spirv: &Spirv,
+    type_id: Id,
+    mut key: InputOutputUserKey,
+    scalar_func: &mut impl FnMut(InputOutputUserKey, ShaderInterfaceLocationWidth, NumericType),
+) -> (u32, u32) {
+    debug_assert!(key.component < 4);
+
+    match *spirv.id(type_id).instruction() {
+        Instruction::TypeInt {
+            width, signedness, ..
+        } => {
+            let numeric_type = if signedness == 1 {
+                NumericType::Int
+            } else {
+                NumericType::Uint
+            };
+
+            let width = ShaderInterfaceLocationWidth::from(width);
+            scalar_func(key, width, numeric_type);
+            (1, width.component_count())
+        }
+        Instruction::TypeFloat { width, .. } => {
+            let width = ShaderInterfaceLocationWidth::from(width);
+            scalar_func(key, width, NumericType::Float);
+            (1, width.component_count())
+        }
+        Instruction::TypeVector {
+            component_type,
+            component_count,
+            ..
+        } => {
+            let mut total_locations_added = 1;
+
+            for _ in 0..component_count {
+                // Overflow into next location
+                if key.component == 4 {
+                    key.component = 0;
+                    key.location += 1;
+                    total_locations_added += 1;
+                } else {
+                    debug_assert!(key.component < 4);
+                }
+
+                let (_, components_added) =
+                    shader_interface_analyze_type(spirv, component_type, key, scalar_func);
+                key.component += components_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        Instruction::TypeMatrix {
+            column_type,
+            column_count,
+            ..
+        } => {
+            let mut total_locations_added = 0;
+
+            for _ in 0..column_count {
+                let (locations_added, _) =
+                    shader_interface_analyze_type(spirv, column_type, key, scalar_func);
+                key.location += locations_added;
+                total_locations_added += locations_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        Instruction::TypeArray {
+            element_type,
+            length,
+            ..
+        } => {
+            let length = get_constant(spirv, length).unwrap();
+            let mut total_locations_added = 0;
+
+            for _ in 0..length {
+                let (locations_added, _) =
+                    shader_interface_analyze_type(spirv, element_type, key, scalar_func);
+                key.location += locations_added;
+                total_locations_added += locations_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        Instruction::TypeStruct {
+            ref member_types, ..
+        } => {
+            let mut total_locations_added = 0;
+
+            for &member_type in member_types {
+                let (locations_added, _) =
+                    shader_interface_analyze_type(spirv, member_type, key, scalar_func);
+                key.location += locations_added;
+                total_locations_added += locations_added;
+            }
+
+            (total_locations_added, 0)
+        }
+        _ => unimplemented!(),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum InputOutputKey {
-    Location {
-        location: u32,
-        component: u32,
-        index: u32,
-    },
-    BuiltIn {
-        built_in: BuiltIn,
-    },
+    User(InputOutputUserKey),
+    BuiltIn(BuiltIn),
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct InputOutputUserKey {
+    pub(crate) location: u32,
+    pub(crate) component: u32,
+    pub(crate) index: u32,
 }
 
 pub(crate) struct InputOutputData {
@@ -895,11 +907,11 @@ pub(crate) fn input_output_map(
 
     if let Some(location) = location {
         func(
-            InputOutputKey::Location {
+            InputOutputKey::User(InputOutputUserKey {
                 location,
                 component,
                 index,
-            },
+            }),
             InputOutputData {
                 variable_id,
                 pointer_type_id,
@@ -909,7 +921,7 @@ pub(crate) fn input_output_map(
         );
     } else if let Some(built_in) = built_in {
         func(
-            InputOutputKey::BuiltIn { built_in },
+            InputOutputKey::BuiltIn(built_in),
             InputOutputData {
                 variable_id,
                 pointer_type_id,
@@ -949,11 +961,11 @@ pub(crate) fn input_output_map(
 
             if let Some(location) = location {
                 func(
-                    InputOutputKey::Location {
+                    InputOutputKey::User(InputOutputUserKey {
                         location,
                         component,
                         index,
-                    },
+                    }),
                     InputOutputData {
                         variable_id,
                         pointer_type_id,
@@ -966,7 +978,7 @@ pub(crate) fn input_output_map(
                 );
             } else if let Some(built_in) = built_in {
                 func(
-                    InputOutputKey::BuiltIn { built_in },
+                    InputOutputKey::BuiltIn(built_in),
                     InputOutputData {
                         variable_id,
                         pointer_type_id,

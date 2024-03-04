@@ -1,7 +1,7 @@
 use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
 use ahash::HashMap;
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, TokenStreamExt};
+use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use std::{cmp::Ordering, num::NonZeroUsize};
 use syn::{Error, Ident, Result};
 use vulkano::shader::spirv::{Decoration, Id, Instruction};
@@ -90,6 +90,10 @@ pub(super) fn write_structs(
     shader: &Shader,
     type_registry: &mut TypeRegistry,
 ) -> Result<TokenStream> {
+    if !input.generate_structs {
+        return Ok(TokenStream::new());
+    }
+
     let mut structs = TokenStream::new();
 
     for (struct_id, member_type_ids) in shader
@@ -685,7 +689,19 @@ impl TypeStruct {
             .names()
             .iter()
             .find_map(|instruction| match instruction {
-                Instruction::Name { name, .. } => Some(Ident::new(name, Span::call_site())),
+                Instruction::Name { name, .. } => {
+                    // Replace chars that could potentially cause the ident to be invalid with "_".
+                    // For example, Rust-GPU names structs by their fully qualified rust name (e.g.
+                    // "foo::bar::MyStruct") in which the ":" is an invalid character for idents.
+                    let mut name =
+                        name.replace(|c: char| !(c.is_ascii_alphanumeric() || c == '_'), "_");
+                    if name.starts_with(|c: char| !c.is_ascii_alphabetic()) {
+                        name.insert(0, '_');
+                    }
+
+                    // Worst case: invalid idents will get the UnnamedX name below
+                    syn::parse_str(&name).ok()
+                }
                 _ => None,
             })
             .unwrap_or_else(|| format_ident!("Unnamed{}", struct_id.as_raw()));
