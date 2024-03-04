@@ -15,6 +15,10 @@
 
 ### Breaking changes
 
+Changes to (physical) device:
+- `Properties` is renamed to `DeviceProperties`.
+- `Features` is renamed to `DeviceFeatures`.
+
 Changes to command buffers:
 - Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
 - Merged `{Primary,Secondary}AutoCommandBuffer` into `CommandBuffer` and the corresponding `RecordingCommandBuffer::{primary,secondary}` into `new`.
