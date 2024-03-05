@@ -2764,7 +2764,7 @@ impl SubpassDescription {
         }
 
         if let Some(depth_resolve_mode) = depth_resolve_mode {
-            if depth_stencil_resolve_attachment.is_some() {
+            if depth_stencil_resolve_attachment.is_none() {
                 return Err(Box::new(ValidationError {
                     problem: "`depth_resolve_mode` is `Some`, but \
                         `depth_stencil_resolve_attachment` is `None`"
