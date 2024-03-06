@@ -340,13 +340,29 @@ pub(super) unsafe extern "system" fn trampoline(
             message_id_number,
             message: CStr::from_ptr(p_message).to_str().unwrap(),
             queue_labels: DebugUtilsMessengerCallbackLabelIter(
-                slice::from_raw_parts(p_queue_labels, queue_label_count as usize).iter(),
+                // Some drivers give a null pointer for empty data.
+                if p_queue_labels.is_null() {
+                    &[]
+                } else {
+                    slice::from_raw_parts(p_queue_labels, queue_label_count as usize)
+                }
+                .iter(),
             ),
             cmd_buf_labels: DebugUtilsMessengerCallbackLabelIter(
-                slice::from_raw_parts(p_cmd_buf_labels, cmd_buf_label_count as usize).iter(),
+                if p_cmd_buf_labels.is_null() {
+                    &[]
+                } else {
+                    slice::from_raw_parts(p_cmd_buf_labels, cmd_buf_label_count as usize)
+                }
+                .iter(),
             ),
             objects: DebugUtilsMessengerCallbackObjectNameInfoIter(
-                slice::from_raw_parts(p_objects, object_count as usize).iter(),
+                if p_objects.is_null() {
+                    &[]
+                } else {
+                    slice::from_raw_parts(p_objects, object_count as usize)
+                }
+                .iter(),
             ),
         };
 
