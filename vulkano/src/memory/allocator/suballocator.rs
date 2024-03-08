@@ -403,16 +403,33 @@ unsafe impl Suballocator for FreeListAllocator {
         unsafe {
             match state.free_list.last() {
                 Some(&last) if state.nodes.get(last).size >= size => {
-                    let index = match state
-                        .free_list
-                        .binary_search_by_key(&size, |&id| state.nodes.get(id).size)
-                    {
-                        // Exact fit.
-                        Ok(index) => index,
-                        // Next-best fit. Note that `index == free_list.len()` can't be because we
-                        // checked that the free-list contains a suballocation that is big enough.
-                        Err(index) => index,
+                    // We create a dummy node to compare against in the below binary search. The
+                    // only fields of importance are `offset` and `size`. It is paramount that we
+                    // set `offset` to zero, so that in the case where there are multiple free
+                    // suballocations with the same size, we get the first one of them, that is,
+                    // the one with the lowest offset.
+                    let dummy_node = SuballocationListNode {
+                        prev: None,
+                        next: None,
+                        offset: 0,
+                        size,
+                        ty: SuballocationType::Unknown,
                     };
+
+                    // This is almost exclusively going to return `Err`, but that's expected: we
+                    // are first comparing the size, looking for the smallest one not less than
+                    // `size`, however the next-best will do as well (that is, a size somewhat
+                    // larger). In that case we get `Err`. If we do find a suballocation with the
+                    // exact size however, we are then comparing the offsets to make sure we get
+                    // the suballocation with the lowest offset, in case there are multiple with
+                    // the same size. In that case we also exclusively get `Err` except when the
+                    // offset is zero.
+                    //
+                    // Note that `index == free_list.len()` can't be because we checked that the
+                    // free-list contains a suballocation that is big enough.
+                    let (Ok(index) | Err(index)) = state
+                        .free_list
+                        .binary_search_by_key(&dummy_node, |&id| state.nodes.get(id));
 
                     for (index, &id) in state.free_list.iter().enumerate().skip(index) {
                         let suballoc = state.nodes.get(id);
@@ -530,6 +547,31 @@ struct SuballocationListNode {
     ty: SuballocationType,
 }
 
+impl PartialEq for SuballocationListNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.size == other.size && self.offset == other.offset
+    }
+}
+
+impl Eq for SuballocationListNode {}
+
+impl PartialOrd for SuballocationListNode {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SuballocationListNode {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        // We want to sort the free-list by size.
+        self.size
+            .cmp(&other.size)
+            // However there might be multiple free suballocations with the same size, so we need
+            // to compare the offset as well to differentiate.
+            .then(self.offset.cmp(&other.offset))
+    }
+}
+
 /// Tells us if a suballocation is free, and if not, whether it is linear or not. This is needed in
 /// order to be able to respect the buffer-image granularity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -564,55 +606,10 @@ impl FreeListAllocatorState {
 
         match self
             .free_list
-            .binary_search_by_key(&node.size, |&id| self.nodes.get(id).size)
+            .binary_search_by_key(&node, |&id| self.nodes.get(id))
         {
             Ok(index) => {
-                // If there are multiple free suballocations with the same size, the search might
-                // have returned any one, so we need to find the one corresponding to the target ID.
-                if self.free_list[index] == node_id {
-                    self.free_list.remove(index);
-                    return;
-                }
-
-                // Check all previous indices that point to suballocations with the same size.
-                {
-                    let mut index = index;
-                    loop {
-                        index = index.wrapping_sub(1);
-                        if let Some(&id) = self.free_list.get(index) {
-                            if id == node_id {
-                                self.free_list.remove(index);
-                                return;
-                            }
-                            if self.nodes.get(id).size != node.size {
-                                break;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                // Check all next indices that point to suballocations with the same size.
-                {
-                    let mut index = index;
-                    loop {
-                        index += 1;
-                        if let Some(&id) = self.free_list.get(index) {
-                            if id == node_id {
-                                self.free_list.remove(index);
-                                return;
-                            }
-                            if self.nodes.get(id).size != node.size {
-                                break;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                unreachable!();
+                self.free_list.remove(index);
             }
             Err(_) => unreachable!(),
         }
@@ -698,7 +695,7 @@ impl FreeListAllocatorState {
         let node = self.nodes.get(node_id);
         let (Ok(index) | Err(index)) = self
             .free_list
-            .binary_search_by_key(&node.size, |&id| self.nodes.get(id).size);
+            .binary_search_by_key(&node, |&id| self.nodes.get(id));
         self.free_list.insert(index, node_id);
     }
 
