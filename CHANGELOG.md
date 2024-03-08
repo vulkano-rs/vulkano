@@ -131,6 +131,7 @@ Changes to vulkano-util:
 - Fixed the alignment check when (sub)allocating buffers that would limit the alignment to 64 at maximum, even though some applications might need buffers with higher alignments that aren't read/written by the host. The check is now only present when reading/writing a buffer.
 - Fix UB in debug messenger when driver reports null pointers for empty arrays.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
+- `FreeListAllocator` not giving out suballocations that are free and of suitable size/alignment in a certain edge case.
 
 # Version 0.34.1 (2023-10-29)
 
