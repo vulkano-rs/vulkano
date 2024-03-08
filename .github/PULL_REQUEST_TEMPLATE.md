@@ -30,4 +30,4 @@ Changes to `Foo`:
 
 ### Bugs fixed
 - `bar` panics when calling `foo`.
-````
+```
