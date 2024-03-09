@@ -1994,6 +1994,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "slabbin"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1040fc353ab4658e2094706abb1ee035506f6a4ba35af2cf16c80437866c6d96"
+
+[[package]]
 name = "slotmap"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2351,6 +2357,7 @@ dependencies = [
  "raw-window-handle 0.6.0",
  "serde",
  "serde_json",
+ "slabbin",
  "smallvec",
  "thread_local",
  "vk-parse",

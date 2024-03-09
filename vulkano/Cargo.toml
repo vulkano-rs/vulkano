@@ -24,6 +24,7 @@ once_cell = { workspace = true }
 parking_lot = { workspace = true, features = ["send_guard"] }
 raw-window-handle = { workspace = true, features = ["std"] }
 serde = { workspace = true, optional = true }
+slabbin = { workspace = true }
 smallvec = { workspace = true }
 thread_local = { workspace = true }
 vulkano-macros = { workspace = true, optional = true }
