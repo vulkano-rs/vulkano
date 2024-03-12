@@ -4,7 +4,6 @@
 //!
 //! [the parent module]: super
 
-use self::host::SlotId;
 pub use self::region::Region;
 use super::{
     align_down, align_up, array_vec::ArrayVec, AllocationHandle, DeviceAlignment, DeviceLayout,
@@ -15,6 +14,7 @@ use std::{
     cmp,
     error::Error,
     fmt::{self, Debug, Display},
+    ptr::NonNull,
 };
 
 /// Suballocators are used to divide a *region* into smaller *suballocations*.
@@ -353,6 +353,8 @@ pub struct FreeListAllocator {
     state: UnsafeCell<FreeListAllocatorState>,
 }
 
+unsafe impl Send for FreeListAllocator {}
+
 unsafe impl Suballocator for FreeListAllocator {
     /// Creates a new `FreeListAllocator` for the given [region].
     ///
@@ -360,17 +362,23 @@ unsafe impl Suballocator for FreeListAllocator {
     fn new(region: Region) -> Self {
         let free_size = Cell::new(region.size());
 
-        let mut nodes = host::PoolAllocator::new(256);
+        let node_allocator = slabbin::SlabAllocator::<SuballocationListNode>::new(32);
         let mut free_list = Vec::with_capacity(32);
-        let root_id = nodes.allocate(SuballocationListNode {
+        let root_ptr = node_allocator.allocate();
+        let root = SuballocationListNode {
             prev: None,
             next: None,
             offset: region.offset(),
             size: region.size(),
             ty: SuballocationType::Free,
+        };
+        unsafe { root_ptr.as_ptr().write(root) };
+        free_list.push(root_ptr);
+
+        let state = UnsafeCell::new(FreeListAllocatorState {
+            node_allocator,
+            free_list,
         });
-        free_list.push(root_id);
-        let state = UnsafeCell::new(FreeListAllocatorState { nodes, free_list });
 
         FreeListAllocator {
             region_offset: region.offset(),
@@ -400,115 +408,116 @@ unsafe impl Suballocator for FreeListAllocator {
         let alignment = layout.alignment();
         let state = unsafe { &mut *self.state.get() };
 
-        unsafe {
-            match state.free_list.last() {
-                Some(&last) if state.nodes.get(last).size >= size => {
-                    // We create a dummy node to compare against in the below binary search. The
-                    // only fields of importance are `offset` and `size`. It is paramount that we
-                    // set `offset` to zero, so that in the case where there are multiple free
-                    // suballocations with the same size, we get the first one of them, that is,
-                    // the one with the lowest offset.
-                    let dummy_node = SuballocationListNode {
-                        prev: None,
-                        next: None,
-                        offset: 0,
-                        size,
-                        ty: SuballocationType::Unknown,
-                    };
+        match state.free_list.last() {
+            Some(&last) if unsafe { (*last.as_ptr()).size } >= size => {
+                // We create a dummy node to compare against in the below binary search. The only
+                // fields of importance are `offset` and `size`. It is paramount that we set
+                // `offset` to zero, so that in the case where there are multiple free
+                // suballocations with the same size, we get the first one of them, that is, the
+                // one with the lowest offset.
+                let dummy_node = SuballocationListNode {
+                    prev: None,
+                    next: None,
+                    offset: 0,
+                    size,
+                    ty: SuballocationType::Unknown,
+                };
 
-                    // This is almost exclusively going to return `Err`, but that's expected: we
-                    // are first comparing the size, looking for the smallest one not less than
-                    // `size`, however the next-best will do as well (that is, a size somewhat
-                    // larger). In that case we get `Err`. If we do find a suballocation with the
-                    // exact size however, we are then comparing the offsets to make sure we get
-                    // the suballocation with the lowest offset, in case there are multiple with
-                    // the same size. In that case we also exclusively get `Err` except when the
-                    // offset is zero.
-                    //
-                    // Note that `index == free_list.len()` can't be because we checked that the
-                    // free-list contains a suballocation that is big enough.
-                    let (Ok(index) | Err(index)) = state
-                        .free_list
-                        .binary_search_by_key(&dummy_node, |&id| state.nodes.get(id));
+                // This is almost exclusively going to return `Err`, but that's expected: we are
+                // first comparing the size, looking for an allocation of the given `size`, however
+                // the next-best will do as well (that is, a size somewhat larger). In that case we
+                // get `Err`. If we do find a suballocation with the exact size however, we are
+                // then comparing the offsets to make sure we get the suballocation with the lowest
+                // offset, in case there are multiple with the same size. In that case we also
+                // exclusively get `Err` except when the offset is zero.
+                //
+                // Note that `index == free_list.len()` can't be because we checked that the
+                // free-list contains a suballocation that is big enough.
+                let (Ok(index) | Err(index)) = state
+                    .free_list
+                    .binary_search_by_key(&dummy_node, |&ptr| unsafe { *ptr.as_ptr() });
 
-                    for (index, &id) in state.free_list.iter().enumerate().skip(index) {
-                        let suballoc = state.nodes.get(id);
+                for (index, &node_ptr) in state.free_list.iter().enumerate().skip(index) {
+                    let node = unsafe { *node_ptr.as_ptr() };
 
-                        // This can't overflow because suballocation offsets are bounded by the
-                        // region, whose end can itself not exceed `DeviceLayout::MAX_SIZE`.
-                        let mut offset = align_up(suballoc.offset, alignment);
+                    // This can't overflow because suballocation offsets are bounded by the region,
+                    // whose end can itself not exceed `DeviceLayout::MAX_SIZE`.
+                    let mut offset = align_up(node.offset, alignment);
 
-                        if buffer_image_granularity != DeviceAlignment::MIN {
-                            debug_assert!(is_aligned(self.region_offset, buffer_image_granularity));
+                    if buffer_image_granularity != DeviceAlignment::MIN {
+                        debug_assert!(is_aligned(self.region_offset, buffer_image_granularity));
 
-                            if let Some(prev_id) = suballoc.prev {
-                                let prev = state.nodes.get(prev_id);
+                        if let Some(prev_ptr) = node.prev {
+                            let prev = unsafe { *prev_ptr.as_ptr() };
 
-                                if are_blocks_on_same_page(
-                                    prev.offset,
-                                    prev.size,
-                                    offset,
-                                    buffer_image_granularity,
-                                ) && has_granularity_conflict(prev.ty, allocation_type)
-                                {
-                                    // This is overflow-safe for the same reason as above.
-                                    offset = align_up(offset, buffer_image_granularity);
-                                }
-                            }
-                        }
-
-                        // `offset`, no matter the alignment, can't end up as more than
-                        // `DeviceAlignment::MAX` for the same reason as above. `DeviceLayout`
-                        // guarantees that `size` doesn't exceed `DeviceLayout::MAX_SIZE`.
-                        // `DeviceAlignment::MAX.as_devicesize() + DeviceLayout::MAX_SIZE` is equal
-                        // to `DeviceSize::MAX`. Therefore, `offset + size` can't overflow.
-                        //
-                        // `suballoc.offset + suballoc.size` can't overflow for the same reason as
-                        // above.
-                        if offset + size <= suballoc.offset + suballoc.size {
-                            state.free_list.remove(index);
-
-                            // SAFETY:
-                            // - `suballoc` is free.
-                            // - `offset` is that of `suballoc`, possibly rounded up.
-                            // - We checked that `offset + size` falls within `suballoc`.
-                            state.split(id, offset, size);
-                            state.nodes.get_mut(id).ty = allocation_type.into();
-
-                            // This can't overflow because suballocation sizes in the free-list are
-                            // constrained by the remaining size of the region.
-                            self.free_size.set(self.free_size.get() - size);
-
-                            return Ok(Suballocation {
+                            if are_blocks_on_same_page(
+                                prev.offset,
+                                prev.size,
                                 offset,
-                                size,
-                                allocation_type,
-                                handle: AllocationHandle::from_index(id.get()),
-                            });
+                                buffer_image_granularity,
+                            ) && has_granularity_conflict(prev.ty, allocation_type)
+                            {
+                                // This is overflow-safe for the same reason as above.
+                                offset = align_up(offset, buffer_image_granularity);
+                            }
                         }
                     }
 
-                    // There is not enough space due to alignment requirements.
-                    Err(SuballocatorError::OutOfRegionMemory)
+                    // `offset`, no matter the alignment, can't end up as more than
+                    // `DeviceAlignment::MAX` for the same reason as above. `DeviceLayout`
+                    // guarantees that `size` doesn't exceed `DeviceLayout::MAX_SIZE`.
+                    // `DeviceAlignment::MAX.as_devicesize() + DeviceLayout::MAX_SIZE` is equal to
+                    // `DeviceSize::MAX`. Therefore, `offset + size` can't overflow.
+                    //
+                    // `node.offset + node.size` can't overflow for the same reason as above.
+                    if offset + size <= node.offset + node.size {
+                        state.free_list.remove(index);
+
+                        // SAFETY:
+                        // - `node` is free.
+                        // - `offset` is that of `node`, possibly rounded up.
+                        // - We checked that `offset + size` falls within `node`.
+                        unsafe { state.split(node_ptr, offset, size) };
+
+                        unsafe { (*node_ptr.as_ptr()).ty = allocation_type.into() };
+
+                        // This can't overflow because suballocation sizes in the free-list are
+                        // constrained by the remaining size of the region.
+                        self.free_size.set(self.free_size.get() - size);
+
+                        return Ok(Suballocation {
+                            offset,
+                            size,
+                            allocation_type,
+                            handle: AllocationHandle::from_ptr(node_ptr.as_ptr().cast()),
+                        });
+                    }
                 }
-                // There would be enough space if the region wasn't so fragmented. :(
-                Some(_) if self.free_size() >= size => Err(SuballocatorError::FragmentedRegion),
-                // There is not enough space.
-                Some(_) => Err(SuballocatorError::OutOfRegionMemory),
-                // There is no space at all.
-                None => Err(SuballocatorError::OutOfRegionMemory),
+
+                // There is not enough space due to alignment requirements.
+                Err(SuballocatorError::OutOfRegionMemory)
             }
+            // There would be enough space if the region wasn't so fragmented. :(
+            Some(_) if self.free_size() >= size => Err(SuballocatorError::FragmentedRegion),
+            // There is not enough space.
+            Some(_) => Err(SuballocatorError::OutOfRegionMemory),
+            // There is no space at all.
+            None => Err(SuballocatorError::OutOfRegionMemory),
         }
     }
 
     #[inline]
     unsafe fn deallocate(&self, suballocation: Suballocation) {
-        // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
-        // allocation of `self`.
-        let node_id = SlotId::new(suballocation.handle.as_index());
+        let node_ptr = suballocation
+            .handle
+            .as_ptr()
+            .cast::<SuballocationListNode>();
 
-        let state = unsafe { &mut *self.state.get() };
-        let node = state.nodes.get_mut(node_id);
+        // SAFETY: The caller must guarantee that `suballocation` refers to a currently allocated
+        // allocation of `self`, which means that `node_ptr` is the same one we gave out on
+        // allocation, making it a valid pointer.
+        let node_ptr = unsafe { NonNull::new_unchecked(node_ptr) };
+        let node = unsafe { *node_ptr.as_ptr() };
 
         debug_assert!(node.ty != SuballocationType::Free);
 
@@ -516,9 +525,12 @@ unsafe impl Suballocator for FreeListAllocator {
         // overflow when added up.
         self.free_size.set(self.free_size.get() + node.size);
 
-        node.ty = SuballocationType::Free;
-        state.coalesce(node_id);
-        state.free(node_id);
+        unsafe { (*node_ptr.as_ptr()).ty = SuballocationType::Free };
+
+        let state = unsafe { &mut *self.state.get() };
+
+        unsafe { state.coalesce(node_ptr) };
+        unsafe { state.deallocate(node_ptr) };
     }
 
     #[inline]
@@ -532,16 +544,16 @@ unsafe impl Suballocator for FreeListAllocator {
 
 #[derive(Debug)]
 struct FreeListAllocatorState {
-    nodes: host::PoolAllocator<SuballocationListNode>,
+    node_allocator: slabbin::SlabAllocator<SuballocationListNode>,
     // Free suballocations sorted by size in ascending order. This means we can always find a
     // best-fit in *O*(log(*n*)) time in the worst case, and iterating in order is very efficient.
-    free_list: Vec<SlotId>,
+    free_list: Vec<NonNull<SuballocationListNode>>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct SuballocationListNode {
-    prev: Option<SlotId>,
-    next: Option<SlotId>,
+    prev: Option<NonNull<Self>>,
+    next: Option<NonNull<Self>>,
     offset: DeviceSize,
     size: DeviceSize,
     ty: SuballocationType,
@@ -597,16 +609,15 @@ impl FreeListAllocatorState {
     ///
     /// # Safety
     ///
-    /// - `node_id` must have been allocated by `self`.
-    /// - `node_id` must be in the free-list.
-    unsafe fn allocate(&mut self, node_id: SlotId) {
-        debug_assert!(self.free_list.contains(&node_id));
+    /// - `node_ptr` must refer to a currently free suballocation of `self`.
+    unsafe fn allocate(&mut self, node_ptr: NonNull<SuballocationListNode>) {
+        debug_assert!(self.free_list.contains(&node_ptr));
 
-        let node = self.nodes.get(node_id);
+        let node = unsafe { *node_ptr.as_ptr() };
 
         match self
             .free_list
-            .binary_search_by_key(&node, |&id| self.nodes.get(id))
+            .binary_search_by_key(&node, |&ptr| unsafe { *ptr.as_ptr() })
         {
             Ok(index) => {
                 self.free_list.remove(index);
@@ -619,11 +630,15 @@ impl FreeListAllocatorState {
     ///
     /// # Safety
     ///
-    /// - `node_id` must have been allocated by `self`.
-    /// - `node_id` must refer to a free suballocation.
+    /// - `node_ptr` must refer to a currently free suballocation of `self`.
     /// - `offset` and `size` must refer to a subregion of the given suballocation.
-    unsafe fn split(&mut self, node_id: SlotId, offset: DeviceSize, size: DeviceSize) {
-        let node = self.nodes.get(node_id);
+    unsafe fn split(
+        &mut self,
+        node_ptr: NonNull<SuballocationListNode>,
+        offset: DeviceSize,
+        size: DeviceSize,
+    ) {
+        let node = unsafe { *node_ptr.as_ptr() };
 
         debug_assert!(node.ty == SuballocationType::Free);
         debug_assert!(offset >= node.offset);
@@ -635,50 +650,53 @@ impl FreeListAllocatorState {
         let padding_back = node.offset + node.size - offset - size;
 
         if padding_front > 0 {
+            let padding_ptr = self.node_allocator.allocate();
             let padding = SuballocationListNode {
                 prev: node.prev,
-                next: Some(node_id),
+                next: Some(node_ptr),
                 offset: node.offset,
                 size: padding_front,
                 ty: SuballocationType::Free,
             };
-            let padding_id = self.nodes.allocate(padding);
+            unsafe { padding_ptr.as_ptr().write(padding) };
 
-            if let Some(prev_id) = padding.prev {
-                self.nodes.get_mut(prev_id).next = Some(padding_id);
+            if let Some(prev_ptr) = padding.prev {
+                unsafe { (*prev_ptr.as_ptr()).next = Some(padding_ptr) };
             }
 
-            let node = self.nodes.get_mut(node_id);
-            node.prev = Some(padding_id);
-            node.offset = offset;
+            unsafe { (*node_ptr.as_ptr()).prev = Some(padding_ptr) };
+            unsafe { (*node_ptr.as_ptr()).offset = offset };
             // The caller must uphold that the given region is contained within that of `node`, and
             // it follows that if there is padding, the size of the node must be larger than that
             // of the padding, so this can't overflow.
-            node.size -= padding.size;
+            unsafe { (*node_ptr.as_ptr()).size -= padding.size };
 
-            self.free(padding_id);
+            // SAFETY: We just created this suballocation, so there's no way that it was
+            // deallocated already.
+            unsafe { self.deallocate(padding_ptr) };
         }
 
         if padding_back > 0 {
+            let padding_ptr = self.node_allocator.allocate();
             let padding = SuballocationListNode {
-                prev: Some(node_id),
+                prev: Some(node_ptr),
                 next: node.next,
                 offset: offset + size,
                 size: padding_back,
                 ty: SuballocationType::Free,
             };
-            let padding_id = self.nodes.allocate(padding);
+            unsafe { padding_ptr.as_ptr().write(padding) };
 
-            if let Some(next_id) = padding.next {
-                self.nodes.get_mut(next_id).prev = Some(padding_id);
+            if let Some(next_ptr) = padding.next {
+                unsafe { (*next_ptr.as_ptr()).prev = Some(padding_ptr) };
             }
 
-            let node = self.nodes.get_mut(node_id);
-            node.next = Some(padding_id);
+            unsafe { (*node_ptr.as_ptr()).next = Some(padding_ptr) };
             // This is overflow-safe for the same reason as above.
-            node.size -= padding.size;
+            unsafe { (*node_ptr.as_ptr()).size -= padding.size };
 
-            self.free(padding_id);
+            // SAFETY: Same as above.
+            unsafe { self.deallocate(padding_ptr) };
         }
     }
 
@@ -686,46 +704,42 @@ impl FreeListAllocatorState {
     ///
     /// # Safety
     ///
-    /// - `node_id` must have been allocated by `self`.
-    /// - The free-list must not contain the given suballocation already, as that would constitude
-    ///   a double-free.
-    unsafe fn free(&mut self, node_id: SlotId) {
-        debug_assert!(!self.free_list.contains(&node_id));
+    /// - `node_ptr` must refer to a currently allocated suballocation of `self`.
+    unsafe fn deallocate(&mut self, node_ptr: NonNull<SuballocationListNode>) {
+        debug_assert!(!self.free_list.contains(&node_ptr));
 
-        let node = self.nodes.get(node_id);
+        let node = unsafe { *node_ptr.as_ptr() };
         let (Ok(index) | Err(index)) = self
             .free_list
-            .binary_search_by_key(&node, |&id| self.nodes.get(id));
-        self.free_list.insert(index, node_id);
+            .binary_search_by_key(&node, |&ptr| unsafe { *ptr.as_ptr() });
+        self.free_list.insert(index, node_ptr);
     }
 
     /// Coalesces the target (free) suballocation with adjacent ones that are also free.
     ///
     /// # Safety
     ///
-    /// - `node_id` must have been allocated by `self`.
-    /// - `node_id` must refer to a free suballocation.
-    unsafe fn coalesce(&mut self, node_id: SlotId) {
-        let node = self.nodes.get(node_id);
+    /// - `node_ptr` must refer to a currently free suballocation `self`.
+    unsafe fn coalesce(&mut self, node_ptr: NonNull<SuballocationListNode>) {
+        let node = unsafe { *node_ptr.as_ptr() };
 
         debug_assert!(node.ty == SuballocationType::Free);
 
-        if let Some(prev_id) = node.prev {
-            let prev = self.nodes.get(prev_id);
+        if let Some(prev_ptr) = node.prev {
+            let prev = unsafe { *prev_ptr.as_ptr() };
 
             if prev.ty == SuballocationType::Free {
                 // SAFETY: We checked that the suballocation is free.
-                self.allocate(prev_id);
+                self.allocate(prev_ptr);
 
-                let node = self.nodes.get_mut(node_id);
-                node.prev = prev.prev;
-                node.offset = prev.offset;
+                unsafe { (*node_ptr.as_ptr()).prev = prev.prev };
+                unsafe { (*node_ptr.as_ptr()).offset = prev.offset };
                 // The sizes of suballocations are constrained by that of the parent allocation, so
                 // they can't possibly overflow when added up.
-                node.size += prev.size;
+                unsafe { (*node_ptr.as_ptr()).size += prev.size };
 
-                if let Some(prev_id) = node.prev {
-                    self.nodes.get_mut(prev_id).next = Some(node_id);
+                if let Some(prev_ptr) = prev.prev {
+                    unsafe { (*prev_ptr.as_ptr()).next = Some(node_ptr) };
                 }
 
                 // SAFETY:
@@ -733,29 +747,28 @@ impl FreeListAllocatorState {
                 // - The suballocation was removed from the free-list.
                 // - The next suballocation and possibly a previous suballocation have been updated
                 //   such that they no longer reference the suballocation.
-                // All of these conditions combined guarantee that `prev_id` can not be used again.
-                self.nodes.free(prev_id);
+                // All of these conditions combined guarantee that `prev_ptr` cannot be used again.
+                unsafe { self.node_allocator.deallocate(prev_ptr) };
             }
         }
 
-        if let Some(next_id) = node.next {
-            let next = self.nodes.get(next_id);
+        if let Some(next_ptr) = node.next {
+            let next = unsafe { *next_ptr.as_ptr() };
 
             if next.ty == SuballocationType::Free {
                 // SAFETY: Same as above.
-                self.allocate(next_id);
+                self.allocate(next_ptr);
 
-                let node = self.nodes.get_mut(node_id);
-                node.next = next.next;
+                unsafe { (*node_ptr.as_ptr()).next = next.next };
                 // This is overflow-safe for the same reason as above.
-                node.size += next.size;
+                unsafe { (*node_ptr.as_ptr()).size += next.size };
 
-                if let Some(next_id) = node.next {
-                    self.nodes.get_mut(next_id).prev = Some(node_id);
+                if let Some(next_ptr) = next.next {
+                    unsafe { (*next_ptr.as_ptr()).prev = Some(node_ptr) };
                 }
 
                 // SAFETY: Same as above.
-                self.nodes.free(next_id);
+                unsafe { self.node_allocator.deallocate(next_ptr) };
             }
         }
     }
@@ -1170,119 +1183,6 @@ fn are_blocks_on_same_page(
     let b_start_page = align_down(b_offset, page_size);
 
     a_end_page == b_start_page
-}
-
-/// Allocators for memory on the host, used to speed up the allocators for the device.
-mod host {
-    use std::num::NonZeroUsize;
-
-    /// Allocates objects from a pool on the host, which has the following benefits:
-    ///
-    /// - Allocation is much faster because there is no need to consult the global allocator or
-    ///   even worse, the operating system, each time a small object needs to be created.
-    /// - Freeing is extremely fast, because the whole pool can be dropped at once. This is
-    ///   particularily useful for linked structures, whose nodes need to be freed one-by-one by
-    ///   traversing the whole structure otherwise.
-    /// - Cache locality is somewhat improved for linked structures with few nodes.
-    ///
-    /// The allocator doesn't hand out pointers but rather IDs that are relative to the pool. This
-    /// simplifies the logic because the pool can easily be moved and hence also resized, but the
-    /// downside is that the whole pool must be copied when it runs out of memory. It is therefore
-    /// best to start out with a safely large capacity.
-    #[derive(Debug)]
-    pub(super) struct PoolAllocator<T> {
-        pool: Vec<T>,
-        // Unsorted list of free slots.
-        free_list: Vec<SlotId>,
-    }
-
-    impl<T> PoolAllocator<T> {
-        pub fn new(capacity: usize) -> Self {
-            debug_assert!(capacity > 0);
-
-            PoolAllocator {
-                pool: Vec::with_capacity(capacity),
-                free_list: Vec::new(),
-            }
-        }
-
-        /// Allocates a slot and initializes it with the provided value. Returns the ID of the
-        /// slot.
-        pub fn allocate(&mut self, val: T) -> SlotId {
-            if let Some(id) = self.free_list.pop() {
-                *unsafe { self.get_mut(id) } = val;
-
-                id
-            } else {
-                self.pool.push(val);
-
-                // SAFETY: `self.pool` is guaranteed to be non-empty.
-                SlotId(unsafe { NonZeroUsize::new_unchecked(self.pool.len()) })
-            }
-        }
-
-        /// Returns the slot with the given ID to the allocator to be reused.
-        ///
-        /// # Safety
-        ///
-        /// - `id` must not be freed again, as that would constitute a double-free.
-        /// - `id` must not be used to to access the slot again afterward, as that would constitute
-        ///   a use-after-free.
-        pub unsafe fn free(&mut self, id: SlotId) {
-            debug_assert!(!self.free_list.contains(&id));
-            self.free_list.push(id);
-        }
-
-        /// Returns a mutable reference to the slot with the given ID.
-        ///
-        /// # Safety
-        ///
-        /// - `SlotId` must have been allocated by `self`.
-        pub unsafe fn get_mut(&mut self, id: SlotId) -> &mut T {
-            debug_assert!(!self.free_list.contains(&id));
-            debug_assert!(id.0.get() <= self.pool.len());
-
-            // SAFETY:
-            // - The caller must uphold that the `SlotId` was allocated with this allocator.
-            // - The only way to obtain a `SlotId` is through `Self::allocate`.
-            // - `Self::allocate` returns `SlotId`s in the range [1, self.pool.len()].
-            // - `self.pool` only grows and never shrinks.
-            self.pool.get_unchecked_mut(id.0.get() - 1)
-        }
-    }
-
-    impl<T: Copy> PoolAllocator<T> {
-        /// Returns a copy of the slot with the given ID.
-        ///
-        /// # Safety
-        ///
-        /// - `SlotId` must have been allocated by `self`.
-        pub unsafe fn get(&self, id: SlotId) -> T {
-            debug_assert!(!self.free_list.contains(&id));
-            debug_assert!(id.0.get() <= self.pool.len());
-
-            // SAFETY: Same as the `get_unchecked_mut` above.
-            *self.pool.get_unchecked(id.0.get() - 1)
-        }
-    }
-
-    /// ID of a slot in the pool of the `host::PoolAllocator`. This is used to limit the visibility
-    /// of the actual ID to this `host` module, making it easier to reason about unsafe code.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(super) struct SlotId(NonZeroUsize);
-
-    impl SlotId {
-        /// # Safety
-        ///
-        /// - `val` must have previously acquired through [`SlotId::get`].
-        pub unsafe fn new(val: usize) -> Self {
-            SlotId(NonZeroUsize::new(val).unwrap())
-        }
-
-        pub fn get(self) -> usize {
-            self.0.get()
-        }
-    }
 }
 
 #[cfg(test)]
