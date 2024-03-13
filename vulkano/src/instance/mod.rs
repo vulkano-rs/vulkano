@@ -142,9 +142,9 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 /// to use when used on a particular instance or device. It is possible for the instance and the
 /// device to support different versions. The supported version for an instance can be queried
 /// before creation with
-/// [`VulkanLibrary::api_version`](crate::VulkanLibrary::api_version),
+/// [`VulkanLibrary::api_version`],
 /// while for a device it can be retrieved with
-/// [`PhysicalDevice::api_version`](crate::device::physical::PhysicalDevice::api_version).
+/// [`PhysicalDevice::api_version`].
 ///
 /// When creating an `Instance`, you have to specify a maximum API version that you will use.
 /// This restricts the API version that is available for the instance and any devices created from
@@ -210,7 +210,7 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 ///
 /// When creating an `Instance`, you have the possibility to pass a list of **layers** that will
 /// be activated on the newly-created instance. The list of available layers can be retrieved by
-/// calling the [`layer_properties`](crate::VulkanLibrary::layer_properties) method of
+/// calling the [`layer_properties`](VulkanLibrary::layer_properties) method of
 /// `VulkanLibrary`.
 ///
 /// A layer is a component that will hook and potentially modify the Vulkan function calls.
@@ -592,7 +592,7 @@ impl Instance {
     /// Returns the Vulkan version supported by the instance.
     ///
     /// This is the lower of the
-    /// [driver's supported version](crate::VulkanLibrary::api_version) and
+    /// [driver's supported version](VulkanLibrary::api_version) and
     /// [`max_api_version`](Instance::max_api_version).
     #[inline]
     pub fn api_version(&self) -> Version {
@@ -952,7 +952,7 @@ pub struct InstanceCreateInfo {
     /// to use during the creation and destruction of the instance.
     ///
     /// The debug messengers are not used at any other time,
-    /// [`DebugUtilsMessenger`](crate::instance::debug::DebugUtilsMessenger) should be used for
+    /// [`DebugUtilsMessenger`](debug::DebugUtilsMessenger) should be used for
     /// that.
     ///
     /// If this is not empty, the `ext_debug_utils` extension must be set in `enabled_extensions`.

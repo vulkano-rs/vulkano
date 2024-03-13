@@ -35,7 +35,7 @@ pub struct VulkanoWindowRenderer {
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     image_index: u32,
-    present_mode: vulkano::swapchain::PresentMode,
+    present_mode: PresentMode,
 }
 
 impl VulkanoWindowRenderer {
@@ -44,7 +44,7 @@ impl VulkanoWindowRenderer {
     /// [`SwapchainCreateInfo`] parameters.
     pub fn new(
         vulkano_context: &VulkanoContext,
-        window: winit::window::Window,
+        window: Window,
         descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) -> VulkanoWindowRenderer {
@@ -315,10 +315,7 @@ impl VulkanoWindowRenderer {
         match future.map_err(Validated::unwrap) {
             Ok(mut future) => {
                 if wait_future {
-                    match future.wait(None) {
-                        Ok(x) => x,
-                        Err(e) => println!("{e}"),
-                    }
+                    future.wait(None).unwrap_or_else(|e| println!("{e}"))
                     // wait allows you to organize resource waiting yourself.
                 } else {
                     future.cleanup_finished();

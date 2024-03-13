@@ -298,7 +298,9 @@ impl Spirv {
                     } => {
                         let decorations = &decoration_groups[&decoration_group];
 
-                        (targets.iter().copied())
+                        targets
+                            .iter()
+                            .copied()
                             .flat_map(|target| {
                                 decorations
                                     .iter()
@@ -335,7 +337,9 @@ impl Spirv {
                     } => {
                         let decorations = &decoration_groups[&decoration_group];
 
-                        (targets.iter().copied())
+                        targets
+                            .iter()
+                            .copied()
                             .flat_map(|target| {
                                 decorations
                                     .iter()

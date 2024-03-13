@@ -66,7 +66,7 @@ fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Dis
     )
     .unwrap();
 
-    std::mem::drop(writer); // Ensure that the file is fully written
+    drop(writer); // Ensure that the file is fully written
     Command::new("rustfmt").arg(&path).status().ok();
 }
 
@@ -221,7 +221,7 @@ impl<'r> VkRegistryData<'r> {
         features: &IndexMap<&'a str, &'a Feature>,
         extensions: &IndexMap<&'a str, &'a Extension>,
     ) -> Vec<&'a str> {
-        (registry
+        registry
             .0
             .iter()
             .filter_map(|child| match child {
@@ -244,36 +244,38 @@ impl<'r> VkRegistryData<'r> {
                 })),
                 _ => None,
             })
-            .flatten())
-        .chain(
-            (features.values().map(|feature| feature.children.iter()))
-                .chain(
-                    extensions
-                        .values()
-                        .map(|extension| extension.children.iter()),
-                )
-                .flatten()
-                .filter_map(|child| {
-                    if let ExtensionChild::Require { items, .. } = child {
-                        return Some(items.iter().filter_map(|item| match item {
-                            InterfaceItem::Enum(Enum {
-                                name,
-                                spec:
-                                    EnumSpec::Offset {
-                                        extends,
-                                        dir: false,
-                                        ..
-                                    },
-                                ..
-                            }) if extends == "VkResult" => Some(name.as_str()),
-                            _ => None,
-                        }));
-                    }
-                    None
-                })
-                .flatten(),
-        )
-        .collect()
+            .flatten()
+            .chain(
+                features
+                    .values()
+                    .map(|feature| feature.children.iter())
+                    .chain(
+                        extensions
+                            .values()
+                            .map(|extension| extension.children.iter()),
+                    )
+                    .flatten()
+                    .filter_map(|child| {
+                        if let ExtensionChild::Require { items, .. } = child {
+                            return Some(items.iter().filter_map(|item| match item {
+                                InterfaceItem::Enum(Enum {
+                                    name,
+                                    spec:
+                                        EnumSpec::Offset {
+                                            extends,
+                                            dir: false,
+                                            ..
+                                        },
+                                    ..
+                                }) if extends == "VkResult" => Some(name.as_str()),
+                                _ => None,
+                            }));
+                        }
+                        None
+                    })
+                    .flatten(),
+            )
+            .collect()
     }
 
     fn get_extensions(registry: &Registry) -> IndexMap<&str, &Extension> {

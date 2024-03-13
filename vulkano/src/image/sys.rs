@@ -1196,7 +1196,7 @@ impl RawImage {
                 });
             };
 
-            for (info_vk, plane_info_vk) in (infos_vk.iter_mut()).zip(plane_infos_vk.iter_mut()) {
+            for (info_vk, plane_info_vk) in infos_vk.iter_mut().zip(plane_infos_vk.iter_mut()) {
                 info_vk.p_next = plane_info_vk as *mut _ as *mut _;
             }
 

@@ -162,7 +162,7 @@
 //! # }
 //! ```
 //!
-//! Then, call [`Swapchain::new`](crate::swapchain::Swapchain::new).
+//! Then, call [`Swapchain::new`].
 //!
 //! ```no_run
 //! # use std::{error::Error, sync::Arc};
@@ -578,7 +578,9 @@ impl Swapchain {
                 .surface_capabilities_unchecked(
                     surface,
                     SurfaceInfo {
-                        present_mode: (device.enabled_extensions().ext_swapchain_maintenance1)
+                        present_mode: device
+                            .enabled_extensions()
+                            .ext_swapchain_maintenance1
                             .then_some(present_mode),
                         full_screen_exclusive,
                         win32_monitor: win32_monitor
@@ -601,7 +603,9 @@ impl Swapchain {
                 .surface_formats_unchecked(
                     surface,
                     SurfaceInfo {
-                        present_mode: (device.enabled_extensions().ext_swapchain_maintenance1)
+                        present_mode: device
+                            .enabled_extensions()
+                            .ext_swapchain_maintenance1
                             .then_some(present_mode),
                         full_screen_exclusive,
                         win32_monitor: win32_monitor.filter(|_| {

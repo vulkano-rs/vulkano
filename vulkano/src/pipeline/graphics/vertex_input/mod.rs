@@ -334,30 +334,32 @@ impl VertexInputState {
         vuids: RequiredVertexInputsVUIDs,
     ) -> Result<(), Box<ValidationError>> {
         for (&location, location_info) in vertex_shader_inputs {
-            let (is_previous, attribute_desc) =
-                (self.attributes.get(&location).map(|d| (false, d)))
-                    .or_else(|| {
-                        // If the previous location has at least three 64-bit components,
-                        // then it extends into the current location, so try that instead.
-                        location.checked_sub(1).and_then(|location| {
-                            self.attributes
-                                .get(&location)
-                                .filter(|attribute_desc| attribute_desc.format.locations() == 2)
-                                .map(|d| (true, d))
-                        })
+            let (is_previous, attribute_desc) = self
+                .attributes
+                .get(&location)
+                .map(|d| (false, d))
+                .or_else(|| {
+                    // If the previous location has at least three 64-bit components,
+                    // then it extends into the current location, so try that instead.
+                    location.checked_sub(1).and_then(|location| {
+                        self.attributes
+                            .get(&location)
+                            .filter(|attribute_desc| attribute_desc.format.locations() == 2)
+                            .map(|d| (true, d))
                     })
-                    .ok_or_else(|| {
-                        Box::new(ValidationError {
-                            problem: format!(
-                                "the vertex shader has an input variable with location {0}, but \
-                                the vertex input attributes do not contain {0}",
-                                location,
-                            )
-                            .into(),
-                            vuids: vuids.not_present,
-                            ..Default::default()
-                        })
-                    })?;
+                })
+                .ok_or_else(|| {
+                    Box::new(ValidationError {
+                        problem: format!(
+                            "the vertex shader has an input variable with location {0}, but \
+                            the vertex input attributes do not contain {0}",
+                            location,
+                        )
+                        .into(),
+                        vuids: vuids.not_present,
+                        ..Default::default()
+                    })
+                })?;
 
             let attribute_numeric_type = attribute_desc
                 .format

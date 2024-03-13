@@ -154,7 +154,8 @@ impl ViewportState {
             // VUID-VkPipelineViewportStateCreateInfo-x-02821
             // Ensured by the use of an unsigned integer.
 
-            if (i32::try_from(offset[0]).ok())
+            if i32::try_from(offset[0])
+                .ok()
                 .zip(i32::try_from(extent[0]).ok())
                 .and_then(|(o, e)| o.checked_add(e))
                 .is_none()
@@ -167,7 +168,8 @@ impl ViewportState {
                 }));
             }
 
-            if (i32::try_from(offset[1]).ok())
+            if i32::try_from(offset[1])
+                .ok()
                 .zip(i32::try_from(extent[1]).ok())
                 .and_then(|(o, e)| o.checked_add(e))
                 .is_none()

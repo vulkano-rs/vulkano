@@ -56,7 +56,7 @@ impl WriteDescriptorSet {
     /// See [`none`](Self::none) for more information.
     #[inline]
     pub fn none_array(binding: u32, first_array_element: u32, num_elements: u32) -> Self {
-        assert!(num_elements != 0);
+        assert_ne!(num_elements, 0);
         Self {
             binding,
             first_array_element,

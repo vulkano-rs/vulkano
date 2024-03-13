@@ -547,8 +547,8 @@ impl Device {
     /// Returns the Vulkan version supported by the device.
     ///
     /// This is the lower of the
-    /// [physical device's supported version](crate::device::physical::PhysicalDevice::api_version)
-    /// and the instance's [`max_api_version`](crate::instance::Instance::max_api_version).
+    /// [physical device's supported version](PhysicalDevice::api_version)
+    /// and the instance's [`max_api_version`](Instance::max_api_version).
     #[inline]
     pub fn api_version(&self) -> Version {
         self.api_version
@@ -1566,7 +1566,7 @@ impl Device {
         object: &T,
         object_name: Option<&str>,
     ) -> Result<(), VulkanError> {
-        assert!(object.device().handle() == self.handle());
+        assert_eq!(object.device().handle(), self.handle());
 
         let object_name_vk = object_name.map(|object_name| CString::new(object_name).unwrap());
         let info = ash::vk::DebugUtilsObjectNameInfoEXT {
@@ -1750,7 +1750,7 @@ pub struct DeviceCreateInfo {
     ///
     /// The default value is `0`.
     ///
-    /// [private data slots]: self::private_data
+    /// [private data slots]: private_data
     /// [`ext_private_data`]: DeviceExtensions::ext_private_data
     pub private_data_slot_request_count: u32,
 
@@ -2357,7 +2357,7 @@ mod tests {
         let queue_family_properties =
             &physical_device.queue_family_properties()[queue_family_index as usize];
         let queues = (0..queue_family_properties.queue_count + 1)
-            .map(|_| (0.5))
+            .map(|_| 0.5)
             .collect();
 
         if Device::new(

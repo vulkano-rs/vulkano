@@ -488,8 +488,8 @@ impl PhysicalDevice {
 
     /// Returns the properties of displays attached to the physical device.
     #[inline]
-    pub fn display_properties<'a>(
-        self: &'a Arc<Self>,
+    pub fn display_properties(
+        self: &Arc<Self>,
     ) -> Result<Vec<Arc<Display>>, Validated<VulkanError>> {
         self.validate_display_properties()?;
 
@@ -510,8 +510,8 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn display_properties_unchecked<'a>(
-        self: &'a Arc<Self>,
+    pub unsafe fn display_properties_unchecked(
+        self: &Arc<Self>,
     ) -> Result<Vec<Arc<Display>>, VulkanError> {
         let fns = self.instance.fns();
 
@@ -2543,7 +2543,11 @@ impl PhysicalDevice {
                     Ok(surface_format2s_vk
                         .into_iter()
                         .filter_map(|surface_format2| {
-                            (surface_format2.surface_format.format.try_into().ok())
+                            surface_format2
+                                .surface_format
+                                .format
+                                .try_into()
+                                .ok()
                                 .zip(surface_format2.surface_format.color_space.try_into().ok())
                         })
                         .collect())
@@ -2580,7 +2584,10 @@ impl PhysicalDevice {
                     Ok(surface_formats
                         .into_iter()
                         .filter_map(|surface_format| {
-                            (surface_format.format.try_into().ok())
+                            surface_format
+                                .format
+                                .try_into()
+                                .ok()
                                 .zip(surface_format.color_space.try_into().ok())
                         })
                         .collect())

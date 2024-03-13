@@ -547,7 +547,9 @@ impl FramebufferCreateInfo {
             match image_view.view_type() {
                 ImageViewType::Dim2d | ImageViewType::Dim2dArray => {
                     if image_view.image().image_type() == ImageType::Dim3d
-                        && (image_view.format().aspects())
+                        && image_view
+                            .format()
+                            .aspects()
                             .intersects(ImageAspects::DEPTH | ImageAspects::STENCIL)
                     {
                         return Err(Box::new(ValidationError {

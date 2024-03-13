@@ -667,8 +667,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 image_format,
                 ..
             } => {
-                assert!(
-                    sampled != 0,
+                assert_ne!(
+                    sampled, 0,
                     "Vulkan requires that variables of type OpTypeImage have a Sampled operand of \
                     1 or 2",
                 );
@@ -678,7 +678,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                     Instruction::TypeInt {
                         width, signedness, ..
                     } => {
-                        assert!(width == 32); // TODO: 64-bit components
+                        assert_eq!(width, 32); // TODO: 64-bit components
                         match signedness {
                             0 => NumericType::Uint,
                             1 => NumericType::Int,
@@ -686,7 +686,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                         }
                     }
                     Instruction::TypeFloat { width, .. } => {
-                        assert!(width == 32); // TODO: 64-bit components
+                        assert_eq!(width, 32); // TODO: 64-bit components
                         NumericType::Float
                     }
                     _ => unreachable!(),
@@ -698,8 +698,8 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                             reqs.image_format.is_none(),
                             "If Dim is SubpassData, Image Format must be Unknown",
                         );
-                        assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
-                        assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
+                        assert_eq!(sampled, 2, "If Dim is SubpassData, Sampled must be 2");
+                        assert_eq!(arrayed, 0, "If Dim is SubpassData, Arrayed must be 0");
 
                         reqs.descriptor_types = vec![DescriptorType::InputAttachment];
                     }
@@ -991,9 +991,9 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
                         width, signedness, ..
                     } => {
                         if width == 64 {
-                            assert!(value.len() == 2);
+                            assert_eq!(value.len(), 2);
                         } else {
-                            assert!(value.len() == 1);
+                            assert_eq!(value.len(), 1);
                         }
 
                         match (signedness, width) {
@@ -1014,9 +1014,9 @@ pub(super) fn specialization_constants(spirv: &Spirv) -> HashMap<u32, Specializa
                     }
                     Instruction::TypeFloat { width, .. } => {
                         if width == 64 {
-                            assert!(value.len() == 2);
+                            assert_eq!(value.len(), 2);
                         } else {
-                            assert!(value.len() == 1);
+                            assert_eq!(value.len(), 1);
                         }
 
                         match width {
@@ -1049,7 +1049,7 @@ pub(crate) fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
         Instruction::TypeVoid { .. } => Some(0),
         Instruction::TypeBool { .. } => Some(4),
         Instruction::TypeInt { width, .. } | Instruction::TypeFloat { width, .. } => {
-            assert!(width % 8 == 0);
+            assert_eq!(width % 8, 0);
             Some(width as DeviceSize / 8)
         }
         Instruction::TypePointer {

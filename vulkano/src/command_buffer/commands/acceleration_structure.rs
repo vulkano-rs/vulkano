@@ -74,8 +74,7 @@ impl RecordingCommandBuffer {
     /// [`AabbPositions`]: crate::acceleration_structure::AabbPositions
     /// [`AccelerationStructureInstance::acceleration_structure_reference`]: crate::acceleration_structure::AccelerationStructureInstance::acceleration_structure_reference
     /// [`AccelerationStructureGeometryInstancesData::data`]: crate::acceleration_structure::AccelerationStructureGeometryInstancesData::data
-    /// [`device_address`]: crate::acceleration_structure::AccelerationStructure::device_address
-    /// [`AccelerationStructureGeometryInstancesDataType::Pointers`]: crate::acceleration_structure::AccelerationStructureGeometryInstancesDataType::Pointers
+    /// [`device_address`]: AccelerationStructure::device_address
     #[inline]
     pub unsafe fn build_acceleration_structure(
         &mut self,

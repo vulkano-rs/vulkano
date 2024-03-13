@@ -523,7 +523,7 @@ mod tests {
             // primaries is an error.
             assert!(builder.execute_commands(secondary.clone()).is_err());
 
-            std::mem::drop(cb1);
+            drop(cb1);
 
             // Now that the first cb is dropped, we should be able to record.
             builder.execute_commands(secondary).unwrap();

@@ -63,9 +63,6 @@
 //! - The [`DescriptorSetsCollection`] trait is implemented on collections of descriptor sets. It
 //!   is what you pass to the bind function.
 //!
-//! [`DescriptorPool`]: pool::DescriptorPool
-//! [`RawDescriptorSet`]: sys::RawDescriptorSet
-//! [`DescriptorSetAllocator`]: allocator::DescriptorSetAllocator
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
 pub(crate) use self::update::DescriptorWriteInfo;

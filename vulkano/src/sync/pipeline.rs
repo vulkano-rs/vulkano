@@ -125,23 +125,19 @@ vulkan_bitflags_enum! {
                 }
 
                 if self.contains_flags2() {
-                    if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() {
-                        return PipelineStages::ALL_GRAPHICS;
+                    return if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() {
+                        PipelineStages::ALL_GRAPHICS
                     } else {
-                        return PipelineStages::ALL_COMMANDS;
-                    }
+                        PipelineStages::ALL_COMMANDS
+                    };
                 }
             }
 
-            if self.validate_device(device).is_err() {
-                if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() {
-                    return PipelineStages::ALL_GRAPHICS;
-                } else {
-                    return PipelineStages::ALL_COMMANDS;
-                }
+            match self.validate_device(device) {
+                Ok(_) => self,
+                Err(_) if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() => PipelineStages::ALL_GRAPHICS,
+                Err(_) => PipelineStages::ALL_COMMANDS,
             }
-
-            self
         }
     },
 
@@ -4082,7 +4078,6 @@ impl ImageMemoryBarrier {
 ///   mentioned parameters do not match.
 ///
 /// [`Instance`]: crate::instance::Instance
-/// [`Device`]: crate::device::Device
 /// [`device_uuid`]: crate::device::DeviceProperties::device_uuid
 /// [`driver_uuid`]: crate::device::DeviceProperties::driver_uuid
 #[derive(Clone, Copy, Debug)]

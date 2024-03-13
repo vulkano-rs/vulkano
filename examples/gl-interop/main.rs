@@ -455,11 +455,11 @@ mod linux {
                         }
                         Err(VulkanError::OutOfDate) => {
                             recreate_swapchain = true;
-                            previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
+                            previous_frame_end = Some(now(device.clone()).boxed());
                         }
                         Err(e) => {
                             println!("failed to flush future: {e}");
-                            previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
+                            previous_frame_end = Some(now(device.clone()).boxed());
                         }
                     };
                 }

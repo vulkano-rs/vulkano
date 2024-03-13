@@ -121,7 +121,7 @@ mod device_memory;
 /// block of `DeviceMemory` to a resource, or can't go through an allocator, you can use [the
 /// dedicated constructor].
 ///
-/// [memory allocator]: allocator::MemoryAllocator
+/// [memory allocator]: MemoryAllocator
 /// [the dedicated constructor]: Self::new_dedicated
 #[derive(Debug)]
 pub struct ResourceMemory {
@@ -251,8 +251,6 @@ impl ResourceMemory {
     /// range of the memory mapping given to [`DeviceMemory::map`].
     ///
     /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
-    ///
-    /// [`MappingState::slice`]: crate::memory::MappingState::slice
     #[inline]
     pub fn mapped_slice(
         &self,
@@ -277,7 +275,7 @@ impl ResourceMemory {
         &self,
         range: impl RangeBounds<DeviceSize>,
     ) -> Result<NonNull<[u8]>, HostAccessError> {
-        let mut range = self::range_unchecked(range, ..self.size());
+        let mut range = range_unchecked(range, ..self.size());
         range.start += self.offset();
         range.end += self.offset();
 
@@ -306,7 +304,7 @@ impl ResourceMemory {
     ///   cache, then there must not be any references in Rust code to any portion of the specified
     ///   `memory_range`.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn invalidate_range(
@@ -340,7 +338,7 @@ impl ResourceMemory {
     /// - There must be no operations pending or executing in a device queue, that access any
     ///   portion of the specified `memory_range`.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
     pub unsafe fn flush_range(
@@ -538,8 +536,8 @@ vulkan_bitflags! {
     /// Host access to the memory does not require calling [`invalidate_range`] to make device
     /// writes visible to the host, nor [`flush_range`] to flush host writes back to the device.
     ///
-    /// [`invalidate_range`]: MappedDeviceMemory::invalidate_range
-    /// [`flush_range`]: MappedDeviceMemory::flush_range
+    /// [`invalidate_range`]: DeviceMemory::invalidate_range
+    /// [`flush_range`]: DeviceMemory::flush_range
     HOST_COHERENT = HOST_COHERENT,
 
     /// The memory is cached by the host.

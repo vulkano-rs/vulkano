@@ -1809,7 +1809,7 @@ vulkan_enum! {
     /// Only `Fifo` is guaranteed to be supported on every device. For the others, you must call
     /// [`surface_present_modes`] to see if they are supported.
     ///
-    /// [`surface_present_modes`]: crate::device::physical::PhysicalDevice::surface_present_modes
+    /// [`surface_present_modes`]: PhysicalDevice::surface_present_modes
     PresentMode = PresentModeKHR(i32);
 
     /// The presentation engine holds only the currently displayed image. When presenting an image,
@@ -2139,9 +2139,6 @@ vulkan_enum! {
 
 /// Parameters for [`PhysicalDevice::surface_capabilities`] and
 /// [`PhysicalDevice::surface_formats`].
-///
-/// [`PhysicalDevice::surface_capabilities`]: crate::device::physical::PhysicalDevice::surface_capabilities
-/// [`PhysicalDevice::surface_formats`]: crate::device::physical::PhysicalDevice::surface_formats
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceInfo {
     /// If this is `Some`, the

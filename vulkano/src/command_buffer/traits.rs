@@ -99,7 +99,7 @@ impl CommandBuffer {
         assert_eq!(self.device().handle(), future.device().handle());
 
         if !future.queue_change_allowed() {
-            assert!(future.queue().unwrap() == queue);
+            assert_eq!(future.queue().unwrap(), queue);
         }
 
         Ok(CommandBufferExecFuture {

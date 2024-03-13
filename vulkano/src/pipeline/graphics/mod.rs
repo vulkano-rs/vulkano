@@ -306,7 +306,7 @@ impl GraphicsPipeline {
                 specialization_data_vk,
                 required_subgroup_size_create_info,
             },
-        ) in (stages_vk.iter_mut()).zip(per_stage_vk.iter_mut())
+        ) in stages_vk.iter_mut().zip(per_stage_vk.iter_mut())
         {
             *stage_vk = ash::vk::PipelineShaderStageCreateInfo {
                 p_next: required_subgroup_size_create_info.as_ref().map_or(

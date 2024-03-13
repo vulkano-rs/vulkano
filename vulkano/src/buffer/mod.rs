@@ -65,9 +65,8 @@
 //! See also [the `shader` module documentation] for information about how buffer contents need to
 //! be laid out in accordance with the shader interface.
 //!
-//! [`RawBuffer`]: self::sys::RawBuffer
-//! [`SubbufferAllocator`]: self::allocator::SubbufferAllocator
-//! [the `view` module]: self::view
+//! [`SubbufferAllocator`]: allocator::SubbufferAllocator
+//! [the `view` module]: view
 //! [the `shader` module documentation]: crate::shader
 
 pub use self::{subbuffer::*, sys::*, usage::*};
@@ -865,8 +864,6 @@ vulkan_bitflags! {
 }
 
 /// The buffer configuration to query in [`PhysicalDevice::external_buffer_properties`].
-///
-/// [`PhysicalDevice::external_buffer_properties`]: crate::device::physical::PhysicalDevice::external_buffer_properties
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalBufferInfo {
     /// The flags that will be used.

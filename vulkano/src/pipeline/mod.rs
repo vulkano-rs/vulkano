@@ -336,7 +336,7 @@ vulkan_enum! {
     DepthBias = DEPTH_BIAS,
 
     /// The value of
-    /// [`ColorBlendState::blend_constants`](crate::pipeline::graphics::color_blend::ColorBlendState::blend_constants).
+    /// [`ColorBlendState::blend_constants`](graphics::color_blend::ColorBlendState::blend_constants).
     ///
     /// Set with
     /// [`set_blend_constants`](crate::command_buffer::RecordingCommandBuffer::set_blend_constants).
@@ -374,7 +374,7 @@ vulkan_enum! {
     StencilReference = STENCIL_REFERENCE,
 
     /// The value of
-    /// [`RasterizationState::cull_mode`](crate::pipeline::graphics::rasterization::RasterizationState::cull_mode).
+    /// [`RasterizationState::cull_mode`](graphics::rasterization::RasterizationState::cull_mode).
     ///
     /// Set with
     /// [`set_cull_mode`](crate::command_buffer::RecordingCommandBuffer::set_cull_mode).
@@ -385,7 +385,7 @@ vulkan_enum! {
     ]),
 
     /// The value of
-    /// [`RasterizationState::front_face`](crate::pipeline::graphics::rasterization::RasterizationState::front_face).
+    /// [`RasterizationState::front_face`](graphics::rasterization::RasterizationState::front_face).
     ///
     /// Set with
     /// [`set_front_face`](crate::command_buffer::RecordingCommandBuffer::set_front_face).
@@ -396,7 +396,7 @@ vulkan_enum! {
     ]),
 
     /// The value of
-    /// [`InputAssemblyState::topology`](crate::pipeline::graphics::input_assembly::InputAssemblyState::topology).
+    /// [`InputAssemblyState::topology`](graphics::input_assembly::InputAssemblyState::topology).
     ///
     /// Set with
     /// [`set_primitive_topology`](crate::command_buffer::RecordingCommandBuffer::set_primitive_topology).
@@ -526,7 +526,7 @@ vulkan_enum! {
     ]),
 
     /// The value of
-    /// [`InputAssemblyState::primitive_restart_enable`](crate::pipeline::graphics::input_assembly::InputAssemblyState::primitive_restart_enable).
+    /// [`InputAssemblyState::primitive_restart_enable`](graphics::input_assembly::InputAssemblyState::primitive_restart_enable).
     ///
     /// Set with
     /// [`set_primitive_restart_enable`](crate::command_buffer::RecordingCommandBuffer::set_primitive_restart_enable).
@@ -616,7 +616,7 @@ vulkan_enum! {
     ]),
 
     /// The value of
-    /// [`TessellationState::patch_control_points`](crate::pipeline::graphics::tessellation::TessellationState::patch_control_points).
+    /// [`TessellationState::patch_control_points`](graphics::tessellation::TessellationState::patch_control_points).
     ///
     /// Set with
     /// [`set_patch_control_points`](crate::command_buffer::RecordingCommandBuffer::set_patch_control_points).
@@ -626,7 +626,7 @@ vulkan_enum! {
     ]),
 
     /// The value of
-    /// [`ColorBlendState::logic_op`](crate::pipeline::graphics::color_blend::ColorBlendState::logic_op).
+    /// [`ColorBlendState::logic_op`](graphics::color_blend::ColorBlendState::logic_op).
     ///
     /// Set with
     /// [`set_logic_op`](crate::command_buffer::RecordingCommandBuffer::set_logic_op).

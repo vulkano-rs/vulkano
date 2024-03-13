@@ -204,7 +204,6 @@
 //! [buffer-image granularity]: crate::device::DeviceProperties::buffer_image_granularity
 //! [cyclic references]: Arc#breaking-cycles-with-weak
 //! [`Rc`]: std::rc::Rc
-//! [`mem::forget`]: std::mem::forget
 //! [region]: Suballocator#regions
 
 mod layout;

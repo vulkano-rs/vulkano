@@ -589,7 +589,7 @@ impl DeviceMemory {
     ///   cache, then there must not be any references in Rust code to any portion of the specified
     ///   `memory_range`.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
     /// [`map`]: Self::map
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
@@ -644,7 +644,7 @@ impl DeviceMemory {
     /// - There must be no operations pending or executing in a device queue, that access the
     ///   specified `memory_range`.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [host-coherent]: MemoryPropertyFlags::HOST_COHERENT
     /// [`map`]: Self::map
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     #[inline]
@@ -711,7 +711,7 @@ impl DeviceMemory {
     /// `self` must have been allocated from a memory type that has the [`LAZILY_ALLOCATED`] flag
     /// set.
     ///
-    /// [`LAZILY_ALLOCATED`]: crate::memory::MemoryPropertyFlags::LAZILY_ALLOCATED
+    /// [`LAZILY_ALLOCATED`]: MemoryPropertyFlags::LAZILY_ALLOCATED
     #[inline]
     pub fn commitment(&self) -> Result<DeviceSize, Box<ValidationError>> {
         self.validate_commitment()?;
