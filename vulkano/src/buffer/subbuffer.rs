@@ -266,7 +266,7 @@ where
             assert!(self.size > new_layout.head_size());
             assert_eq!(
                 (self.size - new_layout.head_size()) % new_layout.element_size().unwrap(),
-                0
+                0,
             );
             assert!(is_aligned(self.size(), new_layout.alignment()));
         }
