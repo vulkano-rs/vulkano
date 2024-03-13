@@ -621,7 +621,7 @@ impl Swapchain {
                     })
                 })?
         };
-        let surface_present_modes: SmallVec<[_; PresentMode::COUNT]> = SmallVec::from_vec(unsafe {
+        let surface_present_modes = unsafe {
             device
                 .physical_device()
                 .surface_present_modes_unchecked(
@@ -644,7 +644,7 @@ impl Swapchain {
                         ..Default::default()
                     })
                 })?
-        });
+        };
 
         if surface_capabilities
             .max_image_count
