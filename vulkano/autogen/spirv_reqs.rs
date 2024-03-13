@@ -100,40 +100,44 @@ fn spirv_reqs_output(members: &[SpirvReqsMember], is_extension: bool) -> TokenSt
                     ref device_features,
                 } = requires_one_of;
 
-                let condition_items = api_version.iter().map(|version| {
-                    let version = format_ident!("V{}_{}", version.0, version.1);
-                    quote! { api_version >= crate::Version::#version }
-                })
-                .chain(device_extensions.iter().map(|name| {
-                    let ident = format_ident!("{}", name);
-                    quote! { device_extensions.#ident }
-                }))
-                .chain(device_features.iter().map(|name| {
-                    let ident = format_ident!("{}", name);
-                    quote! { device_features.#ident }
-                }));
-                let requires_one_of_items = api_version.iter().map(|(major, minor)| {
-                    let version = format_ident!("V{}_{}", major, minor);
-                    quote! {
-                        crate::RequiresAllOf(&[
-                            crate::Requires::APIVersion(crate::Version::#version),
-                        ]),
-                    }
-                })
-                .chain(device_extensions.iter().map(|name| {
-                    quote! {
-                        crate::RequiresAllOf(&[
-                            crate::Requires::DeviceExtension(#name),
-                        ]),
-                    }
-                }))
-                .chain(device_features.iter().map(|name| {
-                    quote! {
-                        crate::RequiresAllOf(&[
-                            crate::Requires::DeviceFeature(#name),
-                        ]),
-                    }
-                }));
+                let condition_items = api_version
+                    .iter()
+                    .map(|version| {
+                        let version = format_ident!("V{}_{}", version.0, version.1);
+                        quote! { api_version >= crate::Version::#version }
+                    })
+                    .chain(device_extensions.iter().map(|name| {
+                        let ident = format_ident!("{}", name);
+                        quote! { device_extensions.#ident }
+                    }))
+                    .chain(device_features.iter().map(|name| {
+                        let ident = format_ident!("{}", name);
+                        quote! { device_features.#ident }
+                    }));
+                let requires_one_of_items = api_version
+                    .iter()
+                    .map(|(major, minor)| {
+                        let version = format_ident!("V{}_{}", major, minor);
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::APIVersion(crate::Version::#version),
+                            ]),
+                        }
+                    })
+                    .chain(device_extensions.iter().map(|name| {
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::DeviceExtension(#name),
+                            ]),
+                        }
+                    }))
+                    .chain(device_features.iter().map(|name| {
+                        quote! {
+                            crate::RequiresAllOf(&[
+                                crate::Requires::DeviceFeature(#name),
+                            ]),
+                        }
+                    }));
                 let problem = format!("uses the SPIR-V {} `{}`", item_type, name);
 
                 quote! {

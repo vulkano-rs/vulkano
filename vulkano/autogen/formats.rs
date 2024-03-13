@@ -281,9 +281,12 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              type_nalgebra,
              ..
          }| {
-            type_nalgebra.as_ref().or(type_std_array.as_ref()).map(|ty| {
-                quote! { (nalgebra, #name) => { #ty }; }
-            })
+            type_nalgebra
+                .as_ref()
+                .or(type_std_array.as_ref())
+                .map(|ty| {
+                    quote! { (nalgebra, #name) => { #ty }; }
+                })
         },
     );
 
@@ -300,41 +303,45 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                      instance_extensions,
                      device_features: _,
                  }| {
-                    let condition_items = api_version.iter().map(|(major, minor)| {
-                        let version = format_ident!("V{}_{}", major, minor);
-                        quote! { device_api_version >= crate::Version::#version }
-                    })
-                    .chain(device_extensions.iter().map(|ext_name| {
-                        let ident = format_ident!("{}", ext_name);
-                        quote! { device_extensions.#ident }
-                    }))
-                    .chain(instance_extensions.iter().map(|ext_name| {
-                        let ident = format_ident!("{}", ext_name);
-                        quote! { instance_extensions.#ident }
-                    }));
+                    let condition_items = api_version
+                        .iter()
+                        .map(|(major, minor)| {
+                            let version = format_ident!("V{}_{}", major, minor);
+                            quote! { device_api_version >= crate::Version::#version }
+                        })
+                        .chain(device_extensions.iter().map(|ext_name| {
+                            let ident = format_ident!("{}", ext_name);
+                            quote! { device_extensions.#ident }
+                        }))
+                        .chain(instance_extensions.iter().map(|ext_name| {
+                            let ident = format_ident!("{}", ext_name);
+                            quote! { instance_extensions.#ident }
+                        }));
                     let required_for = format!("is `Format::{}`", name);
-                    let requires_one_of_items = api_version.iter().map(|(major, minor)| {
-                        let version = format_ident!("V{}_{}", major, minor);
-                        quote! {
-                            crate::RequiresAllOf(&[
-                                crate::Requires::APIVersion(crate::Version::#version),
-                            ]),
-                        }
-                    })
-                    .chain(device_extensions.iter().map(|ext_name| {
-                        quote! {
-                            crate::RequiresAllOf(&[
-                                crate::Requires::DeviceExtension(#ext_name),
-                            ]),
-                        }
-                    }))
-                    .chain(instance_extensions.iter().map(|ext_name| {
-                        quote! {
-                            crate::RequiresAllOf(&[
-                                crate::Requires::InstanceExtension(#ext_name),
-                            ]),
-                        }
-                    }));
+                    let requires_one_of_items = api_version
+                        .iter()
+                        .map(|(major, minor)| {
+                            let version = format_ident!("V{}_{}", major, minor);
+                            quote! {
+                                crate::RequiresAllOf(&[
+                                    crate::Requires::APIVersion(crate::Version::#version),
+                                ]),
+                            }
+                        })
+                        .chain(device_extensions.iter().map(|ext_name| {
+                            quote! {
+                                crate::RequiresAllOf(&[
+                                    crate::Requires::DeviceExtension(#ext_name),
+                                ]),
+                            }
+                        }))
+                        .chain(instance_extensions.iter().map(|ext_name| {
+                            quote! {
+                                crate::RequiresAllOf(&[
+                                    crate::Requires::InstanceExtension(#ext_name),
+                                ]),
+                            }
+                        }));
 
                     quote! {
                         if !(#(#condition_items)||*) {

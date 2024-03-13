@@ -245,35 +245,37 @@ impl<'r> VkRegistryData<'r> {
                 _ => None,
             })
             .flatten()
-        .chain(
-            features.values().map(|feature| feature.children.iter())
-                .chain(
-                    extensions
-                        .values()
-                        .map(|extension| extension.children.iter()),
-                )
-                .flatten()
-                .filter_map(|child| {
-                    if let ExtensionChild::Require { items, .. } = child {
-                        return Some(items.iter().filter_map(|item| match item {
-                            InterfaceItem::Enum(Enum {
-                                name,
-                                spec:
-                                    EnumSpec::Offset {
-                                        extends,
-                                        dir: false,
-                                        ..
-                                    },
-                                ..
-                            }) if extends == "VkResult" => Some(name.as_str()),
-                            _ => None,
-                        }));
-                    }
-                    None
-                })
-                .flatten(),
-        )
-        .collect()
+            .chain(
+                features
+                    .values()
+                    .map(|feature| feature.children.iter())
+                    .chain(
+                        extensions
+                            .values()
+                            .map(|extension| extension.children.iter()),
+                    )
+                    .flatten()
+                    .filter_map(|child| {
+                        if let ExtensionChild::Require { items, .. } = child {
+                            return Some(items.iter().filter_map(|item| match item {
+                                InterfaceItem::Enum(Enum {
+                                    name,
+                                    spec:
+                                        EnumSpec::Offset {
+                                            extends,
+                                            dir: false,
+                                            ..
+                                        },
+                                    ..
+                                }) if extends == "VkResult" => Some(name.as_str()),
+                                _ => None,
+                            }));
+                        }
+                        None
+                    })
+                    .flatten(),
+            )
+            .collect()
     }
 
     fn get_extensions(registry: &Registry) -> IndexMap<&str, &Extension> {

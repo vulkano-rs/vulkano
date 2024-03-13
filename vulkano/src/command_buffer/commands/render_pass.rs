@@ -1095,7 +1095,9 @@ impl RawRecordingCommandBuffer {
                 _ne: _,
             } = subpass_desc;
 
-            for atch_ref in input_attachments.iter().flatten()
+            for atch_ref in input_attachments
+                .iter()
+                .flatten()
                 .chain(color_attachments.iter().flatten())
                 .chain(color_resolve_attachments.iter().flatten())
                 .chain(depth_stencil_attachment.iter())
@@ -2182,7 +2184,9 @@ impl RenderingInfo {
                 }
             }
 
-            for image_view in color_attachments.iter().flatten()
+            for image_view in color_attachments
+                .iter()
+                .flatten()
                 .chain(depth_attachment.iter())
                 .chain(stencil_attachment.iter())
                 .flat_map(|attachment_info| {

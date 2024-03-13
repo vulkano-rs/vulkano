@@ -340,71 +340,72 @@ impl PipelineShaderStageCreateInfo {
             }
         }
 
-        let local_size = spirv
-            .decorations()
-            .iter()
-            .find_map(|instruction| match *instruction {
-                Instruction::Decorate {
-                    target,
-                    decoration:
-                        Decoration::BuiltIn {
-                            built_in: BuiltIn::WorkgroupSize,
-                        },
-                } => {
-                    let constituents: &[Id; 3] = match *spirv.id(target).instruction() {
-                        Instruction::ConstantComposite {
-                            ref constituents, ..
-                        } => constituents.as_slice().try_into().unwrap(),
-                        _ => unreachable!(),
-                    };
-
-                    let local_size = constituents.map(|id| match *spirv.id(id).instruction() {
-                        Instruction::Constant { ref value, .. } => {
-                            assert!(value.len() == 1);
-                            value[0]
-                        }
-                        _ => unreachable!(),
-                    });
-
-                    Some(local_size)
-                }
-                _ => None,
-            })
-        .or_else(|| {
-            entry_point_function
-                .execution_modes()
+        let local_size =
+            spirv
+                .decorations()
                 .iter()
                 .find_map(|instruction| match *instruction {
-                    Instruction::ExecutionMode {
-                        mode:
-                            ExecutionMode::LocalSize {
-                                x_size,
-                                y_size,
-                                z_size,
+                    Instruction::Decorate {
+                        target,
+                        decoration:
+                            Decoration::BuiltIn {
+                                built_in: BuiltIn::WorkgroupSize,
                             },
-                        ..
-                    } => Some([x_size, y_size, z_size]),
-                    Instruction::ExecutionModeId {
-                        mode:
-                            ExecutionMode::LocalSizeId {
-                                x_size,
-                                y_size,
-                                z_size,
-                            },
-                        ..
-                    } => Some([x_size, y_size, z_size].map(
-                        |id| match *spirv.id(id).instruction() {
+                    } => {
+                        let constituents: &[Id; 3] = match *spirv.id(target).instruction() {
+                            Instruction::ConstantComposite {
+                                ref constituents, ..
+                            } => constituents.as_slice().try_into().unwrap(),
+                            _ => unreachable!(),
+                        };
+
+                        let local_size = constituents.map(|id| match *spirv.id(id).instruction() {
                             Instruction::Constant { ref value, .. } => {
-                                assert_eq!(value.len(), 1);
+                                assert!(value.len() == 1);
                                 value[0]
                             }
                             _ => unreachable!(),
-                        },
-                    )),
+                        });
+
+                        Some(local_size)
+                    }
                     _ => None,
                 })
-        })
-        .unwrap_or_default();
+                .or_else(|| {
+                    entry_point_function
+                        .execution_modes()
+                        .iter()
+                        .find_map(|instruction| match *instruction {
+                            Instruction::ExecutionMode {
+                                mode:
+                                    ExecutionMode::LocalSize {
+                                        x_size,
+                                        y_size,
+                                        z_size,
+                                    },
+                                ..
+                            } => Some([x_size, y_size, z_size]),
+                            Instruction::ExecutionModeId {
+                                mode:
+                                    ExecutionMode::LocalSizeId {
+                                        x_size,
+                                        y_size,
+                                        z_size,
+                                    },
+                                ..
+                            } => Some([x_size, y_size, z_size].map(|id| {
+                                match *spirv.id(id).instruction() {
+                                    Instruction::Constant { ref value, .. } => {
+                                        assert_eq!(value.len(), 1);
+                                        value[0]
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            })),
+                            _ => None,
+                        })
+                })
+                .unwrap_or_default();
         let workgroup_size = local_size
             .into_iter()
             .try_fold(1, u32::checked_mul)

@@ -480,7 +480,8 @@ impl RenderPass {
             return false;
         }
 
-        if !subpasses1.iter()
+        if !subpasses1
+            .iter()
             .zip(subpasses2.iter())
             .all(|(subpass1, subpass2)| {
                 let SubpassDescription {
@@ -697,7 +698,10 @@ impl Subpass {
         let subpass_desc = self.subpass_desc();
 
         // TODO: chain input attachments as well?
-        subpass_desc.color_attachments.iter().flatten()
+        subpass_desc
+            .color_attachments
+            .iter()
+            .flatten()
             .chain(subpass_desc.depth_stencil_attachment.iter())
             .filter_map(|attachment_ref| {
                 self.render_pass

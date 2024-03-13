@@ -2543,7 +2543,11 @@ impl PhysicalDevice {
                     Ok(surface_format2s_vk
                         .into_iter()
                         .filter_map(|surface_format2| {
-                            surface_format2.surface_format.format.try_into().ok()
+                            surface_format2
+                                .surface_format
+                                .format
+                                .try_into()
+                                .ok()
                                 .zip(surface_format2.surface_format.color_space.try_into().ok())
                         })
                         .collect())
@@ -2580,7 +2584,10 @@ impl PhysicalDevice {
                     Ok(surface_formats
                         .into_iter()
                         .filter_map(|surface_format| {
-                            surface_format.format.try_into().ok()
+                            surface_format
+                                .format
+                                .try_into()
+                                .ok()
                                 .zip(surface_format.color_space.try_into().ok())
                         })
                         .collect())

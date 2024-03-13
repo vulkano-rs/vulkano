@@ -96,12 +96,10 @@ impl VulkanoWindows {
                     }
                 }
                 if let Some(sf) = scale_factor_override {
-                    winit_window_builder.with_inner_size(
-                        LogicalSize::new(*width, *height).to_physical::<f64>(*sf),
-                    )
-                } else {
                     winit_window_builder
-                        .with_inner_size(LogicalSize::new(*width, *height))
+                        .with_inner_size(LogicalSize::new(*width, *height).to_physical::<f64>(*sf))
+                } else {
+                    winit_window_builder.with_inner_size(LogicalSize::new(*width, *height))
                 }
             }
             .with_resizable(window_descriptor.resizable)
@@ -193,10 +191,7 @@ impl VulkanoWindows {
 
     /// Get a mutable reference to the renderer by winit window id.
     #[inline]
-    pub fn get_renderer_mut(
-        &mut self,
-        id: WindowId,
-    ) -> Option<&mut VulkanoWindowRenderer> {
+    pub fn get_renderer_mut(&mut self, id: WindowId) -> Option<&mut VulkanoWindowRenderer> {
         self.windows.get_mut(&id)
     }
 

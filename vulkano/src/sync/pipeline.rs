@@ -135,7 +135,7 @@ vulkan_bitflags_enum! {
 
             match self.validate_device(device) {
                 Ok(_) => self,
-                Err(_) if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() => PipelineStages::ALL_GRAPHICS, 
+                Err(_) if (self - PipelineStages::from(QueueFlags::GRAPHICS)).is_empty() => PipelineStages::ALL_GRAPHICS,
                 Err(_) => PipelineStages::ALL_COMMANDS,
             }
         }

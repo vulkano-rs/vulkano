@@ -437,8 +437,9 @@ impl<'a> QueueGuard<'a> {
                 };
             }
 
-            for (image_opaque_bind_infos_vk, image_opaque_binds_vk) in
-                image_opaque_bind_infos_vk.iter_mut().zip(image_opaque_binds_vk.iter())
+            for (image_opaque_bind_infos_vk, image_opaque_binds_vk) in image_opaque_bind_infos_vk
+                .iter_mut()
+                .zip(image_opaque_binds_vk.iter())
             {
                 *image_opaque_bind_infos_vk = ash::vk::SparseImageOpaqueMemoryBindInfo {
                     bind_count: image_opaque_binds_vk.len() as u32,

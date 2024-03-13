@@ -1699,7 +1699,10 @@ impl RecordingCommandBuffer {
 
             let check_buffer_view =
                 |set_num: u32, binding_num: u32, index: u32, buffer_view: &Arc<BufferView>| {
-                    for desc_reqs in binding_reqs.descriptors.get(&Some(index)).into_iter()
+                    for desc_reqs in binding_reqs
+                        .descriptors
+                        .get(&Some(index))
+                        .into_iter()
                         .chain(binding_reqs.descriptors.get(&None))
                     {
                         if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
@@ -1750,7 +1753,10 @@ impl RecordingCommandBuffer {
 
             let check_image_view_common =
                 |set_num: u32, binding_num: u32, index: u32, image_view: &Arc<ImageView>| {
-                    for desc_reqs in binding_reqs.descriptors.get(&Some(index)).into_iter()
+                    for desc_reqs in binding_reqs
+                        .descriptors
+                        .get(&Some(index))
+                        .into_iter()
                         .chain(binding_reqs.descriptors.get(&None))
                     {
                         if desc_reqs.storage_image_atomic
@@ -1936,7 +1942,10 @@ impl RecordingCommandBuffer {
 
             let check_sampler_common =
                 |set_num: u32, binding_num: u32, index: u32, sampler: &Arc<Sampler>| {
-                    for desc_reqs in binding_reqs.descriptors.get(&Some(index)).into_iter()
+                    for desc_reqs in binding_reqs
+                        .descriptors
+                        .get(&Some(index))
+                        .into_iter()
                         .chain(binding_reqs.descriptors.get(&None))
                     {
                         if desc_reqs.sampler_no_unnormalized_coordinates
@@ -2062,7 +2071,10 @@ impl RecordingCommandBuffer {
                 |set_num: u32, binding_num: u32, index: u32, sampler: &Arc<Sampler>| {
                     check_sampler_common(set_num, binding_num, index, sampler)?;
 
-                    for desc_reqs in binding_reqs.descriptors.get(&Some(index)).into_iter()
+                    for desc_reqs in binding_reqs
+                        .descriptors
+                        .get(&Some(index))
+                        .into_iter()
                         .chain(binding_reqs.descriptors.get(&None))
                     {
                         // Check sampler-image compatibility. Only done for separate samplers;

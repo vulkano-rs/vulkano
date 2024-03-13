@@ -1944,15 +1944,18 @@ impl<'a> RuntimeValidator<'a> {
 
         for instruction in self.spirv.function(function).instructions() {
             if let Some(pointer) = instruction.atomic_pointer_id() {
-                let (storage_class, ty) =
-                    match self.spirv.id(pointer).instruction().result_type_id()
-                        .map(|id| self.spirv.id(id).instruction())
-                    {
-                        Some(&Instruction::TypePointer {
-                            storage_class, ty, ..
-                        }) => (storage_class, ty),
-                        _ => unreachable!(),
-                    };
+                let (storage_class, ty) = match self
+                    .spirv
+                    .id(pointer)
+                    .instruction()
+                    .result_type_id()
+                    .map(|id| self.spirv.id(id).instruction())
+                {
+                    Some(&Instruction::TypePointer {
+                        storage_class, ty, ..
+                    }) => (storage_class, ty),
+                    _ => unreachable!(),
+                };
 
                 match *self.spirv.id(ty).instruction() {
                     Instruction::TypeInt { width: 64, .. } => match storage_class {
@@ -2462,9 +2465,10 @@ impl<'a> RuntimeValidator<'a> {
 
             if instruction.is_image_gather() {
                 if let Some(image_operands) = instruction.image_operands() {
-                    if let Some(components) =
-                        image_operands.const_offset.or(image_operands.offset)
-                            .and_then(|offset| get_constant_maybe_composite(self.spirv, offset))
+                    if let Some(components) = image_operands
+                        .const_offset
+                        .or(image_operands.offset)
+                        .and_then(|offset| get_constant_maybe_composite(self.spirv, offset))
                     {
                         for offset in components {
                             if offset < properties.min_texel_gather_offset as u64 {
@@ -2528,7 +2532,8 @@ impl<'a> RuntimeValidator<'a> {
 
             if instruction.is_image_sample() || instruction.is_image_fetch() {
                 if let Some(image_operands) = instruction.image_operands() {
-                    if let Some(components) = image_operands.const_offset
+                    if let Some(components) = image_operands
+                        .const_offset
                         .and_then(|offset| get_constant_maybe_composite(self.spirv, offset))
                     {
                         for offset in components {

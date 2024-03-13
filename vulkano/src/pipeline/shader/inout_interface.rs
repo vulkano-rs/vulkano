@@ -388,7 +388,9 @@ fn are_interface_types_compatible(
             },
         ) => {
             out_member_types.len() == in_member_types.len()
-                && out_member_types.iter().zip(out_id_info.members())
+                && out_member_types
+                    .iter()
+                    .zip(out_id_info.members())
                     .zip(in_member_types.iter().zip(in_id_info.members()))
                     .all(
                         |(
