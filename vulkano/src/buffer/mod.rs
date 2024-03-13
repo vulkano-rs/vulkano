@@ -65,7 +65,6 @@
 //! See also [the `shader` module documentation] for information about how buffer contents need to
 //! be laid out in accordance with the shader interface.
 //!
-//! [`RawBuffer`]: RawBuffer
 //! [`SubbufferAllocator`]: allocator::SubbufferAllocator
 //! [the `view` module]: view
 //! [the `shader` module documentation]: crate::shader
