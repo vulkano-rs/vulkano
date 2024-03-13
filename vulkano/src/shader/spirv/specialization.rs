@@ -165,9 +165,9 @@ pub(super) fn replace_specialization_instructions(
                                 width, signedness, ..
                             } => {
                                 if width == 64 {
-                                    assert!(value.len() == 2);
+                                    assert_eq!(value.len(), 2);
                                 } else {
-                                    assert!(value.len() == 1);
+                                    assert_eq!(value.len(), 1);
                                 }
 
                                 match (signedness, width) {
@@ -186,9 +186,9 @@ pub(super) fn replace_specialization_instructions(
                             }
                             Instruction::TypeFloat { width, .. } => {
                                 if width == 64 {
-                                    assert!(value.len() == 2);
+                                    assert_eq!(value.len(), 2);
                                 } else {
-                                    assert!(value.len() == 1);
+                                    assert_eq!(value.len(), 1);
                                 }
 
                                 match width {
@@ -408,7 +408,7 @@ fn evaluate_spec_constant_op(
             let new_result_ids = std::iter::once(result_id).chain(new_ids.clone());
             let new_constituent_ids = new_ids.chain(std::iter::once(object));
 
-            let mut new_instructions: SmallVec<_> = (indexes.iter().copied())
+            let mut new_instructions: SmallVec<_> = indexes.iter().copied()
                 .zip(new_result_ids.zip(new_constituent_ids))
                 .map(|(index, (new_result_id, new_constituent_id))| {
                     let constant = &constants[&old_constituent_id];
@@ -449,7 +449,7 @@ fn evaluate_spec_constant_op(
                 assert_eq!(conditions.len(), object_2.len());
 
                 let constituents: SmallVec<[Id; 4]> =
-                    (conditions.iter().map(|c| constants[c].value.as_scalar()))
+                    conditions.iter().map(|c| constants[c].value.as_scalar())
                         .zip(object_1.iter().zip(object_2.iter()))
                         .map(
                             |(condition, (&object_1, &object_2))| {
@@ -547,7 +547,7 @@ fn evaluate_spec_constant_calculation_op(
             }
             (ConstantValue::Composite(constituents1), ConstantValue::Composite(constituents2)) => {
                 assert_eq!(constituents1.len(), constituents2.len());
-                (constituents1.iter())
+                constituents1.iter()
                     .zip(constituents2.iter())
                     .map(|(constituent1, constituent2)| {
                         let operand1 = constants[constituent1].value.as_scalar();

@@ -88,8 +88,8 @@
 //! let future = cb.execute(queue.clone());
 //! ```
 //!
-//! [`StandardCommandBufferAllocator`]: self::allocator::StandardCommandBufferAllocator
-//! [`CommandBufferAllocator`]: self::allocator::CommandBufferAllocator
+//! [`StandardCommandBufferAllocator`]: allocator::StandardCommandBufferAllocator
+//! [`CommandBufferAllocator`]: allocator::CommandBufferAllocator
 //! [inherit]: CommandBufferInheritanceInfo
 //! [`end`]: RecordingCommandBuffer::end
 //! [`GpuFuture`]: crate::sync::GpuFuture

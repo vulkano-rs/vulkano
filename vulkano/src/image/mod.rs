@@ -43,7 +43,7 @@
 //! You can [create a `ResourceMemory` from `DeviceMemory`] if you want to bind its own block of
 //! memory to an image.
 //!
-//! [`ImageView`]: crate::image::view::ImageView
+//! [`ImageView`]: view::ImageView
 //! [create an `Image` directly]: Image::new
 //! [create a `RawImage`]: RawImage::new
 //! [bind memory to it]: RawImage::bind_memory
@@ -893,7 +893,7 @@ impl SubresourceRangeIterator {
             .collect::<SmallVec<[usize; 4]>>()
             .into_iter()
             .peekable();
-        assert!(aspect_nums.len() != 0);
+        assert_ne!(aspect_nums.len(), 0);
         let current_aspect_num = aspect_nums.next();
         let current_mip_level = subresource_range.mip_levels.start;
 
@@ -1033,8 +1033,8 @@ vulkan_bitflags! {
     /// For 2D images, whether an image view of type [`ImageViewType::Cube`] or
     /// [`ImageViewType::CubeArray`] can be created from the image.
     ///
-    /// [`ImageViewType::Cube`]: crate::image::view::ImageViewType::Cube
-    /// [`ImageViewType::CubeArray`]: crate::image::view::ImageViewType::CubeArray
+    /// [`ImageViewType::Cube`]: ImageViewType::Cube
+    /// [`ImageViewType::CubeArray`]: ImageViewType::CubeArray
     CUBE_COMPATIBLE = CUBE_COMPATIBLE,
 
     /* TODO: enable
@@ -1063,8 +1063,8 @@ vulkan_bitflags! {
     /// On [portability subset] devices, the [`image_view2_d_on3_d_image`] feature must be enabled
     /// on the device.
     ///
-    /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
-    /// [`ImageViewType::Dim2dArray`]: crate::image::view::ImageViewType::Dim2dArray
+    /// [`ImageViewType::Dim2d`]: ImageViewType::Dim2d
+    /// [`ImageViewType::Dim2dArray`]: ImageViewType::Dim2dArray
     /// [`DIM2D_VIEW_COMPATIBLE`]: ImageCreateFlags::DIM2D_VIEW_COMPATIBLE
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
     /// [`image_view2_d_on3_d_image`]: crate::device::DeviceFeatures::image_view2_d_on3_d_image
@@ -1146,7 +1146,7 @@ vulkan_bitflags! {
     /// - [`image2_d_view_of3_d`] for storage images.
     /// - [`sampler2_d_view_of3_d`] for sampled images.
     ///
-    /// [`ImageViewType::Dim2d`]: crate::image::view::ImageViewType::Dim2d
+    /// [`ImageViewType::Dim2d`]: ImageViewType::Dim2d
     /// [`DIM2D_ARRAY_COMPATIBLE`]: ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE
     /// [`image2_d_view_of3_d`]: crate::device::DeviceFeatures::image2_d_view_of3_d
     /// [`sampler2_d_view_of3_d`]: crate::device::DeviceFeatures::sampler2_d_view_of3_d
@@ -1641,7 +1641,7 @@ pub struct SubresourceLayout {
 }
 
 /// The image configuration to query in
-/// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
+/// [`PhysicalDevice::image_format_properties`](PhysicalDevice::image_format_properties).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageFormatInfo {
     /// The `flags` that the image will have.
@@ -1983,7 +1983,7 @@ impl ImageFormatInfo {
 }
 
 /// The image's DRM format modifier configuration to query in
-/// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
+/// [`PhysicalDevice::image_format_properties`](PhysicalDevice::image_format_properties).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageDrmFormatModifierInfo {
     /// The DRM format modifier to query.
@@ -2095,13 +2095,13 @@ pub struct ImageFormatProperties {
     pub external_memory_properties: ExternalMemoryProperties,
 
     /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::image::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
+    /// a [`Cubic`](sampler::Filter::Cubic) `mag_filter` or `min_filter`.
     pub filter_cubic: bool,
 
     /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::image::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
-    /// [`Min`](crate::image::sampler::SamplerReductionMode::Min) or
-    /// [`Max`](crate::image::sampler::SamplerReductionMode::Max) `reduction_mode`.
+    /// a [`Cubic`](sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
+    /// [`Min`](sampler::SamplerReductionMode::Min) or
+    /// [`Max`](sampler::SamplerReductionMode::Max) `reduction_mode`.
     pub filter_cubic_minmax: bool,
 }
 
@@ -2126,7 +2126,7 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
 }
 
 /// The image configuration to query in
-/// [`PhysicalDevice::sparse_image_format_properties`](crate::device::physical::PhysicalDevice::sparse_image_format_properties).
+/// [`PhysicalDevice::sparse_image_format_properties`](PhysicalDevice::sparse_image_format_properties).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SparseImageFormatInfo {
     /// The `format` that the image will have.

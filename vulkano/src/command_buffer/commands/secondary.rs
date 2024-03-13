@@ -188,9 +188,9 @@ impl RecordingCommandBuffer {
                             }));
                         }
 
-                        for (color_attachment_index, image_view, inherited_format) in (attachments
+                        for (color_attachment_index, image_view, inherited_format) in attachments
                             .color_attachments
-                            .iter())
+                            .iter()
                         .zip(inheritance_info.color_attachment_formats.iter().copied())
                         .enumerate()
                         .filter_map(|(i, (a, f))| a.as_ref().map(|a| (i as u32, &a.image_view, f)))

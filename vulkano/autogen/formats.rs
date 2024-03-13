@@ -179,7 +179,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         .filter(
             |&FormatMember {
                  texels_per_block, ..
-             }| (*texels_per_block != 1),
+             }| *texels_per_block != 1,
         )
         .map(
             |FormatMember {
@@ -257,7 +257,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              type_cgmath,
              ..
          }| {
-            (type_cgmath.as_ref().or(type_std_array.as_ref())).map(|ty| {
+            type_cgmath.as_ref().or(type_std_array.as_ref()).map(|ty| {
                 quote! { (cgmath, #name) => { #ty }; }
             })
         },
@@ -269,7 +269,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              type_glam,
              ..
          }| {
-            (type_glam.as_ref().or(type_std_array.as_ref())).map(|ty| {
+            type_glam.as_ref().or(type_std_array.as_ref()).map(|ty| {
                 quote! { (glam, #name) => { #ty }; }
             })
         },
@@ -281,7 +281,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
              type_nalgebra,
              ..
          }| {
-            (type_nalgebra.as_ref().or(type_std_array.as_ref())).map(|ty| {
+            type_nalgebra.as_ref().or(type_std_array.as_ref()).map(|ty| {
                 quote! { (nalgebra, #name) => { #ty }; }
             })
         },
@@ -300,10 +300,10 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                      instance_extensions,
                      device_features: _,
                  }| {
-                    let condition_items = (api_version.iter().map(|(major, minor)| {
+                    let condition_items = api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
                         quote! { device_api_version >= crate::Version::#version }
-                    }))
+                    })
                     .chain(device_extensions.iter().map(|ext_name| {
                         let ident = format_ident!("{}", ext_name);
                         quote! { device_extensions.#ident }
@@ -313,14 +313,14 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                         quote! { instance_extensions.#ident }
                     }));
                     let required_for = format!("is `Format::{}`", name);
-                    let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
+                    let requires_one_of_items = api_version.iter().map(|(major, minor)| {
                         let version = format_ident!("V{}_{}", major, minor);
                         quote! {
                             crate::RequiresAllOf(&[
                                 crate::Requires::APIVersion(crate::Version::#version),
                             ]),
                         }
-                    }))
+                    })
                     .chain(device_extensions.iter().map(|ext_name| {
                         quote! {
                             crate::RequiresAllOf(&[

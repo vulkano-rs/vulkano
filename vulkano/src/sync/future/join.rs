@@ -18,7 +18,7 @@ where
     assert_eq!(first.device().handle(), second.device().handle());
 
     if !first.queue_change_allowed() && !second.queue_change_allowed() {
-        assert!(first.queue().unwrap() == second.queue().unwrap());
+        assert_eq!(first.queue().unwrap(), second.queue().unwrap());
     }
 
     JoinFuture { first, second }

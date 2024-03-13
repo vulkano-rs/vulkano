@@ -362,7 +362,7 @@ impl InputState {
     }
 
     /// Update toggle julia state (if right mouse is clicked)
-    fn on_mouse_click_event(&mut self, state: ElementState, mouse_btn: winit::event::MouseButton) {
+    fn on_mouse_click_event(&mut self, state: ElementState, mouse_btn: MouseButton) {
         if mouse_btn == MouseButton::Right {
             self.toggle_c = state_is_pressed(state)
         }

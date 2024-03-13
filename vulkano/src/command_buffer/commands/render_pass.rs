@@ -1095,7 +1095,7 @@ impl RawRecordingCommandBuffer {
                 _ne: _,
             } = subpass_desc;
 
-            for atch_ref in (input_attachments.iter().flatten())
+            for atch_ref in input_attachments.iter().flatten()
                 .chain(color_attachments.iter().flatten())
                 .chain(color_resolve_attachments.iter().flatten())
                 .chain(depth_stencil_attachment.iter())
@@ -2182,7 +2182,7 @@ impl RenderingInfo {
                 }
             }
 
-            for image_view in (color_attachments.iter().flatten())
+            for image_view in color_attachments.iter().flatten()
                 .chain(depth_attachment.iter())
                 .chain(stencil_attachment.iter())
                 .flat_map(|attachment_info| {
@@ -3132,7 +3132,7 @@ impl RenderingAttachmentResolveInfo {
 
 /// Clear attachment type, used in [`clear_attachments`] command.
 ///
-/// [`clear_attachments`]: crate::command_buffer::RecordingCommandBuffer::clear_attachments
+/// [`clear_attachments`]: RecordingCommandBuffer::clear_attachments
 #[derive(Clone, Copy, Debug)]
 pub enum ClearAttachment {
     /// Clear the color attachment at the specified index, with the specified clear value.
@@ -3218,7 +3218,7 @@ impl From<ClearAttachment> for ash::vk::ClearAttachment {
 
 /// Specifies the clear region for the [`clear_attachments`] command.
 ///
-/// [`clear_attachments`]: crate::command_buffer::RecordingCommandBuffer::clear_attachments
+/// [`clear_attachments`]: RecordingCommandBuffer::clear_attachments
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClearRect {
     /// The rectangle offset.

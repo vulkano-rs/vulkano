@@ -85,19 +85,19 @@ impl PipelineRenderingCreateInfo {
 
         Self {
             view_mask: subpass_desc.view_mask,
-            color_attachment_formats: (subpass_desc.color_attachments.iter())
+            color_attachment_formats: subpass_desc.color_attachments.iter()
                 .map(|color_attachment| {
                     color_attachment.as_ref().map(|color_attachment| {
                         rp_attachments[color_attachment.attachment as usize].format
                     })
                 })
                 .collect(),
-            depth_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
+            depth_attachment_format: subpass_desc.depth_stencil_attachment.as_ref()
                 .map(|depth_stencil_attachment| {
                     rp_attachments[depth_stencil_attachment.attachment as usize].format
                 })
                 .filter(|format| format.aspects().intersects(ImageAspects::DEPTH)),
-            stencil_attachment_format: (subpass_desc.depth_stencil_attachment.as_ref())
+            stencil_attachment_format: subpass_desc.depth_stencil_attachment.as_ref()
                 .map(|depth_stencil_attachment| {
                     rp_attachments[depth_stencil_attachment.attachment as usize].format
                 })
@@ -109,16 +109,16 @@ impl PipelineRenderingCreateInfo {
     pub(crate) fn from_rendering_info(info: &RenderingInfo) -> Self {
         Self {
             view_mask: info.view_mask,
-            color_attachment_formats: (info.color_attachments.iter())
+            color_attachment_formats: info.color_attachments.iter()
                 .map(|atch_info| {
                     atch_info
                         .as_ref()
                         .map(|atch_info| atch_info.image_view.format())
                 })
                 .collect(),
-            depth_attachment_format: (info.depth_attachment.as_ref())
+            depth_attachment_format: info.depth_attachment.as_ref()
                 .map(|atch_info| atch_info.image_view.format()),
-            stencil_attachment_format: (info.stencil_attachment.as_ref())
+            stencil_attachment_format: info.stencil_attachment.as_ref()
                 .map(|atch_info| atch_info.image_view.format()),
             _ne: crate::NonExhaustive(()),
         }

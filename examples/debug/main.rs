@@ -139,7 +139,7 @@ fn main() {
         })
         .expect("no device available");
 
-    let (_device, mut _queues) = Device::new(
+    let (_device, _queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,

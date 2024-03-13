@@ -340,7 +340,7 @@ impl PipelineShaderStageCreateInfo {
             }
         }
 
-        let local_size = (spirv
+        let local_size = spirv
             .decorations()
             .iter()
             .find_map(|instruction| match *instruction {
@@ -369,7 +369,7 @@ impl PipelineShaderStageCreateInfo {
                     Some(local_size)
                 }
                 _ => None,
-            }))
+            })
         .or_else(|| {
             entry_point_function
                 .execution_modes()
@@ -395,7 +395,7 @@ impl PipelineShaderStageCreateInfo {
                     } => Some([x_size, y_size, z_size].map(
                         |id| match *spirv.id(id).instruction() {
                             Instruction::Constant { ref value, .. } => {
-                                assert!(value.len() == 1);
+                                assert_eq!(value.len(), 1);
                                 value[0]
                             }
                             _ => unreachable!(),

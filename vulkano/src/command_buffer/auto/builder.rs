@@ -1375,7 +1375,7 @@ impl RenderPassState {
                 RenderPassState {
                     contents: SubpassContents::Inline,
                     render_area_offset: [0, 0],
-                    render_area_extent: (info.framebuffer.as_ref())
+                    render_area_extent: info.framebuffer.as_ref()
                         // Still not exact, but it's a better upper bound.
                         .map_or([u32::MAX, u32::MAX], |framebuffer| framebuffer.extent()),
 
@@ -1452,10 +1452,10 @@ impl RenderPassStateAttachments {
         let fb_attachments = framebuffer.attachments();
 
         Self {
-            color_attachments: (subpass_desc.color_attachments.iter())
+            color_attachments: subpass_desc.color_attachments.iter()
                 .zip(subpass_desc.color_resolve_attachments.iter())
                 .map(|(color_attachment, color_resolve_attachment)| {
-                    (color_attachment.as_ref()).map(|color_attachment| {
+                    color_attachment.as_ref().map(|color_attachment| {
                         RenderPassStateAttachmentInfo {
                             image_view: fb_attachments[color_attachment.attachment as usize]
                                 .clone(),
@@ -1472,9 +1472,9 @@ impl RenderPassStateAttachments {
                     })
                 })
                 .collect(),
-            depth_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+            depth_attachment: subpass_desc.depth_stencil_attachment.as_ref()
                 .filter(|depth_stencil_attachment| {
-                    (rp_attachments[depth_stencil_attachment.attachment as usize].format)
+                    rp_attachments[depth_stencil_attachment.attachment as usize].format
                         .aspects()
                         .intersects(ImageAspects::DEPTH)
                 })
@@ -1491,9 +1491,9 @@ impl RenderPassStateAttachments {
                         },
                     ),
                 }),
-            stencil_attachment: (subpass_desc.depth_stencil_attachment.as_ref())
+            stencil_attachment: subpass_desc.depth_stencil_attachment.as_ref()
                 .filter(|depth_stencil_attachment| {
-                    (rp_attachments[depth_stencil_attachment.attachment as usize].format)
+                    rp_attachments[depth_stencil_attachment.attachment as usize].format
                         .aspects()
                         .intersects(ImageAspects::STENCIL)
                 })
@@ -1519,9 +1519,9 @@ impl RenderPassStateAttachments {
 
     pub(in crate::command_buffer) fn from_rendering_info(info: &RenderingInfo) -> Self {
         Self {
-            color_attachments: (info.color_attachments.iter())
+            color_attachments: info.color_attachments.iter()
                 .map(|atch_info| {
-                    (atch_info.as_ref()).map(|atch_info| RenderPassStateAttachmentInfo {
+                    atch_info.as_ref().map(|atch_info| RenderPassStateAttachmentInfo {
                         image_view: atch_info.image_view.clone(),
                         _image_layout: atch_info.image_layout,
                         _resolve_info: atch_info.resolve_info.as_ref().map(|resolve_atch_info| {
@@ -1533,7 +1533,7 @@ impl RenderPassStateAttachments {
                     })
                 })
                 .collect(),
-            depth_attachment: (info.depth_attachment.as_ref()).map(|atch_info| {
+            depth_attachment: info.depth_attachment.as_ref().map(|atch_info| {
                 RenderPassStateAttachmentInfo {
                     image_view: atch_info.image_view.clone(),
                     _image_layout: atch_info.image_layout,
@@ -1545,7 +1545,7 @@ impl RenderPassStateAttachments {
                     }),
                 }
             }),
-            stencil_attachment: (info.stencil_attachment.as_ref()).map(|atch_info| {
+            stencil_attachment: info.stencil_attachment.as_ref().map(|atch_info| {
                 RenderPassStateAttachmentInfo {
                     image_view: atch_info.image_view.clone(),
                     _image_layout: atch_info.image_layout,

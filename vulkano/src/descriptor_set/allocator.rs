@@ -173,7 +173,7 @@ impl AllocationHandle {
 /// This allocator only needs to lock when a thread first allocates or when a thread that
 /// previously allocated exits. In all other cases, allocation is lock-free.
 ///
-/// [`DescriptorPool`]: crate::descriptor_set::pool::DescriptorPool
+/// [`DescriptorPool`]: DescriptorPool
 #[derive(Debug)]
 pub struct StandardDescriptorSetAllocator {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
@@ -340,7 +340,7 @@ impl FixedEntry {
                     .descriptor_counts()
                     .iter()
                     .map(|(&ty, &count)| {
-                        assert!(ty != DescriptorType::InlineUniformBlock);
+                        assert_ne!(ty, DescriptorType::InlineUniformBlock);
                         (ty, count * create_info.set_count as u32)
                     })
                     .collect(),
@@ -425,7 +425,7 @@ impl VariableEntry {
                     .descriptor_counts()
                     .iter()
                     .map(|(&ty, &count)| {
-                        assert!(ty != DescriptorType::InlineUniformBlock);
+                        assert_ne!(ty, DescriptorType::InlineUniformBlock);
                         (ty, count * create_info.set_count as u32)
                     })
                     .collect(),

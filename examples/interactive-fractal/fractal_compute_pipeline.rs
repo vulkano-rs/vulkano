@@ -1,5 +1,5 @@
 use glam::f32::Vec2;
-use rand::Rng;
+use rand::random;
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -103,10 +103,10 @@ impl FractalComputePipeline {
     pub fn randomize_palette(&mut self) {
         let mut colors = vec![];
         for _ in 0..self.palette_size {
-            let r = rand::thread_rng().gen::<f32>();
-            let g = rand::thread_rng().gen::<f32>();
-            let b = rand::thread_rng().gen::<f32>();
-            let a = rand::thread_rng().gen::<f32>();
+            let r = random::<f32>();
+            let g = random::<f32>();
+            let b = random::<f32>();
+            let a = random::<f32>();
             colors.push([r, g, b, a]);
         }
         self.palette = Buffer::from_iter(

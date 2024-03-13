@@ -40,7 +40,7 @@
 //!    of the surface change, such as when the size of the window changes. It then becomes
 //!    necessary to create a new swapchain.
 //!
-//! 8. Record a [*command buffer*](crate::command_buffer), containing commands that the device must
+//! 8. Record a [*command buffer*](command_buffer), containing commands that the device must
 //!    execute. Then build the command buffer and submit it to a `Queue`.
 //!
 //! Many different operations can be recorded to a command buffer, such as *draw*, *compute* and
@@ -97,27 +97,27 @@
 //! | `document_unchecked` | Include `_unchecked` functions in the generated documentation. |
 //! | `serde`              | Enables (de)serialization of certain types using [`serde`].    |
 //!
-//! [`VulkanLibrary`]: crate::VulkanLibrary
-//! [`Instance`]: crate::instance::Instance
-//! [`Surface`]: crate::swapchain::Surface
+//! [`VulkanLibrary`]: VulkanLibrary
+//! [`Instance`]: instance::Instance
+//! [`Surface`]: swapchain::Surface
 //! [`vulkano-win`]: https://crates.io/crates/vulkano-win
-//! [Enumerate the physical devices]: crate::instance::Instance::enumerate_physical_devices
-//! [`PhysicalDevice`]: crate::device::physical::PhysicalDevice
-//! [`Device`]: crate::device::Device
-//! [`Queue`]: crate::device::Queue
-//! [`Swapchain`]: crate::swapchain::Swapchain
-//! [*command buffer*]: crate::command_buffer
-//! [*Buffers*]: crate::buffer
-//! [*Images*]: crate::image
-//! [*Pipelines*]: crate::pipeline
-//! [*shader*]: crate::shader
-//! [`ComputePipeline`]: crate::pipeline::ComputePipeline
-//! [`GraphicsPipeline`]: crate::pipeline::GraphicsPipeline
-//! [*Descriptor sets*]: crate::descriptor_set
-//! [`DescriptorSetLayout`]: crate::descriptor_set::layout
-//! [`PipelineLayout`]: crate::pipeline::layout
-//! [`RenderPass`]: crate::render_pass::RenderPass
-//! [`Framebuffer`]: crate::render_pass::Framebuffer
+//! [Enumerate the physical devices]: instance::Instance::enumerate_physical_devices
+//! [`PhysicalDevice`]: device::physical::PhysicalDevice
+//! [`Device`]: device::Device
+//! [`Queue`]: device::Queue
+//! [`Swapchain`]: swapchain::Swapchain
+//! [*command buffer*]: command_buffer
+//! [*Buffers*]: buffer
+//! [*Images*]: image
+//! [*Pipelines*]: pipeline
+//! [*shader*]: shader
+//! [`ComputePipeline`]: pipeline::ComputePipeline
+//! [`GraphicsPipeline`]: pipeline::GraphicsPipeline
+//! [*Descriptor sets*]: descriptor_set
+//! [`DescriptorSetLayout`]: descriptor_set::layout
+//! [`PipelineLayout`]: pipeline::layout
+//! [`RenderPass`]: render_pass::RenderPass
+//! [`Framebuffer`]: render_pass::Framebuffer
 //! [`vulkano-macros`]: vulkano_macros
 //! [`serde`]: https://crates.io/crates/serde
 
@@ -252,7 +252,7 @@ unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
     /// The type of the object.
-    type Handle: ash::vk::Handle;
+    type Handle: Handle;
 
     /// Returns the raw Vulkan handle of the object.
     fn handle(&self) -> Self::Handle;

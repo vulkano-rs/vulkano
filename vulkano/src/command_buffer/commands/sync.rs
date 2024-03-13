@@ -1139,7 +1139,7 @@ impl RawRecordingCommandBuffer {
                     buffer_memory_barriers_vk,
                     image_memory_barriers_vk,
                 },
-            ) in (dependency_infos_vk.iter_mut()).zip(per_dependency_info_vk.iter_mut())
+            ) in dependency_infos_vk.iter_mut().zip(per_dependency_info_vk.iter_mut())
             {
                 *dependency_info_vk = ash::vk::DependencyInfo {
                     memory_barrier_count: memory_barriers_vk.len() as u32,

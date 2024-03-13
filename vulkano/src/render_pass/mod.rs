@@ -480,7 +480,7 @@ impl RenderPass {
             return false;
         }
 
-        if !(subpasses1.iter())
+        if !subpasses1.iter()
             .zip(subpasses2.iter())
             .all(|(subpass1, subpass2)| {
                 let SubpassDescription {
@@ -697,7 +697,7 @@ impl Subpass {
         let subpass_desc = self.subpass_desc();
 
         // TODO: chain input attachments as well?
-        (subpass_desc.color_attachments.iter().flatten())
+        subpass_desc.color_attachments.iter().flatten()
             .chain(subpass_desc.depth_stencil_attachment.iter())
             .filter_map(|attachment_ref| {
                 self.render_pass
@@ -3261,8 +3261,8 @@ pub struct SubpassDependency {
     ///
     /// The default value is [`DependencyFlags::empty()`].
     ///
-    /// [`BY_REGION`]: crate::sync::DependencyFlags::BY_REGION
-    /// [`VIEW_LOCAL`]: crate::sync::DependencyFlags::VIEW_LOCAL
+    /// [`BY_REGION`]: DependencyFlags::BY_REGION
+    /// [`VIEW_LOCAL`]: DependencyFlags::VIEW_LOCAL
     pub dependency_flags: DependencyFlags,
 
     /// If multiview rendering is being used (the subpasses have a nonzero `view_mask`), and
@@ -3276,7 +3276,7 @@ pub struct SubpassDependency {
     ///
     /// The default value is `0`.
     ///
-    /// [`VIEW_LOCAL`]: crate::sync::DependencyFlags::VIEW_LOCAL
+    /// [`VIEW_LOCAL`]: DependencyFlags::VIEW_LOCAL
     pub view_offset: i32,
 
     pub _ne: crate::NonExhaustive,

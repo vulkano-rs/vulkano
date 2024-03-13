@@ -1843,7 +1843,7 @@ impl ImportSemaphoreZirconHandleInfo {
 }
 
 /// The semaphore configuration to query in
-/// [`PhysicalDevice::external_semaphore_properties`](crate::device::physical::PhysicalDevice::external_semaphore_properties).
+/// [`PhysicalDevice::external_semaphore_properties`](PhysicalDevice::external_semaphore_properties).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalSemaphoreInfo {
     /// The external handle type that will be used with the semaphore.

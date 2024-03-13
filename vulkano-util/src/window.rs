@@ -37,8 +37,8 @@ use winit::{
 /// ```
 #[derive(Default)]
 pub struct VulkanoWindows {
-    windows: HashMap<winit::window::WindowId, VulkanoWindowRenderer>,
-    primary: Option<winit::window::WindowId>,
+    windows: HashMap<WindowId, VulkanoWindowRenderer>,
+    primary: Option<WindowId>,
 }
 
 impl VulkanoWindows {
@@ -50,7 +50,7 @@ impl VulkanoWindows {
         vulkano_context: &VulkanoContext,
         window_descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
-    ) -> winit::window::WindowId {
+    ) -> WindowId {
         let mut winit_window_builder = winit::window::WindowBuilder::new();
 
         winit_window_builder = match window_descriptor.mode {
@@ -97,11 +97,11 @@ impl VulkanoWindows {
                 }
                 if let Some(sf) = scale_factor_override {
                     winit_window_builder.with_inner_size(
-                        winit::dpi::LogicalSize::new(*width, *height).to_physical::<f64>(*sf),
+                        LogicalSize::new(*width, *height).to_physical::<f64>(*sf),
                     )
                 } else {
                     winit_window_builder
-                        .with_inner_size(winit::dpi::LogicalSize::new(*width, *height))
+                        .with_inner_size(LogicalSize::new(*width, *height))
                 }
             }
             .with_resizable(window_descriptor.resizable)
@@ -195,32 +195,32 @@ impl VulkanoWindows {
     #[inline]
     pub fn get_renderer_mut(
         &mut self,
-        id: winit::window::WindowId,
+        id: WindowId,
     ) -> Option<&mut VulkanoWindowRenderer> {
         self.windows.get_mut(&id)
     }
 
     /// Get a reference to the renderer by winit window id.
     #[inline]
-    pub fn get_renderer(&self, id: winit::window::WindowId) -> Option<&VulkanoWindowRenderer> {
+    pub fn get_renderer(&self, id: WindowId) -> Option<&VulkanoWindowRenderer> {
         self.windows.get(&id)
     }
 
     /// Get a reference to the winit window by winit window id.
     #[inline]
-    pub fn get_window(&self, id: winit::window::WindowId) -> Option<&winit::window::Window> {
+    pub fn get_window(&self, id: WindowId) -> Option<&winit::window::Window> {
         self.windows.get(&id).map(|v_window| v_window.window())
     }
 
     /// Return primary window id.
     #[inline]
-    pub fn primary_window_id(&self) -> Option<winit::window::WindowId> {
+    pub fn primary_window_id(&self) -> Option<WindowId> {
         self.primary
     }
 
     /// Remove renderer by window id.
     #[inline]
-    pub fn remove_renderer(&mut self, id: winit::window::WindowId) {
+    pub fn remove_renderer(&mut self, id: WindowId) {
         self.windows.remove(&id);
         if let Some(primary) = self.primary {
             if primary == id {

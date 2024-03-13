@@ -335,7 +335,7 @@ impl VertexInputState {
     ) -> Result<(), Box<ValidationError>> {
         for (&location, location_info) in vertex_shader_inputs {
             let (is_previous, attribute_desc) =
-                (self.attributes.get(&location).map(|d| (false, d)))
+                self.attributes.get(&location).map(|d| (false, d))
                     .or_else(|| {
                         // If the previous location has at least three 64-bit components,
                         // then it extends into the current location, so try that instead.

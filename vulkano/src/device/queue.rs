@@ -425,10 +425,10 @@ impl<'a> QueueGuard<'a> {
                 image_binds_vk,
                 signal_semaphores_vk,
             },
-        ) in (bind_infos_vk.iter_mut()).zip(per_bind_vk.iter_mut())
+        ) in bind_infos_vk.iter_mut().zip(per_bind_vk.iter_mut())
         {
             for (buffer_bind_infos_vk, buffer_binds_vk) in
-                (buffer_bind_infos_vk.iter_mut()).zip(buffer_binds_vk.iter())
+                buffer_bind_infos_vk.iter_mut().zip(buffer_binds_vk.iter())
             {
                 *buffer_bind_infos_vk = ash::vk::SparseBufferMemoryBindInfo {
                     bind_count: buffer_binds_vk.len() as u32,
@@ -438,7 +438,7 @@ impl<'a> QueueGuard<'a> {
             }
 
             for (image_opaque_bind_infos_vk, image_opaque_binds_vk) in
-                (image_opaque_bind_infos_vk.iter_mut()).zip(image_opaque_binds_vk.iter())
+                image_opaque_bind_infos_vk.iter_mut().zip(image_opaque_binds_vk.iter())
             {
                 *image_opaque_bind_infos_vk = ash::vk::SparseImageOpaqueMemoryBindInfo {
                     bind_count: image_opaque_binds_vk.len() as u32,
@@ -448,7 +448,7 @@ impl<'a> QueueGuard<'a> {
             }
 
             for (image_bind_infos_vk, image_binds_vk) in
-                (image_bind_infos_vk.iter_mut()).zip(image_binds_vk.iter())
+                image_bind_infos_vk.iter_mut().zip(image_binds_vk.iter())
             {
                 *image_bind_infos_vk = ash::vk::SparseImageMemoryBindInfo {
                     bind_count: image_binds_vk.len() as u32,
@@ -686,7 +686,7 @@ impl<'a> QueueGuard<'a> {
 
         if has_present_regions {
             for (present_regions_vk, rectangles_vk) in
-                (present_regions_vk.iter_mut()).zip(rectangles_vk.iter())
+                present_regions_vk.iter_mut().zip(rectangles_vk.iter())
             {
                 *present_regions_vk = ash::vk::PresentRegionKHR {
                     rectangle_count: rectangles_vk.len() as u32,
@@ -1005,7 +1005,7 @@ impl<'a> QueueGuard<'a> {
                     command_buffer_infos_vk,
                     signal_semaphore_infos_vk,
                 },
-            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter_mut())
+            ) in submit_info_vk.iter_mut().zip(per_submit_vk.iter_mut())
             {
                 *submit_info_vk = ash::vk::SubmitInfo2 {
                     wait_semaphore_info_count: wait_semaphore_infos_vk.len() as u32,
@@ -1163,7 +1163,7 @@ impl<'a> QueueGuard<'a> {
                     signal_semaphores_vk,
                     signal_semaphore_values_vk,
                 },
-            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter_mut())
+            ) in submit_info_vk.iter_mut().zip(per_submit_vk.iter_mut())
             {
                 *submit_info_vk = ash::vk::SubmitInfo {
                     wait_semaphore_count: wait_semaphores_vk.len() as u32,

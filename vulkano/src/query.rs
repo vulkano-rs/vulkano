@@ -651,7 +651,7 @@ vulkan_bitflags! {
         #[inline]
         pub const fn is_primitive_shading_graphics(self) -> bool {
             self.intersects(
-                (QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES)
+                QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES
                     .union(QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES)
                     .union(QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS)
                     .union(QueryPipelineStatisticFlags::GEOMETRY_SHADER_INVOCATIONS)
@@ -668,7 +668,7 @@ vulkan_bitflags! {
         #[inline]
         pub const fn is_mesh_shading_graphics(self) -> bool {
             self.intersects(
-                (QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS)
+                QueryPipelineStatisticFlags::TASK_SHADER_INVOCATIONS
                     .union(QueryPipelineStatisticFlags::MESH_SHADER_INVOCATIONS),
             )
         }

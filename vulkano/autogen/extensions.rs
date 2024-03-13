@@ -108,22 +108,22 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                          instance_extensions,
                          device_features: _,
                      }| {
-                        let condition_items = (api_version.iter().map(|version| {
+                        let condition_items = api_version.iter().map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
                             quote! { api_version >= crate::Version::#version }
-                        }))
+                        })
                         .chain(instance_extensions.iter().map(|ext_name| {
                             let ident = format_ident!("{}", ext_name);
                             quote! { instance_extensions.#ident }
                         }));
-                        let requires_one_of_items = (api_version.iter().map(|(major, minor)| {
+                        let requires_one_of_items = api_version.iter().map(|(major, minor)| {
                             let version = format_ident!("V{}_{}", major, minor);
                             quote! {
                                 crate::RequiresAllOf(&[
                                     crate::Requires::APIVersion(crate::Version::#version),
                                 ]),
                             }
-                        }))
+                        })
                         .chain(instance_extensions.iter().map(|ext_name| {
                             quote! {
                                 crate::RequiresAllOf(&[
@@ -173,7 +173,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  name: _,
                  requires_all_of,
                  ..
-             }| (!requires_all_of.is_empty()),
+             }| !requires_all_of.is_empty(),
         )
         .map(
             |ExtensionsMember {
@@ -191,7 +191,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              device_extensions,
                              instance_extensions: _,
                              device_features: _,
-                         }| (!device_extensions.is_empty()),
+                         }| !device_extensions.is_empty(),
                     )
                     .map(
                         |RequiresOneOf {
@@ -364,7 +364,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                  name: _,
                  requires_all_of,
                  ..
-             }| (!requires_all_of.is_empty()),
+             }| !requires_all_of.is_empty(),
         )
         .map(
             |ExtensionsMember {
@@ -382,7 +382,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                              device_extensions: _,
                              instance_extensions,
                              device_features: _,
-                         }| (!instance_extensions.is_empty()),
+                         }| !instance_extensions.is_empty(),
                     )
                     .map(
                         |RequiresOneOf {

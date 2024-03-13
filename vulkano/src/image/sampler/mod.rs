@@ -708,8 +708,8 @@ pub struct SamplerCreateInfo {
     /// - Anisotropy and depth comparison must be disabled.
     ///
     /// Some restrictions also apply to the image view being sampled:
-    /// - The view type must be [`Dim1d`](crate::image::view::ImageViewType::Dim1d) or
-    ///   [`Dim2d`](crate::image::view::ImageViewType::Dim2d). Arrayed types are not allowed.
+    /// - The view type must be [`Dim1d`](ImageViewType::Dim1d) or
+    ///   [`Dim2d`](ImageViewType::Dim2d). Arrayed types are not allowed.
     /// - It must have a single mipmap level.
     ///
     /// Finally, restrictions apply to the sampling operations that can be used in a shader:
@@ -1323,7 +1323,7 @@ vulkan_enum! {
     ///
     /// The [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must
     /// be enabled on the device, and anisotropy must be disabled. Sampled image views must have
-    /// a type of [`Dim2d`](crate::image::view::ImageViewType::Dim2d).
+    /// a type of [`Dim2d`](ImageViewType::Dim2d).
     Cubic = CUBIC_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_filter_cubic)]),

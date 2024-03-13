@@ -115,8 +115,8 @@ impl<T: ?Sized> Subbuffer<T> {
     ///
     /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
     ///
-    /// [`DeviceMemory::map`]: crate::memory::DeviceMemory::map
-    /// [`MappingState::slice`]: crate::memory::MappingState::slice
+    /// [`DeviceMemory::map`]: memory::DeviceMemory::map
+    /// [`MappingState::slice`]: memory::MappingState::slice
     pub fn mapped_slice(&self) -> Result<NonNull<[u8]>, HostAccessError> {
         match self.buffer().memory() {
             BufferMemory::Normal(allocation) => {
@@ -167,8 +167,8 @@ impl<T: ?Sized> Subbuffer<T> {
 
     #[inline(always)]
     unsafe fn reinterpret_unchecked_ref_inner<U: ?Sized>(&self) -> &Subbuffer<U> {
-        assert!(size_of::<Subbuffer<T>>() == size_of::<Subbuffer<U>>());
-        assert!(align_of::<Subbuffer<T>>() == align_of::<Subbuffer<U>>());
+        assert_eq!(size_of::<Subbuffer<T>>(), size_of::<Subbuffer<U>>());
+        assert_eq!(align_of::<Subbuffer<T>>(), align_of::<Subbuffer<U>>());
 
         // SAFETY: All `Subbuffer`s share the same layout.
         mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self)
@@ -261,10 +261,10 @@ where
         assert!(is_aligned(self.memory_offset(), new_layout.alignment()));
 
         if new_layout.is_sized() {
-            assert!(self.size == new_layout.unwrap_sized().size());
+            assert_eq!(self.size, new_layout.unwrap_sized().size());
         } else {
             assert!(self.size > new_layout.head_size());
-            assert!((self.size - new_layout.head_size()) % new_layout.element_size().unwrap() == 0);
+            assert_eq!((self.size - new_layout.head_size()) % new_layout.element_size().unwrap(), 0);
             assert!(is_aligned(self.size(), new_layout.alignment()));
         }
     }
@@ -293,8 +293,8 @@ where
     /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
     /// from [`RawBuffer::assume_bound`]), then it can't be read from using this function.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`invalidate_range`]: crate::memory::ResourceMemory::invalidate_range
+    /// [host-coherent]: memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`invalidate_range`]: memory::ResourceMemory::invalidate_range
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     /// [`write`]: Self::write
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
@@ -386,8 +386,8 @@ where
     /// If the memory backing the buffer is not managed by vulkano, (i.e. this buffer was created
     /// from [`RawBuffer::assume_bound`]), then it can't be written to using this function.
     ///
-    /// [host-coherent]: crate::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`flush_range`]: crate::memory::ResourceMemory::flush_range
+    /// [host-coherent]: memory::MemoryPropertyFlags::HOST_COHERENT
+    /// [`flush_range`]: memory::ResourceMemory::flush_range
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     /// [`read`]: Self::read
     /// [`SubbufferAllocator`]: super::allocator::SubbufferAllocator
@@ -505,7 +505,7 @@ impl<T> Subbuffer<[T]> {
 
         self.offset += start * size_of::<T>() as DeviceSize;
         self.size = (end - start) * size_of::<T>() as DeviceSize;
-        assert!(self.size != 0);
+        assert_ne!(self.size, 0);
 
         self
     }
@@ -1231,14 +1231,14 @@ mod tests {
 
         {
             let (left, right) = buffer.clone().split_at(2);
-            assert!(left.len() == 2);
-            assert!(right.len() == 4);
+            assert_eq!(left.len(), 2);
+            assert_eq!(right.len(), 4);
         }
 
         {
             let (left, right) = buffer.clone().split_at(5);
-            assert!(left.len() == 5);
-            assert!(right.len() == 1);
+            assert_eq!(left.len(), 5);
+            assert_eq!(right.len(), 1);
         }
 
         {
