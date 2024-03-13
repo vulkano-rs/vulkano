@@ -552,7 +552,10 @@ mod tests {
             assert!(allocator
                 .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
-            assert_eq!(allocator.free_size(), REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE);
+            assert_eq!(
+                allocator.free_size(),
+                REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE,
+            );
             unsafe { allocator.deallocate(alloc) };
         }
 
@@ -576,7 +579,10 @@ mod tests {
             assert!(allocator
                 .allocate(layout_a, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
-            assert_eq!(allocator.free_size(), REGION_SIZE - allocations_a * BuddyAllocator::MIN_NODE_SIZE);
+            assert_eq!(
+                allocator.free_size(),
+                REGION_SIZE - allocations_a * BuddyAllocator::MIN_NODE_SIZE,
+            );
 
             for _ in 0..allocations_b {
                 allocs.push(
