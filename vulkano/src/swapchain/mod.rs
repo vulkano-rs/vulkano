@@ -621,7 +621,7 @@ impl Swapchain {
                     })
                 })?
         };
-        let surface_present_modes: SmallVec<[_; PresentMode::COUNT]> = unsafe {
+        let surface_present_modes = unsafe {
             device
                 .physical_device()
                 .surface_present_modes_unchecked(
@@ -644,7 +644,6 @@ impl Swapchain {
                         ..Default::default()
                     })
                 })?
-                .collect()
         };
 
         if surface_capabilities

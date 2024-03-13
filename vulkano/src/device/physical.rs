@@ -1981,7 +1981,7 @@ impl PhysicalDevice {
         } = surface_info;
 
         if let Some(present_mode) = present_mode {
-            let mut present_modes = unsafe {
+            let present_modes = unsafe {
                 self.surface_present_modes_unchecked(
                     surface,
                     SurfaceInfo {
@@ -1999,7 +1999,7 @@ impl PhysicalDevice {
                 })?
             };
 
-            if !present_modes.any(|mode| mode == present_mode) {
+            if !present_modes.into_iter().any(|mode| mode == present_mode) {
                 return Err(Box::new(ValidationError {
                     problem: "`surface_info.present_mode` is not supported for `surface`".into(),
                     vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-07780"],
@@ -2355,7 +2355,7 @@ impl PhysicalDevice {
         } = surface_info;
 
         if let Some(present_mode) = present_mode {
-            let mut present_modes = unsafe {
+            let present_modes = unsafe {
                 self.surface_present_modes_unchecked(
                     surface,
                     SurfaceInfo {
@@ -2373,7 +2373,7 @@ impl PhysicalDevice {
                 })?
             };
 
-            if !present_modes.any(|mode| mode == present_mode) {
+            if !present_modes.into_iter().any(|mode| mode == present_mode) {
                 return Err(Box::new(ValidationError {
                     problem: "`surface_info.present_mode` is not supported for `surface`".into(),
                     vuids: &["VUID-VkSurfacePresentModeEXT-presentMode-07780"],
@@ -2601,7 +2601,7 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<impl Iterator<Item = PresentMode>, Validated<VulkanError>> {
+    ) -> Result<Vec<PresentMode>, Validated<VulkanError>> {
         self.validate_surface_present_modes(surface, &surface_info)?;
 
         unsafe { Ok(self.surface_present_modes_unchecked(surface, surface_info)?) }
@@ -2718,10 +2718,10 @@ impl PhysicalDevice {
         &self,
         surface: &Surface,
         surface_info: SurfaceInfo,
-    ) -> Result<impl Iterator<Item = PresentMode>, VulkanError> {
-        surface
-            .surface_present_modes
-            .get_or_try_insert((self.handle, surface_info), |(_, surface_info)| {
+    ) -> Result<Vec<PresentMode>, VulkanError> {
+        surface.surface_present_modes.get_or_try_insert(
+            (self.handle, surface_info),
+            |(_, surface_info)| {
                 let &SurfaceInfo {
                     present_mode: _,
                     full_screen_exclusive,
@@ -2837,8 +2837,8 @@ impl PhysicalDevice {
                         .filter_map(|mode_vk| mode_vk.try_into().ok())
                         .collect())
                 }
-            })
-            .map(IntoIterator::into_iter)
+            },
+        )
     }
 
     /// Returns whether queues of the given queue family can draw on the given surface.
