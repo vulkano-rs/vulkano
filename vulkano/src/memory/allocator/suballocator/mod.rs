@@ -78,6 +78,12 @@ mod free_list;
 /// [page]: super#pages
 /// [buffer-image granularity]: super#buffer-image-granularity
 pub unsafe trait Suballocator {
+    type Suballocations<'a>: Iterator<Item = SuballocationNode>
+        + DoubleEndedIterator
+        + ExactSizeIterator
+    where
+        Self: Sized + 'a;
+
     /// Creates a new suballocator for the given [region].
     ///
     /// [region]: Self#regions
@@ -115,7 +121,7 @@ pub unsafe trait Suballocator {
     /// [buffer-image granularity]: super#buffer-image-granularity
     /// [`DeviceMemory`]: crate::memory::DeviceMemory
     fn allocate(
-        &self,
+        &mut self,
         layout: DeviceLayout,
         allocation_type: AllocationType,
         buffer_image_granularity: DeviceAlignment,
@@ -126,7 +132,7 @@ pub unsafe trait Suballocator {
     /// # Safety
     ///
     /// - `suballocation` must refer to a **currently allocated** suballocation of `self`.
-    unsafe fn deallocate(&self, suballocation: Suballocation);
+    unsafe fn deallocate(&mut self, suballocation: Suballocation);
 
     /// Returns the total amount of free space that is left in the [region].
     ///
@@ -137,6 +143,11 @@ pub unsafe trait Suballocator {
     ///
     /// There must be no current allocations as they might get freed.
     fn cleanup(&mut self);
+
+    /// Returns an iterator over the current suballocations.
+    fn suballocations(&self) -> Self::Suballocations<'_>
+    where
+        Self: Sized;
 }
 
 impl Debug for dyn Suballocator {
@@ -299,6 +310,59 @@ impl Display for SuballocatorError {
     }
 }
 
+/// A node within a [suballocator]'s list/tree of suballocations.
+///
+/// [suballocator]: Suballocator
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SuballocationNode {
+    /// The **absolute** offset within the [region]. That means that this is already offset by the
+    /// region's offset, **not relative to beginning of the region**.
+    ///
+    /// [region]: Suballocator#regions
+    pub offset: DeviceSize,
+
+    /// The size of the allocation.
+    pub size: DeviceSize,
+
+    /// Tells us if the allocation is free, and if not, what type of resources can be bound to it.
+    pub allocation_type: SuballocationType,
+}
+
+/// Tells us if an allocation within a [suballocator]'s list/tree of suballocations is free, and if
+/// not, what type of resources can be bound to it. The suballocator needs to keep track of this in
+/// order to be able to respect the buffer-image granularity.
+///
+/// [suballocator]: Suballocator
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SuballocationType {
+    /// The type of resource is unknown, it might be either linear or non-linear. What this means
+    /// is that allocations created with this type must always be aligned to the buffer-image
+    /// granularity.
+    Unknown = 0,
+
+    /// The resource is linear, e.g. buffers, linear images. A linear allocation following another
+    /// linear allocation never needs to be aligned to the buffer-image granularity.
+    Linear = 1,
+
+    /// The resource is non-linear, e.g. optimal images. A non-linear allocation following another
+    /// non-linear allocation never needs to be aligned to the buffer-image granularity.
+    NonLinear = 2,
+
+    /// The allocation is free. It can take on any of the allocation types once allocated.
+    Free = 3,
+}
+
+impl From<AllocationType> for SuballocationType {
+    #[inline]
+    fn from(ty: AllocationType) -> Self {
+        match ty {
+            AllocationType::Unknown => SuballocationType::Unknown,
+            AllocationType::Linear => SuballocationType::Linear,
+            AllocationType::NonLinear => SuballocationType::NonLinear,
+        }
+    }
+}
+
 /// Checks if resouces A and B share a page.
 ///
 /// > **Note**: Assumes `a_offset + a_size > 0` and `a_offset + a_size <= b_offset`.
@@ -367,7 +431,7 @@ mod tests {
             }
         });
 
-        let allocator = allocator.into_inner();
+        let mut allocator = allocator.into_inner();
 
         assert!(allocator
             .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
@@ -394,7 +458,7 @@ mod tests {
         const REGION_SIZE: DeviceSize = 10 * 256;
         const LAYOUT: DeviceLayout = unwrap(DeviceLayout::from_size_alignment(1, 256));
 
-        let allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+        let mut allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
         let mut allocs = Vec::with_capacity(10);
 
         for _ in 0..10 {
@@ -420,7 +484,7 @@ mod tests {
         const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(16));
         const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
-        let allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+        let mut allocator = FreeListAllocator::new(Region::new(0, REGION_SIZE).unwrap());
         let mut linear_allocs = Vec::with_capacity(REGION_SIZE as usize / 2);
         let mut nonlinear_allocs = Vec::with_capacity(REGION_SIZE as usize / 2);
 
@@ -479,7 +543,7 @@ mod tests {
         const MAX_ORDER: usize = 10;
         const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;
 
-        let allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+        let mut allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
         let mut allocs = Vec::with_capacity(1 << MAX_ORDER);
 
         for order in 0..=MAX_ORDER {
@@ -541,7 +605,7 @@ mod tests {
     fn buddy_allocator_respects_alignment() {
         const REGION_SIZE: DeviceSize = 4096;
 
-        let allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+        let mut allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
 
         {
             let layout = DeviceLayout::from_size_alignment(1, 4096).unwrap();
@@ -608,7 +672,7 @@ mod tests {
         const GRANULARITY: DeviceAlignment = unwrap(DeviceAlignment::new(256));
         const REGION_SIZE: DeviceSize = 2 * GRANULARITY.as_devicesize();
 
-        let allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
+        let mut allocator = BuddyAllocator::new(Region::new(0, REGION_SIZE).unwrap());
 
         {
             const ALLOCATIONS: DeviceSize = REGION_SIZE / BuddyAllocator::MIN_NODE_SIZE;
