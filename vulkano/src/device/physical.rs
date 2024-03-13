@@ -2719,9 +2719,9 @@ impl PhysicalDevice {
         surface: &Surface,
         surface_info: SurfaceInfo,
     ) -> Result<Vec<PresentMode>, VulkanError> {
-        surface
-            .surface_present_modes
-            .get_or_try_insert((self.handle, surface_info), |(_, surface_info)| {
+        surface.surface_present_modes.get_or_try_insert(
+            (self.handle, surface_info),
+            |(_, surface_info)| {
                 let &SurfaceInfo {
                     present_mode: _,
                     full_screen_exclusive,
@@ -2837,7 +2837,8 @@ impl PhysicalDevice {
                         .filter_map(|mode_vk| mode_vk.try_into().ok())
                         .collect())
                 }
-            })
+            },
+        )
     }
 
     /// Returns whether queues of the given queue family can draw on the given surface.
