@@ -1169,7 +1169,7 @@ impl ImportFenceWin32HandleInfo {
 }
 
 /// The fence configuration to query in
-/// [`PhysicalDevice::external_fence_properties`](PhysicalDevice::external_fence_properties).
+/// [`PhysicalDevice::external_fence_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalFenceInfo {
     /// The external handle type that will be used with the fence.
