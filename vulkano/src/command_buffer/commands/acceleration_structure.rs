@@ -75,7 +75,6 @@ impl RecordingCommandBuffer {
     /// [`AccelerationStructureInstance::acceleration_structure_reference`]: crate::acceleration_structure::AccelerationStructureInstance::acceleration_structure_reference
     /// [`AccelerationStructureGeometryInstancesData::data`]: crate::acceleration_structure::AccelerationStructureGeometryInstancesData::data
     /// [`device_address`]: AccelerationStructure::device_address
-    /// [`AccelerationStructureGeometryInstancesDataType::Pointers`]: AccelerationStructureGeometryInstancesDataType::Pointers
     #[inline]
     pub unsafe fn build_acceleration_structure(
         &mut self,

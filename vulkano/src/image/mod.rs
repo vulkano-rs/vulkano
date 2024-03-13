@@ -1032,9 +1032,6 @@ vulkan_bitflags! {
 
     /// For 2D images, whether an image view of type [`ImageViewType::Cube`] or
     /// [`ImageViewType::CubeArray`] can be created from the image.
-    ///
-    /// [`ImageViewType::Cube`]: ImageViewType::Cube
-    /// [`ImageViewType::CubeArray`]: ImageViewType::CubeArray
     CUBE_COMPATIBLE = CUBE_COMPATIBLE,
 
     /* TODO: enable

@@ -864,8 +864,6 @@ vulkan_bitflags! {
 }
 
 /// The buffer configuration to query in [`PhysicalDevice::external_buffer_properties`].
-///
-/// [`PhysicalDevice::external_buffer_properties`]: PhysicalDevice::external_buffer_properties
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalBufferInfo {
     /// The flags that will be used.

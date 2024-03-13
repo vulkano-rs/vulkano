@@ -2139,9 +2139,6 @@ vulkan_enum! {
 
 /// Parameters for [`PhysicalDevice::surface_capabilities`] and
 /// [`PhysicalDevice::surface_formats`].
-///
-/// [`PhysicalDevice::surface_capabilities`]: PhysicalDevice::surface_capabilities
-/// [`PhysicalDevice::surface_formats`]: PhysicalDevice::surface_formats
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceInfo {
     /// If this is `Some`, the

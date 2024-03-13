@@ -172,8 +172,6 @@ impl AllocationHandle {
 ///
 /// This allocator only needs to lock when a thread first allocates or when a thread that
 /// previously allocated exits. In all other cases, allocation is lock-free.
-///
-/// [`DescriptorPool`]: DescriptorPool
 #[derive(Debug)]
 pub struct StandardDescriptorSetAllocator {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,

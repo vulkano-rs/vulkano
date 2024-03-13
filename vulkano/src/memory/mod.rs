@@ -251,8 +251,6 @@ impl ResourceMemory {
     /// range of the memory mapping given to [`DeviceMemory::map`].
     ///
     /// See [`MappingState::slice`] for the safety invariants of the returned pointer.
-    ///
-    /// [`MappingState::slice`]: MappingState::slice
     #[inline]
     pub fn mapped_slice(
         &self,
