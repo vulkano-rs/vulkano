@@ -19,6 +19,7 @@
 Changes to (physical) device:
 - `Properties` is renamed to `DeviceProperties`.
 - `Features` is renamed to `DeviceFeatures`.
+- `PhysicalDevice::surface_present_modes(_unchecked)` now returns `Vec<PresentMode>` instead of an iterator.
 
 Changes to command buffers:
 - Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
