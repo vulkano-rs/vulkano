@@ -4078,7 +4078,6 @@ impl ImageMemoryBarrier {
 ///   mentioned parameters do not match.
 ///
 /// [`Instance`]: crate::instance::Instance
-/// [`Device`]: Device
 /// [`device_uuid`]: crate::device::DeviceProperties::device_uuid
 /// [`driver_uuid`]: crate::device::DeviceProperties::driver_uuid
 #[derive(Clone, Copy, Debug)]
