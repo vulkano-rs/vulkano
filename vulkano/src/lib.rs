@@ -97,7 +97,6 @@
 //! | `document_unchecked` | Include `_unchecked` functions in the generated documentation. |
 //! | `serde`              | Enables (de)serialization of certain types using [`serde`].    |
 //!
-//! [`VulkanLibrary`]: VulkanLibrary
 //! [`Instance`]: instance::Instance
 //! [`Surface`]: swapchain::Surface
 //! [`vulkano-win`]: https://crates.io/crates/vulkano-win

@@ -670,7 +670,7 @@ fn descriptor_binding_requirements_of(spirv: &Spirv, variable_id: Id) -> Descrip
                 assert_ne!(
                     sampled, 0,
                     "Vulkan requires that variables of type OpTypeImage have a Sampled operand of \
-                    1 or 2"
+                    1 or 2",
                 );
                 reqs.image_format = image_format.into();
                 reqs.image_multisampled = ms != 0;

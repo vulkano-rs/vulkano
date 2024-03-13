@@ -352,7 +352,7 @@ impl VertexInputState {
                     Box::new(ValidationError {
                         problem: format!(
                             "the vertex shader has an input variable with location {0}, but \
-                                the vertex input attributes do not contain {0}",
+                            the vertex input attributes do not contain {0}",
                             location,
                         )
                         .into(),

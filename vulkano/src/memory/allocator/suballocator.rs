@@ -1421,7 +1421,7 @@ mod tests {
                 .is_err());
             assert_eq!(
                 allocator.free_size(),
-                REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE
+                REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE,
             );
             unsafe { allocator.deallocate(alloc) };
         }
@@ -1448,7 +1448,7 @@ mod tests {
                 .is_err());
             assert_eq!(
                 allocator.free_size(),
-                REGION_SIZE - allocations_a * BuddyAllocator::MIN_NODE_SIZE
+                REGION_SIZE - allocations_a * BuddyAllocator::MIN_NODE_SIZE,
             );
 
             for _ in 0..allocations_b {

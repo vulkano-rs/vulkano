@@ -1063,8 +1063,6 @@ vulkan_bitflags! {
     /// On [portability subset] devices, the [`image_view2_d_on3_d_image`] feature must be enabled
     /// on the device.
     ///
-    /// [`ImageViewType::Dim2d`]: ImageViewType::Dim2d
-    /// [`ImageViewType::Dim2dArray`]: ImageViewType::Dim2dArray
     /// [`DIM2D_VIEW_COMPATIBLE`]: ImageCreateFlags::DIM2D_VIEW_COMPATIBLE
     /// [portability subset]: crate::instance#portability-subset-devices-and-the-enumerate_portability-flag
     /// [`image_view2_d_on3_d_image`]: crate::device::DeviceFeatures::image_view2_d_on3_d_image
@@ -1640,7 +1638,7 @@ pub struct SubresourceLayout {
 }
 
 /// The image configuration to query in
-/// [`PhysicalDevice::image_format_properties`](PhysicalDevice::image_format_properties).
+/// [`PhysicalDevice::image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageFormatInfo {
     /// The `flags` that the image will have.
@@ -1982,7 +1980,7 @@ impl ImageFormatInfo {
 }
 
 /// The image's DRM format modifier configuration to query in
-/// [`PhysicalDevice::image_format_properties`](PhysicalDevice::image_format_properties).
+/// [`PhysicalDevice::image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageDrmFormatModifierInfo {
     /// The DRM format modifier to query.
@@ -2125,7 +2123,7 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
 }
 
 /// The image configuration to query in
-/// [`PhysicalDevice::sparse_image_format_properties`](PhysicalDevice::sparse_image_format_properties).
+/// [`PhysicalDevice::sparse_image_format_properties`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SparseImageFormatInfo {
     /// The `format` that the image will have.

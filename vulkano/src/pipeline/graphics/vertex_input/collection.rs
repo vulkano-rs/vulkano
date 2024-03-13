@@ -25,11 +25,11 @@ impl<T: ?Sized> VertexBuffersCollection for Vec<Subbuffer<T>> {
     fn into_vec(self) -> Vec<Subbuffer<[u8]>> {
         assert_eq!(
             mem::size_of::<Subbuffer<T>>(),
-            mem::size_of::<Subbuffer<[u8]>>()
+            mem::size_of::<Subbuffer<[u8]>>(),
         );
         assert_eq!(
             mem::align_of::<Subbuffer<T>>(),
-            mem::align_of::<Subbuffer<[u8]>>()
+            mem::align_of::<Subbuffer<[u8]>>(),
         );
 
         // SAFETY: All `Subbuffer`s share the same layout.

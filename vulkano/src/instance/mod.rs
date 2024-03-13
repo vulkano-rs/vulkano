@@ -142,9 +142,9 @@ include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 /// to use when used on a particular instance or device. It is possible for the instance and the
 /// device to support different versions. The supported version for an instance can be queried
 /// before creation with
-/// [`VulkanLibrary::api_version`](VulkanLibrary::api_version),
+/// [`VulkanLibrary::api_version`],
 /// while for a device it can be retrieved with
-/// [`PhysicalDevice::api_version`](PhysicalDevice::api_version).
+/// [`PhysicalDevice::api_version`].
 ///
 /// When creating an `Instance`, you have to specify a maximum API version that you will use.
 /// This restricts the API version that is available for the instance and any devices created from
