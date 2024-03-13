@@ -372,13 +372,13 @@ mod tests {
         assert!(allocator
             .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
-        assert!(allocator.free_size() == 0);
+        assert_eq!(allocator.free_size(), 0);
 
         for alloc in allocs {
             unsafe { allocator.deallocate(alloc) };
         }
 
-        assert!(allocator.free_size() == REGION_SIZE);
+        assert_eq!(allocator.free_size(), REGION_SIZE);
         let alloc = allocator
             .allocate(
                 DeviceLayout::from_size_alignment(REGION_SIZE, 1).unwrap(),
@@ -408,7 +408,7 @@ mod tests {
         assert!(allocator
             .allocate(LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
-        assert!(allocator.free_size() == REGION_SIZE - 10);
+        assert_eq!(allocator.free_size(), REGION_SIZE - 10);
 
         for alloc in allocs.drain(..) {
             unsafe { allocator.deallocate(alloc) };
@@ -443,7 +443,7 @@ mod tests {
         assert!(allocator
             .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
             .is_err());
-        assert!(allocator.free_size() == 0);
+        assert_eq!(allocator.free_size(), 0);
 
         for alloc in linear_allocs.drain(..) {
             unsafe { allocator.deallocate(alloc) };
@@ -498,7 +498,7 @@ mod tests {
             assert!(allocator
                 .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
-            assert!(allocator.free_size() == 0);
+            assert_eq!(allocator.free_size(), 0);
 
             for alloc in allocs.drain(..) {
                 unsafe { allocator.deallocate(alloc) };
@@ -528,7 +528,7 @@ mod tests {
             assert!(allocator
                 .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
-            assert!(allocator.free_size() == 0);
+            assert_eq!(allocator.free_size(), 0);
             unsafe { allocator.deallocate(alloc) };
 
             for alloc in allocs.drain(..) {
@@ -552,7 +552,7 @@ mod tests {
             assert!(allocator
                 .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
-            assert!(allocator.free_size() == REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE);
+            assert_eq!(allocator.free_size(), REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE);
             unsafe { allocator.deallocate(alloc) };
         }
 
@@ -576,10 +576,7 @@ mod tests {
             assert!(allocator
                 .allocate(layout_a, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
-            assert!(
-                allocator.free_size()
-                    == REGION_SIZE - allocations_a * BuddyAllocator::MIN_NODE_SIZE
-            );
+            assert_eq!(allocator.free_size(), REGION_SIZE - allocations_a * BuddyAllocator::MIN_NODE_SIZE);
 
             for _ in 0..allocations_b {
                 allocs.push(
@@ -592,7 +589,7 @@ mod tests {
             assert!(allocator
                 .allocate(DUMMY_LAYOUT, AllocationType::Unknown, DeviceAlignment::MIN)
                 .is_err());
-            assert!(allocator.free_size() == 0);
+            assert_eq!(allocator.free_size(), 0);
 
             for alloc in allocs {
                 unsafe { allocator.deallocate(alloc) };
@@ -623,7 +620,7 @@ mod tests {
             assert!(allocator
                 .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
                 .is_err());
-            assert!(allocator.free_size() == 0);
+            assert_eq!(allocator.free_size(), 0);
 
             for alloc in allocs {
                 unsafe { allocator.deallocate(alloc) };
@@ -640,7 +637,7 @@ mod tests {
             assert!(allocator
                 .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
                 .is_err());
-            assert!(allocator.free_size() == 0);
+            assert_eq!(allocator.free_size(), 0);
             unsafe { allocator.deallocate(alloc1) };
             unsafe { allocator.deallocate(alloc2) };
         }
@@ -673,10 +670,10 @@ mod tests {
         assert!(allocator
             .allocate(layout, AllocationType::Unknown, DeviceAlignment::MIN)
             .is_err());
-        assert!(allocator.free_size() == 0);
+        assert_eq!(allocator.free_size(), 0);
 
         allocator.reset();
-        assert!(allocator.free_size() == REGION_SIZE);
+        assert_eq!(allocator.free_size(), REGION_SIZE);
     }
 
     #[test]
@@ -706,7 +703,7 @@ mod tests {
         assert!(allocator
             .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
             .is_err());
-        assert!(allocator.free_size() == 0);
+        assert_eq!(allocator.free_size(), 0);
 
         allocator.reset();
 
@@ -727,9 +724,9 @@ mod tests {
         assert!(allocator
             .allocate(DUMMY_LAYOUT, AllocationType::Linear, GRANULARITY)
             .is_err());
-        assert!(allocator.free_size() == GRANULARITY.as_devicesize() - 1);
+        assert_eq!(allocator.free_size(), GRANULARITY.as_devicesize() - 1);
 
         allocator.reset();
-        assert!(allocator.free_size() == REGION_SIZE);
+        assert_eq!(allocator.free_size(), REGION_SIZE);
     }
 }
