@@ -1146,7 +1146,6 @@ vulkan_bitflags! {
     /// - [`image2_d_view_of3_d`] for storage images.
     /// - [`sampler2_d_view_of3_d`] for sampled images.
     ///
-    /// [`ImageViewType::Dim2d`]: ImageViewType::Dim2d
     /// [`DIM2D_ARRAY_COMPATIBLE`]: ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE
     /// [`image2_d_view_of3_d`]: crate::device::DeviceFeatures::image2_d_view_of3_d
     /// [`sampler2_d_view_of3_d`]: crate::device::DeviceFeatures::sampler2_d_view_of3_d
