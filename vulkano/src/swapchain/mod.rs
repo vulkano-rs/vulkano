@@ -162,7 +162,7 @@
 //! # }
 //! ```
 //!
-//! Then, call [`Swapchain::new`](Swapchain::new).
+//! Then, call [`Swapchain::new`].
 //!
 //! ```no_run
 //! # use std::{error::Error, sync::Arc};
