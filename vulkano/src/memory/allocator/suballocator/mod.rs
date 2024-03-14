@@ -78,6 +78,9 @@ mod free_list;
 /// [page]: super#pages
 /// [buffer-image granularity]: super#buffer-image-granularity
 pub unsafe trait Suballocator {
+    /// The type of iterator returned by [`suballocations`].
+    ///
+    /// [`suballocations`]: Self::suballocations
     type Suballocations<'a>: Iterator<Item = SuballocationNode>
         + DoubleEndedIterator
         + ExactSizeIterator
