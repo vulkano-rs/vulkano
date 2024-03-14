@@ -1,12 +1,10 @@
 use super::{
-    AllocationType, Region, Suballocation, SuballocationNode, SuballocationType, Suballocator,
-    SuballocatorError,
+    are_blocks_on_same_page, AllocationType, Region, Suballocation, SuballocationNode,
+    SuballocationType, Suballocator, SuballocatorError,
 };
 use crate::{
     memory::{
-        allocator::{
-            align_up, suballocator::are_blocks_on_same_page, AllocationHandle, DeviceLayout,
-        },
+        allocator::{align_up, AllocationHandle, DeviceLayout},
         DeviceAlignment,
     },
     DeviceSize,
