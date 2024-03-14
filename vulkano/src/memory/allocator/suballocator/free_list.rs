@@ -522,6 +522,9 @@ pub struct Suballocations<'a> {
     marker: PhantomData<&'a SuballocationList>,
 }
 
+unsafe impl Send for Suballocations<'_> {}
+unsafe impl Sync for Suballocations<'_> {}
+
 impl Iterator for Suballocations<'_> {
     type Item = SuballocationNode;
 
