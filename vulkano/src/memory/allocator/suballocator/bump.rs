@@ -1,14 +1,15 @@
-use super::{AllocationType, Region, Suballocation, Suballocator, SuballocatorError};
+use super::{
+    are_blocks_on_same_page, AllocationType, Region, Suballocation, SuballocationNode,
+    SuballocationType, Suballocator, SuballocatorError,
+};
 use crate::{
     memory::{
-        allocator::{
-            align_up, suballocator::are_blocks_on_same_page, AllocationHandle, DeviceLayout,
-        },
+        allocator::{align_up, AllocationHandle, DeviceLayout},
         DeviceAlignment,
     },
     DeviceSize,
 };
-use std::cell::Cell;
+use std::iter::FusedIterator;
 
 /// A [suballocator] which can allocate dynamically, but can only free all allocations at once.
 ///
@@ -53,8 +54,8 @@ use std::cell::Cell;
 #[derive(Debug)]
 pub struct BumpAllocator {
     region: Region,
-    free_start: Cell<DeviceSize>,
-    prev_allocation_type: Cell<AllocationType>,
+    free_start: DeviceSize,
+    prev_allocation_type: AllocationType,
 }
 
 impl BumpAllocator {
@@ -63,26 +64,46 @@ impl BumpAllocator {
     /// [region]: Suballocator#regions
     #[inline]
     pub fn reset(&mut self) {
-        *self.free_start.get_mut() = 0;
-        *self.prev_allocation_type.get_mut() = AllocationType::Unknown;
+        self.free_start = 0;
+        self.prev_allocation_type = AllocationType::Unknown;
+    }
+
+    fn suballocation_node(&self, part: usize) -> SuballocationNode {
+        if part == 0 {
+            SuballocationNode {
+                offset: self.region.offset(),
+                size: self.free_start,
+                allocation_type: self.prev_allocation_type.into(),
+            }
+        } else {
+            debug_assert_eq!(part, 1);
+
+            SuballocationNode {
+                offset: self.region.offset() + self.free_start,
+                size: self.free_size(),
+                allocation_type: SuballocationType::Free,
+            }
+        }
     }
 }
 
 unsafe impl Suballocator for BumpAllocator {
+    type Suballocations<'a> = Suballocations<'a>;
+
     /// Creates a new `BumpAllocator` for the given [region].
     ///
     /// [region]: Suballocator#regions
     fn new(region: Region) -> Self {
         BumpAllocator {
             region,
-            free_start: Cell::new(0),
-            prev_allocation_type: Cell::new(AllocationType::Unknown),
+            free_start: 0,
+            prev_allocation_type: AllocationType::Unknown,
         }
     }
 
     #[inline]
     fn allocate(
-        &self,
+        &mut self,
         layout: DeviceLayout,
         allocation_type: AllocationType,
         buffer_image_granularity: DeviceAlignment,
@@ -96,13 +117,13 @@ unsafe impl Suballocator for BumpAllocator {
 
         // These can't overflow because suballocation offsets are bounded by the region, whose end
         // can itself not exceed `DeviceLayout::MAX_SIZE`.
-        let prev_end = self.region.offset() + self.free_start.get();
+        let prev_end = self.region.offset() + self.free_start;
         let mut offset = align_up(prev_end, alignment);
 
         if buffer_image_granularity != DeviceAlignment::MIN
             && prev_end > 0
             && are_blocks_on_same_page(0, prev_end, offset, buffer_image_granularity)
-            && has_granularity_conflict(self.prev_allocation_type.get(), allocation_type)
+            && has_granularity_conflict(self.prev_allocation_type, allocation_type)
         {
             offset = align_up(offset, buffer_image_granularity);
         }
@@ -115,8 +136,8 @@ unsafe impl Suballocator for BumpAllocator {
             return Err(SuballocatorError::OutOfRegionMemory);
         }
 
-        self.free_start.set(free_start);
-        self.prev_allocation_type.set(allocation_type);
+        self.free_start = free_start;
+        self.prev_allocation_type = allocation_type;
 
         Ok(Suballocation {
             offset,
@@ -127,17 +148,91 @@ unsafe impl Suballocator for BumpAllocator {
     }
 
     #[inline]
-    unsafe fn deallocate(&self, _suballocation: Suballocation) {
+    unsafe fn deallocate(&mut self, _suballocation: Suballocation) {
         // such complex, very wow
     }
 
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.region.size() - self.free_start.get()
+        self.region.size() - self.free_start
     }
 
     #[inline]
     fn cleanup(&mut self) {
         self.reset();
     }
+
+    #[inline]
+    fn suballocations(&self) -> Self::Suballocations<'_> {
+        let start = if self.free_start == 0 { 1 } else { 0 };
+        let end = if self.free_start == self.region.size() {
+            1
+        } else {
+            2
+        };
+
+        Suballocations {
+            allocator: self,
+            start,
+            end,
+        }
+    }
 }
+
+#[derive(Clone)]
+pub struct Suballocations<'a> {
+    allocator: &'a BumpAllocator,
+    start: usize,
+    end: usize,
+}
+
+impl Iterator for Suballocations<'_> {
+    type Item = SuballocationNode;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len() != 0 {
+            let node = self.allocator.suballocation_node(self.start);
+            self.start += 1;
+
+            Some(node)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+
+        (len, Some(len))
+    }
+
+    #[inline]
+    fn last(mut self) -> Option<Self::Item> {
+        self.next_back()
+    }
+}
+
+impl DoubleEndedIterator for Suballocations<'_> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len() != 0 {
+            self.end -= 1;
+            let node = self.allocator.suballocation_node(self.end);
+
+            Some(node)
+        } else {
+            None
+        }
+    }
+}
+
+impl ExactSizeIterator for Suballocations<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.end - self.start
+    }
+}
+
+impl FusedIterator for Suballocations<'_> {}
