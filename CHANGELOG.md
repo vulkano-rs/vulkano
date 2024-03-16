@@ -21,6 +21,10 @@ Changes to (physical) device:
 - `Features` is renamed to `DeviceFeatures`.
 - `PhysicalDevice::surface_present_modes(_unchecked)` now returns `Vec<PresentMode>` instead of an iterator.
 
+Changes to memory allocation:
+- `Suballocator::{allocate,deallocate}` now take `&mut self`.
+- `Suballocator` has new required items `Suballocations` and `suballocations` for iterating over suballocations.
+
 Changes to command buffers:
 - Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
 - Merged `{Primary,Secondary}AutoCommandBuffer` into `CommandBuffer` and the corresponding `RecordingCommandBuffer::{primary,secondary}` into `new`.
