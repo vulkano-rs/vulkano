@@ -1627,8 +1627,6 @@ impl<S: Suballocator> DeviceMemoryBlock<S> {
     }
 
     /// Returns the suballocator used to suballocate this block.
-    ///
-    /// Using the suballocator to allocate is discouraged, although it can't lead to unsoundness.
     #[inline]
     pub fn suballocator(&self) -> &S {
         &self.suballocator
