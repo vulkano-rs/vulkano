@@ -1540,7 +1540,7 @@ unsafe impl<S> DeviceOwned for GenericMemoryAllocator<S> {
     }
 }
 
-/// A pool of `DeviceMemory` blocks within [`GenericMemoryAllocator`], specific to a memory type.
+/// A pool of [`DeviceMemory`] blocks within [`GenericMemoryAllocator`], specific to a memory type.
 #[derive(Debug)]
 pub struct DeviceMemoryPool<S> {
     blocks: Mutex<Vec<Box<DeviceMemoryBlock<S>>>>,
