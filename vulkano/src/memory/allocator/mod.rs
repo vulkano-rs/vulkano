@@ -228,13 +228,14 @@ use crate::{
     DeviceSize, Validated, Version, VulkanError,
 };
 use ash::vk::MAX_MEMORY_TYPES;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    iter::FusedIterator,
     mem,
     ops::BitOr,
-    ptr,
+    ptr, slice,
     sync::Arc,
 };
 
@@ -899,7 +900,7 @@ impl StandardMemoryAllocator {
 
 /// A generic implementation of a [memory allocator].
 ///
-/// The allocator keeps a pool of [`DeviceMemory`] blocks for each memory type and uses the type
+/// The allocator keeps [a pool of `DeviceMemory` blocks] for each memory type and uses the type
 /// parameter `S` to [suballocate] these blocks. You can also configure the sizes of these blocks.
 /// This means that you can have as many `GenericMemoryAllocator`s as you you want for different
 /// needs, or for performance reasons, as long as the block sizes are configured properly so that
@@ -929,6 +930,7 @@ impl StandardMemoryAllocator {
 /// only allocated once they are needed.
 ///
 /// [memory allocator]: MemoryAllocator
+/// [a pool of `DeviceMemory` blocks]: DeviceMemoryPool
 /// [suballocate]: Suballocator
 /// [the `MemoryAllocator` implementation]: Self#impl-MemoryAllocator-for-GenericMemoryAllocator<S>
 #[derive(Debug)]
@@ -936,7 +938,7 @@ pub struct GenericMemoryAllocator<S> {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     buffer_image_granularity: DeviceAlignment,
     // Each memory type has a pool of `DeviceMemory` blocks.
-    pools: ArrayVec<Pool<S>, MAX_MEMORY_TYPES>,
+    pools: ArrayVec<DeviceMemoryPool<S>, MAX_MEMORY_TYPES>,
     // Global mask of memory types.
     memory_type_bits: u32,
     dedicated_allocation: bool,
@@ -946,19 +948,10 @@ pub struct GenericMemoryAllocator<S> {
     max_allocations: u32,
 }
 
-#[derive(Debug)]
-struct Pool<S> {
-    blocks: Mutex<Vec<Box<Block<S>>>>,
-    // This is cached here for faster access, so we don't need to hop through 3 pointers.
-    property_flags: MemoryPropertyFlags,
-    atom_size: DeviceAlignment,
-    block_size: DeviceSize,
-}
-
 impl<S> GenericMemoryAllocator<S> {
     // This is a false-positive, we only use this const for static initialization.
     #[allow(clippy::declare_interior_mutable_const)]
-    const EMPTY_POOL: Pool<S> = Pool {
+    const EMPTY_POOL: DeviceMemoryPool<S> = DeviceMemoryPool {
         blocks: Mutex::new(Vec::new()),
         property_flags: MemoryPropertyFlags::empty(),
         atom_size: DeviceAlignment::MIN,
@@ -1062,6 +1055,13 @@ impl<S> GenericMemoryAllocator<S> {
             memory_type_bits,
             max_allocations,
         }
+    }
+
+    /// Returns the pools of [`DeviceMemory`] blocks that are currently allocated. Each memory type
+    /// index has a corresponding element in the slice.
+    #[inline]
+    pub fn pools(&self) -> &[DeviceMemoryPool<S>] {
+        &self.pools
     }
 
     #[cold]
@@ -1215,7 +1215,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
                     export_handle_types,
                 ) {
                     Ok(device_memory) => {
-                        break Block::new(device_memory);
+                        break DeviceMemoryBlock::new(device_memory);
                     }
                     // Retry up to 3 times, halving the allocation size each time so long as the
                     // resulting size is still large enough.
@@ -1454,12 +1454,12 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
         if let Some(suballocation) = allocation.suballocation {
             let memory_type_index = allocation.device_memory.memory_type_index();
             let pool = self.pools[memory_type_index as usize].blocks.lock();
-            let block_ptr = allocation.allocation_handle.0 as *mut Block<S>;
+            let block_ptr = allocation.allocation_handle.0 as *mut DeviceMemoryBlock<S>;
 
             // TODO: Maybe do a similar check for dedicated blocks.
             debug_assert!(
                 pool.iter()
-                    .any(|block| &**block as *const Block<S> == block_ptr),
+                    .any(|block| &**block as *const DeviceMemoryBlock<S> == block_ptr),
                 "attempted to deallocate a memory block that does not belong to this allocator",
             );
 
@@ -1540,21 +1540,50 @@ unsafe impl<S> DeviceOwned for GenericMemoryAllocator<S> {
     }
 }
 
+/// A pool of `DeviceMemory` blocks within [`GenericMemoryAllocator`], specific to a memory type.
 #[derive(Debug)]
-struct Block<S> {
+pub struct DeviceMemoryPool<S> {
+    blocks: Mutex<Vec<Box<DeviceMemoryBlock<S>>>>,
+    // This is cached here for faster access, so we don't need to hop through 3 pointers.
+    property_flags: MemoryPropertyFlags,
+    atom_size: DeviceAlignment,
+    block_size: DeviceSize,
+}
+
+impl<S> DeviceMemoryPool<S> {
+    /// Returns an iterator over the [`DeviceMemory`] blocks in the pool.
+    ///
+    /// # Locking behavior
+    ///
+    /// This locks the pool for the lifetime of the returned iterator. Creating other iterators, or
+    /// allocating/deallocating in the meantime, can therefore lead to a deadlock as long as this
+    /// iterator isn't dropped.
+    #[inline]
+    pub fn blocks(&self) -> DeviceMemoryBlocks<'_, S> {
+        DeviceMemoryBlocks {
+            inner: MutexGuard::leak(self.blocks.lock()).iter(),
+            // SAFETY: We have just locked the pool above.
+            _guard: unsafe { DeviceMemoryPoolGuard::new(self) },
+        }
+    }
+}
+
+/// A [`DeviceMemory`] block within a [`DeviceMemoryPool`].
+#[derive(Debug)]
+pub struct DeviceMemoryBlock<S> {
     device_memory: Arc<DeviceMemory>,
     suballocator: S,
     allocation_count: usize,
 }
 
-impl<S: Suballocator> Block<S> {
+impl<S: Suballocator> DeviceMemoryBlock<S> {
     fn new(device_memory: Arc<DeviceMemory>) -> Box<Self> {
         let suballocator = S::new(
             Region::new(0, device_memory.allocation_size())
                 .expect("we somehow managed to allocate more than `DeviceLayout::MAX_SIZE` bytes"),
         );
 
-        Box::new(Block {
+        Box::new(DeviceMemoryBlock {
             device_memory,
             suballocator,
             allocation_count: 0,
@@ -1576,7 +1605,7 @@ impl<S: Suballocator> Block<S> {
         Ok(MemoryAlloc {
             device_memory: self.device_memory.clone(),
             suballocation: Some(suballocation),
-            allocation_handle: AllocationHandle::from_ptr(self as *mut Block<S> as _),
+            allocation_handle: AllocationHandle::from_ptr(self as *mut DeviceMemoryBlock<S> as _),
         })
     }
 
@@ -1591,8 +1620,119 @@ impl<S: Suballocator> Block<S> {
         }
     }
 
+    /// Returns the [`DeviceMemory`] backing this block.
+    #[inline]
+    pub fn device_memory(&self) -> &Arc<DeviceMemory> {
+        &self.device_memory
+    }
+
+    /// Returns the suballocator used to suballocate this block.
+    ///
+    /// Using the suballocator to allocate is discouraged, although it can't lead to unsoundness.
+    #[inline]
+    pub fn suballocator(&self) -> &S {
+        &self.suballocator
+    }
+
+    /// Returns the number of suballocations currently allocated from the block.
+    #[inline]
+    pub fn allocation_count(&self) -> usize {
+        self.allocation_count
+    }
+
     fn free_size(&self) -> DeviceSize {
         self.suballocator.free_size()
+    }
+}
+
+/// An iterator over the [`DeviceMemoryBlock`]s within a [`DeviceMemoryPool`].
+pub struct DeviceMemoryBlocks<'a, S> {
+    inner: slice::Iter<'a, Box<DeviceMemoryBlock<S>>>,
+    _guard: DeviceMemoryPoolGuard<'a, S>,
+}
+
+impl<'a, S> Iterator for DeviceMemoryBlocks<'a, S> {
+    type Item = &'a DeviceMemoryBlock<S>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|block| &**block)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+
+    #[inline]
+    fn count(self) -> usize
+    where
+        Self: Sized,
+    {
+        self.inner.count()
+    }
+
+    #[inline]
+    fn last(mut self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.inner.next_back().map(|block| &**block)
+    }
+
+    #[inline]
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.inner.nth(n).map(|block| &**block)
+    }
+
+    #[inline]
+    fn fold<B, F>(self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, Self::Item) -> B,
+    {
+        self.inner.fold(init, |acc, block| f(acc, &**block))
+    }
+}
+
+impl<'a, S> DoubleEndedIterator for DeviceMemoryBlocks<'a, S> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner.next_back().map(|block| &**block)
+    }
+
+    #[inline]
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        self.inner.nth_back(n).map(|block| &**block)
+    }
+}
+
+impl<'a, S> ExactSizeIterator for DeviceMemoryBlocks<'a, S> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<S> FusedIterator for DeviceMemoryBlocks<'_, S> {}
+
+struct DeviceMemoryPoolGuard<'a, S> {
+    pool: &'a DeviceMemoryPool<S>,
+}
+
+impl<'a, S> DeviceMemoryPoolGuard<'a, S> {
+    /// # Safety
+    ///
+    /// - The `pool.blocks` mutex must be locked.
+    unsafe fn new(pool: &'a DeviceMemoryPool<S>) -> Self {
+        DeviceMemoryPoolGuard { pool }
+    }
+}
+
+impl<S> Drop for DeviceMemoryPoolGuard<'_, S> {
+    fn drop(&mut self) {
+        // SAFETY: Enforced by the caller of `DeviceMemoryPoolGuard::new`.
+        unsafe { self.pool.blocks.force_unlock() };
     }
 }
 
