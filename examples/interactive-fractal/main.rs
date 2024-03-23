@@ -11,7 +11,7 @@
 // - A simple `InputState` to interact with the application.
 
 use crate::app::FractalApp;
-use std::error::Error;
+use std::{error::Error, time::Duration};
 use vulkano::{image::ImageUsage, swapchain::PresentMode, sync::GpuFuture};
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -145,10 +145,13 @@ fn compute_then_render(
     target_image_id: usize,
 ) {
     // Start the frame.
-    let before_pipeline_future = match renderer.acquire(|swapchain_image_views| {
-        app.place_over_frame
-            .recreate_framebuffers(swapchain_image_views)
-    }) {
+    let before_pipeline_future = match renderer.acquire(
+        |swapchain_image_views| {
+            app.place_over_frame
+                .recreate_framebuffers(swapchain_image_views)
+        },
+        Some(Duration::from_millis(1)),
+    ) {
         Err(e) => {
             println!("{e}");
             return;

@@ -14,7 +14,10 @@ mod render_pass;
 
 use crate::app::{App, RenderPipeline};
 use glam::{f32::Vec2, IVec2};
-use std::{error::Error, time::Instant};
+use std::{
+    error::Error,
+    time::{Duration, Instant},
+};
 use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
@@ -194,11 +197,14 @@ fn compute_then_render(
     }
 
     // Start the frame.
-    let before_pipeline_future = match window_renderer.acquire(|swapchain_image_views| {
-        pipeline
-            .place_over_frame
-            .recreate_framebuffers(swapchain_image_views)
-    }) {
+    let before_pipeline_future = match window_renderer.acquire(
+        |swapchain_image_views| {
+            pipeline
+                .place_over_frame
+                .recreate_framebuffers(swapchain_image_views)
+        },
+        Some(Duration::from_millis(1)),
+    ) {
         Err(e) => {
             println!("{e}");
             return;
