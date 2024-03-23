@@ -116,10 +116,11 @@ Changes to vulkano-util:
 - Support for the `ext_host_query_reset` extension.
 - `VertexDefinition` now fully supports 64-bit types and struct types in input/output interfaces.
 - `VertexDefinition` now uses a placeholder name if a name is not present in the shader, instead of panicking.
+- Validation between shader code and device extensions, features and properties.
+- Added `GenericMemoryAllocator::pools` for introspection of memory allocations, along with `DeviceMemoryPool`, `DeviceMemoryBlocks`, `DeviceMemoryBlock` and `Suballocator::suballocations`.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
-- Validation between shader code and device extensions, features and properties.
 
 ### Bugs fixed
 
@@ -135,8 +136,8 @@ Changes to vulkano-util:
 - Unnecessarily strict validation that disallowed providing a single DRM format modifier without an explicit layout.
 - Fixed the alignment check when (sub)allocating buffers that would limit the alignment to 64 at maximum, even though some applications might need buffers with higher alignments that aren't read/written by the host. The check is now only present when reading/writing a buffer.
 - Fix UB in debug messenger when driver reports null pointers for empty arrays.
-- Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 - `FreeListAllocator` not giving out suballocations that are free and of suitable size/alignment in a certain edge case.
+- Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
 
