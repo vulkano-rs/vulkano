@@ -1,6 +1,6 @@
 use crate::{context::VulkanoContext, window::WindowDescriptor};
 use ahash::HashMap;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use vulkano::{
     device::{Device, Queue},
     format::Format,
@@ -264,6 +264,7 @@ impl VulkanoWindowRenderer {
     pub fn acquire(
         &mut self,
         on_recreate_swapchain: impl FnOnce(&[Arc<ImageView>]),
+        timeout: Option<Duration>,
     ) -> Result<Box<dyn GpuFuture>, VulkanError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
@@ -274,7 +275,7 @@ impl VulkanoWindowRenderer {
 
         // Acquire next image in the swapchain
         let (image_index, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swapchain.clone(), None)
+            match swapchain::acquire_next_image(self.swapchain.clone(), timeout)
                 .map_err(Validated::unwrap)
             {
                 Ok(r) => r,
