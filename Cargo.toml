@@ -64,22 +64,22 @@ rand = "0.8"
 ron = "0.8"
 
 [workspace.lints]
-rust.missing-docs = "allow"                # TODO: warn eventually
-rust.rust-2018-idioms = "warn"
-rust.rust-2024-compatibility = "allow"     # TODO: warn eventually
-clippy.missing-safety-doc = "allow"        # TODO: warn eventually
-clippy.trivially-copy-pass-by-ref = "warn"
+rust.missing_docs = "allow"                # TODO: warn eventually
+rust.rust_2018_idioms = "warn"
+rust.rust_2024_compatibility = "allow"     # TODO: warn eventually
+clippy.missing_safety_doc = "allow"        # TODO: warn eventually
+clippy.trivially_copy_pass_by_ref = "warn"
 # These lints are a bit too pedantic, so they're disabled here.
 # They can be removed if they no longer happen in the future.
-clippy.arc-with-non-send-sync = "allow"
-clippy.collapsible-else-if = "allow"
-clippy.collapsible-if = "allow"
-clippy.len-without-is-empty = "allow"
-clippy.needless-borrowed-reference = "allow"
-clippy.nonminimal-bool = "allow"
-clippy.result-large-err = "allow"
-clippy.too-many-arguments = "allow"
-clippy.type-complexity = "allow"
+clippy.arc_with_non_send_sync = "allow"
+clippy.collapsible_else_if = "allow"
+clippy.collapsible_if = "allow"
+clippy.len_without_is_empty = "allow"
+clippy.needless_borrowed_reference = "allow"
+clippy.nonminimal_bool = "allow"
+clippy.result_large_err = "allow"
+clippy.too_many_arguments = "allow"
+clippy.type_complexity = "allow"
 
 [profile.CI]
 inherits = "dev"
