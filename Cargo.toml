@@ -63,6 +63,24 @@ png = "0.17"
 rand = "0.8"
 ron = "0.8"
 
+[workspace.lints]
+rust.missing-docs = "allow"                # TODO: warn eventually
+rust.rust-2018-idioms = "warn"
+rust.rust-2024-compatibility = "allow"     # TODO: warn eventually
+clippy.missing-safety-doc = "allow"        # TODO: warn eventually
+clippy.trivially-copy-pass-by-ref = "warn"
+# These lints are a bit too pedantic, so they're disabled here.
+# They can be removed if they no longer happen in the future.
+clippy.arc-with-non-send-sync = "allow"
+clippy.collapsible-else-if = "allow"
+clippy.collapsible-if = "allow"
+clippy.len-without-is-empty = "allow"
+clippy.needless-borrowed-reference = "allow"
+clippy.nonminimal-bool = "allow"
+clippy.result-large-err = "allow"
+clippy.too-many-arguments = "allow"
+clippy.type-complexity = "allow"
+
 [profile.CI]
 inherits = "dev"
 debug = 0

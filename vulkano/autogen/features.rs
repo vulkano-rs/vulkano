@@ -50,7 +50,7 @@ fn required_by_extensions(name: &str) -> &'static [(&'static str, &'static str)]
     }
 }
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     let features_output = features_output(&features_members(&vk_data.types));
     let features_ffi_output =
         features_ffi_output(&features_ffi_members(&vk_data.types, &vk_data.extensions));
