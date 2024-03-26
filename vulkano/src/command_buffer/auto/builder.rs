@@ -1207,7 +1207,7 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) vertex_input: Option<VertexInputState>,
     pub(in crate::command_buffer) viewport: HashMap<u32, Viewport>,
     pub(in crate::command_buffer) viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
-    pub(in crate::command_buffer) conservative_rasterization: Option<bool>,
+    pub(in crate::command_buffer) conservative_rasterization_enable: Option<bool>,
 
     // Active queries
     pub(in crate::command_buffer) queries: HashMap<QueryType, QueryState>,
@@ -1276,7 +1276,7 @@ impl CommandBufferBuilderState {
                 // DynamicState::ColorBlendEquation => todo!(),
                 // DynamicState::ColorWriteMask => todo!(),
                 // DynamicState::RasterizationStream => todo!(),
-                DynamicState::ConservativeRasterization => self.conservative_rasterization = None,
+                DynamicState::ConservativeRasterization => self.conservative_rasterization_enable = None,
                 // DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
                 // DynamicState::DepthClipEnable => todo!(),
                 // DynamicState::SampleLocationsEnable => todo!(),
