@@ -3216,8 +3216,8 @@ impl RecordingCommandBuffer {
                     // the viewportCount parameter of
                     // vkCmdSetViewportWithCountEXT must be 1
                 }
-                DynamicState::ConservativeRasterizationMode => {
-                    if self.builder_state.conservative_rasterization_mode.is_none() {
+                DynamicState::ConservativeRasterization => {
+                    if self.builder_state.conservative_rasterization.is_none() {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "the currently bound graphics pipeline requires the \

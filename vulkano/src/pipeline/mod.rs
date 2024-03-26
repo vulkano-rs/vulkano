@@ -732,7 +732,7 @@ vulkan_enum! {
 
 
     // TODO: document
-    ConservativeRasterizationMode = CONSERVATIVE_RASTERIZATION_MODE_EXT
+    ConservativeRasterization = CONSERVATIVE_RASTERIZATION_MODE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
     ]), 

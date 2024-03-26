@@ -104,6 +104,7 @@ use crate::{
     macros::impl_id_counter,
     pipeline::graphics::{
         color_blend::ColorBlendAttachmentState,
+        conservative_rasterization::ConservativeRasterizationState,
         depth_stencil::{StencilOpState, StencilState},
         rasterization::{CullMode, DepthBiasState},
         subpass::PipelineRenderingCreateInfo,
@@ -126,6 +127,7 @@ use std::{
 };
 
 pub mod color_blend;
+pub mod conservative_rasterization;
 pub mod depth_stencil;
 pub mod discard_rectangle;
 pub mod input_assembly;
@@ -163,6 +165,7 @@ pub struct GraphicsPipeline {
     subpass: PipelineSubpassType,
 
     discard_rectangle_state: Option<DiscardRectangleState>,
+    conservative_rasterization_state: Option<ConservativeRasterizationState>,
 
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
@@ -222,6 +225,7 @@ impl GraphicsPipeline {
             ref base_pipeline,
 
             ref discard_rectangle_state,
+            ref conservative_rasterization_state,
             _ne: _,
         } = &create_info;
 
@@ -818,6 +822,25 @@ impl GraphicsPipeline {
             );
         }
 
+        let mut conservative_rasterization_state_vk = None;
+
+        if let Some(conservative_rasterization_state) = conservative_rasterization_state {
+            let ConservativeRasterizationState {
+                mode,
+                extra_overestimation_size,
+                _ne: _,
+            } = conservative_rasterization_state;
+
+            let _ = conservative_rasterization_state_vk.insert(
+                ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT {
+                    flags: ash::vk::PipelineRasterizationConservativeStateCreateFlagsEXT::empty(),
+                    conservative_rasterization_mode: (*mode).into(),
+                    extra_primitive_overestimation_size: *extra_overestimation_size,
+                    ..Default::default()
+                },
+            );
+        }
+
         /*
             Create
         */
@@ -873,6 +896,11 @@ impl GraphicsPipeline {
         };
 
         if let Some(info) = discard_rectangle_state_vk.as_mut() {
+            info.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = info as *const _ as *const _;
+        }
+
+        if let Some(info) = conservative_rasterization_state_vk.as_mut() {
             info.p_next = create_info_vk.p_next;
             create_info_vk.p_next = info as *const _ as *const _;
         }
@@ -945,6 +973,7 @@ impl GraphicsPipeline {
             base_pipeline: _,
 
             discard_rectangle_state,
+            conservative_rasterization_state,
 
             _ne: _,
         } = create_info;
@@ -1081,6 +1110,10 @@ impl GraphicsPipeline {
             fixed_state.extend([DynamicState::DiscardRectangle]);
         }
 
+        if conservative_rasterization_state.is_some() {
+            fixed_state.extend([DynamicState::ConservativeRasterization]);
+        }
+
         fixed_state.retain(|state| !dynamic_state.contains(state));
 
         Arc::new(Self {
@@ -1104,6 +1137,7 @@ impl GraphicsPipeline {
             subpass: subpass.unwrap(),
 
             discard_rectangle_state,
+            conservative_rasterization_state,
 
             descriptor_binding_requirements,
             num_used_descriptor_sets,
@@ -1201,6 +1235,12 @@ impl GraphicsPipeline {
     #[inline]
     pub fn discard_rectangle_state(&self) -> Option<&DiscardRectangleState> {
         self.discard_rectangle_state.as_ref()
+    }
+
+    /// Returns the conservative rasterization state used to create this pipeline.
+    #[inline]
+    pub fn conservative_rasterization_state(&self) -> Option<&ConservativeRasterizationState> {
+        self.conservative_rasterization_state.as_ref()
     }
 
     /// If the pipeline has a fragment shader, returns the fragment tests stages used.
@@ -1395,6 +1435,11 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     pub discard_rectangle_state: Option<DiscardRectangleState>,
 
+    /// The conservative rasterization state.
+    /// 
+    /// The default value is `None`.
+    pub conservative_rasterization_state: Option<ConservativeRasterizationState>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1421,6 +1466,7 @@ impl GraphicsPipelineCreateInfo {
             base_pipeline: None,
 
             discard_rectangle_state: None,
+            conservative_rasterization_state: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1445,6 +1491,7 @@ impl GraphicsPipelineCreateInfo {
             ref base_pipeline,
 
             ref discard_rectangle_state,
+            ref conservative_rasterization_state,
             _ne: _,
         } = self;
 
@@ -2153,6 +2200,23 @@ impl GraphicsPipelineCreateInfo {
             discard_rectangle_state
                 .validate(device)
                 .map_err(|err| err.add_context("discard_rectangle_state"))?;
+        }
+
+        if let Some(conservative_rasterization_state) = conservative_rasterization_state {
+            if !device.enabled_extensions().ext_conservative_rasterization {
+                return Err(Box::new(ValidationError {
+                    context: "conservative_rasterization_state".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_conservative_rasterization",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            conservative_rasterization_state
+                .validate(device)
+                .map_err(|err| err.add_context("conservative_rasterization_state"))?;
         }
 
         for dynamic_state in dynamic_state.iter().copied() {
