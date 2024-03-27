@@ -197,20 +197,18 @@ fn compute_then_render(
     }
 
     // Start the frame.
-    let before_pipeline_future = match window_renderer.acquire(
-        |swapchain_image_views| {
+    let before_pipeline_future =
+        match window_renderer.acquire(Some(Duration::from_millis(1)), |swapchain_image_views| {
             pipeline
                 .place_over_frame
                 .recreate_framebuffers(swapchain_image_views)
-        },
-        Some(Duration::from_millis(1)),
-    ) {
-        Err(e) => {
-            println!("{e}");
-            return;
-        }
-        Ok(future) => future,
-    };
+        }) {
+            Err(e) => {
+                println!("{e}");
+                return;
+            }
+            Ok(future) => future,
+        };
 
     // Compute.
     let after_compute = pipeline

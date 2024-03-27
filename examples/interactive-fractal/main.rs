@@ -145,19 +145,17 @@ fn compute_then_render(
     target_image_id: usize,
 ) {
     // Start the frame.
-    let before_pipeline_future = match renderer.acquire(
-        |swapchain_image_views| {
+    let before_pipeline_future =
+        match renderer.acquire(Some(Duration::from_millis(1)), |swapchain_image_views| {
             app.place_over_frame
                 .recreate_framebuffers(swapchain_image_views)
-        },
-        Some(Duration::from_millis(1)),
-    ) {
-        Err(e) => {
-            println!("{e}");
-            return;
-        }
-        Ok(future) => future,
-    };
+        }) {
+            Err(e) => {
+                println!("{e}");
+                return;
+            }
+            Ok(future) => future,
+        };
 
     // Retrieve the target image.
     let image = renderer.get_additional_image_view(target_image_id);

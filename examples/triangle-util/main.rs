@@ -331,20 +331,17 @@ fn main() -> Result<(), impl Error> {
 
                 // Begin rendering by acquiring the gpu future from the window renderer.
                 let previous_frame_end = window_renderer
-                    .acquire(
-                        |swapchain_images| {
-                            // Whenever the window resizes we need to recreate everything dependent
-                            // on the window size. In this example that
-                            // includes the swapchain, the framebuffers
-                            // and the dynamic state viewport.
-                            framebuffers = window_size_dependent_setup(
-                                swapchain_images,
-                                render_pass.clone(),
-                                &mut viewport,
-                            );
-                        },
-                        Some(Duration::from_millis(1)),
-                    )
+                    .acquire(Some(Duration::from_millis(1)), |swapchain_images| {
+                        // Whenever the window resizes we need to recreate everything dependent
+                        // on the window size. In this example that
+                        // includes the swapchain, the framebuffers
+                        // and the dynamic state viewport.
+                        framebuffers = window_size_dependent_setup(
+                            swapchain_images,
+                            render_pass.clone(),
+                            &mut viewport,
+                        );
+                    })
                     .unwrap();
 
                 // In order to draw, we have to record a *command buffer*. The command buffer object
