@@ -167,9 +167,9 @@ impl VulkanoWindowRenderer {
 
     /// Size of the physical window.
     #[inline]
-    pub fn window_size(&self) -> [f32; 2] {
+    pub fn window_size(&self) -> [f64; 2] {
         let size = self.window().inner_size();
-        [size.width as f32, size.height as f32]
+        [size.width.into(), size.height.into()]
     }
 
     /// Size of the final swapchain image (surface).
@@ -188,17 +188,17 @@ impl VulkanoWindowRenderer {
 
     /// Return scale factor accounted window size.
     #[inline]
-    pub fn resolution(&self) -> [f32; 2] {
+    pub fn resolution(&self) -> [f64; 2] {
         let size = self.window().inner_size();
         let scale_factor = self.window().scale_factor();
         [
-            (size.width as f64 / scale_factor) as f32,
-            (size.height as f64 / scale_factor) as f32,
+            (size.width as f64 / scale_factor),
+            (size.height as f64 / scale_factor),
         ]
     }
 
     #[inline]
-    pub fn aspect_ratio(&self) -> f32 {
+    pub fn aspect_ratio(&self) -> f64 {
         let dims = self.window_size();
         dims[0] / dims[1]
     }
