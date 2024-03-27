@@ -4,7 +4,7 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use vk_parse::{Extension, ExtensionChild, InterfaceItem};
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     let entry_fns_output = fns_output(
         &[],
         "Entry",

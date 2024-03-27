@@ -2,7 +2,7 @@ use super::{write_file, VkRegistryData};
 use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     let version_output = version_output(vk_data.header_version);
     write_file(
         "version.rs",

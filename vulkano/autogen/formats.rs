@@ -8,7 +8,7 @@ use vk_parse::{
     Enum, EnumSpec, Extension, ExtensionChild, Feature, Format, FormatChild, InterfaceItem,
 };
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     write_file(
         "formats.rs",
         format!(

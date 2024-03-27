@@ -2730,7 +2730,7 @@ impl RenderingInfo {
         if let (Some(depth_attachment_info), Some(stencil_attachment_info)) =
             (depth_attachment, stencil_attachment)
         {
-            if &depth_attachment_info.image_view != &stencil_attachment_info.image_view {
+            if depth_attachment_info.image_view != stencil_attachment_info.image_view {
                 return Err(Box::new(ValidationError {
                     problem: "`depth_attachment` and `stencil_attachment` are both `Some`, but \
                         `depth_attachment.image_view` does not equal \
@@ -2809,7 +2809,7 @@ impl RenderingInfo {
                         }));
                     }
 
-                    if &depth_resolve_info.image_view != &stencil_resolve_info.image_view {
+                    if depth_resolve_info.image_view != stencil_resolve_info.image_view {
                         return Err(Box::new(ValidationError {
                             problem: "`depth_attachment` and `stencil_attachment` are both \
                                 `Some`, and `depth_attachment.resolve_info` and \
