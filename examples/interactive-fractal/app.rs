@@ -1,7 +1,7 @@
 use crate::{
     fractal_compute_pipeline::FractalComputePipeline, place_over_frame::RenderPassPlaceOverFrame,
 };
-use glam::f32::Vec2;
+use glam::{f32::Vec2, f64::DVec2};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     command_buffer::allocator::{
@@ -199,10 +199,10 @@ Usage:
         // Update c.
         if !self.is_c_paused {
             // Scale normalized mouse pos between -1.0 and 1.0.
-            let mouse_pos = self.input_state.normalized_mouse_pos() * 2.0 - Vec2::new(1.0, 1.0);
+            let mouse_pos = self.input_state.normalized_mouse_pos() * 2.0 - DVec2::new(1.0, 1.0);
             // Scale by our zoom (scale) level so when zooming in the movement on Julia is not so
             // drastic.
-            self.c = mouse_pos * self.scale.x;
+            self.c = mouse_pos.as_vec2() * self.scale.x;
         }
 
         // Update how many iterations we have.
@@ -234,7 +234,7 @@ Usage:
     }
 
     /// Update input state.
-    pub fn handle_input(&mut self, window_size: [f32; 2], event: &Event<()>) {
+    pub fn handle_input(&mut self, window_size: [f64; 2], event: &Event<()>) {
         self.input_state.handle_input(window_size, event);
     }
 
@@ -255,7 +255,7 @@ fn state_is_pressed(state: ElementState) -> bool {
 /// continuous movement needs toggles. Panning is one of those things where continuous movement
 /// feels better.
 struct InputState {
-    pub window_size: [f32; 2],
+    pub window_size: [f64; 2],
     pub pan_up: bool,
     pub pan_down: bool,
     pub pan_right: bool,
@@ -267,8 +267,8 @@ struct InputState {
     pub toggle_julia: bool,
     pub toggle_c: bool,
     pub should_quit: bool,
-    pub scroll_delta: f32,
-    pub mouse_pos: Vec2,
+    pub scroll_delta: f64,
+    pub mouse_pos: DVec2,
 }
 
 impl InputState {
@@ -290,12 +290,12 @@ impl InputState {
             toggle_c: false,
             should_quit: false,
             scroll_delta: 0.0,
-            mouse_pos: Vec2::new(0.0, 0.0),
+            mouse_pos: DVec2::new(0.0, 0.0),
         }
     }
 
-    fn normalized_mouse_pos(&self) -> Vec2 {
-        Vec2::new(
+    fn normalized_mouse_pos(&self) -> DVec2 {
+        DVec2::new(
             (self.mouse_pos.x / self.window_size[0]).clamp(0.0, 1.0),
             (self.mouse_pos.y / self.window_size[1]).clamp(0.0, 1.0),
         )
@@ -315,7 +315,7 @@ impl InputState {
         }
     }
 
-    fn handle_input(&mut self, window_size: [f32; 2], event: &Event<()>) {
+    fn handle_input(&mut self, window_size: [f64; 2], event: &Event<()>) {
         self.window_size = window_size;
         if let Event::WindowEvent { event, .. } = event {
             match event {
@@ -350,15 +350,15 @@ impl InputState {
     /// Updates mouse scroll delta.
     fn on_mouse_wheel_event(&mut self, delta: &MouseScrollDelta) {
         let change = match delta {
-            MouseScrollDelta::LineDelta(_x, y) => *y,
-            MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+            MouseScrollDelta::LineDelta(_x, y) => *y as f64,
+            MouseScrollDelta::PixelDelta(pos) => pos.y,
         };
         self.scroll_delta += change;
     }
 
     /// Update mouse position
     fn on_cursor_moved_event(&mut self, pos: &PhysicalPosition<f64>) {
-        self.mouse_pos = Vec2::new(pos.x as f32, pos.y as f32);
+        self.mouse_pos = DVec2::new(pos.x, pos.y);
     }
 
     /// Update toggle julia state (if right mouse is clicked)

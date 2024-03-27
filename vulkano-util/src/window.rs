@@ -70,7 +70,7 @@ impl VulkanoWindows {
                 )),
             )),
             _ => {
-                let WindowDescriptor {
+                let &WindowDescriptor {
                     width,
                     height,
                     position,
@@ -79,27 +79,23 @@ impl VulkanoWindows {
                 } = window_descriptor;
 
                 if let Some(position) = position {
-                    if let Some(sf) = scale_factor_override {
+                    if let Some(scale_factor_override) = scale_factor_override {
                         winit_window_builder = winit_window_builder.with_position(
-                            winit::dpi::LogicalPosition::new(
-                                position[0] as f64,
-                                position[1] as f64,
-                            )
-                            .to_physical::<f64>(*sf),
+                            winit::dpi::LogicalPosition::new(position[0], position[1])
+                                .to_physical::<f64>(scale_factor_override),
                         );
                     } else {
-                        winit_window_builder =
-                            winit_window_builder.with_position(winit::dpi::LogicalPosition::new(
-                                position[0] as f64,
-                                position[1] as f64,
-                            ));
+                        winit_window_builder = winit_window_builder.with_position(
+                            winit::dpi::LogicalPosition::new(position[0], position[1]),
+                        );
                     }
                 }
-                if let Some(sf) = scale_factor_override {
-                    winit_window_builder
-                        .with_inner_size(LogicalSize::new(*width, *height).to_physical::<f64>(*sf))
+                if let Some(scale_factor_override) = scale_factor_override {
+                    winit_window_builder.with_inner_size(
+                        LogicalSize::new(width, height).to_physical::<f64>(scale_factor_override),
+                    )
                 } else {
-                    winit_window_builder.with_inner_size(LogicalSize::new(*width, *height))
+                    winit_window_builder.with_inner_size(LogicalSize::new(width, height))
                 }
             }
             .with_resizable(window_descriptor.resizable)
@@ -309,38 +305,50 @@ pub struct WindowDescriptor {
     /// The requested logical width of the window's client area.
     ///
     /// May vary from the physical width due to different pixel density on different monitors.
-    pub width: f32,
+    pub width: f64,
+
     /// The requested logical height of the window's client area.
     ///
     /// May vary from the physical height due to different pixel density on different monitors.
-    pub height: f32,
+    pub height: f64,
+
     /// The position on the screen that the window will be centered at.
     ///
     /// If set to `None`, some platform-specific position will be chosen.
-    pub position: Option<[f32; 2]>,
+    pub position: Option<[f64; 2]>,
+
     /// Sets minimum and maximum resize limits.
     pub resize_constraints: WindowResizeConstraints,
+
     /// Overrides the window's ratio of physical pixels to logical pixels.
     ///
     /// If there are some scaling problems on X11 try to set this option to `Some(1.0)`.
     pub scale_factor_override: Option<f64>,
+
     /// Sets the title that displays on the window top bar, on the system task bar and other OS
     /// specific places.
     pub title: String,
+
     /// The window's [`PresentMode`].
     ///
     /// Used to select whether or not VSync is used
     pub present_mode: PresentMode,
+
     /// Sets whether the window is resizable.
     pub resizable: bool,
+
     /// Sets whether the window should have borders and bars.
     pub decorations: bool,
+
     /// Sets whether the cursor is visible when the window has focus.
     pub cursor_visible: bool,
+
     /// Sets whether the window locks the cursor inside its borders when the window has focus.
     pub cursor_locked: bool,
+
     /// Sets the [`WindowMode`].
     pub mode: WindowMode,
+
     /// Sets whether the background of the window should be transparent.
     pub transparent: bool,
 }
@@ -375,10 +383,10 @@ impl Default for WindowDescriptor {
 /// required to disable maximizing is not yet exposed by winit.
 #[derive(Debug, Clone, Copy)]
 pub struct WindowResizeConstraints {
-    pub min_width: f32,
-    pub min_height: f32,
-    pub max_width: f32,
-    pub max_height: f32,
+    pub min_width: f64,
+    pub min_height: f64,
+    pub max_width: f64,
+    pub max_height: f64,
 }
 
 impl Default for WindowResizeConstraints {
@@ -387,8 +395,8 @@ impl Default for WindowResizeConstraints {
         Self {
             min_width: 180.,
             min_height: 120.,
-            max_width: f32::INFINITY,
-            max_height: f32::INFINITY,
+            max_width: f64::INFINITY,
+            max_height: f64::INFINITY,
         }
     }
 }
