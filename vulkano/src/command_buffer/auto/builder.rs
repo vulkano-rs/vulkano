@@ -1281,7 +1281,6 @@ impl CommandBufferBuilderState {
                 // DynamicState::RasterizationStream => todo!(),
                 DynamicState::ConservativeRasterizationMode => self.conservative_rasterization_mode = None,
                 DynamicState::ExtraPrimitiveOverestimationSize => self.extra_primitive_overestimation_size = None,
-                // DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
                 // DynamicState::DepthClipEnable => todo!(),
                 // DynamicState::SampleLocationsEnable => todo!(),
                 // DynamicState::ColorBlendAdvanced => todo!(),
