@@ -1199,13 +1199,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_conservative_rasterization_mode(
+    pub fn set_conservative_rasterization_mode(
         &mut self,
         conservative_rasterization_mode: ConservativeRasterizationMode,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_conservative_rasterization_mode()?;
 
-        Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode))
+        unsafe { Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode)) }
     }
 
     fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
@@ -1234,13 +1234,13 @@ impl RecordingCommandBuffer {
     }
 
     #[inline]
-    pub unsafe fn set_extra_primitive_overestimation_size(
+    pub fn set_extra_primitive_overestimation_size(
         &mut self,
         extra_primitive_overestimation_size: f32,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_extra_primitive_overestimation_size()?;
 
-        Ok(self.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size))
+        unsafe { Ok(self.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size)) }
     }
 
     fn validate_set_extra_primitive_overestimation_size(&self) -> Result<(), Box<ValidationError>> {
