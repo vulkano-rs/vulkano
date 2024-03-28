@@ -3232,7 +3232,11 @@ impl RecordingCommandBuffer {
                     }
                 }
                 DynamicState::ExtraPrimitiveOverestimationSize => {
-                    if self.builder_state.extra_primitive_overestimation_size.is_none() {
+                    if self
+                        .builder_state
+                        .extra_primitive_overestimation_size
+                        .is_none()
+                    {
                         return Err(Box::new(ValidationError {
                             problem: format!(
                                 "the currently bound graphics pipeline requires the \

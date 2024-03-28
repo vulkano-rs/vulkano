@@ -1,11 +1,10 @@
-//! A mode of rasterization where the edges of primitives are modified so that fragments are generated
-//! if the edge of a primitive touches any part of a pixel, or if a pixel is fully covered by a primitive.
+//! A mode of rasterization where the edges of primitives are modified so that fragments are
+//! generated if the edge of a primitive touches any part of a pixel, or if a pixel is fully
+//! covered by a primitive.
+use crate::{device::Device, macros::vulkan_enum, ValidationError};
 
-use crate::{
-    device::Device, macros::vulkan_enum, ValidationError,
-};
-
-/// The state in a graphics pipeline describing how the conservative rasterization mode should behave.
+/// The state in a graphics pipeline describing how the conservative rasterization mode should
+/// behave.
 #[derive(Clone, Debug)]
 pub struct ConservativeRasterizationState {
     /// Sets the conservative rasterization mode.
@@ -13,11 +12,10 @@ pub struct ConservativeRasterizationState {
     /// The default value is [`ConservativeRasterizationMode::Disabled`].
     pub mode: ConservativeRasterizationMode,
 
-
-    /// The extra size in pixels to increase the generating primitive during conservative rasterization.
-    /// If the mode is set to anything other than [`ConservativeRasterizationMode::Overestimate`] this
-    /// value is ignored.
-    /// 
+    /// The extra size in pixels to increase the generating primitive during conservative
+    /// rasterization. If the mode is set to anything other than
+    /// [`ConservativeRasterizationMode::Overestimate`] this value is ignored.
+    ///
     ///  The default value is 0.0.
     pub overestimation_size: f32,
 
@@ -51,7 +49,9 @@ impl ConservativeRasterizationState {
             ])
         })?;
 
-        if overestimation_size < 0.0 || overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap() {
+        if overestimation_size < 0.0
+            || overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap()
+        {
             return Err(Box::new(ValidationError {
                 context: "overestimation size".into(),
                 problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),

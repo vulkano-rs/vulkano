@@ -1439,7 +1439,7 @@ pub struct GraphicsPipelineCreateInfo {
     pub discard_rectangle_state: Option<DiscardRectangleState>,
 
     /// The conservative rasterization state.
-    /// 
+    ///
     /// The default value is `None`.
     pub conservative_rasterization_state: Option<ConservativeRasterizationState>,
 

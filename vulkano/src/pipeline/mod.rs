@@ -738,7 +738,7 @@ vulkan_enum! {
     ConservativeRasterizationMode = CONSERVATIVE_RASTERIZATION_MODE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]), 
+    ]),
 
     /// The value of
     /// [`ConservativeRasterizationState::overestimation_size`](crate::pipeline::graphics::conservative_rasterization::ConservativeRasterizationState::overestimation_size)

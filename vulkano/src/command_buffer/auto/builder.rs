@@ -1208,7 +1208,8 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) vertex_input: Option<VertexInputState>,
     pub(in crate::command_buffer) viewport: HashMap<u32, Viewport>,
     pub(in crate::command_buffer) viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
-    pub(in crate::command_buffer) conservative_rasterization_mode: Option<ConservativeRasterizationMode>,
+    pub(in crate::command_buffer) conservative_rasterization_mode:
+        Option<ConservativeRasterizationMode>,
     pub(in crate::command_buffer) extra_primitive_overestimation_size: Option<f32>,
 
     // Active queries
@@ -1278,26 +1279,29 @@ impl CommandBufferBuilderState {
                 // DynamicState::ColorBlendEquation => todo!(),
                 // DynamicState::ColorWriteMask => todo!(),
                 // DynamicState::RasterizationStream => todo!(),
-                DynamicState::ConservativeRasterizationMode => self.conservative_rasterization_mode = None,
-                DynamicState::ExtraPrimitiveOverestimationSize => self.extra_primitive_overestimation_size = None,
-                // DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
-                // DynamicState::DepthClipEnable => todo!(),
-                // DynamicState::SampleLocationsEnable => todo!(),
-                // DynamicState::ColorBlendAdvanced => todo!(),
-                // DynamicState::ProvokingVertexMode => todo!(),
-                // DynamicState::LineRasterizationMode => todo!(),
-                // DynamicState::LineStippleEnable => todo!(),
-                // DynamicState::DepthClipNegativeOneToOne => todo!(),
-                // DynamicState::ViewportWScalingEnable => todo!(),
-                // DynamicState::ViewportSwizzle => todo!(),
-                // DynamicState::CoverageToColorEnable => todo!(),
-                // DynamicState::CoverageToColorLocation => todo!(),
-                // DynamicState::CoverageModulationMode => todo!(),
-                // DynamicState::CoverageModulationTableEnable => todo!(),
-                // DynamicState::CoverageModulationTable => todo!(),
-                // DynamicState::ShadingRateImageEnable => todo!(),
-                // DynamicState::RepresentativeFragmentTestEnable => todo!(),
-                // DynamicState::CoverageReductionMode => todo!(),
+                DynamicState::ConservativeRasterizationMode => {
+                    self.conservative_rasterization_mode = None
+                }
+                DynamicState::ExtraPrimitiveOverestimationSize => {
+                    self.extra_primitive_overestimation_size = None
+                } /* DynamicState::ExtraPrimitiveOverestimationSize => todo!(),
+                   * DynamicState::DepthClipEnable => todo!(),
+                   * DynamicState::SampleLocationsEnable => todo!(),
+                   * DynamicState::ColorBlendAdvanced => todo!(),
+                   * DynamicState::ProvokingVertexMode => todo!(),
+                   * DynamicState::LineRasterizationMode => todo!(),
+                   * DynamicState::LineStippleEnable => todo!(),
+                   * DynamicState::DepthClipNegativeOneToOne => todo!(),
+                   * DynamicState::ViewportWScalingEnable => todo!(),
+                   * DynamicState::ViewportSwizzle => todo!(),
+                   * DynamicState::CoverageToColorEnable => todo!(),
+                   * DynamicState::CoverageToColorLocation => todo!(),
+                   * DynamicState::CoverageModulationMode => todo!(),
+                   * DynamicState::CoverageModulationTableEnable => todo!(),
+                   * DynamicState::CoverageModulationTable => todo!(),
+                   * DynamicState::ShadingRateImageEnable => todo!(),
+                   * DynamicState::RepresentativeFragmentTestEnable => todo!(),
+                   * DynamicState::CoverageReductionMode => todo!(), */
             }
         }
     }

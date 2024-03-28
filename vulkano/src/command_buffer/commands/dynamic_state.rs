@@ -1205,12 +1205,14 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_conservative_rasterization_mode()?;
 
-        unsafe { Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode)) }
+        unsafe {
+            Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode))
+        }
     }
 
     fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
         self.inner.validate_set_conservative_rasterization_mode()?;
-        
+
         self.validate_graphics_pipeline_fixed_state(DynamicState::ConservativeRasterizationMode)?;
 
         Ok(())
@@ -1221,7 +1223,6 @@ impl RecordingCommandBuffer {
         &mut self,
         conservative_rasterization_mode: ConservativeRasterizationMode,
     ) -> &mut Self {
-
         self.builder_state.conservative_rasterization_mode = Some(conservative_rasterization_mode);
 
         self.add_command(
@@ -1242,13 +1243,19 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_extra_primitive_overestimation_size()?;
 
-        unsafe { Ok(self.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size)) }
+        unsafe {
+            Ok(self.set_extra_primitive_overestimation_size_unchecked(
+                extra_primitive_overestimation_size,
+            ))
+        }
     }
 
     fn validate_set_extra_primitive_overestimation_size(&self) -> Result<(), Box<ValidationError>> {
         self.inner.validate_set_conservative_rasterization_mode()?;
-        
-        self.validate_graphics_pipeline_fixed_state(DynamicState::ExtraPrimitiveOverestimationSize)?;
+
+        self.validate_graphics_pipeline_fixed_state(
+            DynamicState::ExtraPrimitiveOverestimationSize,
+        )?;
 
         Ok(())
     }
@@ -1258,14 +1265,16 @@ impl RecordingCommandBuffer {
         &mut self,
         extra_primitive_overestimation_size: f32,
     ) -> &mut Self {
+        self.builder_state.extra_primitive_overestimation_size =
+            Some(extra_primitive_overestimation_size);
 
-        self.builder_state.extra_primitive_overestimation_size = Some(extra_primitive_overestimation_size);
-        
         self.add_command(
             "set_extra_primitive_overestimation_size",
             Default::default(),
             move |out: &mut RawRecordingCommandBuffer| {
-                out.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size);
+                out.set_extra_primitive_overestimation_size_unchecked(
+                    extra_primitive_overestimation_size,
+                );
             },
         );
 
@@ -3273,11 +3282,16 @@ impl RawRecordingCommandBuffer {
     }
 
     fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
-        if !(self.device().enabled_features().extended_dynamic_state3_conservative_rasterization_mode)
+        if !(self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state3_conservative_rasterization_mode)
         {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state3_conservative_rasterization_mode")]),
+                    RequiresAllOf(&[Requires::DeviceFeature(
+                        "extended_dynamic_state3_conservative_rasterization_mode",
+                    )]),
                     RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
                 ]),
                 vuids: &["VUID-vkCmdSetConservativeRasterizationModeEXT-None-09423"],
@@ -3307,11 +3321,11 @@ impl RawRecordingCommandBuffer {
         &mut self,
         conservative_rasterization_mode: ConservativeRasterizationMode,
     ) -> &mut Self {
-
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state3.cmd_set_conservative_rasterization_mode_ext)(
+        (fns.ext_extended_dynamic_state3
+            .cmd_set_conservative_rasterization_mode_ext)(
             self.handle(),
-            conservative_rasterization_mode.into()
+            conservative_rasterization_mode.into(),
         );
 
         self
@@ -3324,7 +3338,8 @@ impl RawRecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_extra_primitive_overestimation_size(extra_primitive_overestimation_size)?;
 
-        Ok(self.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size))
+        Ok(self
+            .set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size))
     }
 
     fn validate_set_extra_primitive_overestimation_size(
@@ -3332,12 +3347,17 @@ impl RawRecordingCommandBuffer {
         extra_primitive_overestimation_size: f32,
     ) -> Result<(), Box<ValidationError>> {
         let properties = self.device().physical_device().properties();
-        
-        if !(self.device().enabled_features().extended_dynamic_state3_extra_primitive_overestimation_size)
+
+        if !(self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state3_extra_primitive_overestimation_size)
         {
             return Err(Box::new(ValidationError {
                 requires_one_of: RequiresOneOf(&[
-                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state3_extra_primitive_overestimation_size")]),
+                    RequiresAllOf(&[Requires::DeviceFeature(
+                        "extended_dynamic_state3_extra_primitive_overestimation_size",
+                    )]),
                     RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
                 ]),
                 vuids: &["VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-None-09423"],
@@ -3359,7 +3379,10 @@ impl RawRecordingCommandBuffer {
             }));
         }
 
-        if extra_primitive_overestimation_size < 0.0 || extra_primitive_overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap() {
+        if extra_primitive_overestimation_size < 0.0
+            || extra_primitive_overestimation_size
+                > properties.max_extra_primitive_overestimation_size.unwrap()
+        {
             return Err(Box::new(ValidationError {
                 context: "overestimation size".into(),
                 problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),
@@ -3378,11 +3401,11 @@ impl RawRecordingCommandBuffer {
         &mut self,
         extra_primitive_overestimation_size: f32,
     ) -> &mut Self {
-
         let fns = self.device().fns();
-        (fns.ext_extended_dynamic_state3.cmd_set_extra_primitive_overestimation_size_ext)(
+        (fns.ext_extended_dynamic_state3
+            .cmd_set_extra_primitive_overestimation_size_ext)(
             self.handle(),
-            extra_primitive_overestimation_size
+            extra_primitive_overestimation_size,
         );
 
         self
