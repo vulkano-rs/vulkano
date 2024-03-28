@@ -124,7 +124,7 @@ impl RawImage {
         } = &create_info;
 
         let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
             Sharing::Concurrent(queue_family_indices) => (
                 ash::vk::SharingMode::CONCURRENT,
                 queue_family_indices.len() as u32,
@@ -171,7 +171,7 @@ impl RawImage {
                 );
 
                 next.p_next = create_info_vk.p_next;
-                create_info_vk.p_next = next as *const _ as *const _;
+                create_info_vk.p_next = ptr::from_ref(next).cast();
             } else {
                 drm_format_modifier_plane_layouts_vk = drm_format_modifier_plane_layouts
                     .iter()
@@ -205,7 +205,7 @@ impl RawImage {
                 );
 
                 next.p_next = create_info_vk.p_next;
-                create_info_vk.p_next = next as *const _ as *const _;
+                create_info_vk.p_next = ptr::from_ref(next).cast();
             }
         }
 
@@ -216,7 +216,7 @@ impl RawImage {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         if !view_formats.is_empty() {
@@ -233,7 +233,7 @@ impl RawImage {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         if let Some(stencil_usage) = stencil_usage {
@@ -243,7 +243,7 @@ impl RawImage {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         let handle = {
@@ -444,7 +444,7 @@ impl RawImage {
             });
 
             next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *mut _ as *mut _;
+            info_vk.p_next = ptr::from_mut(next).cast();
         }
 
         let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
@@ -462,7 +462,7 @@ impl RawImage {
                 .insert(ash::vk::MemoryDedicatedRequirements::default());
 
             next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
+            memory_requirements2_vk.p_next = ptr::from_mut(next).cast();
         }
 
         unsafe {
@@ -1197,7 +1197,7 @@ impl RawImage {
             };
 
             for (info_vk, plane_info_vk) in infos_vk.iter_mut().zip(plane_infos_vk.iter_mut()) {
-                info_vk.p_next = plane_info_vk as *mut _ as *mut _;
+                info_vk.p_next = ptr::from_mut(plane_info_vk).cast();
             }
 
             if self.device.api_version() >= Version::V1_1 {

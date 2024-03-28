@@ -277,7 +277,7 @@ fn properties_ffi_output(members: &[PropertiesFfiMember]) -> TokenStream {
                     self.#name = Some(Default::default());
                     let member = self.#name.as_mut().unwrap();
                     member.p_next = head.p_next;
-                    head.p_next = member as *mut _ as _;
+                    head.p_next = core::ptr::from_mut(member).cast();
                 }
             }
         },

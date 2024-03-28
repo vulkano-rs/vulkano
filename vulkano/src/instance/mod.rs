@@ -94,7 +94,7 @@ use parking_lot::RwLock;
 use smallvec::SmallVec;
 use std::{
     borrow::Cow,
-    ffi::{c_void, CString},
+    ffi::CString,
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
@@ -469,7 +469,7 @@ impl Instance {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         let mut debug_utils_messenger_create_infos_vk: Vec<_> = debug_utils_messengers
@@ -487,7 +487,7 @@ impl Instance {
                     message_severity: message_severity.into(),
                     message_type: message_type.into(),
                     pfn_user_callback: Some(trampoline),
-                    p_user_data: user_callback.as_ptr() as *const c_void as *mut _,
+                    p_user_data: user_callback.as_ptr().cast_mut().cast(),
                     ..Default::default()
                 }
             })
@@ -495,11 +495,11 @@ impl Instance {
 
         for i in 1..debug_utils_messenger_create_infos_vk.len() {
             debug_utils_messenger_create_infos_vk[i - 1].p_next =
-                &debug_utils_messenger_create_infos_vk[i] as *const _ as *const _;
+                ptr::addr_of!(debug_utils_messenger_create_infos_vk[i]).cast();
         }
 
         if let Some(info) = debug_utils_messenger_create_infos_vk.first() {
-            create_info_vk.p_next = info as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(info).cast();
         }
 
         let handle = {
@@ -1210,7 +1210,7 @@ pub(crate) struct InstanceOwnedDebugWrapper<T>(pub(crate) T);
 impl<T> InstanceOwnedDebugWrapper<T> {
     pub fn cast_slice_inner(slice: &[Self]) -> &[T] {
         // SAFETY: `InstanceOwnedDebugWrapper<T>` and `T` have the same layout.
-        unsafe { slice::from_raw_parts(slice as *const _ as *const _, slice.len()) }
+        unsafe { slice::from_raw_parts(ptr::from_ref(slice).cast(), slice.len()) }
     }
 }
 

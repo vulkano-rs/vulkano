@@ -11,7 +11,7 @@ use crate::{
     VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
-use std::{mem::size_of_val, sync::Arc};
+use std::{mem::size_of_val, ptr, sync::Arc};
 
 /// # Commands to fill resources with new data.
 impl RecordingCommandBuffer {
@@ -630,7 +630,7 @@ impl RawRecordingCommandBuffer {
             dst_buffer.buffer().handle(),
             dst_buffer.offset(),
             size_of_val(data) as DeviceSize,
-            data as *const _ as *const _,
+            ptr::from_ref(data).cast(),
         );
 
         self

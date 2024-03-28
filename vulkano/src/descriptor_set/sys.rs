@@ -18,6 +18,7 @@ use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
     mem::ManuallyDrop,
+    ptr,
     sync::Arc,
 };
 
@@ -152,13 +153,13 @@ impl RawDescriptorSet {
                 }
                 DescriptorWriteInfo::InlineUniformBlock(data) => {
                     write_vk.descriptor_count = data.len() as u32;
-                    write_vk.p_next = &per_write_vk.inline_uniform_block as *const _ as _;
+                    write_vk.p_next = ptr::addr_of!(per_write_vk.inline_uniform_block).cast();
                     per_write_vk.inline_uniform_block.data_size = write_vk.descriptor_count;
-                    per_write_vk.inline_uniform_block.p_data = data.as_ptr() as *const _;
+                    per_write_vk.inline_uniform_block.p_data = data.as_ptr().cast();
                 }
                 DescriptorWriteInfo::AccelerationStructure(info) => {
                     write_vk.descriptor_count = info.len() as u32;
-                    write_vk.p_next = &per_write_vk.acceleration_structures as *const _ as _;
+                    write_vk.p_next = ptr::addr_of!(per_write_vk.acceleration_structures).cast();
                     per_write_vk
                         .acceleration_structures
                         .acceleration_structure_count = write_vk.descriptor_count;

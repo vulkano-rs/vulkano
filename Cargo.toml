@@ -64,10 +64,14 @@ rand = "0.8"
 ron = "0.8"
 
 [workspace.lints]
-rust.missing_docs = "allow"                # TODO: warn eventually
+rust.missing_docs = "allow"            # TODO: warn eventually
 rust.rust_2018_idioms = "warn"
-rust.rust_2024_compatibility = "allow"     # TODO: warn eventually
-clippy.missing_safety_doc = "allow"        # TODO: warn eventually
+rust.rust_2024_compatibility = "allow" # TODO: warn eventually
+clippy.borrow_as_ptr = "warn"
+clippy.missing_safety_doc = "allow"    # TODO: warn eventually
+clippy.ptr_as_ptr = "warn"
+clippy.ptr_cast_constness = "warn"
+# clippy.ref_as_ptr = "warn"                 # TODO: enable once it's stable
 clippy.trivially_copy_pass_by_ref = "warn"
 # These lints are a bit too pedantic, so they're disabled here.
 # They can be removed if they no longer happen in the future.

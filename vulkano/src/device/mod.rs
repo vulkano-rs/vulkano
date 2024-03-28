@@ -415,7 +415,7 @@ impl Device {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *mut _ as *mut _;
+            create_info_vk.p_next = ptr::from_mut(next).cast();
         }
 
         let mut private_data_create_info_vk = None;
@@ -427,12 +427,12 @@ impl Device {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *mut _ as *mut _;
+            create_info_vk.p_next = ptr::from_mut(next).cast();
         }
 
         // VUID-VkDeviceCreateInfo-pNext-00373
         if has_khr_get_physical_device_properties2 {
-            create_info_vk.p_next = features_ffi.head_as_ref() as *const _ as _;
+            create_info_vk.p_next = ptr::from_ref(features_ffi.head_as_ref()).cast();
         } else {
             create_info_vk.p_enabled_features = &features_ffi.head_as_ref().features;
         }
@@ -976,13 +976,13 @@ impl Device {
                 });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
 
             let next = variable_descriptor_count_support_vk
                 .insert(ash::vk::DescriptorSetVariableDescriptorCountLayoutSupport::default());
 
             next.p_next = support_vk.p_next;
-            support_vk.p_next = next as *mut _ as *mut _;
+            support_vk.p_next = ptr::from_mut(next).cast();
         }
 
         let fns = self.fns();
@@ -1060,7 +1060,7 @@ impl Device {
         } = &create_info;
 
         let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
             Sharing::Concurrent(queue_family_indices) => (
                 ash::vk::SharingMode::CONCURRENT,
                 queue_family_indices.len() as u32,
@@ -1086,7 +1086,7 @@ impl Device {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         let info_vk = ash::vk::DeviceBufferMemoryRequirements {
@@ -1104,7 +1104,7 @@ impl Device {
                 .insert(ash::vk::MemoryDedicatedRequirements::default());
 
             next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
+            memory_requirements2_vk.p_next = ptr::from_mut(next).cast();
         }
 
         unsafe {
@@ -1302,7 +1302,7 @@ impl Device {
         } = &create_info;
 
         let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
             Sharing::Concurrent(queue_family_indices) => (
                 ash::vk::SharingMode::CONCURRENT,
                 queue_family_indices.len() as u32,
@@ -1346,7 +1346,7 @@ impl Device {
             );
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         if !external_memory_handle_types.is_empty() {
@@ -1356,7 +1356,7 @@ impl Device {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         if !view_formats.is_empty() {
@@ -1373,7 +1373,7 @@ impl Device {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         if let Some(stencil_usage) = stencil_usage {
@@ -1383,7 +1383,7 @@ impl Device {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         // This is currently necessary because of an issue with the spec. The plane aspect should
@@ -1429,7 +1429,7 @@ impl Device {
                 .insert(ash::vk::MemoryDedicatedRequirements::default());
 
             next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
+            memory_requirements2_vk.p_next = ptr::from_mut(next).cast();
         }
 
         unsafe {
@@ -2262,7 +2262,7 @@ pub(crate) struct DeviceOwnedDebugWrapper<T>(pub(crate) T);
 impl<T> DeviceOwnedDebugWrapper<T> {
     pub fn cast_slice_inner(slice: &[Self]) -> &[T] {
         // SAFETY: `DeviceOwnedDebugWrapper<T>` and `T` have the same layout.
-        unsafe { slice::from_raw_parts(slice as *const _ as *const _, slice.len()) }
+        unsafe { slice::from_raw_parts(ptr::from_ref(slice).cast(), slice.len()) }
     }
 }
 

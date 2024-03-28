@@ -671,7 +671,7 @@ impl<'a> QueueGuard<'a> {
             });
 
             next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
+            info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         if has_present_modes {
@@ -681,8 +681,8 @@ impl<'a> QueueGuard<'a> {
                 ..Default::default()
             });
 
-            next.p_next = info_vk.p_next as _;
-            info_vk.p_next = next as *const _ as *const _;
+            next.p_next = info_vk.p_next.cast();
+            info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         if has_present_regions {
@@ -702,7 +702,7 @@ impl<'a> QueueGuard<'a> {
             });
 
             next.p_next = info_vk.p_next;
-            info_vk.p_next = next as *const _ as *const _;
+            info_vk.p_next = ptr::from_ref(next).cast();
         }
 
         let fns = self.queue.device().fns();
@@ -1187,7 +1187,7 @@ impl<'a> QueueGuard<'a> {
                     };
 
                     timeline_semaphore_submit_info_vk.p_next = submit_info_vk.p_next;
-                    submit_info_vk.p_next = timeline_semaphore_submit_info_vk as *mut _ as *mut _;
+                    submit_info_vk.p_next = ptr::from_mut(timeline_semaphore_submit_info_vk).cast();
                 }
             }
 

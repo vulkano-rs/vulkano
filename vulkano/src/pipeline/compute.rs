@@ -129,7 +129,7 @@ impl ComputePipeline {
                 map_entry_count: specialization_map_entries_vk.len() as u32,
                 p_map_entries: specialization_map_entries_vk.as_ptr(),
                 data_size: specialization_data_vk.len(),
-                p_data: specialization_data_vk.as_ptr() as *const _,
+                p_data: specialization_data_vk.as_ptr().cast(),
             };
             required_subgroup_size_create_info =
                 required_subgroup_size.map(|required_subgroup_size| {
@@ -142,7 +142,7 @@ impl ComputePipeline {
                 p_next: required_subgroup_size_create_info.as_ref().map_or(
                     ptr::null(),
                     |required_subgroup_size_create_info| {
-                        required_subgroup_size_create_info as *const _ as _
+                        ptr::from_ref(required_subgroup_size_create_info).cast()
                     },
                 ),
                 flags: flags.into(),
