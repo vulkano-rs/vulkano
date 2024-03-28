@@ -45,10 +45,10 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 vk-parse = { workspace = true }
 
-[lints]
-workspace = true
-
 [features]
 default = ["macros"]
 macros = ["dep:vulkano-macros"]
 document_unchecked = []
+
+[lints]
+workspace = true
