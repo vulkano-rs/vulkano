@@ -1222,6 +1222,8 @@ impl RecordingCommandBuffer {
         conservative_rasterization_mode: ConservativeRasterizationMode,
     ) -> &mut Self {
 
+        self.builder_state.conservative_rasterization_mode = Some(conservative_rasterization_mode);
+
         self.add_command(
             "set_conservative_rasterization_mode",
             Default::default(),
@@ -1257,6 +1259,8 @@ impl RecordingCommandBuffer {
         extra_primitive_overestimation_size: f32,
     ) -> &mut Self {
 
+        self.builder_state.extra_primitive_overestimation_size = Some(extra_primitive_overestimation_size);
+        
         self.add_command(
             "set_extra_primitive_overestimation_size",
             Default::default(),
