@@ -827,7 +827,7 @@ impl GraphicsPipeline {
         if let Some(conservative_rasterization_state) = conservative_rasterization_state {
             let ConservativeRasterizationState {
                 mode,
-                extra_overestimation_size,
+                overestimation_size,
                 _ne: _,
             } = conservative_rasterization_state;
 
@@ -835,7 +835,7 @@ impl GraphicsPipeline {
                 ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT {
                     flags: ash::vk::PipelineRasterizationConservativeStateCreateFlagsEXT::empty(),
                     conservative_rasterization_mode: (*mode).into(),
-                    extra_primitive_overestimation_size: *extra_overestimation_size,
+                    extra_primitive_overestimation_size: *overestimation_size,
                     ..Default::default()
                 },
             );
@@ -1111,7 +1111,10 @@ impl GraphicsPipeline {
         }
 
         if conservative_rasterization_state.is_some() {
-            fixed_state.extend([DynamicState::ConservativeRasterization]);
+            fixed_state.extend([
+                DynamicState::ConservativeRasterizationMode,
+                DynamicState::ExtraPrimitiveOverestimationSize,
+            ]);
         }
 
         fixed_state.retain(|state| !dynamic_state.contains(state));

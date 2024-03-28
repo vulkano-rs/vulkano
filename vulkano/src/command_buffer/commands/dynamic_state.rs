@@ -4,6 +4,7 @@ use crate::{
     pipeline::{
         graphics::{
             color_blend::LogicOp,
+            conservative_rasterization::ConservativeRasterizationMode,
             depth_stencil::{CompareOp, StencilFaces, StencilOp, StencilOps},
             input_assembly::PrimitiveTopology,
             rasterization::{CullMode, DepthBiasState, FrontFace, LineStipple},
@@ -1191,6 +1192,76 @@ impl RecordingCommandBuffer {
             Default::default(),
             move |out: &mut RawRecordingCommandBuffer| {
                 out.set_viewport_with_count_unchecked(&viewports);
+            },
+        );
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn set_conservative_rasterization_mode(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_conservative_rasterization_mode()?;
+
+        Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode))
+    }
+
+    fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_conservative_rasterization_mode()?;
+        
+        self.validate_graphics_pipeline_fixed_state(DynamicState::ConservativeRasterizationMode)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_conservative_rasterization_mode_unchecked(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> &mut Self {
+
+        self.add_command(
+            "set_conservative_rasterization_mode",
+            Default::default(),
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode);
+            },
+        );
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn set_extra_primitive_overestimation_size(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_extra_primitive_overestimation_size()?;
+
+        Ok(self.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size))
+    }
+
+    fn validate_set_extra_primitive_overestimation_size(&self) -> Result<(), Box<ValidationError>> {
+        self.inner.validate_set_conservative_rasterization_mode()?;
+        
+        self.validate_graphics_pipeline_fixed_state(DynamicState::ExtraPrimitiveOverestimationSize)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_extra_primitive_overestimation_size_unchecked(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> &mut Self {
+
+        self.add_command(
+            "set_extra_primitive_overestimation_size",
+            Default::default(),
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size);
             },
         );
 
@@ -3183,6 +3254,132 @@ impl RawRecordingCommandBuffer {
                 viewports.as_ptr(),
             );
         }
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn set_conservative_rasterization_mode(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_conservative_rasterization_mode()?;
+
+        Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode))
+    }
+
+    fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
+        if !(self.device().enabled_features().extended_dynamic_state3_conservative_rasterization_mode)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state3_conservative_rasterization_mode")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
+                ]),
+                vuids: &["VUID-vkCmdSetConservativeRasterizationModeEXT-None-09423"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetConservativeRasterizationModeEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_conservative_rasterization_mode_unchecked(
+        &mut self,
+        conservative_rasterization_mode: ConservativeRasterizationMode,
+    ) -> &mut Self {
+
+        let fns = self.device().fns();
+        (fns.ext_extended_dynamic_state3.cmd_set_conservative_rasterization_mode_ext)(
+            self.handle(),
+            conservative_rasterization_mode.into()
+        );
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn set_extra_primitive_overestimation_size(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_extra_primitive_overestimation_size(extra_primitive_overestimation_size)?;
+
+        Ok(self.set_extra_primitive_overestimation_size_unchecked(extra_primitive_overestimation_size))
+    }
+
+    fn validate_set_extra_primitive_overestimation_size(
+        &self,
+        extra_primitive_overestimation_size: f32,
+    ) -> Result<(), Box<ValidationError>> {
+        let properties = self.device().physical_device().properties();
+        
+        if !(self.device().enabled_features().extended_dynamic_state3_extra_primitive_overestimation_size)
+        {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::DeviceFeature("extended_dynamic_state3_extra_primitive_overestimation_size")]),
+                    RequiresAllOf(&[Requires::DeviceFeature("shader_object")]),
+                ]),
+                vuids: &["VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-None-09423"],
+                ..Default::default()
+            }));
+        }
+
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::GRAPHICS)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    graphics operations"
+                    .into(),
+                vuids: &["VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-commandBuffer-cmdpool"],
+                ..Default::default()
+            }));
+        }
+
+        if extra_primitive_overestimation_size < 0.0 || extra_primitive_overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap() {
+            return Err(Box::new(ValidationError {
+                context: "overestimation size".into(),
+                problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),
+                vuids: &[
+                    "VUID-vkCmdSetExtraPrimitiveOverestimationSizeEXT-extraPrimitiveOverestimationSize-07428",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_extra_primitive_overestimation_size_unchecked(
+        &mut self,
+        extra_primitive_overestimation_size: f32,
+    ) -> &mut Self {
+
+        let fns = self.device().fns();
+        (fns.ext_extended_dynamic_state3.cmd_set_extra_primitive_overestimation_size_ext)(
+            self.handle(),
+            extra_primitive_overestimation_size
+        );
 
         self
     }

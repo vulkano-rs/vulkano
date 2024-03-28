@@ -730,19 +730,25 @@ vulkan_enum! {
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
     ]), */
 
-
-    // TODO: document
-    ConservativeRasterization = CONSERVATIVE_RASTERIZATION_MODE_EXT
+    /// The value of
+    /// [`ConservativeRasterizationState::mode`](crate::pipeline::graphics::conservative_rasterization::ConservativeRasterizationState::mode)
+    ///
+    /// Set with
+    /// [`set_conservative_rasterization_mode`](crate::command_buffer::RecordingCommandBuffer::set_conservative_rasterization_mode).
+    ConservativeRasterizationMode = CONSERVATIVE_RASTERIZATION_MODE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
     ]), 
 
-    /* TODO: enable
-    // TODO: document
+    /// The value of
+    /// [`ConservativeRasterizationState::overestimation_size`](crate::pipeline::graphics::conservative_rasterization::ConservativeRasterizationState::overestimation_size)
+    ///
+    /// Set with
+    /// [`set_extra_primitive_overestimation_size`](crate::command_buffer::RecordingCommandBuffer::set_extra_primitive_overestimation_size).
     ExtraPrimitiveOverestimationSize = EXTRA_PRIMITIVE_OVERESTIMATION_SIZE_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_extended_dynamic_state3)]),
-    ]), */
+    ]),
 
     /* TODO: enable
     // TODO: document

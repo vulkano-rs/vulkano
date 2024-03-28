@@ -19,7 +19,7 @@ pub struct ConservativeRasterizationState {
     /// value is ignored.
     /// 
     ///  The default value is 0.0.
-    pub extra_overestimation_size: f32,
+    pub overestimation_size: f32,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -29,7 +29,7 @@ impl Default for ConservativeRasterizationState {
     fn default() -> Self {
         Self {
             mode: ConservativeRasterizationMode::Disabled,
-            extra_overestimation_size: 0.0,
+            overestimation_size: 0.0,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -39,7 +39,7 @@ impl ConservativeRasterizationState {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             mode,
-            extra_overestimation_size,
+            overestimation_size,
             _ne: _,
         } = self;
 
@@ -51,7 +51,7 @@ impl ConservativeRasterizationState {
             ])
         })?;
 
-        if extra_overestimation_size < 0.0 || extra_overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap() {
+        if overestimation_size < 0.0 || overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap() {
             return Err(Box::new(ValidationError {
                 context: "overestimation size".into(),
                 problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),
@@ -80,4 +80,11 @@ vulkan_enum! {
 
     /// Fragments will be generated only if a primitive completely covers a pixel.
     Underestimate = UNDERESTIMATE,
+}
+
+impl Default for ConservativeRasterizationMode {
+    #[inline]
+    fn default() -> ConservativeRasterizationMode {
+        ConservativeRasterizationMode::Disabled
+    }
 }
