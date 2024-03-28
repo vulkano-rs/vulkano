@@ -13,7 +13,7 @@ use quote::{format_ident, quote};
 use std::{collections::hash_map::Entry, fmt::Write as _};
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     let properties_output = properties_output(&properties_members(&vk_data.types));
     let properties_ffi_output =
         properties_ffi_output(&properties_ffi_members(&vk_data.types, &vk_data.extensions));
@@ -430,7 +430,7 @@ struct Member<'a> {
     len: Option<&'a str>,
 }
 
-fn members(ty: &Type) -> Vec<Member> {
+fn members(ty: &Type) -> Vec<Member<'_>> {
     fn array_len(input: &str) -> IResult<&str, &str> {
         let (input, _) = take_until("[")(input)?;
         all_consuming(delimited(

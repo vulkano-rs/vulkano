@@ -98,6 +98,7 @@ Changes to vulkano-shaders:
 
 Changes to vulkano-util:
 - `VulkanoWindowRenderer::acquire` now takes in an `FnOnce(&[Arc<ImageView>])`. This means that a closure can be called when the swapchain gets recreated.
+- `VulkanoWindowRenderer::acquire` now also takes in `Option<Duration>` for the swapchain acquire timeout.
 
 ### Additions
 

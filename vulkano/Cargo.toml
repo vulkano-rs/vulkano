@@ -49,3 +49,6 @@ vk-parse = { workspace = true }
 default = ["macros"]
 macros = ["dep:vulkano-macros"]
 document_unchecked = []
+
+[lints]
+workspace = true
