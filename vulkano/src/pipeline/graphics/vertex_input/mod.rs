@@ -448,11 +448,7 @@ impl VertexInputState {
 impl Default for VertexInputState {
     #[inline]
     fn default() -> Self {
-        Self {
-            bindings: HashMap::default(),
-            attributes: HashMap::default(),
-            _ne: crate::NonExhaustive(()),
-        }
+        Self::new()
     }
 }
 

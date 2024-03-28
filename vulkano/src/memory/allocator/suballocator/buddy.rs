@@ -1,4 +1,6 @@
-use super::{AllocationType, Region, Suballocation, Suballocator, SuballocatorError};
+use super::{
+    AllocationType, Region, Suballocation, SuballocationNode, Suballocator, SuballocatorError,
+};
 use crate::{
     memory::{
         allocator::{align_up, array_vec::ArrayVec, AllocationHandle, DeviceLayout},
@@ -6,10 +8,7 @@ use crate::{
     },
     DeviceSize, NonZeroDeviceSize,
 };
-use std::{
-    cell::{Cell, UnsafeCell},
-    cmp,
-};
+use std::cmp;
 
 /// A [suballocator] whose structure forms a binary tree of power-of-two-sized suballocations.
 ///
@@ -62,8 +61,11 @@ use std::{
 pub struct BuddyAllocator {
     region_offset: DeviceSize,
     // Total memory remaining in the region.
-    free_size: Cell<DeviceSize>,
-    state: UnsafeCell<BuddyAllocatorState>,
+    free_size: DeviceSize,
+    // Every order has its own free-list for convenience, so that we don't have to traverse a tree.
+    // Each free-list is sorted by offset because we want to find the first-fit as this strategy
+    // minimizes external fragmentation.
+    free_list: ArrayVec<Vec<DeviceSize>, { Self::MAX_ORDERS }>,
 }
 
 impl BuddyAllocator {
@@ -75,6 +77,8 @@ impl BuddyAllocator {
 }
 
 unsafe impl Suballocator for BuddyAllocator {
+    type Suballocations<'a> = std::iter::Empty<SuballocationNode>;
+
     /// Creates a new `BuddyAllocator` for the given [region].
     ///
     /// # Panics
@@ -93,24 +97,21 @@ unsafe impl Suballocator for BuddyAllocator {
 
         assert!(max_order < BuddyAllocator::MAX_ORDERS);
 
-        let free_size = Cell::new(region.size());
-
         let mut free_list =
             ArrayVec::new(max_order + 1, [EMPTY_FREE_LIST; BuddyAllocator::MAX_ORDERS]);
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset());
-        let state = UnsafeCell::new(BuddyAllocatorState { free_list });
 
         BuddyAllocator {
             region_offset: region.offset(),
-            free_size,
-            state,
+            free_size: region.size(),
+            free_list,
         }
     }
 
     #[inline]
     fn allocate(
-        &self,
+        &mut self,
         layout: DeviceLayout,
         allocation_type: AllocationType,
         buffer_image_granularity: DeviceAlignment,
@@ -150,17 +151,16 @@ unsafe impl Suballocator for BuddyAllocator {
         let size = cmp::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
 
         let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
-        let state = unsafe { &mut *self.state.get() };
 
         // Start searching at the lowest possible order going up.
-        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
+        for (order, free_list) in self.free_list.iter_mut().enumerate().skip(min_order) {
             for (index, &offset) in free_list.iter().enumerate() {
                 if is_aligned(offset, alignment) {
                     free_list.remove(index);
 
                     // Go in the opposite direction, splitting nodes from higher orders. The lowest
                     // order doesn't need any splitting.
-                    for (order, free_list) in state
+                    for (order, free_list) in self
                         .free_list
                         .iter_mut()
                         .enumerate()
@@ -185,7 +185,7 @@ unsafe impl Suballocator for BuddyAllocator {
 
                     // This can't overflow because suballocation sizes in the free-list are
                     // constrained by the remaining size of the region.
-                    self.free_size.set(self.free_size.get() - size);
+                    self.free_size -= size;
 
                     return Ok(Suballocation {
                         offset,
@@ -206,17 +206,16 @@ unsafe impl Suballocator for BuddyAllocator {
     }
 
     #[inline]
-    unsafe fn deallocate(&self, suballocation: Suballocation) {
+    unsafe fn deallocate(&mut self, suballocation: Suballocation) {
         let mut offset = suballocation.offset;
         let order = suballocation.handle.as_index();
 
         let min_order = order;
-        let state = unsafe { &mut *self.state.get() };
 
-        debug_assert!(!state.free_list[order].contains(&offset));
+        debug_assert!(!self.free_list[order].contains(&offset));
 
         // Try to coalesce nodes while incrementing the order.
-        for (order, free_list) in state.free_list.iter_mut().enumerate().skip(min_order) {
+        for (order, free_list) in self.free_list.iter_mut().enumerate().skip(min_order) {
             // This can't discard any bits because `order` is confined to the range
             // [0, log(region.size / BuddyAllocator::MIN_NODE_SIZE)].
             let size = BuddyAllocator::MIN_NODE_SIZE << order;
@@ -241,7 +240,7 @@ unsafe impl Suballocator for BuddyAllocator {
 
                     // The sizes of suballocations allocated by `self` are constrained by that of
                     // its region, so they can't possibly overflow when added up.
-                    self.free_size.set(self.free_size.get() + size);
+                    self.free_size += size;
 
                     break;
                 }
@@ -256,17 +255,14 @@ unsafe impl Suballocator for BuddyAllocator {
     /// [internal fragmentation]: super#internal-fragmentation
     #[inline]
     fn free_size(&self) -> DeviceSize {
-        self.free_size.get()
+        self.free_size
     }
 
     #[inline]
     fn cleanup(&mut self) {}
-}
 
-#[derive(Debug)]
-struct BuddyAllocatorState {
-    // Every order has its own free-list for convenience, so that we don't have to traverse a tree.
-    // Each free-list is sorted by offset because we want to find the first-fit as this strategy
-    // minimizes external fragmentation.
-    free_list: ArrayVec<Vec<DeviceSize>, { BuddyAllocator::MAX_ORDERS }>,
+    #[inline]
+    fn suballocations(&self) -> Self::Suballocations<'_> {
+        todo!()
+    }
 }
