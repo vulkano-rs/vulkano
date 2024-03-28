@@ -1198,6 +1198,7 @@ impl RecordingCommandBuffer {
         self
     }
 
+    /// Sets the dynamic conservative rasterization mode for future draw calls.
     #[inline]
     pub fn set_conservative_rasterization_mode(
         &mut self,
@@ -1236,6 +1237,7 @@ impl RecordingCommandBuffer {
         self
     }
 
+    /// Sets the dynamic extra primitive overestimation size for future draw calls.
     #[inline]
     pub fn set_extra_primitive_overestimation_size(
         &mut self,
