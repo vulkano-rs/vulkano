@@ -26,7 +26,7 @@ fn conflicts_extensions(name: &str) -> &'static [&'static str] {
     }
 }
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     write_device_extensions(vk_data);
     write_instance_extensions(vk_data);
 }
@@ -55,7 +55,7 @@ pub enum Requires {
     InstanceExtension(String),
 }
 
-fn write_device_extensions(vk_data: &VkRegistryData) {
+fn write_device_extensions(vk_data: &VkRegistryData<'_>) {
     write_file(
         "device_extensions.rs",
         format!(
@@ -66,7 +66,7 @@ fn write_device_extensions(vk_data: &VkRegistryData) {
     );
 }
 
-fn write_instance_extensions(vk_data: &VkRegistryData) {
+fn write_instance_extensions(vk_data: &VkRegistryData<'_>) {
     write_file(
         "instance_extensions.rs",
         format!(
@@ -890,7 +890,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 }
 
 fn from_one_of(
-    one_of: Vec<DependsExpression>,
+    one_of: Vec<DependsExpression<'_>>,
     extensions: &IndexMap<&str, &Extension>,
 ) -> Result<Vec<RequiresOneOf>, String> {
     let mut requires_all_of = vec![RequiresOneOf::default()];
@@ -979,14 +979,14 @@ fn parse_depends(depends: &str) -> Result<DependsExpression<'_>, String> {
         take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_')(input)
     }
 
-    fn term(input: &str) -> IResult<&str, DependsExpression> {
+    fn term(input: &str) -> IResult<&str, DependsExpression<'_>> {
         alt((
             name.map(DependsExpression::Name),
             delimited(complete::char('('), expression, complete::char(')')),
         ))(input)
     }
 
-    fn expression(input: &str) -> IResult<&str, DependsExpression> {
+    fn expression(input: &str) -> IResult<&str, DependsExpression<'_>> {
         let (input, first) = term(input)?;
 
         if let Some(input) = input.strip_prefix('+') {

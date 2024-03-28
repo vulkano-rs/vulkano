@@ -22,17 +22,16 @@
 //!    uses, you can add one of the [features](https://docs.rs/crate/winit/latest/features) that
 //!    starts with `rwh` to `winit`. Currently, vulkano is compatible with `rwh_06`.
 //!    
-//!
 //! 4. [Enumerate the physical devices] that are available on the `Instance`, and choose one that
 //!    is suitable for your program. A [`PhysicalDevice`] represents a Vulkan-capable device that
 //!    is available on the system, such as a graphics card, a software implementation, etc.
 //!
-//! 6. Create a [`Device`] and accompanying [`Queue`]s from the selected `PhysicalDevice`. The
+//! 5. Create a [`Device`] and accompanying [`Queue`]s from the selected `PhysicalDevice`. The
 //!    `Device` is the most important object of Vulkan, and you need one to create almost every
 //!    other object. `Queue`s are created together with the `Device`, and are used to submit work
 //!    to the device to make it do something.
 //!
-//! 7. If you created a `Surface` earlier, create a [`Swapchain`]. This object contains special
+//! 6. If you created a `Surface` earlier, create a [`Swapchain`]. This object contains special
 //!    images that correspond to the contents of the surface. Whenever you want to change the
 //!    contents (show something new to the user), you must first *acquire* one of these images from
 //!    the swapchain, fill it with the new contents (by rendering, copying or any other means), and
@@ -40,7 +39,7 @@
 //!    of the surface change, such as when the size of the window changes. It then becomes
 //!    necessary to create a new swapchain.
 //!
-//! 8. Record a [*command buffer*](command_buffer), containing commands that the device must
+//! 7. Record a [*command buffer*](command_buffer), containing commands that the device must
 //!    execute. Then build the command buffer and submit it to a `Queue`.
 //!
 //! Many different operations can be recorded to a command buffer, such as *draw*, *compute* and
@@ -119,34 +118,6 @@
 //! [`Framebuffer`]: render_pass::Framebuffer
 //! [`vulkano-macros`]: vulkano_macros
 //! [`serde`]: https://crates.io/crates/serde
-
-//#![warn(missing_docs)]        // TODO: activate
-#![warn(
-    rust_2018_idioms,
-    rust_2021_compatibility,
-    clippy::trivially_copy_pass_by_ref
-)]
-// These lints are a bit too pedantic, so they're disabled here.
-#![allow(
-    clippy::arc_with_non_send_sync,
-    clippy::collapsible_else_if,
-    clippy::collapsible_if,
-    clippy::derivable_impls, // TODO: remove
-    clippy::large_enum_variant,
-    clippy::len_without_is_empty,
-    clippy::missing_safety_doc, // TODO: remove
-    clippy::module_inception,
-    clippy::mutable_key_type,
-    clippy::needless_borrowed_reference,
-    clippy::new_without_default,
-    clippy::nonminimal_bool,
-    clippy::op_ref, // Seems to be bugged, the fixed code triggers a compile error
-    clippy::result_large_err,
-    clippy::too_many_arguments,
-    clippy::type_complexity,
-    clippy::vec_box,
-    clippy::wrong_self_convention
-)]
 
 pub use ash::vk::Handle;
 use bytemuck::{Pod, Zeroable};

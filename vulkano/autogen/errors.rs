@@ -3,7 +3,7 @@ use heck::ToUpperCamelCase;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
-pub fn write(vk_data: &VkRegistryData) {
+pub fn write(vk_data: &VkRegistryData<'_>) {
     write_file(
         "errors.rs",
         format!(
