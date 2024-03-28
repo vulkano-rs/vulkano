@@ -15,7 +15,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use vk_parse::SpirvExtOrCap;
 
-pub fn write(vk_data: &VkRegistryData, grammar: &SpirvGrammar) {
+pub fn write(vk_data: &VkRegistryData<'_>, grammar: &SpirvGrammar) {
     let grammar_enumerants = grammar
         .operand_kinds
         .iter()
