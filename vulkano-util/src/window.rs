@@ -65,8 +65,8 @@ impl VulkanoWindows {
             WindowMode::SizedFullscreen => winit_window_builder.with_fullscreen(Some(
                 winit::window::Fullscreen::Exclusive(get_fitting_videomode(
                     &event_loop.primary_monitor().unwrap(),
-                    window_descriptor.width as u32,
-                    window_descriptor.height as u32,
+                    window_descriptor.width,
+                    window_descriptor.height,
                 )),
             )),
             _ => {
@@ -235,8 +235,8 @@ impl VulkanoWindows {
 
 fn get_fitting_videomode(
     monitor: &winit::monitor::MonitorHandle,
-    width: u32,
-    height: u32,
+    width: f64,
+    height: f64,
 ) -> winit::monitor::VideoMode {
     fn abs_diff(a: u32, b: u32) -> u32 {
         if a > b {
@@ -244,6 +244,9 @@ fn get_fitting_videomode(
         }
         b - a
     }
+
+    let width = width.round() as u32;
+    let height = height.round() as u32;
 
     monitor
         .video_modes()
