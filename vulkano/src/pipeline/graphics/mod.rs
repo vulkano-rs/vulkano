@@ -2652,9 +2652,8 @@ impl GraphicsPipelineCreateInfo {
                 }
             }
 
-            if let (Some(mesh_stage), Some(_), Some(conservative_rasterization_state)) = (
+            if let (Some(mesh_stage), Some(conservative_rasterization_state)) = (
                 mesh_stage,
-                input_assembly_state,
                 conservative_rasterization_state,
             ) {
                 let spirv = mesh_stage.entry_point.module().spirv();
