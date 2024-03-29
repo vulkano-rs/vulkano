@@ -2584,10 +2584,7 @@ impl GraphicsPipelineCreateInfo {
                 .unwrap_or(false)
             {
                 if let (None, Some(input_assembly_state)) = (geometry_stage, input_assembly_state) {
-                    if !matches!(
-                        conservative_rasterization_state.mode,
-                        ConservativeRasterizationMode::Disabled
-                    ) && matches!(
+                    if matches!(
                         input_assembly_state.topology,
                         PrimitiveTopology::PointList
                             | PrimitiveTopology::LineList
@@ -2631,11 +2628,7 @@ impl GraphicsPipelineCreateInfo {
                                 )
                             });
 
-                    if !matches!(
-                        conservative_rasterization_state.mode,
-                        ConservativeRasterizationMode::Disabled
-                    ) && invalid_output
-                    {
+                    if invalid_output {
                         return Err(Box::new(ValidationError {
                             problem: "the output topology of the geometry shader is not compatible with the \
                                 conservative rasterization mode"
@@ -2668,11 +2661,7 @@ impl GraphicsPipelineCreateInfo {
                         }
                     }
 
-                    if !matches!(
-                        conservative_rasterization_state.mode,
-                        ConservativeRasterizationMode::Disabled
-                    ) && invalid_output
-                    {
+                    if invalid_output {
                         return Err(Box::new(ValidationError {
                             problem: "the output topology of the mesh shader is not compatible with the \
                                 conservative rasterization mode"
