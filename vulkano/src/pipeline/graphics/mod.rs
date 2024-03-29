@@ -2573,14 +2573,11 @@ impl GraphicsPipelineCreateInfo {
             }
         }
 
-        if match device
-            .physical_device()
-            .properties()
-            .conservative_point_and_line_rasterization
+        let properties = device.physical_device().properties();
+
+        if matches!(conservative_rasterization_state.mode, ConservativeRasterizationMode::Disabled)
+            && !properties.conservative_point_and_line_rasterization.unwrap_or(false)
         {
-            Some(b) => !b,
-            None => true,
-        } {
             if let (None, Some(input_assembly_state), Some(conservative_rasterization_state)) = (
                 geometry_stage,
                 input_assembly_state,
