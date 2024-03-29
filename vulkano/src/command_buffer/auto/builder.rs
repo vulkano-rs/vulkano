@@ -1284,24 +1284,23 @@ impl CommandBufferBuilderState {
                 }
                 DynamicState::ExtraPrimitiveOverestimationSize => {
                     self.extra_primitive_overestimation_size = None
-                }
-                // DynamicState::DepthClipEnable => todo!(),
-                // DynamicState::SampleLocationsEnable => todo!(),
-                // DynamicState::ColorBlendAdvanced => todo!(),
-                // DynamicState::ProvokingVertexMode => todo!(),
-                // DynamicState::LineRasterizationMode => todo!(),
-                // DynamicState::LineStippleEnable => todo!(),
-                // DynamicState::DepthClipNegativeOneToOne => todo!(),
-                // DynamicState::ViewportWScalingEnable => todo!(),
-                // DynamicState::ViewportSwizzle => todo!(),
-                // DynamicState::CoverageToColorEnable => todo!(),
-                // DynamicState::CoverageToColorLocation => todo!(),
-                // DynamicState::CoverageModulationMode => todo!(),
-                // DynamicState::CoverageModulationTableEnable => todo!(),
-                // DynamicState::CoverageModulationTable => todo!(),
-                // DynamicState::ShadingRateImageEnable => todo!(),
-                // DynamicState::RepresentativeFragmentTestEnable => todo!(),
-                // DynamicState::CoverageReductionMode => todo!(),
+                } /* DynamicState::DepthClipEnable => todo!(),
+                   * DynamicState::SampleLocationsEnable => todo!(),
+                   * DynamicState::ColorBlendAdvanced => todo!(),
+                   * DynamicState::ProvokingVertexMode => todo!(),
+                   * DynamicState::LineRasterizationMode => todo!(),
+                   * DynamicState::LineStippleEnable => todo!(),
+                   * DynamicState::DepthClipNegativeOneToOne => todo!(),
+                   * DynamicState::ViewportWScalingEnable => todo!(),
+                   * DynamicState::ViewportSwizzle => todo!(),
+                   * DynamicState::CoverageToColorEnable => todo!(),
+                   * DynamicState::CoverageToColorLocation => todo!(),
+                   * DynamicState::CoverageModulationMode => todo!(),
+                   * DynamicState::CoverageModulationTableEnable => todo!(),
+                   * DynamicState::CoverageModulationTable => todo!(),
+                   * DynamicState::ShadingRateImageEnable => todo!(),
+                   * DynamicState::RepresentativeFragmentTestEnable => todo!(),
+                   * DynamicState::CoverageReductionMode => todo!(), */
             }
         }
     }

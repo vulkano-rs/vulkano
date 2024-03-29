@@ -79,6 +79,7 @@
 
 use self::{
     color_blend::ColorBlendState,
+    conservative_rasterization::ConservativeRasterizationMode,
     depth_stencil::{DepthState, DepthStencilState},
     discard_rectangle::DiscardRectangleState,
     input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -2569,6 +2570,130 @@ impl GraphicsPipelineCreateInfo {
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00738"],
                     ..Default::default()
                 }));
+            }
+        }
+
+        if match device
+            .physical_device()
+            .properties()
+            .conservative_point_and_line_rasterization
+        {
+            Some(b) => !b,
+            None => true,
+        } {
+            if let (None, Some(input_assembly_state), Some(conservative_rasterization_state)) = (
+                geometry_stage,
+                input_assembly_state,
+                conservative_rasterization_state,
+            ) {
+                if match conservative_rasterization_state.mode {
+                    ConservativeRasterizationMode::Disabled => false,
+                    _ => true,
+                } && match input_assembly_state.topology {
+                    PrimitiveTopology::PointList => true,
+                    PrimitiveTopology::LineList => true,
+                    PrimitiveTopology::LineStrip => true,
+                    _ => false,
+                } && (!dynamic_state.contains(&DynamicState::PrimitiveTopology)
+                    || match device
+                        .physical_device()
+                        .properties()
+                        .dynamic_primitive_topology_unrestricted
+                    {
+                        Some(b) => !b,
+                        None => false,
+                    })
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`input_assembly_state.topology` is not compatible with the \
+                            conservative rasterization mode"
+                            .into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-08892"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if let (Some(geometry_stage), Some(_), Some(conservative_rasterization_state)) = (
+                geometry_stage,
+                input_assembly_state,
+                conservative_rasterization_state,
+            ) {
+                let spirv = geometry_stage.entry_point.module().spirv();
+                let entry_point_function = spirv.function(geometry_stage.entry_point.id());
+
+                let mut invalid_output = false;
+
+                for instruction in entry_point_function.execution_modes() {
+                    if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                        match mode {
+                            ExecutionMode::OutputPoints => {
+                                invalid_output = true;
+                                break;
+                            }
+                            ExecutionMode::OutputLineStrip => {
+                                invalid_output = true;
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                if match conservative_rasterization_state.mode {
+                    ConservativeRasterizationMode::Disabled => false,
+                    _ => true,
+                } && invalid_output
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "the output topology of the geometry shader is not compatible with the \
+                            conservative rasterization mode"
+                            .into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-06760"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if let (Some(mesh_stage), Some(_), Some(conservative_rasterization_state)) = (
+                mesh_stage,
+                input_assembly_state,
+                conservative_rasterization_state,
+            ) {
+                let spirv = mesh_stage.entry_point.module().spirv();
+                let entry_point_function = spirv.function(mesh_stage.entry_point.id());
+
+                let mut invalid_output = false;
+
+                for instruction in entry_point_function.execution_modes() {
+                    if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                        match mode {
+                            ExecutionMode::OutputPoints => {
+                                invalid_output = true;
+                                break;
+                            }
+                            ExecutionMode::OutputLineStrip => {
+                                invalid_output = true;
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                if match conservative_rasterization_state.mode {
+                    ConservativeRasterizationMode::Disabled => false,
+                    _ => true,
+                } && invalid_output
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "the output topology of the mesh shader is not compatible with the \
+                            conservative rasterization mode"
+                            .into(),
+                        vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-06761"],
+                        ..Default::default()
+                    }));
+                }
             }
         }
 
