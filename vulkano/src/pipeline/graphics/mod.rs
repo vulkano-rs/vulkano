@@ -2619,23 +2619,16 @@ impl GraphicsPipelineCreateInfo {
                 let spirv = geometry_stage.entry_point.module().spirv();
                 let entry_point_function = spirv.function(geometry_stage.entry_point.id());
 
-                let mut invalid_output = false;
-
-                for instruction in entry_point_function.execution_modes() {
-                    if let Instruction::ExecutionMode { mode, .. } = *instruction {
-                        match mode {
-                            ExecutionMode::OutputPoints => {
-                                invalid_output = true;
-                                break;
-                            }
-                            ExecutionMode::OutputLineStrip => {
-                                invalid_output = true;
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
+                let invalid_output = entry_point_function
+                    .execution_modes()
+                    .iter()
+                    .any(|instruction| matches!(
+                        instruction,
+                        Instruction::ExecutionMode {
+                            mode: ExecutionMode::OutputPoints | ExecutionMode::OutputLineStrip,
+                            ..
+                        },
+                    ));
 
                 if match conservative_rasterization_state.mode {
                     ConservativeRasterizationMode::Disabled => false,
