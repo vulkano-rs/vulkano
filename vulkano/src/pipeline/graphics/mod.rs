@@ -2586,12 +2586,12 @@ impl GraphicsPipelineCreateInfo {
                 if match conservative_rasterization_state.mode {
                     ConservativeRasterizationMode::Disabled => false,
                     _ => true,
-                } && match input_assembly_state.topology {
-                    PrimitiveTopology::PointList => true,
-                    PrimitiveTopology::LineList => true,
-                    PrimitiveTopology::LineStrip => true,
-                    _ => false,
-                } && (!dynamic_state.contains(&DynamicState::PrimitiveTopology)
+                } && matches!(
+                    input_assembly_state.topology,
+                    PrimitiveTopology::PointList
+                    | PrimitiveTopology::LineList
+                    | PrimitiveTopology::LineStrip
+                ) && (!dynamic_state.contains(&DynamicState::PrimitiveTopology)
                     || match device
                         .physical_device()
                         .properties()
