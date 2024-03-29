@@ -3219,6 +3219,43 @@ impl RecordingCommandBuffer {
                     // the viewportCount parameter of
                     // vkCmdSetViewportWithCountEXT must be 1
                 }
+                DynamicState::ConservativeRasterizationMode => {
+                    if self.builder_state.conservative_rasterization_mode.is_none() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            )
+                            .into(),
+                            vuids: vuids!(vuid_type, "None-07631"),
+                            ..Default::default()
+                        }));
+                    }
+                    // TODO: VUID-vkCmdDraw-conservativePointAndLineRasterization-07499
+                }
+                DynamicState::ExtraPrimitiveOverestimationSize => {
+                    if self
+                        .builder_state
+                        .extra_primitive_overestimation_size
+                        .is_none()
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            )
+                            .into(),
+                            vuids: vuids!(vuid_type, "None-07632"),
+                            ..Default::default()
+                        }));
+                    }
+                }
             }
         }
 

@@ -79,6 +79,7 @@
 
 use self::{
     color_blend::ColorBlendState,
+    conservative_rasterization::ConservativeRasterizationMode,
     depth_stencil::{DepthState, DepthStencilState},
     discard_rectangle::DiscardRectangleState,
     input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -104,6 +105,7 @@ use crate::{
     macros::impl_id_counter,
     pipeline::graphics::{
         color_blend::ColorBlendAttachmentState,
+        conservative_rasterization::ConservativeRasterizationState,
         depth_stencil::{StencilOpState, StencilState},
         rasterization::{CullMode, DepthBiasState},
         subpass::PipelineRenderingCreateInfo,
@@ -126,6 +128,7 @@ use std::{
 };
 
 pub mod color_blend;
+pub mod conservative_rasterization;
 pub mod depth_stencil;
 pub mod discard_rectangle;
 pub mod input_assembly;
@@ -163,6 +166,7 @@ pub struct GraphicsPipeline {
     subpass: PipelineSubpassType,
 
     discard_rectangle_state: Option<DiscardRectangleState>,
+    conservative_rasterization_state: Option<ConservativeRasterizationState>,
 
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
@@ -222,6 +226,7 @@ impl GraphicsPipeline {
             ref base_pipeline,
 
             ref discard_rectangle_state,
+            ref conservative_rasterization_state,
             _ne: _,
         } = &create_info;
 
@@ -818,6 +823,25 @@ impl GraphicsPipeline {
             );
         }
 
+        let mut conservative_rasterization_state_vk = None;
+
+        if let Some(conservative_rasterization_state) = conservative_rasterization_state {
+            let ConservativeRasterizationState {
+                mode,
+                overestimation_size,
+                _ne: _,
+            } = conservative_rasterization_state;
+
+            let _ = conservative_rasterization_state_vk.insert(
+                ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT {
+                    flags: ash::vk::PipelineRasterizationConservativeStateCreateFlagsEXT::empty(),
+                    conservative_rasterization_mode: (*mode).into(),
+                    extra_primitive_overestimation_size: *overestimation_size,
+                    ..Default::default()
+                },
+            );
+        }
+
         /*
             Create
         */
@@ -873,6 +897,11 @@ impl GraphicsPipeline {
         };
 
         if let Some(info) = discard_rectangle_state_vk.as_mut() {
+            info.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = info as *const _ as *const _;
+        }
+
+        if let Some(info) = conservative_rasterization_state_vk.as_mut() {
             info.p_next = create_info_vk.p_next;
             create_info_vk.p_next = info as *const _ as *const _;
         }
@@ -945,6 +974,7 @@ impl GraphicsPipeline {
             base_pipeline: _,
 
             discard_rectangle_state,
+            conservative_rasterization_state,
 
             _ne: _,
         } = create_info;
@@ -1081,6 +1111,13 @@ impl GraphicsPipeline {
             fixed_state.extend([DynamicState::DiscardRectangle]);
         }
 
+        if conservative_rasterization_state.is_some() {
+            fixed_state.extend([
+                DynamicState::ConservativeRasterizationMode,
+                DynamicState::ExtraPrimitiveOverestimationSize,
+            ]);
+        }
+
         fixed_state.retain(|state| !dynamic_state.contains(state));
 
         Arc::new(Self {
@@ -1104,6 +1141,7 @@ impl GraphicsPipeline {
             subpass: subpass.unwrap(),
 
             discard_rectangle_state,
+            conservative_rasterization_state,
 
             descriptor_binding_requirements,
             num_used_descriptor_sets,
@@ -1201,6 +1239,12 @@ impl GraphicsPipeline {
     #[inline]
     pub fn discard_rectangle_state(&self) -> Option<&DiscardRectangleState> {
         self.discard_rectangle_state.as_ref()
+    }
+
+    /// Returns the conservative rasterization state used to create this pipeline.
+    #[inline]
+    pub fn conservative_rasterization_state(&self) -> Option<&ConservativeRasterizationState> {
+        self.conservative_rasterization_state.as_ref()
     }
 
     /// If the pipeline has a fragment shader, returns the fragment tests stages used.
@@ -1395,6 +1439,11 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     pub discard_rectangle_state: Option<DiscardRectangleState>,
 
+    /// The conservative rasterization state.
+    ///
+    /// The default value is `None`.
+    pub conservative_rasterization_state: Option<ConservativeRasterizationState>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1421,6 +1470,7 @@ impl GraphicsPipelineCreateInfo {
             base_pipeline: None,
 
             discard_rectangle_state: None,
+            conservative_rasterization_state: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1445,6 +1495,7 @@ impl GraphicsPipelineCreateInfo {
             ref base_pipeline,
 
             ref discard_rectangle_state,
+            ref conservative_rasterization_state,
             _ne: _,
         } = self;
 
@@ -2155,6 +2206,23 @@ impl GraphicsPipelineCreateInfo {
                 .map_err(|err| err.add_context("discard_rectangle_state"))?;
         }
 
+        if let Some(conservative_rasterization_state) = conservative_rasterization_state {
+            if !device.enabled_extensions().ext_conservative_rasterization {
+                return Err(Box::new(ValidationError {
+                    context: "conservative_rasterization_state".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_conservative_rasterization",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            conservative_rasterization_state
+                .validate(device)
+                .map_err(|err| err.add_context("conservative_rasterization_state"))?;
+        }
+
         for dynamic_state in dynamic_state.iter().copied() {
             dynamic_state.validate_device(device).map_err(|err| {
                 err.add_context("dynamic_state")
@@ -2502,6 +2570,107 @@ impl GraphicsPipelineCreateInfo {
                     vuids: &["VUID-VkGraphicsPipelineCreateInfo-pStages-00738"],
                     ..Default::default()
                 }));
+            }
+        }
+
+        if let Some(conservative_rasterization_state) = conservative_rasterization_state {
+            let properties = device.physical_device().properties();
+
+            if matches!(
+                conservative_rasterization_state.mode,
+                ConservativeRasterizationMode::Disabled
+            ) && !properties
+                .conservative_point_and_line_rasterization
+                .unwrap_or(false)
+            {
+                if let (None, Some(input_assembly_state)) = (geometry_stage, input_assembly_state) {
+                    if matches!(
+                        input_assembly_state.topology,
+                        PrimitiveTopology::PointList
+                            | PrimitiveTopology::LineList
+                            | PrimitiveTopology::LineStrip
+                    ) && (!dynamic_state.contains(&DynamicState::PrimitiveTopology)
+                        || match device
+                            .physical_device()
+                            .properties()
+                            .dynamic_primitive_topology_unrestricted
+                        {
+                            Some(b) => !b,
+                            None => false,
+                        })
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "`input_assembly_state.topology` is not compatible with the \
+                                conservative rasterization mode"
+                                .into(),
+                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-08892"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+
+                if let (Some(geometry_stage), Some(_)) = (geometry_stage, input_assembly_state) {
+                    let spirv = geometry_stage.entry_point.module().spirv();
+                    let entry_point_function = spirv.function(geometry_stage.entry_point.id());
+
+                    let invalid_output =
+                        entry_point_function
+                            .execution_modes()
+                            .iter()
+                            .any(|instruction| {
+                                matches!(
+                                    instruction,
+                                    Instruction::ExecutionMode {
+                                        mode: ExecutionMode::OutputPoints
+                                            | ExecutionMode::OutputLineStrip,
+                                        ..
+                                    },
+                                )
+                            });
+
+                    if invalid_output {
+                        return Err(Box::new(ValidationError {
+                            problem: "the output topology of the geometry shader is not compatible with the \
+                                conservative rasterization mode"
+                                .into(),
+                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-06760"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+
+                if let Some(mesh_stage) = mesh_stage {
+                    let spirv = mesh_stage.entry_point.module().spirv();
+                    let entry_point_function = spirv.function(mesh_stage.entry_point.id());
+
+                    let mut invalid_output = false;
+
+                    for instruction in entry_point_function.execution_modes() {
+                        if let Instruction::ExecutionMode { mode, .. } = *instruction {
+                            match mode {
+                                ExecutionMode::OutputPoints => {
+                                    invalid_output = true;
+                                    break;
+                                }
+                                ExecutionMode::OutputLineStrip => {
+                                    invalid_output = true;
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    if invalid_output {
+                        return Err(Box::new(ValidationError {
+                            problem: "the output topology of the mesh shader is not compatible with the \
+                                conservative rasterization mode"
+                                .into(),
+                            vuids: &["VUID-VkGraphicsPipelineCreateInfo-conservativePointAndLineRasterization-06761"],
+                            ..Default::default()
+                        }));
+                    }
+                }
             }
         }
 
