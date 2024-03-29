@@ -1832,12 +1832,10 @@ impl RecordingCommandBuffer {
                         if format != required_format {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
-                                    "the currently bound pipeline accesses the image view \
+                                    "The currently bound pipeline requires the image view \
                                     bound to descriptor set {set_num}, binding {binding_num}, \
-                                    descriptor index {index}, but the format of the image view \
-                                    is not equal to the format required by the pipeline: \
-                                    expected `{required_format:?}`, found `{format:?}`
-                                    "
+                                    descriptor index {index} to have a format of `{required_format:?}`, \
+                                    but the actual format is `{format:?}`"
                                 )
                                 .into(),
                                 // vuids?
@@ -1852,11 +1850,10 @@ impl RecordingCommandBuffer {
                         if image_view_type != required_image_view_type {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
-                                    "the currently bound pipeline accesses the image view \
+                                    "the currently bound pipeline requires the image view \
                                     bound to descriptor set {set_num}, binding {binding_num}, \
-                                    descriptor index {index}, but the view type of the image view \
-                                    is not equal to the view type required by the pipeline: \
-                                    expected `{required_image_view_type:?}`, found `{image_view_type:?}`
+                                    descriptor index {index} to have a view type of `{required_image_view_type:?}`, \
+                                    but the actual view type is `{image_view_type:?}`
                                     "
                                 )
                                 .into(),
