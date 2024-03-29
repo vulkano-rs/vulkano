@@ -1832,7 +1832,7 @@ impl RecordingCommandBuffer {
                         if format != required_format {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
-                                    "The currently bound pipeline requires the image view \
+                                    "the currently bound pipeline requires the image view \
                                     bound to descriptor set {set_num}, binding {binding_num}, \
                                     descriptor index {index} to have a format of `{required_format:?}`, \
                                     but the actual format is `{format:?}`"
