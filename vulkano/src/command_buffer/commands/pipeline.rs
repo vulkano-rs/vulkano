@@ -3231,6 +3231,7 @@ impl RecordingCommandBuffer {
                             ..Default::default()
                         }));
                     }
+                    // TODO: VUID-vkCmdDraw-conservativePointAndLineRasterization-07499
                 }
                 DynamicState::ExtraPrimitiveOverestimationSize => {
                     if self
