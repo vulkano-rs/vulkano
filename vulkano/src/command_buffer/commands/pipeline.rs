@@ -3227,6 +3227,7 @@ impl RecordingCommandBuffer {
                                 dynamic_state
                             )
                             .into(),
+                            vuids: vuids!(vuid_type, "None-07631"),
                             ..Default::default()
                         }));
                     }
