@@ -1827,14 +1827,15 @@ impl RecordingCommandBuffer {
                     */
 
                     // The SPIR-V Image Format is not compatible with the image view’s format.
-                    if let Some(format) = binding_reqs.image_format {
-                        if image_view.format() != format {
+                    if let Some(required_format) = binding_reqs.image_format {
+                        let format = image_view.format();
+                        if format != required_format {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
-                                    "the currently bound pipeline accesses the image view \
+                                    "the currently bound pipeline requires the image view \
                                     bound to descriptor set {set_num}, binding {binding_num}, \
-                                    descriptor index {index}, but the format of the image view \
-                                    is not equal to the format required by the pipeline"
+                                    descriptor index {index} to have a format of `{required_format:?}`, \
+                                    but the actual format is `{format:?}`"
                                 )
                                 .into(),
                                 // vuids?
@@ -1844,14 +1845,16 @@ impl RecordingCommandBuffer {
                     }
 
                     // Rules for viewType
-                    if let Some(image_view_type) = binding_reqs.image_view_type {
-                        if image_view.view_type() != image_view_type {
+                    if let Some(required_image_view_type) = binding_reqs.image_view_type {
+                        let image_view_type = image_view.view_type();
+                        if image_view_type != required_image_view_type {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
-                                    "the currently bound pipeline accesses the image view \
+                                    "the currently bound pipeline requires the image view \
                                     bound to descriptor set {set_num}, binding {binding_num}, \
-                                    descriptor index {index}, but the view type of the image view \
-                                    is not equal to the view type required by the pipeline"
+                                    descriptor index {index} to have a view type of `{required_image_view_type:?}`, \
+                                    but the actual view type is `{image_view_type:?}`
+                                    "
                                 )
                                 .into(),
                                 vuids: vuids!(vuid_type, "viewType-07752"),
@@ -3215,6 +3218,43 @@ impl RecordingCommandBuffer {
                     // current command buffer prior to this drawing command, and
                     // the viewportCount parameter of
                     // vkCmdSetViewportWithCountEXT must be 1
+                }
+                DynamicState::ConservativeRasterizationMode => {
+                    if self.builder_state.conservative_rasterization_mode.is_none() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            )
+                            .into(),
+                            vuids: vuids!(vuid_type, "None-07631"),
+                            ..Default::default()
+                        }));
+                    }
+                    // TODO: VUID-vkCmdDraw-conservativePointAndLineRasterization-07499
+                }
+                DynamicState::ExtraPrimitiveOverestimationSize => {
+                    if self
+                        .builder_state
+                        .extra_primitive_overestimation_size
+                        .is_none()
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            )
+                            .into(),
+                            vuids: vuids!(vuid_type, "None-07632"),
+                            ..Default::default()
+                        }));
+                    }
                 }
             }
         }
