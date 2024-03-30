@@ -905,7 +905,7 @@ impl GraphicsPipeline {
 
         if let Some(info) = conservative_rasterization_state_vk.as_mut() {
             info.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = info as *const _ as *const _;
+            create_info_vk.p_next = ptr::from_ref(info).cast();
         }
 
         if let Some(info) = rendering_create_info_vk.as_mut() {
