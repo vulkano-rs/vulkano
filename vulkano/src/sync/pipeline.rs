@@ -376,8 +376,8 @@ vulkan_bitflags_enum! {
         RequiresAllOf([DeviceExtension(nv_mesh_shader)]),
     ]),
 
-    /// Subpass shading shaders are executed.
-    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADER_HUAWEI
+    /// Subpass shaders are executed.
+    SUBPASS_SHADER, SubpassShader = SUBPASS_SHADER_HUAWEI
     RequiresOneOf([
         RequiresAllOf([
             APIVersion(V1_3),
@@ -477,7 +477,7 @@ impl From<QueueFlags> for PipelineStages {
                 | PipelineStages::TASK_SHADER
                 | PipelineStages::MESH_SHADER
                 | PipelineStages::FRAGMENT_DENSITY_PROCESS
-                | PipelineStages::SUBPASS_SHADING
+                | PipelineStages::SUBPASS_SHADER
                 | PipelineStages::INVOCATION_MASK;
         }
 
@@ -983,7 +983,7 @@ impl From<PipelineStages> for AccessFlags {
                 | AccessFlags::ACCELERATION_STRUCTURE_READ;
         }
 
-        if val.intersects(PipelineStages::FRAGMENT_SHADER | PipelineStages::SUBPASS_SHADING) {
+        if val.intersects(PipelineStages::FRAGMENT_SHADER | PipelineStages::SUBPASS_SHADER) {
             result |= AccessFlags::INPUT_ATTACHMENT_READ;
         }
 
@@ -1383,7 +1383,7 @@ pipeline_stage_access! {
     MeshShader_ShaderStorageRead, MESH_SHADER, SHADER_STORAGE_READ;
     MeshShader_ShaderStorageWrite, MESH_SHADER, SHADER_STORAGE_WRITE;
     MeshShader_AccelerationStructureRead, MESH_SHADER, ACCELERATION_STRUCTURE_READ;
-    SubpassShading_InputAttachmentRead, SUBPASS_SHADING, INPUT_ATTACHMENT_READ;
+    SubpassShading_InputAttachmentRead, SUBPASS_SHADER, INPUT_ATTACHMENT_READ;
     InvocationMask_InvocationMaskRead, INVOCATION_MASK, INVOCATION_MASK_READ;
     AccelerationStructureCopy_AccelerationStructureRead, ACCELERATION_STRUCTURE_COPY, ACCELERATION_STRUCTURE_READ;
     AccelerationStructureCopy_AccelerationStructureWrite, ACCELERATION_STRUCTURE_COPY, ACCELERATION_STRUCTURE_WRITE;
@@ -2171,10 +2171,10 @@ impl MemoryBarrier {
         }
 
         if !device.enabled_features().subpass_shading {
-            if src_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+            if src_stages.intersects(PipelineStages::SUBPASS_SHADER) {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
-                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
@@ -2182,10 +2182,10 @@ impl MemoryBarrier {
                 }));
             }
 
-            if dst_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+            if dst_stages.intersects(PipelineStages::SUBPASS_SHADER) {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
-                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
@@ -2691,10 +2691,10 @@ impl BufferMemoryBarrier {
         }
 
         if !device.enabled_features().subpass_shading {
-            if src_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+            if src_stages.intersects(PipelineStages::SUBPASS_SHADER) {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
-                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
@@ -2702,10 +2702,10 @@ impl BufferMemoryBarrier {
                 }));
             }
 
-            if dst_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+            if dst_stages.intersects(PipelineStages::SUBPASS_SHADER) {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
-                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
@@ -3369,10 +3369,10 @@ impl ImageMemoryBarrier {
         }
 
         if !device.enabled_features().subpass_shading {
-            if src_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+            if src_stages.intersects(PipelineStages::SUBPASS_SHADER) {
                 return Err(Box::new(ValidationError {
                     context: "src_stages".into(),
-                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
@@ -3380,10 +3380,10 @@ impl ImageMemoryBarrier {
                 }));
             }
 
-            if dst_stages.intersects(PipelineStages::SUBPASS_SHADING) {
+            if dst_stages.intersects(PipelineStages::SUBPASS_SHADER) {
                 return Err(Box::new(ValidationError {
                     context: "dst_stages".into(),
-                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),
