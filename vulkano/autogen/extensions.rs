@@ -3,7 +3,7 @@ use crate::autogen::conjunctive_normal_form::ConjunctiveNormalForm;
 use heck::ToSnakeCase;
 use nom::{
     branch::alt, bytes::complete::take_while1, character::complete, combinator::all_consuming,
-    multi::separated_list1, sequence::delimited, IResult, Parser,
+    multi::separated_list0, sequence::delimited, IResult, Parser,
 };
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -830,8 +830,8 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
             let requires_all_of = extension.depends.as_ref().map_or_else(Vec::new, |depends| {
                 let depends_panic = |err| -> ! {
                     panic!(
-                        "couldn't parse `depends=` attribute for extension `{}`: {}",
-                        extension.name, err
+                        "couldn't parse `depends={}` attribute for extension `{}`: {}",
+                        extension.name, depends, err
                     )
                 };
 
@@ -960,29 +960,35 @@ fn parse_depends(depends: &str) -> Result<DependsExpression<'_>, String> {
     fn term(input: &str) -> IResult<&str, DependsExpression<'_>> {
         alt((
             name.map(DependsExpression::Name),
-            delimited(complete::char('('), expression, complete::char(')')),
+            delimited(complete::char('('), one_of_expression, complete::char(')')),
         ))(input)
     }
 
-    fn expression(input: &str) -> IResult<&str, DependsExpression<'_>> {
-        let (input, first) = term(input)?;
+    fn all_of_expression(input: &str) -> IResult<&str, DependsExpression<'_>> {
+        let (input, mut all_of) = separated_list0(complete::char('+'), term)(input)?;
 
-        if let Some(input) = input.strip_prefix('+') {
-            let (input, mut all_of) = separated_list1(complete::char('+'), term)(input)?;
-            all_of.insert(0, first);
-
-            Ok((input, DependsExpression::AllOf(all_of)))
-        } else if let Some(input) = input.strip_prefix(',') {
-            let (input, mut one_of) = separated_list1(complete::char(','), term)(input)?;
-            one_of.insert(0, first);
-
-            Ok((input, DependsExpression::OneOf(one_of)))
-        } else {
-            Ok((input, first))
-        }
+        Ok((input, {
+            if all_of.len() == 1 {
+                all_of.remove(0)
+            } else {
+                DependsExpression::AllOf(all_of)
+            }
+        }))
     }
 
-    match all_consuming(expression)(depends) {
+    fn one_of_expression(input: &str) -> IResult<&str, DependsExpression<'_>> {
+        let (input, mut one_of) = separated_list0(complete::char(','), all_of_expression)(input)?;
+
+        Ok((input, {
+            if one_of.len() == 1 {
+                one_of.remove(0)
+            } else {
+                DependsExpression::OneOf(one_of)
+            }
+        }))
+    }
+
+    match all_consuming(one_of_expression)(depends) {
         Ok((_, expr)) => Ok(expr),
         Err(err) => Err(format!("{:?}", err)),
     }
