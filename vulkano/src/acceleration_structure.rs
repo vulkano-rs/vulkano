@@ -596,8 +596,8 @@ impl AccelerationStructureBuildGeometryInfo {
     pub(crate) fn to_vulkan(
         &self,
     ) -> (
-        ash::vk::AccelerationStructureBuildGeometryInfoKHR,
-        Vec<ash::vk::AccelerationStructureGeometryKHR>,
+        ash::vk::AccelerationStructureBuildGeometryInfoKHR<'static>,
+        Vec<ash::vk::AccelerationStructureGeometryKHR<'static>>,
     ) {
         let &Self {
             flags,

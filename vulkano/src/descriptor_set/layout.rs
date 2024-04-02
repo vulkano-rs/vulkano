@@ -117,6 +117,7 @@ impl DescriptorSetLayout {
                 descriptor_count,
                 stage_flags: stages.into(),
                 p_immutable_samplers: ptr::null(),
+                ..Default::default()
             });
             per_binding_vk.push(PerBinding {
                 immutable_samplers_vk: immutable_samplers

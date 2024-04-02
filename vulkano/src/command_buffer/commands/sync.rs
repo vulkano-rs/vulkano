@@ -999,9 +999,9 @@ impl RawRecordingCommandBuffer {
 
         if self.device().enabled_features().synchronization2 {
             struct PerDependencyInfo {
-                memory_barriers_vk: SmallVec<[ash::vk::MemoryBarrier2; 2]>,
-                buffer_memory_barriers_vk: SmallVec<[ash::vk::BufferMemoryBarrier2; 8]>,
-                image_memory_barriers_vk: SmallVec<[ash::vk::ImageMemoryBarrier2; 8]>,
+                memory_barriers_vk: SmallVec<[ash::vk::MemoryBarrier2<'static>; 2]>,
+                buffer_memory_barriers_vk: SmallVec<[ash::vk::BufferMemoryBarrier2<'static>; 8]>,
+                image_memory_barriers_vk: SmallVec<[ash::vk::ImageMemoryBarrier2<'static>; 8]>,
             }
 
             let mut events_vk: SmallVec<[_; 4]> = SmallVec::new();

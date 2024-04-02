@@ -183,7 +183,7 @@ impl RawRecordingCommandBuffer {
             ..Default::default()
         };
 
-        let fns = self.device().instance().fns();
+        let fns = self.device().fns();
         (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info);
 
         self
@@ -230,7 +230,7 @@ impl RawRecordingCommandBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn end_debug_utils_label_unchecked(&mut self) -> &mut Self {
-        let fns = self.device().instance().fns();
+        let fns = self.device().fns();
         (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle());
 
         self
@@ -299,7 +299,7 @@ impl RawRecordingCommandBuffer {
             ..Default::default()
         };
 
-        let fns = self.device().instance().fns();
+        let fns = self.device().fns();
         (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info);
 
         self

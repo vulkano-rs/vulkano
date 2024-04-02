@@ -377,7 +377,7 @@ vulkan_bitflags_enum! {
     ]),
 
     /// Subpass shading shaders are executed.
-    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADING_HUAWEI
+    SUBPASS_SHADING, SubpassShading = SUBPASS_SHADER_HUAWEI
     RequiresOneOf([
         RequiresAllOf([
             APIVersion(V1_3),
