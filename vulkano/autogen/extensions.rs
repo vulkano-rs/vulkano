@@ -1,4 +1,5 @@
 use super::{write_file, IndexMap, RequiresOneOf, VkRegistryData};
+use crate::autogen::conjunctive_normal_form::ConjunctiveNormalForm;
 use heck::ToSnakeCase;
 use nom::{
     branch::alt, bytes::complete::take_while1, character::complete, combinator::all_consuming,
@@ -780,6 +781,44 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     }
 }
 
+fn convert_depends_expression(
+    depends_expression: DependsExpression<'_>,
+    extensions: &IndexMap<&str, &Extension>,
+) -> ConjunctiveNormalForm<RequiresOneOf> {
+    match depends_expression {
+        DependsExpression::Name(vk_name) => {
+            let new = dependency_chain(vk_name, extensions);
+
+            let mut result = ConjunctiveNormalForm::empty();
+            result.add_conjunction(new);
+
+            result
+        }
+        DependsExpression::AllOf(all_of) => {
+            let mut result = ConjunctiveNormalForm::empty();
+
+            for expr in all_of {
+                let cnf = convert_depends_expression(expr, extensions);
+                for it in cnf.take() {
+                    result.add_conjunction(it);
+                }
+            }
+
+            result
+        }
+        DependsExpression::OneOf(one_of) => {
+            let mut result = ConjunctiveNormalForm::empty();
+
+            for expr in one_of {
+                let cnf = convert_depends_expression(expr, extensions);
+                result.add_bijection(cnf);
+            }
+
+            result
+        }
+    }
+}
+
 fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<ExtensionsMember> {
     extensions
         .values()
@@ -796,28 +835,10 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
                     )
                 };
 
-                match parse_depends(depends).unwrap_or_else(|err| depends_panic(err)) {
-                    expr @ DependsExpression::Name(_) => {
-                        from_one_of(vec![expr], extensions).unwrap_or_else(|err| depends_panic(err))
-                    }
-                    DependsExpression::OneOf(one_of) => {
-                        from_one_of(one_of, extensions).unwrap_or_else(|err| depends_panic(err))
-                    }
-                    DependsExpression::AllOf(all_of) => all_of
-                        .into_iter()
-                        .flat_map(|expr| match expr {
-                            expr @ DependsExpression::Name(_) => {
-                                from_one_of(vec![expr], extensions)
-                                    .unwrap_or_else(|err| depends_panic(err))
-                            }
-                            DependsExpression::AllOf(_) => {
-                                depends_panic("AllOf inside another AllOf".into())
-                            }
-                            DependsExpression::OneOf(one_of) => from_one_of(one_of, extensions)
-                                .unwrap_or_else(|err| depends_panic(err)),
-                        })
-                        .collect(),
-                }
+                let depends_expression =
+                    parse_depends(depends).unwrap_or_else(|err| depends_panic(err));
+
+                convert_depends_expression(depends_expression, extensions).take()
             });
 
             let conflicts_extensions = conflicts_extensions(&extension.name);
@@ -887,49 +908,6 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
             member
         })
         .collect()
-}
-
-fn from_one_of(
-    one_of: Vec<DependsExpression<'_>>,
-    extensions: &IndexMap<&str, &Extension>,
-) -> Result<Vec<RequiresOneOf>, String> {
-    let mut requires_all_of = vec![RequiresOneOf::default()];
-
-    for expr in one_of {
-        match expr {
-            DependsExpression::Name(vk_name) => {
-                let new = dependency_chain(vk_name, extensions);
-
-                for requires_one_of in &mut requires_all_of {
-                    *requires_one_of |= &new;
-                }
-            }
-            DependsExpression::OneOf(_) => return Err("OneOf inside another OneOf".into()),
-            DependsExpression::AllOf(all_of) => {
-                let mut new_requires_all_of = Vec::new();
-
-                for expr in all_of {
-                    match expr {
-                        DependsExpression::Name(vk_name) => {
-                            let new = dependency_chain(vk_name, extensions);
-                            let mut requires_all_of = requires_all_of.clone();
-
-                            for requires_one_of in &mut requires_all_of {
-                                *requires_one_of |= &new;
-                            }
-
-                            new_requires_all_of.extend(requires_all_of);
-                        }
-                        _ => return Err("More than three levels of nesting".into()),
-                    }
-                }
-
-                requires_all_of = new_requires_all_of;
-            }
-        }
-    }
-
-    Ok(requires_all_of)
 }
 
 fn dependency_chain<'a>(
