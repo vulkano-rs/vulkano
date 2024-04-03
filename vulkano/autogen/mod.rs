@@ -22,6 +22,7 @@ use vk_parse::{
     Registry, RegistryChild, SpirvExtOrCap, Type, TypeSpec, TypesChild,
 };
 
+mod conjunctive_normal_form;
 mod errors;
 mod extensions;
 mod features;
