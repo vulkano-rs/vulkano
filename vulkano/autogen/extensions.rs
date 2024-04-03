@@ -828,15 +828,12 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
             let name = raw.strip_prefix("VK_").unwrap().to_snake_case();
 
             let requires_all_of = extension.depends.as_ref().map_or_else(Vec::new, |depends| {
-                let depends_panic = |err| -> ! {
+                let depends_expression = parse_depends(depends).unwrap_or_else(|err| {
                     panic!(
-                        "couldn't parse `depends={}` attribute for extension `{}`: {}",
+                        "couldn't parse `depends={:?}` attribute for extension `{}`: {}",
                         extension.name, depends, err
                     )
-                };
-
-                let depends_expression =
-                    parse_depends(depends).unwrap_or_else(|err| depends_panic(err));
+                });
 
                 convert_depends_expression(depends_expression, extensions).take()
             });
