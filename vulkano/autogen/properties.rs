@@ -440,41 +440,46 @@ fn members(ty: &Type) -> Vec<Member<'_>> {
         ))(input)
     }
 
-    if let TypeSpec::Members(members) = &ty.spec {
-        members
-            .iter()
-            .filter_map(|member| {
-                if let TypeMember::Definition(def) = member {
-                    let name = def.markup.iter().find_map(|markup| match markup {
-                        TypeMemberMarkup::Name(name) => Some(name.as_str()),
-                        _ => None,
-                    });
-                    let ty = def.markup.iter().find_map(|markup| match markup {
-                        TypeMemberMarkup::Type(ty) => Some(ty.as_str()),
-                        _ => None,
-                    });
-                    let len = def
-                        .markup
-                        .iter()
-                        .find_map(|markup| match markup {
-                            TypeMemberMarkup::Enum(len) => Some(len.as_str()),
-                            _ => None,
-                        })
-                        .or_else(|| array_len(&def.code).map(|(_, len)| len).ok());
-                    if name != Some("sType") && name != Some("pNext") {
-                        return name.map(|name| Member {
-                            name,
-                            ty: ty.unwrap(),
-                            len,
-                        });
-                    }
-                }
-                None
+    let TypeSpec::Members(members) = &ty.spec else {
+        return vec![];
+    };
+
+    members
+        .iter()
+        .filter_map(|member| {
+            let TypeMember::Definition(def) = member else {
+                return None;
+            };
+
+            let name = def.markup.iter().find_map(|markup| match markup {
+                TypeMemberMarkup::Name(name) => Some(name.as_str()),
+                _ => None,
+            });
+            let ty = def.markup.iter().find_map(|markup| match markup {
+                TypeMemberMarkup::Type(ty) => Some(ty.as_str()),
+                _ => None,
+            });
+
+            let len = def
+                .markup
+                .iter()
+                .find_map(|markup| match markup {
+                    TypeMemberMarkup::Enum(len) => Some(len.as_str()),
+                    _ => None,
+                })
+                .or_else(|| array_len(&def.code).map(|(_, len)| len).ok());
+
+            if name == Some("sType") || name == Some("pNext") {
+                return None;
+            }
+
+            name.map(|name| Member {
+                name,
+                ty: ty.unwrap(),
+                len,
             })
-            .collect()
-    } else {
-        vec![]
-    }
+        })
+        .collect()
 }
 
 fn vulkano_type(ty: &str, len: Option<&str>) -> TokenStream {
