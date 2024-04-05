@@ -261,6 +261,7 @@ impl<U: for<'a> FromVulkan<&'a T>, T> FromVulkan<&[T]> for Vec<U> {
 }
 
 impl<U: FromVulkan<T>, T: Copy> FromVulkan<&T> for U {
+    #[inline]
     fn from_vulkan(val: &T) -> Option<Self> {
         U::from_vulkan(*val)
     }
