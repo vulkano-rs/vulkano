@@ -250,3 +250,12 @@ impl FromVulkan<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
         Some(val.into())
     }
 }
+
+impl<U: FromVulkan<T>, T: Clone> FromVulkan<&[T]> for Vec<U> {
+    #[inline]
+    fn from_vulkan(val: &[T]) -> Option<Vec<U>> {
+        val.iter()
+            .map(|it| U::from_vulkan(it.clone()))
+            .collect::<Option<Vec<_>>>()
+    }
+}
