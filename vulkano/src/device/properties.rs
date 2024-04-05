@@ -259,3 +259,9 @@ impl<U: for<'a> FromVulkan<&'a T>, T> FromVulkan<&[T]> for Vec<U> {
             .collect::<Option<Vec<_>>>()
     }
 }
+
+impl<U: FromVulkan<T>, T: Copy> FromVulkan<&T> for U {
+    fn from_vulkan(val: &T) -> Option<Self> {
+        U::from_vulkan(*val)
+    }
+}
