@@ -251,7 +251,7 @@ impl FromVulkan<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
     }
 }
 
-impl<U: for<'a> FromVulkan<&'a T>, T: Clone> FromVulkan<&[T]> for Vec<U> {
+impl<U: for<'a> FromVulkan<&'a T>, T> FromVulkan<&[T]> for Vec<U> {
     #[inline]
     fn from_vulkan(val: &[T]) -> Option<Vec<U>> {
         val.iter()
