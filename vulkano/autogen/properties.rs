@@ -1,5 +1,5 @@
 use super::{write_file, IndexMap, VkRegistryData};
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use heck::ToSnakeCase;
 use nom::{
     bytes::complete::{tag, take_until, take_while1},
@@ -8,10 +8,10 @@ use nom::{
     sequence::{delimited, tuple},
     IResult,
 };
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
 use std::{collections::hash_map::Entry, fmt::Write as _};
-use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
+use vk_parse::{Extension, Type, TypeMember, TypeMemberDefinition, TypeMemberMarkup, TypeSpec};
 
 pub fn write(vk_data: &VkRegistryData<'_>) {
     let properties_output = properties_output(&properties_members(&vk_data.types));
@@ -37,8 +37,15 @@ struct PropertiesMember {
     doc: String,
     raw: String,
     ffi_name: Ident,
-    ffi_members: Vec<(Ident, TokenStream)>,
+    ffi_members: Vec<FFIMember>,
     optional: bool,
+}
+
+#[derive(Debug, Clone)]
+struct FFIMember {
+    ident: Ident,
+    tokens: TokenStream,
+    len_field_name: Option<String>,
 }
 
 fn properties_output(members: &[PropertiesMember]) -> TokenStream {
@@ -80,8 +87,23 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
              ..
          }| {
             if *optional {
-                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
-                    quote! { properties_ffi.#ffi_member.map(|s| s #ffi_member_field .#ffi_name) }
+                let ffi_members = ffi_members.iter().map(|FFIMember { ident: ffi_member, tokens: ffi_member_field, len_field_name }| {
+                    if let Some(len_field_name) = len_field_name {
+                        let len_field_name = Ident::new(len_field_name.as_str(), Span::call_site());
+
+                        quote! {
+                            properties_ffi.#ffi_member.map(|s|
+                                unsafe {
+                                    std::slice::from_raw_parts(
+                                        s #ffi_member_field .#ffi_name as _,
+                                        s #ffi_member_field .#len_field_name as _,
+                                    )
+                                }
+                            )
+                        }
+                    } else {
+                        quote! { properties_ffi.#ffi_member.map(|s| s #ffi_member_field .#ffi_name) }
+                    }
                 });
 
                 quote! {
@@ -90,7 +112,8 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                     ].into_iter().flatten().next().and_then(<#ty>::from_vulkan),
                 }
             } else {
-                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
+                let ffi_members = ffi_members.iter().map(|FFIMember { ident: ffi_member, tokens: ffi_member_field, len_field_name }| {
+                    assert_eq!(*len_field_name, None);
                     quote! { properties_ffi.#ffi_member #ffi_member_field .#ffi_name }
                 });
 
@@ -190,7 +213,7 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
                     return;
                 }
 
-                let vulkano_member = name.to_snake_case();
+                let ffi_name = name.to_snake_case();
                 let vulkano_ty = match name {
                     "apiVersion" => quote! { Version },
                     "bufferImageGranularity"
@@ -208,35 +231,71 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
                     }
                     _ => vulkano_type(ty, len),
                 };
-                match properties.entry(vulkano_member.clone()) {
+
+                let len_field_name = len.and_then(|it| match it {
+                    LenKind::Field(it) => Some(it.to_snake_case()),
+                    _ => None,
+                });
+
+                let vulkano_member = if len_field_name.is_some() {
+                    ffi_name
+                        .strip_prefix("p_")
+                        .map(|it| it.to_string())
+                        .unwrap()
+                } else {
+                    ffi_name.clone()
+                };
+
+                let ffi_member = FFIMember {
+                    ident: ty_name.0.clone(),
+                    tokens: ty_name.1.clone(),
+                    len_field_name,
+                };
+
+                match properties.entry(ffi_name.clone()) {
                     Entry::Vacant(entry) => {
                         let mut member = PropertiesMember {
                             name: format_ident!("{}", vulkano_member),
                             ty: vulkano_ty,
                             doc: String::new(),
                             raw: name.to_owned(),
-                            ffi_name: format_ident!("{}", vulkano_member),
-                            ffi_members: vec![ty_name.clone()],
+                            ffi_name: format_ident!("{}", ffi_name),
+                            ffi_members: vec![ffi_member],
                             optional,
                         };
                         make_doc(&mut member, vulkan_ty_name);
                         entry.insert(member);
                     }
                     Entry::Occupied(entry) => {
-                        entry.into_mut().ffi_members.push(ty_name.clone());
+                        entry.into_mut().ffi_members.push(ffi_member);
                     }
                 };
             });
     });
 
-    let mut names: Vec<_> = properties
+    let mut ffi_names: Vec<_> = properties
         .values()
-        .map(|prop| prop.name.to_string())
+        .map(|prop| prop.ffi_name.to_string())
         .collect();
-    names.sort_unstable();
-    names
+    ffi_names.sort_unstable();
+
+    let to_remove = properties
+        .values()
+        .flat_map(|value| {
+            value
+                .ffi_members
+                .iter()
+                .flat_map(|ffi_member| ffi_member.len_field_name.clone())
+        })
+        .collect::<HashSet<String>>();
+
+    let ffi_names = ffi_names
+        .iter()
+        .filter(|it| !to_remove.contains(it.as_str()));
+
+    ffi_names
         .into_iter()
-        .map(|name| properties.remove(&name).unwrap())
+        .map(|name| properties.remove(name).unwrap())
         .collect()
 }
 
@@ -248,7 +307,7 @@ fn make_doc(prop: &mut PropertiesMember, vulkan_ty_name: &str) {
         vulkan_ty_name,
         prop.raw
     )
-    .unwrap();
+        .unwrap();
 }
 
 #[derive(Clone, Debug)]
@@ -427,7 +486,14 @@ fn ffi_member(ty_name: &str) -> String {
 struct Member<'a> {
     name: &'a str,
     ty: &'a str,
-    len: Option<&'a str>,
+    len: Option<LenKind<'a>>,
+}
+
+#[derive(Copy, Clone)]
+enum LenKind<'a> {
+    /// Length information in a member with this name
+    Field(&'a str),
+    Raw(&'a str),
 }
 
 fn members(ty: &Type) -> Vec<Member<'_>> {
@@ -440,46 +506,81 @@ fn members(ty: &Type) -> Vec<Member<'_>> {
         ))(input)
     }
 
-    if let TypeSpec::Members(members) = &ty.spec {
-        members
-            .iter()
-            .filter_map(|member| {
-                if let TypeMember::Definition(def) = member {
-                    let name = def.markup.iter().find_map(|markup| match markup {
-                        TypeMemberMarkup::Name(name) => Some(name.as_str()),
-                        _ => None,
-                    });
-                    let ty = def.markup.iter().find_map(|markup| match markup {
-                        TypeMemberMarkup::Type(ty) => Some(ty.as_str()),
-                        _ => None,
-                    });
-                    let len = def
-                        .markup
-                        .iter()
-                        .find_map(|markup| match markup {
-                            TypeMemberMarkup::Enum(len) => Some(len.as_str()),
-                            _ => None,
-                        })
-                        .or_else(|| array_len(&def.code).map(|(_, len)| len).ok());
-                    if name != Some("sType") && name != Some("pNext") {
-                        return name.map(|name| Member {
-                            name,
-                            ty: ty.unwrap(),
-                            len,
-                        });
-                    }
-                }
-                None
-            })
-            .collect()
-    } else {
-        vec![]
+    fn type_member_name(def: &TypeMemberDefinition) -> Option<&str> {
+        def.markup.iter().find_map(|markup| match markup {
+            TypeMemberMarkup::Name(name) => Some(name.as_str()),
+            _ => None,
+        })
     }
+
+    fn member_by_name<'a>(
+        members: &'a [TypeMember],
+        name: &str,
+    ) -> Option<&'a TypeMemberDefinition> {
+        members.iter().find_map(|it| {
+            let TypeMember::Definition(defs) = it else {
+                return None;
+            };
+
+            let member_name = type_member_name(defs)?;
+
+            if member_name != name {
+                return None;
+            };
+
+            Some(defs)
+        })
+    }
+
+    let TypeSpec::Members(members) = &ty.spec else {
+        return vec![];
+    };
+
+    members
+        .iter()
+        .filter_map(|member| {
+            let TypeMember::Definition(def) = member else {
+                return None;
+            };
+
+            let name = type_member_name(def);
+            let ty = def.markup.iter().find_map(|markup| match markup {
+                TypeMemberMarkup::Type(ty) => Some(ty.as_str()),
+                _ => None,
+            });
+
+            let len = def
+                .markup
+                .iter()
+                .find_map(|markup| match markup {
+                    TypeMemberMarkup::Enum(len) => Some(len.as_str()),
+                    _ => None,
+                })
+                .or_else(|| array_len(&def.code).map(|(_, len)| len).ok())
+                .map(LenKind::Raw)
+                .or_else(|| {
+                    let len = def.len.as_ref()?;
+                    let _member = member_by_name(members.as_slice(), len)?;
+
+                    Some(LenKind::Field(len.as_str()))
+                });
+
+            if name == Some("sType") || name == Some("pNext") {
+                return None;
+            }
+
+            name.map(|name| Member {
+                name,
+                ty: ty.unwrap(),
+                len,
+            })
+        })
+        .collect()
 }
 
-fn vulkano_type(ty: &str, len: Option<&str>) -> TokenStream {
-    if let Some(len) = len {
-        match ty {
+fn vulkano_type(ty: &str, len: Option<LenKind<'_>>) -> TokenStream {
+    match len {
+        Some(LenKind::Raw(len)) => match ty {
             "char" => quote! { String },
             "uint8_t" if len == "VK_LUID_SIZE" => quote! { [u8; 8] },
             "uint8_t" if len == "VK_UUID_SIZE" => quote! { [u8; 16] },
@@ -487,9 +588,13 @@ fn vulkano_type(ty: &str, len: Option<&str>) -> TokenStream {
             "uint32_t" if len == "3" => quote! { [u32; 3] },
             "float" if len == "2" => quote! { [f32; 2] },
             _ => unimplemented!("{}[{}]", ty, len),
+        },
+        Some(LenKind::Field(_)) => {
+            let inner = vulkano_type(ty, None);
+
+            quote! { Vec<#inner> }
         }
-    } else {
-        match ty {
+        None => match ty {
             "float" => quote! { f32 },
             "int32_t" => quote! { i32 },
             "int64_t" => quote! { i64 },
@@ -518,6 +623,6 @@ fn vulkano_type(ty: &str, len: Option<&str>) -> TokenStream {
             "VkShaderStageFlags" => quote! { ShaderStages },
             "VkSubgroupFeatureFlags" => quote! { SubgroupFeatures },
             _ => unimplemented!("{}", ty),
-        }
+        },
     }
 }
