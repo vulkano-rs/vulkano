@@ -1096,6 +1096,7 @@ impl<S> GenericMemoryAllocator<S> {
                 memory.map_unchecked(MemoryMapInfo {
                     offset: 0,
                     size: memory.allocation_size(),
+                    placed_address: None,
                     _ne: crate::NonExhaustive(()),
                 })?;
             }

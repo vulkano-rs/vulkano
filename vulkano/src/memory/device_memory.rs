@@ -463,6 +463,7 @@ impl DeviceMemory {
         let MemoryMapInfo {
             offset,
             size,
+            placed_address,
             _ne: _,
         } = map_info;
 
@@ -477,11 +478,26 @@ impl DeviceMemory {
 
             if device.enabled_extensions().khr_map_memory2 {
                 let map_info_vk = ash::vk::MemoryMapInfoKHR {
-                    flags: ash::vk::MemoryMapFlags::empty(),
+                    flags: {
+                        if placed_address.is_some() {
+                            ash::vk::MemoryMapFlags::PLACED_EXT
+                        } else {
+                            ash::vk::MemoryMapFlags::empty()
+                        }
+                    },
                     memory: self.handle(),
                     offset,
                     size,
                     ..Default::default()
+                };
+
+                let mut map_placed_info_ext = ash::vk::MemoryMapPlacedInfoEXT::default();
+                let map_info_vk = if let Some(placed_address) = placed_address {
+                    map_placed_info_ext.p_placed_address = placed_address;
+
+                    map_info_vk.push_next(&mut map_placed_info_ext)
+                } else {
+                    map_info_vk
                 };
 
                 (fns.khr_map_memory2.map_memory2_khr)(
@@ -1388,6 +1404,18 @@ pub struct MemoryMapInfo {
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub size: DeviceSize,
 
+    /// The address in host memory to map to.
+    ///
+    /// Requires [`DeviceExtensions::ext_map_memory_placed`] and
+    /// [`DeviceFeatures::memory_map_placed`] to be enabled.
+    ///
+    /// Must align with [`DeviceProperties::min_placed_memory_map_alignment`].
+    ///
+    /// [`DeviceExtensions::ext_map_memory_placed`]: crate::device::DeviceExtensions::ext_map_memory_placed
+    /// [`DeviceFeatures::memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
+    /// [`DeviceProperties::min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
+    pub placed_address: Option<*mut c_void>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1396,6 +1424,7 @@ impl MemoryMapInfo {
         let &Self {
             offset,
             size,
+            placed_address,
             _ne: _,
         } = self;
 
@@ -1425,6 +1454,94 @@ impl MemoryMapInfo {
                 vuids: &["VUID-vkMapMemory-size-00681"],
                 ..Default::default()
             }));
+        }
+
+        if let Some(placed_address) = placed_address {
+            if !memory.device.enabled_extensions().ext_map_memory_placed {
+                return Err(Box::new(ValidationError {
+                    context: "placed_address".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_map_memory_placed",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            let features = memory.device.enabled_features();
+            if !features.memory_map_placed {
+                return Err(Box::new(ValidationError {
+                    context: "placed_address".into(),
+                    problem: "is not empty".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "memory_map_placed",
+                    )])]),
+                    vuids: &["VUID-VkMemoryMapInfoKHR-flags-09569"],
+                    ..Default::default()
+                }));
+            }
+
+            // SAFETY:
+            // min_placed_memory_map_alignment is always provided when the device extension
+            // ext_map_memory_placed is available.
+            let min_placed_memory_map_alignment = memory
+                .device
+                .physical_device()
+                .properties()
+                .min_placed_memory_map_alignment
+                .unwrap();
+
+            if !is_aligned(
+                placed_address as DeviceSize,
+                min_placed_memory_map_alignment,
+            ) {
+                return Err(Box::new(ValidationError {
+                    context: "placed_address".into(),
+                    problem: "must be aligned to an integer multiple of `min_placed_memory_map_alignment` device property".into(),
+                    vuids: &[
+                        "VUID-VkMemoryMapPlacedInfoEXT-pPlacedAddress-09577"
+                    ],
+                    ..Default::default()
+                }));
+            }
+
+            if features.memory_map_range_placed {
+                if !is_aligned(offset, min_placed_memory_map_alignment) {
+                    return Err(Box::new(ValidationError {
+                        context: "offset".into(),
+                        problem: "must be aligned to an integer multiple of `min_placed_memory_map_alignment` device property".into(),
+                        vuids: &["VUID-VkMemoryMapInfoKHR-flags-09573"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !is_aligned(size, min_placed_memory_map_alignment) && size != DeviceSize::MAX {
+                    return Err(Box::new(ValidationError {
+                        context: "size".into(),
+                        problem: "must be aligned to an integer multiple of `min_placed_memory_map_alignment` device property or must be VK_WHOLE_SIZE".into(),
+                        vuids: &["VUID-VkMemoryMapInfoKHR-flags-09574"],
+                        ..Default::default()
+                    }));
+                }
+            } else {
+                if offset != 0 {
+                    return Err(Box::new(ValidationError {
+                        context: "offset".into(),
+                        problem: "must be zero".into(),
+                        vuids: &["VUID-VkMemoryMapInfoKHR-flags-09571"],
+                        ..Default::default()
+                    }));
+                }
+
+                if size != DeviceSize::MAX {
+                    return Err(Box::new(ValidationError {
+                        context: "size".into(),
+                        problem: "must be VK_WHOLE_SIZE".into(),
+                        vuids: &["VUID-VkMemoryMapInfoKHR-flags-09572"],
+                        ..Default::default()
+                    }));
+                }
+            }
         }
 
         let atom_size = memory.atom_size();
@@ -1460,6 +1577,7 @@ impl Default for MemoryMapInfo {
         MemoryMapInfo {
             offset: 0,
             size: 0,
+            placed_address: None,
             _ne: crate::NonExhaustive(()),
         }
     }
