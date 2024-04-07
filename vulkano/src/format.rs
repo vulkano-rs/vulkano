@@ -406,6 +406,7 @@ pub(crate) enum FormatCompatibilityInner {
     Class_10bit_2plane_444,
     Class_12bit_2plane_444,
     Class_16bit_2plane_444,
+    Class_8bit_alpha,
 }
 
 /// Describes a uniform value that will be used to fill an image.

@@ -622,6 +622,14 @@ fn vulkano_type(ty: &str, len: Option<LenKind<'_>>) -> TokenStream {
             "VkShaderFloatControlsIndependence" => quote! { ShaderFloatControlsIndependence },
             "VkShaderStageFlags" => quote! { ShaderStages },
             "VkSubgroupFeatureFlags" => quote! { SubgroupFeatures },
+            "VkImageLayout" => quote! { ImageLayout },
+            "VkImageUsageFlags" => quote! { ImageUsage },
+            "VkBufferUsageFlags" => quote! { BufferUsage },
+            "VkChromaLocation" => quote! { ChromaLocation },
+            "VkLayeredDriverUnderlyingApiMSFT" => quote! { LayeredDriverUnderlyingApi },
+            "VkPhysicalDeviceSchedulingControlsFlagsARM" => {
+                quote! { PhysicalDeviceSchedulingControlsFlags }
+            }
             _ => unimplemented!("{}", ty),
         },
     }

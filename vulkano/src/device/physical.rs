@@ -3623,6 +3623,26 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct LayeredDriverUnderlyingApi {}
+
+impl From<ash::vk::LayeredDriverUnderlyingApiMSFT> for LayeredDriverUnderlyingApi {
+    fn from(_value: ash::vk::LayeredDriverUnderlyingApiMSFT) -> Self {
+        Self {}
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PhysicalDeviceSchedulingControlsFlags {}
+
+impl From<ash::vk::PhysicalDeviceSchedulingControlsFlagsARM>
+    for PhysicalDeviceSchedulingControlsFlags
+{
+    fn from(_value: ash::vk::PhysicalDeviceSchedulingControlsFlagsARM) -> Self {
+        Self {}
+    }
+}
+
 vulkan_bitflags! {
     #[non_exhaustive]
 
