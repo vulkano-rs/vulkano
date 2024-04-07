@@ -1478,7 +1478,7 @@ impl WriteDescriptorSet {
         &self,
         dst_set: ash::vk::DescriptorSet,
         descriptor_type: DescriptorType,
-    ) -> ash::vk::WriteDescriptorSet {
+    ) -> ash::vk::WriteDescriptorSet<'static> {
         ash::vk::WriteDescriptorSet {
             dst_set,
             dst_binding: self.binding,

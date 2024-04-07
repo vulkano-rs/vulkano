@@ -228,11 +228,12 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), VulkanError> {
         struct PerBindSparseInfo {
             wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
-            buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo; 4]>,
+            buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo<'static>; 4]>,
             buffer_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseMemoryBind; 4]>; 4]>,
-            image_opaque_bind_infos_vk: SmallVec<[ash::vk::SparseImageOpaqueMemoryBindInfo; 4]>,
+            image_opaque_bind_infos_vk:
+                SmallVec<[ash::vk::SparseImageOpaqueMemoryBindInfo<'static>; 4]>,
             image_opaque_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseMemoryBind; 4]>; 4]>,
-            image_bind_infos_vk: SmallVec<[ash::vk::SparseImageMemoryBindInfo; 4]>,
+            image_bind_infos_vk: SmallVec<[ash::vk::SparseImageMemoryBindInfo<'static>; 4]>,
             image_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseImageMemoryBind; 4]>; 4]>,
             signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
         }
@@ -259,11 +260,8 @@ impl<'a> QueueGuard<'a> {
                         .iter()
                         .map(|(buffer, memory_binds)| {
                             (
-                                ash::vk::SparseBufferMemoryBindInfo {
-                                    buffer: buffer.buffer().handle(),
-                                    bind_count: 0,
-                                    p_binds: ptr::null(),
-                                },
+                                ash::vk::SparseBufferMemoryBindInfo::default()
+                                    .buffer(buffer.buffer().handle()),
                                 memory_binds
                                     .iter()
                                     .map(|memory_bind| {
@@ -300,11 +298,8 @@ impl<'a> QueueGuard<'a> {
                     .iter()
                     .map(|(image, memory_binds)| {
                         (
-                            ash::vk::SparseImageOpaqueMemoryBindInfo {
-                                image: image.handle(),
-                                bind_count: 0,
-                                p_binds: ptr::null(),
-                            },
+                            ash::vk::SparseImageOpaqueMemoryBindInfo::default()
+                                .image(image.handle()),
                             memory_binds
                                 .iter()
                                 .map(|memory_bind| {
@@ -342,11 +337,7 @@ impl<'a> QueueGuard<'a> {
                         .iter()
                         .map(|(image, memory_binds)| {
                             (
-                                ash::vk::SparseImageMemoryBindInfo {
-                                    image: image.handle(),
-                                    bind_count: 0,
-                                    p_binds: ptr::null(),
-                                },
+                                ash::vk::SparseImageMemoryBindInfo::default().image(image.handle()),
                                 memory_binds
                                     .iter()
                                     .map(|memory_bind| {
@@ -607,8 +598,8 @@ impl<'a> QueueGuard<'a> {
         let mut image_indices_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
         let mut present_ids_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
         let mut present_modes_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
-        let mut present_regions_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
         let mut rectangles_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
+        let mut present_regions_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchains.len());
 
         let mut has_present_ids = false;
         let mut has_present_modes = false;
@@ -689,10 +680,8 @@ impl<'a> QueueGuard<'a> {
             for (present_regions_vk, rectangles_vk) in
                 present_regions_vk.iter_mut().zip(rectangles_vk.iter())
             {
-                *present_regions_vk = ash::vk::PresentRegionKHR {
-                    rectangle_count: rectangles_vk.len() as u32,
-                    p_rectangles: rectangles_vk.as_ptr(),
-                };
+                *present_regions_vk =
+                    ash::vk::PresentRegionKHR::default().rectangles(rectangles_vk);
             }
 
             let next = present_region_info_vk.insert(ash::vk::PresentRegionsKHR {
@@ -907,9 +896,9 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
             struct PerSubmitInfo {
-                wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
-                command_buffer_infos_vk: SmallVec<[ash::vk::CommandBufferSubmitInfo; 4]>,
-                signal_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
+                wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo<'static>; 4]>,
+                command_buffer_infos_vk: SmallVec<[ash::vk::CommandBufferSubmitInfo<'static>; 4]>,
+                signal_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo<'static>; 4]>,
             }
 
             let (mut submit_info_vk, mut per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
@@ -1045,7 +1034,8 @@ impl<'a> QueueGuard<'a> {
             .map_err(VulkanError::from)
         } else {
             struct PerSubmitInfo {
-                timeline_semaphore_submit_info_vk: Option<ash::vk::TimelineSemaphoreSubmitInfo>,
+                timeline_semaphore_submit_info_vk:
+                    Option<ash::vk::TimelineSemaphoreSubmitInfo<'static>>,
                 wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
                 wait_semaphore_values_vk: SmallVec<[u64; 4]>,
                 wait_dst_stage_mask_vk: SmallVec<[ash::vk::PipelineStageFlags; 4]>,
@@ -1261,7 +1251,7 @@ impl<'a> QueueGuard<'a> {
             ..Default::default()
         };
 
-        let fns = self.queue.device.instance().fns();
+        let fns = self.queue.device.fns();
         (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(self.queue.handle, &label_info);
     }
 
@@ -1307,7 +1297,7 @@ impl<'a> QueueGuard<'a> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn end_debug_utils_label_unchecked(&mut self) {
-        let fns = self.queue.device.instance().fns();
+        let fns = self.queue.device.fns();
         (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(self.queue.handle);
     }
 
@@ -1366,7 +1356,7 @@ impl<'a> QueueGuard<'a> {
             ..Default::default()
         };
 
-        let fns = self.queue.device.instance().fns();
+        let fns = self.queue.device.fns();
         (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(self.queue.handle, &label_info);
     }
 }

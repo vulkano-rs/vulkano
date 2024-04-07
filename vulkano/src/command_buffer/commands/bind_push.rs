@@ -1311,8 +1311,8 @@ impl RawRecordingCommandBuffer {
 
         struct PerDescriptorWrite {
             write_info: DescriptorWriteInfo,
-            acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR,
-            inline_uniform_block: ash::vk::WriteDescriptorSetInlineUniformBlock,
+            acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR<'static>,
+            inline_uniform_block: ash::vk::WriteDescriptorSetInlineUniformBlock<'static>,
         }
 
         let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());

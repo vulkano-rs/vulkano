@@ -22,7 +22,7 @@ impl RenderPass {
         } = create_info;
 
         struct PerAttachment {
-            stencil_layout_vk: Option<ash::vk::AttachmentDescriptionStencilLayout>,
+            stencil_layout_vk: Option<ash::vk::AttachmentDescriptionStencilLayout<'static>>,
         }
 
         let (mut attachments_vk, mut per_attachment_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
@@ -84,20 +84,21 @@ impl RenderPass {
         }
 
         struct PerSubpassDescriptionVk {
-            input_attachments_vk: SmallVec<[ash::vk::AttachmentReference2; 4]>,
+            input_attachments_vk: SmallVec<[ash::vk::AttachmentReference2<'static>; 4]>,
             per_input_attachments_vk: SmallVec<[PerAttachmentReferenceVk; 4]>,
-            color_attachments_vk: SmallVec<[ash::vk::AttachmentReference2; 4]>,
-            resolve_attachments_vk: SmallVec<[ash::vk::AttachmentReference2; 4]>,
-            depth_stencil_attachment_vk: ash::vk::AttachmentReference2,
+            color_attachments_vk: SmallVec<[ash::vk::AttachmentReference2<'static>; 4]>,
+            resolve_attachments_vk: SmallVec<[ash::vk::AttachmentReference2<'static>; 4]>,
+            depth_stencil_attachment_vk: ash::vk::AttachmentReference2<'static>,
             per_depth_stencil_attachment_vk: PerAttachmentReferenceVk,
-            depth_stencil_resolve_attachment_vk: ash::vk::AttachmentReference2,
+            depth_stencil_resolve_attachment_vk: ash::vk::AttachmentReference2<'static>,
             per_depth_stencil_resolve_attachment_vk: PerAttachmentReferenceVk,
-            depth_stencil_resolve_vk: Option<ash::vk::SubpassDescriptionDepthStencilResolve>,
+            depth_stencil_resolve_vk:
+                Option<ash::vk::SubpassDescriptionDepthStencilResolve<'static>>,
         }
 
         #[derive(Default)]
         struct PerAttachmentReferenceVk {
-            stencil_layout_vk: Option<ash::vk::AttachmentReferenceStencilLayout>,
+            stencil_layout_vk: Option<ash::vk::AttachmentReferenceStencilLayout<'static>>,
         }
 
         let (mut subpasses_vk, mut per_subpass_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
@@ -409,7 +410,7 @@ impl RenderPass {
         }
 
         struct PerSubpassDependencyVk {
-            memory_barrier_vk: Option<ash::vk::MemoryBarrier2>,
+            memory_barrier_vk: Option<ash::vk::MemoryBarrier2<'static>>,
         }
 
         let (mut dependencies_vk, mut per_dependency_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
@@ -700,6 +701,7 @@ impl RenderPass {
                         } else {
                             preserve_attachments.as_ptr()
                         },
+                        ..Default::default()
                     },
                     PerSubpassDescriptionVk {
                         input_attachments_vk,

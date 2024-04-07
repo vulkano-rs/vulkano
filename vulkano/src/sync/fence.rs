@@ -536,7 +536,7 @@ impl Fence {
     pub fn export_win32_handle(
         &self,
         handle_type: ExternalFenceHandleType,
-    ) -> Result<*mut std::ffi::c_void, Validated<VulkanError>> {
+    ) -> Result<ash::vk::HANDLE, Validated<VulkanError>> {
         self.validate_export_win32_handle(handle_type)?;
 
         unsafe { Ok(self.export_win32_handle_unchecked(handle_type)?) }
@@ -589,7 +589,7 @@ impl Fence {
     pub unsafe fn export_win32_handle_unchecked(
         &self,
         handle_type: ExternalFenceHandleType,
-    ) -> Result<*mut std::ffi::c_void, VulkanError> {
+    ) -> Result<ash::vk::HANDLE, VulkanError> {
         let info_vk = ash::vk::FenceGetWin32HandleInfoKHR {
             fence: self.handle,
             handle_type: handle_type.into(),
@@ -1101,8 +1101,8 @@ pub struct ImportFenceWin32HandleInfo {
 
     /// The file to import the fence from.
     ///
-    /// The default value is `null`, which must be overridden.
-    pub handle: *mut std::ffi::c_void,
+    /// The default value is `0`, which must be overridden.
+    pub handle: ash::vk::HANDLE,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1114,7 +1114,7 @@ impl ImportFenceWin32HandleInfo {
         Self {
             flags: FenceImportFlags::empty(),
             handle_type,
-            handle: ptr::null_mut(),
+            handle: 0,
             _ne: crate::NonExhaustive(()),
         }
     }

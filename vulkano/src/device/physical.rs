@@ -30,7 +30,6 @@ use crate::{
 use bytemuck::cast_slice;
 use parking_lot::RwLock;
 use std::{
-    ffi::CStr,
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
@@ -560,9 +559,8 @@ impl PhysicalDevice {
                     self.display_properties
                         .get_or_insert(properties_vk.display, |&handle| {
                             let properties = DisplayProperties {
-                                name: properties_vk.display_name.as_ref().map(|name| {
-                                    CStr::from_ptr(name)
-                                        .to_str()
+                                name: properties_vk.display_name_as_c_str().map(|name| {
+                                    name.to_str()
                                         .expect("non UTF-8 characters in display name")
                                         .to_owned()
                                 }),
@@ -621,9 +619,8 @@ impl PhysicalDevice {
                     self.display_properties
                         .get_or_insert(properties_vk.display, |&handle| {
                             let properties = DisplayProperties {
-                                name: properties_vk.display_name.as_ref().map(|name| {
-                                    CStr::from_ptr(name)
-                                        .to_str()
+                                name: properties_vk.display_name_as_c_str().map(|name| {
+                                    name.to_str()
                                         .expect("non UTF-8 characters in display name")
                                         .to_owned()
                                 }),

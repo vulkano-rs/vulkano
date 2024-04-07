@@ -945,6 +945,7 @@ impl Device {
                 descriptor_count,
                 stage_flags: stages.into(),
                 p_immutable_samplers: ptr::null(),
+                ..Default::default()
             });
             per_binding_vk.push(PerBinding {
                 immutable_samplers_vk: immutable_samplers
@@ -1579,7 +1580,7 @@ impl Device {
         };
 
         unsafe {
-            let fns = self.instance().fns();
+            let fns = self.fns();
             (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info)
                 .result()
                 .map_err(VulkanError::from)?;

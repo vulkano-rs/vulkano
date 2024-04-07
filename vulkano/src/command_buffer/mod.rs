@@ -1103,11 +1103,11 @@ impl SemaphoreSubmitInfo {
         }
 
         if !device.enabled_features().subpass_shading
-            && stages.intersects(PipelineStages::SUBPASS_SHADING)
+            && stages.intersects(PipelineStages::SUBPASS_SHADER)
         {
             return Err(Box::new(ValidationError {
                 context: "stages".into(),
-                problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                 requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                     "subpass_shading",
                 )])]),

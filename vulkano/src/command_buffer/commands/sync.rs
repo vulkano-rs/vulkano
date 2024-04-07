@@ -999,9 +999,9 @@ impl RawRecordingCommandBuffer {
 
         if self.device().enabled_features().synchronization2 {
             struct PerDependencyInfo {
-                memory_barriers_vk: SmallVec<[ash::vk::MemoryBarrier2; 2]>,
-                buffer_memory_barriers_vk: SmallVec<[ash::vk::BufferMemoryBarrier2; 8]>,
-                image_memory_barriers_vk: SmallVec<[ash::vk::ImageMemoryBarrier2; 8]>,
+                memory_barriers_vk: SmallVec<[ash::vk::MemoryBarrier2<'static>; 2]>,
+                buffer_memory_barriers_vk: SmallVec<[ash::vk::BufferMemoryBarrier2<'static>; 8]>,
+                image_memory_barriers_vk: SmallVec<[ash::vk::ImageMemoryBarrier2<'static>; 8]>,
             }
 
             let mut events_vk: SmallVec<[_; 4]> = SmallVec::new();
@@ -1486,10 +1486,10 @@ impl RawRecordingCommandBuffer {
         }
 
         if !device.enabled_features().subpass_shading {
-            if stages.intersects(PipelineStages::SUBPASS_SHADING) {
+            if stages.intersects(PipelineStages::SUBPASS_SHADER) {
                 return Err(Box::new(ValidationError {
                     context: "stages".into(),
-                    problem: "contains `PipelineStages::SUBPASS_SHADING`".into(),
+                    problem: "contains `PipelineStages::SUBPASS_SHADER`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "subpass_shading",
                     )])]),

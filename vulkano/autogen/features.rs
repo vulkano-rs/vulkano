@@ -615,7 +615,7 @@ struct FeaturesFfiMember {
 
 fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
     let struct_items = members.iter().map(|FeaturesFfiMember { name, ty, .. }| {
-        quote! { #name: Option<ash::vk::#ty>, }
+        quote! { #name: Option<ash::vk::#ty<'static>>, }
     });
 
     let make_chain_items = members.iter().map(
@@ -640,7 +640,7 @@ fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
     quote! {
         #[derive(Default)]
         pub(crate) struct DeviceFeaturesFfi {
-            features_vulkan10: ash::vk::PhysicalDeviceFeatures2KHR,
+            features_vulkan10: ash::vk::PhysicalDeviceFeatures2KHR<'static>,
             #(#struct_items)*
         }
 
@@ -656,11 +656,11 @@ fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
                 #(#make_chain_items)*
             }
 
-            pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceFeatures2KHR {
+            pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceFeatures2KHR<'static> {
                 &self.features_vulkan10
             }
 
-            pub(crate) fn head_as_mut(&mut self) -> &mut ash::vk::PhysicalDeviceFeatures2KHR {
+            pub(crate) fn head_as_mut(&mut self) -> &mut ash::vk::PhysicalDeviceFeatures2KHR<'static> {
                 &mut self.features_vulkan10
             }
         }

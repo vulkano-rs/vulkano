@@ -2389,7 +2389,7 @@ mod tests {
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_win32(instance, ptr::null_mut(), ptr::null_mut(), None) } {
+        match unsafe { Surface::from_win32(instance, 0, 0, None) } {
             Err(Validated::ValidationError(err))
                 if matches!(
                     *err,

@@ -676,7 +676,7 @@ impl Semaphore {
     pub fn export_win32_handle(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<*mut std::ffi::c_void, Validated<VulkanError>> {
+    ) -> Result<ash::vk::HANDLE, Validated<VulkanError>> {
         self.validate_export_win32_handle(handle_type)?;
 
         unsafe { Ok(self.export_win32_handle_unchecked(handle_type)?) }
@@ -736,7 +736,7 @@ impl Semaphore {
     pub unsafe fn export_win32_handle_unchecked(
         &self,
         handle_type: ExternalSemaphoreHandleType,
-    ) -> Result<*mut std::ffi::c_void, VulkanError> {
+    ) -> Result<ash::vk::HANDLE, VulkanError> {
         let info_vk = ash::vk::SemaphoreGetWin32HandleInfoKHR {
             semaphore: self.handle,
             handle_type: handle_type.into(),
@@ -1691,8 +1691,8 @@ pub struct ImportSemaphoreWin32HandleInfo {
 
     /// The handle to import the semaphore from.
     ///
-    /// The default value is `null`, which must be overridden.
-    pub handle: *mut std::ffi::c_void,
+    /// The default value is `0`, which must be overridden.
+    pub handle: ash::vk::HANDLE,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1704,7 +1704,7 @@ impl ImportSemaphoreWin32HandleInfo {
         Self {
             flags: SemaphoreImportFlags::empty(),
             handle_type,
-            handle: ptr::null_mut(),
+            handle: 0,
             _ne: crate::NonExhaustive(()),
         }
     }

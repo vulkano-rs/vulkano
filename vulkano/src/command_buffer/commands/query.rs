@@ -804,11 +804,11 @@ impl RawRecordingCommandBuffer {
                     }));
                 }
             }
-            PipelineStage::SubpassShading => {
+            PipelineStage::SubpassShader => {
                 if !device.enabled_features().subpass_shading {
                     return Err(Box::new(ValidationError {
                         context: "stage".into(),
-                        problem: "is `PipelineStage::SubpassShading`".into(),
+                        problem: "is `PipelineStage::SubpassShader`".into(),
                         requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
                             Requires::DeviceFeature("subpass_shading"),
                         ])]),
