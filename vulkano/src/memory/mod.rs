@@ -453,14 +453,16 @@ impl From<ash::vk::PhysicalDeviceMemoryProperties> for MemoryProperties {
     #[inline]
     fn from(val: ash::vk::PhysicalDeviceMemoryProperties) -> Self {
         Self {
-            memory_types: val.memory_types[0..val.memory_type_count as usize]
+            memory_types: val
+                .memory_types_as_slice()
                 .iter()
                 .map(|vk_memory_type| MemoryType {
                     property_flags: vk_memory_type.property_flags.into(),
                     heap_index: vk_memory_type.heap_index,
                 })
                 .collect(),
-            memory_heaps: val.memory_heaps[0..val.memory_heap_count as usize]
+            memory_heaps: val
+                .memory_heaps_as_slice()
                 .iter()
                 .map(|vk_memory_heap| MemoryHeap {
                     size: vk_memory_heap.size,

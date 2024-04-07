@@ -130,6 +130,7 @@ impl ComputePipeline {
                 p_map_entries: specialization_map_entries_vk.as_ptr(),
                 data_size: specialization_data_vk.len(),
                 p_data: specialization_data_vk.as_ptr().cast(),
+                ..Default::default()
             };
             required_subgroup_size_create_info =
                 required_subgroup_size.map(|required_subgroup_size| {

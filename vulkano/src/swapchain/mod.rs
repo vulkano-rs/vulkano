@@ -80,7 +80,7 @@
 //! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
 //! let window = build_window(); // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
-//!     let hinstance: *mut std::ffi::c_void = ptr::null_mut(); // Windows-specific object
+//!     let hinstance: ash::vk::HINSTANCE = 0; // Windows-specific object
 //!     Surface::from_win32(
 //!         instance.clone(),
 //!         hinstance,

@@ -232,11 +232,11 @@ impl GraphicsPipeline {
 
         struct PerPipelineShaderStageCreateInfo {
             name_vk: CString,
-            specialization_info_vk: ash::vk::SpecializationInfo,
+            specialization_info_vk: ash::vk::SpecializationInfo<'static>,
             specialization_map_entries_vk: Vec<ash::vk::SpecializationMapEntry>,
             specialization_data_vk: Vec<u8>,
             required_subgroup_size_create_info:
-                Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo>,
+                Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo<'static>>,
         }
 
         let (mut stages_vk, mut per_stage_vk): (SmallVec<[_; 5]>, SmallVec<[_; 5]>) = stages
@@ -287,12 +287,13 @@ impl GraphicsPipeline {
                         ..Default::default()
                     },
                     PerPipelineShaderStageCreateInfo {
-                        name_vk: CString::new(entry_point_info.name.as_str()).unwrap(),
+                        name_vk: CString::new(entry_point_info.name.as_str()).unwrap(), // TODO Borrow CStr for local data?
                         specialization_info_vk: ash::vk::SpecializationInfo {
                             map_entry_count: specialization_map_entries_vk.len() as u32,
                             p_map_entries: ptr::null(),
                             data_size: specialization_data_vk.len(),
                             p_data: ptr::null(),
+                            ..Default::default()
                         },
                         specialization_map_entries_vk,
                         specialization_data_vk,

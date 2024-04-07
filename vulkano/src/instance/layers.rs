@@ -1,5 +1,4 @@
 use crate::Version;
-use std::ffi::CStr;
 
 /// Properties of a layer.
 #[derive(Clone)]
@@ -26,11 +25,7 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn name(&self) -> &str {
-        unsafe {
-            CStr::from_ptr(self.props.layer_name.as_ptr())
-                .to_str()
-                .unwrap()
-        }
+        self.props.layer_name_as_c_str().unwrap().to_str().unwrap()
     }
 
     /// Returns a description of the layer.
@@ -50,11 +45,7 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn description(&self) -> &str {
-        unsafe {
-            CStr::from_ptr(self.props.description.as_ptr())
-                .to_str()
-                .unwrap()
-        }
+        self.props.description_as_c_str().unwrap().to_str().unwrap()
     }
 
     /// Returns the version of Vulkan supported by this layer.

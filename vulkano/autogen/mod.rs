@@ -15,13 +15,14 @@ use std::{
     io::{BufWriter, Write},
     ops::BitOrAssign,
     path::Path,
-    process::Command,
+    process,
 };
 use vk_parse::{
-    Enum, EnumSpec, Enums, EnumsChild, Extension, ExtensionChild, Feature, Format, InterfaceItem,
-    Registry, RegistryChild, SpirvExtOrCap, Type, TypeSpec, TypesChild,
+    Command, Enum, EnumSpec, Enums, EnumsChild, Extension, ExtensionChild, Feature, Format,
+    InterfaceItem, Registry, RegistryChild, SpirvExtOrCap, Type, TypeSpec, TypesChild,
 };
 
+mod conjunctive_normal_form;
 mod errors;
 mod extensions;
 mod features;
@@ -67,7 +68,7 @@ fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Dis
     .unwrap();
 
     drop(writer); // Ensure that the file is fully written
-    Command::new("rustfmt").arg(&path).status().ok();
+    process::Command::new("rustfmt").arg(&path).status().ok();
 }
 
 fn get_vk_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
@@ -93,6 +94,7 @@ pub struct VkRegistryData<'r> {
     pub spirv_capabilities: Vec<&'r SpirvExtOrCap>,
     pub spirv_extensions: Vec<&'r SpirvExtOrCap>,
     pub types: HashMap<&'r str, (&'r Type, Vec<&'r str>)>,
+    pub commands: IndexMap<&'r str, &'r Command>,
 }
 
 impl<'r> VkRegistryData<'r> {
@@ -106,6 +108,7 @@ impl<'r> VkRegistryData<'r> {
         let errors = Self::get_errors(registry, &features, &extensions);
         let types = Self::get_types(registry, &aliases, &features, &extensions);
         let header_version = Self::get_header_version(registry);
+        let commands = Self::get_commands(registry);
 
         VkRegistryData {
             header_version,
@@ -116,6 +119,7 @@ impl<'r> VkRegistryData<'r> {
             spirv_capabilities,
             spirv_extensions,
             types,
+            commands,
         }
     }
 
@@ -432,6 +436,30 @@ impl<'r> VkRegistryData<'r> {
         types
             .into_iter()
             .filter(|(_key, val)| !val.1.is_empty())
+            .collect()
+    }
+
+    fn get_commands(registry: &Registry) -> IndexMap<&str, &Command> {
+        registry
+            .0
+            .iter()
+            .filter_map(|child| {
+                // TODO: resolve aliases into CommandDefinition immediately?
+                if let RegistryChild::Commands(commands) = child {
+                    return Some(commands.children.iter().map(|c| {
+                        (
+                            match c {
+                                Command::Alias { name, .. } => name.as_str(),
+                                Command::Definition(d) => d.proto.name.as_str(),
+                                _ => todo!(),
+                            },
+                            c,
+                        )
+                    }));
+                }
+                None
+            })
+            .flatten()
             .collect()
     }
 }

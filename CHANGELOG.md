@@ -8,6 +8,7 @@
 -->
 
 ### Public dependency updates
+- [ash](https://crates.io/crates/ash) 0.38.0
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
 - [winit](https://crates.io/crates/winit) 0.29
 - [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
@@ -92,6 +93,12 @@ Changes to queues:
 
 Changes to shaders:
 - `ShaderInterface` and subtypes are removed. `EntryPointInfo` no longer has `input_interface` and `output_interface` members.
+
+Changes to synchronization:
+- Renamed `PipelineStages::SUBPASS_SHADING` to PipelineStages::SUBPASS_SHADER`, following upstream Vulkan changes.
+
+Changes to Win32 APIs:
+- Windows `HANDLE`s are now passed using `ash::vk::HANDLE`, which is a type alias for `isize`.
 
 Changes to vulkano-shaders:
 - Shaders included via `bytes: <path-to-spv>` **must** no longer specify a shader type, e.g. `ty: <vertex>`.

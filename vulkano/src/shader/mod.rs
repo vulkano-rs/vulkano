@@ -1545,7 +1545,7 @@ impl From<ShaderStages> for PipelineStages {
         }
 
         if stages.intersects(ShaderStages::SUBPASS_SHADING) {
-            result |= PipelineStages::SUBPASS_SHADING;
+            result |= PipelineStages::SUBPASS_SHADER;
         }
 
         result
