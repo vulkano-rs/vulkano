@@ -95,7 +95,7 @@ Changes to shaders:
 - `ShaderInterface` and subtypes are removed. `EntryPointInfo` no longer has `input_interface` and `output_interface` members.
 
 Changes to synchronization:
-- Renamed `PipelineStages::SUBPASS_SHADING` to PipelineStages::SUBPASS_SHADER`, following upstream Vulkan changes.
+- Renamed `PipelineStages::SUBPASS_SHADING` to `PipelineStages::SUBPASS_SHADER`, following upstream Vulkan changes.
 
 Changes to Win32 APIs:
 - Windows `HANDLE`s are now passed using `ash::vk::HANDLE`, which is a type alias for `isize`.
