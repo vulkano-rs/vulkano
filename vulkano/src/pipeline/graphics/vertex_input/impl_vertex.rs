@@ -40,13 +40,14 @@ macro_rules! impl_vertex {
                         #[inline] fn f<T: VertexMember>(_: &T) -> Format { T::format() }
                         let format = f(&dummy.$member);
                         let field_size = {
-                            let p = unsafe {
-                                core::ptr::addr_of!((*(core::ptr::addr_of!(dummy).cast::<$out>())).$member)
+                            let dummy_ptr: *const $out = <*const _>::cast(&dummy);
+                            let member_ptr = unsafe {
+                                core::ptr::addr_of!((*dummy_ptr).$member)
                             };
                             const fn size_of_raw<T>(_: *const T) -> usize {
                                 core::mem::size_of::<T>()
                             }
-                            size_of_raw(p)
+                            size_of_raw(member_ptr)
                         } as u32;
                         let format_size = format.block_size() as u32;
                         let num_elements = field_size / format_size;

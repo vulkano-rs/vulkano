@@ -2018,7 +2018,7 @@ impl MappedDeviceMemory {
     pub unsafe fn read_unchecked(&self, range: Range<DeviceSize>) -> &[u8] {
         slice::from_raw_parts(
             self.pointer
-                .add((range.start - self.range.start) as usize)
+                .add((range.start - self.range.start).try_into().unwrap())
                 .cast(),
             (range.end - range.start) as usize,
         )

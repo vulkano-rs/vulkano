@@ -495,7 +495,7 @@ impl Instance {
 
         for i in 1..debug_utils_messenger_create_infos_vk.len() {
             debug_utils_messenger_create_infos_vk[i - 1].p_next =
-                ptr::addr_of!(debug_utils_messenger_create_infos_vk[i]).cast();
+                <*const _>::cast(&debug_utils_messenger_create_infos_vk[i]);
         }
 
         if let Some(info) = debug_utils_messenger_create_infos_vk.first() {

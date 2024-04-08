@@ -1348,13 +1348,13 @@ impl RawRecordingCommandBuffer {
                 }
                 DescriptorWriteInfo::InlineUniformBlock(data) => {
                     write_vk.descriptor_count = data.len() as u32;
-                    write_vk.p_next = ptr::addr_of!(per_write_vk.inline_uniform_block).cast();
+                    write_vk.p_next = <*const _>::cast(&per_write_vk.inline_uniform_block);
                     per_write_vk.inline_uniform_block.data_size = write_vk.descriptor_count;
                     per_write_vk.inline_uniform_block.p_data = data.as_ptr().cast();
                 }
                 DescriptorWriteInfo::AccelerationStructure(info) => {
                     write_vk.descriptor_count = info.len() as u32;
-                    write_vk.p_next = ptr::addr_of!(per_write_vk.acceleration_structures).cast();
+                    write_vk.p_next = <*const _>::cast(&per_write_vk.acceleration_structures);
                     per_write_vk
                         .acceleration_structures
                         .acceleration_structure_count = write_vk.descriptor_count;
