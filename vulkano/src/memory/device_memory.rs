@@ -2259,7 +2259,8 @@ unsafe impl Sync for MappedDeviceMemory {}
 #[cfg(test)]
 mod tests {
     use super::MemoryAllocateInfo;
-    use crate::memory::{DeviceMemory, MemoryPropertyFlags};
+    use crate::memory::{DeviceMemory, MemoryMapInfo, MemoryPropertyFlags};
+    use std::ptr;
 
     #[test]
     fn create() {
@@ -2387,5 +2388,65 @@ mod tests {
             assert_eq!(device.allocation_count(), 2);
         }
         assert_eq!(device.allocation_count(), 1);
+    }
+
+    #[test]
+    fn map_placed() {
+        let (device, _) = gfx_dev_and_queue!(memory_map_placed; ext_map_memory_placed);
+
+        let memory_type_index = {
+            let physical_device = device.physical_device();
+            let memory_properties = physical_device.memory_properties();
+            let (idx, _) = memory_properties
+                .memory_types
+                .iter()
+                .enumerate()
+                .find(|(_idx, it)| {
+                    it.property_flags.intersects(
+                        MemoryPropertyFlags::HOST_COHERENT
+                            | MemoryPropertyFlags::HOST_VISIBLE
+                            | MemoryPropertyFlags::DEVICE_LOCAL,
+                    )
+                })
+                .unwrap();
+
+            idx as u32
+        };
+
+        let mut memory = DeviceMemory::allocate(
+            device.clone(),
+            MemoryAllocateInfo {
+                allocation_size: 16 * 1024,
+                memory_type_index,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let address = unsafe {
+            let address = libc::mmap(
+                ptr::null_mut(),
+                16 * 1024,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            );
+
+            if address as i64 == -1 {
+                panic!("failed to map memory")
+            }
+
+            address
+        };
+
+        memory
+            .map(MemoryMapInfo {
+                offset: 0,
+                size: 16 * 1024,
+                placed_address: Some(address),
+                ..Default::default()
+            })
+            .unwrap();
     }
 }
