@@ -1146,9 +1146,7 @@ impl RawRecordingCommandBuffer {
             let push_size = remaining_size.min(range.offset + range.size - current_offset);
             let data_offset = (current_offset - offset) as usize;
             debug_assert!(data_offset < size as usize);
-            let data = ptr::from_ref(push_constants)
-                .cast::<c_void>()
-                .add(data_offset);
+            let data = <*const _>::cast::<c_void>(push_constants).add(data_offset);
 
             (fns.v1_0.cmd_push_constants)(
                 self.handle(),

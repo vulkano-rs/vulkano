@@ -186,7 +186,7 @@ impl DeviceMemory {
             });
 
             next.p_next = allocate_info_vk.p_next;
-            allocate_info_vk.p_next = ptr::from_ref(next).cast();
+            allocate_info_vk.p_next = <*const _>::cast(next);
         }
 
         if !export_handle_types.is_empty() {
@@ -196,7 +196,7 @@ impl DeviceMemory {
             });
 
             next.p_next = allocate_info_vk.p_next;
-            allocate_info_vk.p_next = ptr::from_ref(next).cast();
+            allocate_info_vk.p_next = <*const _>::cast(next);
         }
 
         let imported_handle_type = import_info.as_ref().map(|import_info| match import_info {
@@ -226,7 +226,7 @@ impl DeviceMemory {
                     });
 
                     next.p_next = allocate_info_vk.p_next;
-                    allocate_info_vk.p_next = ptr::from_ref(next).cast();
+                    allocate_info_vk.p_next = <*const _>::cast(next);
                 }
                 MemoryImportInfo::Win32 {
                     handle_type,
@@ -241,7 +241,7 @@ impl DeviceMemory {
                     );
 
                     next.p_next = allocate_info_vk.p_next;
-                    allocate_info_vk.p_next = ptr::from_ref(next).cast();
+                    allocate_info_vk.p_next = <*const _>::cast(next);
                 }
             }
         }
@@ -253,7 +253,7 @@ impl DeviceMemory {
             });
 
             next.p_next = allocate_info_vk.p_next;
-            allocate_info_vk.p_next = ptr::from_ref(next).cast();
+            allocate_info_vk.p_next = <*const _>::cast(next);
         }
 
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101

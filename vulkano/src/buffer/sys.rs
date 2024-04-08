@@ -114,7 +114,7 @@ impl RawBuffer {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let handle = {
@@ -245,7 +245,7 @@ impl RawBuffer {
                 .insert(ash::vk::MemoryDedicatedRequirements::default());
 
             next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = ptr::from_mut(next).cast();
+            memory_requirements2_vk.p_next = <*mut _>::cast(next);
         }
 
         unsafe {

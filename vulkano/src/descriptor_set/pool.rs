@@ -96,7 +96,7 @@ impl DescriptorPool {
             );
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let handle = unsafe {
@@ -287,7 +287,7 @@ impl DescriptorPool {
                 descriptor_set_count: layouts_vk.len() as u32,
                 p_set_layouts: layouts_vk.as_ptr(),
                 p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
-                    ptr::from_ref(next).cast()
+                    <*const _>::cast(next)
                 } else {
                     ptr::null()
                 },

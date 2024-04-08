@@ -318,7 +318,7 @@ impl GraphicsPipeline {
                 p_next: required_subgroup_size_create_info.as_ref().map_or(
                     ptr::null(),
                     |required_subgroup_size_create_info| {
-                        ptr::from_ref(required_subgroup_size_create_info).cast()
+                        <*const _>::cast(required_subgroup_size_create_info)
                     },
                 ),
                 p_name: name_vk.as_ptr(),
@@ -418,7 +418,7 @@ impl GraphicsPipeline {
                             ..Default::default()
                         },
                     );
-                    vertex_input_state.p_next = ptr::from_ref(next).cast();
+                    vertex_input_state.p_next = <*const _>::cast(next);
                 }
             }
         }
@@ -466,7 +466,7 @@ impl GraphicsPipeline {
 
                 tessellation_domain_origin_state_vk.p_next = tessellation_state_vk.p_next;
                 tessellation_state_vk.p_next =
-                    ptr::from_ref(tessellation_domain_origin_state_vk).cast();
+                    <*const _>::cast(tessellation_domain_origin_state_vk);
             }
         }
 
@@ -569,7 +569,7 @@ impl GraphicsPipeline {
                         ..Default::default()
                     },
                 );
-                rasterization_state.p_next = ptr::from_ref(next).cast();
+                rasterization_state.p_next = <*const _>::cast(next);
             }
         }
 
@@ -750,7 +750,7 @@ impl GraphicsPipeline {
                     p_color_write_enables: color_write_enables_vk.as_ptr(),
                     ..Default::default()
                 });
-                color_blend_state_vk.p_next = ptr::from_ref(next).cast();
+                color_blend_state_vk.p_next = <*const _>::cast(next);
             }
         }
 
@@ -901,17 +901,17 @@ impl GraphicsPipeline {
 
         if let Some(info) = discard_rectangle_state_vk.as_mut() {
             info.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(info).cast();
+            create_info_vk.p_next = <*const _>::cast(info);
         }
 
         if let Some(info) = conservative_rasterization_state_vk.as_mut() {
             info.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(info).cast();
+            create_info_vk.p_next = <*const _>::cast(info);
         }
 
         if let Some(info) = rendering_create_info_vk.as_mut() {
             info.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(info).cast();
+            create_info_vk.p_next = <*const _>::cast(info);
         }
 
         let cache_handle = match cache.as_ref() {

@@ -79,7 +79,7 @@ impl RenderPass {
 
             if let Some(next) = stencil_layout_vk {
                 next.p_next = attachment_vk.p_next.cast_mut();
-                attachment_vk.p_next = ptr::from_ref(next).cast();
+                attachment_vk.p_next = <*const _>::cast(next);
             }
         }
 
@@ -351,7 +351,7 @@ impl RenderPass {
 
                 if let Some(stencil_layout_vk) = stencil_layout_vk {
                     stencil_layout_vk.p_next = input_attachment_vk.p_next.cast_mut();
-                    input_attachment_vk.p_next = ptr::from_ref(stencil_layout_vk).cast();
+                    input_attachment_vk.p_next = <*const _>::cast(stencil_layout_vk);
                 }
             }
 
@@ -361,7 +361,7 @@ impl RenderPass {
 
                 if let Some(stencil_layout_vk) = stencil_layout_vk {
                     stencil_layout_vk.p_next = depth_stencil_attachment_vk.p_next.cast_mut();
-                    depth_stencil_attachment_vk.p_next = ptr::from_ref(stencil_layout_vk).cast();
+                    depth_stencil_attachment_vk.p_next = <*const _>::cast(stencil_layout_vk);
                 }
             }
 
@@ -373,7 +373,7 @@ impl RenderPass {
                     stencil_layout_vk.p_next =
                         depth_stencil_resolve_attachment_vk.p_next.cast_mut();
                     depth_stencil_resolve_attachment_vk.p_next =
-                        ptr::from_ref(stencil_layout_vk).cast();
+                        <*const _>::cast(stencil_layout_vk);
                 }
             }
 
@@ -406,7 +406,7 @@ impl RenderPass {
                 };
 
                 depth_stencil_resolve_vk.p_next = subpass_vk.p_next;
-                subpass_vk.p_next = ptr::from_ref(depth_stencil_resolve_vk).cast();
+                subpass_vk.p_next = <*const _>::cast(depth_stencil_resolve_vk);
             }
         }
 
@@ -466,7 +466,7 @@ impl RenderPass {
 
             if let Some(next) = memory_barrier_vk {
                 next.p_next = dependency_vk.p_next;
-                dependency_vk.p_next = ptr::from_ref(next).cast();
+                dependency_vk.p_next = <*const _>::cast(next);
             }
         }
 
@@ -839,7 +839,7 @@ impl RenderPass {
                 );
 
                 next.p_next = create_info_vk.p_next;
-                create_info_vk.p_next = ptr::from_ref(next).cast();
+                create_info_vk.p_next = <*const _>::cast(next);
             }
         }
 
@@ -872,7 +872,7 @@ impl RenderPass {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         Ok({

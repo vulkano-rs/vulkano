@@ -171,7 +171,7 @@ impl RawImage {
                 );
 
                 next.p_next = create_info_vk.p_next;
-                create_info_vk.p_next = ptr::from_ref(next).cast();
+                create_info_vk.p_next = <*const _>::cast(next);
             } else {
                 drm_format_modifier_plane_layouts_vk = drm_format_modifier_plane_layouts
                     .iter()
@@ -205,7 +205,7 @@ impl RawImage {
                 );
 
                 next.p_next = create_info_vk.p_next;
-                create_info_vk.p_next = ptr::from_ref(next).cast();
+                create_info_vk.p_next = <*const _>::cast(next);
             }
         }
 
@@ -216,7 +216,7 @@ impl RawImage {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         if !view_formats.is_empty() {
@@ -233,7 +233,7 @@ impl RawImage {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         if let Some(stencil_usage) = stencil_usage {
@@ -243,7 +243,7 @@ impl RawImage {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let handle = {
@@ -444,7 +444,7 @@ impl RawImage {
             });
 
             next.p_next = info_vk.p_next;
-            info_vk.p_next = ptr::from_mut(next).cast();
+            info_vk.p_next = <*mut _>::cast(next);
         }
 
         let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
@@ -462,7 +462,7 @@ impl RawImage {
                 .insert(ash::vk::MemoryDedicatedRequirements::default());
 
             next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = ptr::from_mut(next).cast();
+            memory_requirements2_vk.p_next = <*mut _>::cast(next);
         }
 
         unsafe {
@@ -1197,7 +1197,7 @@ impl RawImage {
             };
 
             for (info_vk, plane_info_vk) in infos_vk.iter_mut().zip(plane_infos_vk.iter_mut()) {
-                info_vk.p_next = ptr::from_mut(plane_info_vk).cast();
+                info_vk.p_next = <*mut _>::cast(plane_info_vk);
             }
 
             if self.device.api_version() >= Version::V1_1 {

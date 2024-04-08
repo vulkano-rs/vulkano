@@ -595,7 +595,7 @@ impl ImageView {
             });
 
             next.p_next = info_vk.p_next;
-            info_vk.p_next = ptr::from_ref(next).cast();
+            info_vk.p_next = <*const _>::cast(next);
         }
 
         if let Some(conversion) = sampler_ycbcr_conversion {
@@ -606,7 +606,7 @@ impl ImageView {
                 });
 
             next.p_next = info_vk.p_next;
-            info_vk.p_next = ptr::from_ref(next).cast();
+            info_vk.p_next = <*const _>::cast(next);
         }
 
         let handle = {

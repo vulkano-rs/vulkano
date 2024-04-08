@@ -156,7 +156,7 @@ impl DescriptorSetLayout {
                 });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let handle = {

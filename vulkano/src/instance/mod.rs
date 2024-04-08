@@ -469,7 +469,7 @@ impl Instance {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let mut debug_utils_messenger_create_infos_vk: Vec<_> = debug_utils_messengers
@@ -499,7 +499,7 @@ impl Instance {
         }
 
         if let Some(info) = debug_utils_messenger_create_infos_vk.first() {
-            create_info_vk.p_next = ptr::from_ref(info).cast();
+            create_info_vk.p_next = <*const _>::cast(info);
         }
 
         let handle = {
@@ -1210,7 +1210,7 @@ pub(crate) struct InstanceOwnedDebugWrapper<T>(pub(crate) T);
 impl<T> InstanceOwnedDebugWrapper<T> {
     pub fn cast_slice_inner(slice: &[Self]) -> &[T] {
         // SAFETY: `InstanceOwnedDebugWrapper<T>` and `T` have the same layout.
-        unsafe { slice::from_raw_parts(ptr::from_ref(slice).cast(), slice.len()) }
+        unsafe { slice::from_raw_parts(<*const _>::cast(slice), slice.len()) }
     }
 }
 

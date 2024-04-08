@@ -143,7 +143,7 @@ impl ComputePipeline {
                 p_next: required_subgroup_size_create_info.as_ref().map_or(
                     ptr::null(),
                     |required_subgroup_size_create_info| {
-                        ptr::from_ref(required_subgroup_size_create_info).cast()
+                        <*const _>::cast(required_subgroup_size_create_info)
                     },
                 ),
                 flags: flags.into(),

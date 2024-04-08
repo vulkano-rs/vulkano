@@ -1607,7 +1607,7 @@ impl<S: Suballocator> DeviceMemoryBlock<S> {
         Ok(MemoryAlloc {
             device_memory: self.device_memory.clone(),
             suballocation: Some(suballocation),
-            allocation_handle: AllocationHandle::from_ptr(ptr::from_mut(self).cast()),
+            allocation_handle: AllocationHandle::from_ptr(<*mut _>::cast(self)),
         })
     }
 

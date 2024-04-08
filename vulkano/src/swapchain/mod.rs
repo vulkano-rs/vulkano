@@ -1056,7 +1056,7 @@ impl Swapchain {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         if full_screen_exclusive != FullScreenExclusive::Default {
@@ -1067,7 +1067,7 @@ impl Swapchain {
                 });
 
             next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         if let Some(Win32Monitor(hmonitor)) = win32_monitor {
@@ -1079,7 +1079,7 @@ impl Swapchain {
             );
 
             next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         if !present_modes.is_empty() {
@@ -1092,7 +1092,7 @@ impl Swapchain {
             });
 
             next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         if scaling_behavior.is_some() || present_gravity.is_some() {
@@ -1107,7 +1107,7 @@ impl Swapchain {
                 });
 
             next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = ptr::from_ref(next).cast();
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let fns = device.fns();

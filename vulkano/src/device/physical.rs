@@ -1202,7 +1202,7 @@ impl PhysicalDevice {
                         });
 
                     next.p_next = external_semaphore_info_vk.p_next;
-                    external_semaphore_info_vk.p_next = ptr::from_ref(next).cast();
+                    external_semaphore_info_vk.p_next = <*const _>::cast(next);
                 }
 
                 /* Output */
@@ -1285,14 +1285,14 @@ impl PhysicalDevice {
             {
                 let next = format_properties3_vk.insert(ash::vk::FormatProperties3KHR::default());
                 next.p_next = format_properties2_vk.p_next;
-                format_properties2_vk.p_next = ptr::from_mut(next).cast();
+                format_properties2_vk.p_next = <*mut _>::cast(next);
             }
 
             if self.supported_extensions().ext_image_drm_format_modifier {
                 let next = drm_format_modifier_properties_list_vk
                     .insert(ash::vk::DrmFormatModifierPropertiesListEXT::default());
                 next.p_next = format_properties2_vk.p_next;
-                format_properties2_vk.p_next = ptr::from_mut(next).cast();
+                format_properties2_vk.p_next = <*mut _>::cast(next);
 
                 if self.api_version() >= Version::V1_3
                     || self.supported_extensions().khr_format_feature_flags2
@@ -1300,7 +1300,7 @@ impl PhysicalDevice {
                     let next = drm_format_modifier_properties_list2_vk
                         .insert(ash::vk::DrmFormatModifierPropertiesList2EXT::default());
                     next.p_next = format_properties2_vk.p_next;
-                    format_properties2_vk.p_next = ptr::from_mut(next).cast();
+                    format_properties2_vk.p_next = <*mut _>::cast(next);
                 }
             }
 
@@ -1530,7 +1530,7 @@ impl PhysicalDevice {
                     );
 
                     next.p_next = info2_vk.p_next;
-                    info2_vk.p_next = ptr::from_ref(next).cast();
+                    info2_vk.p_next = <*const _>::cast(next);
                 }
 
                 if let Some(handle_type) = external_memory_handle_type {
@@ -1541,7 +1541,7 @@ impl PhysicalDevice {
                         });
 
                     next.p_next = info2_vk.p_next;
-                    info2_vk.p_next = ptr::from_ref(next).cast();
+                    info2_vk.p_next = <*const _>::cast(next);
                 }
 
                 if !view_formats.is_empty() {
@@ -1558,7 +1558,7 @@ impl PhysicalDevice {
                     });
 
                     next.p_next = info2_vk.p_next;
-                    info2_vk.p_next = ptr::from_ref(next).cast();
+                    info2_vk.p_next = <*const _>::cast(next);
                 }
 
                 if let Some(image_view_type) = image_view_type {
@@ -1570,7 +1570,7 @@ impl PhysicalDevice {
                     );
 
                     next.p_next = info2_vk.p_next.cast_mut();
-                    info2_vk.p_next = ptr::from_ref(next).cast();
+                    info2_vk.p_next = <*const _>::cast(next);
                 }
 
                 if let Some(stencil_usage) = stencil_usage {
@@ -1580,7 +1580,7 @@ impl PhysicalDevice {
                     });
 
                     next.p_next = info2_vk.p_next.cast_mut();
-                    info2_vk.p_next = ptr::from_ref(next).cast();
+                    info2_vk.p_next = <*const _>::cast(next);
                 }
 
                 /* Output */
@@ -1594,7 +1594,7 @@ impl PhysicalDevice {
                         .insert(ash::vk::ExternalImageFormatProperties::default());
 
                     next.p_next = properties2_vk.p_next;
-                    properties2_vk.p_next = ptr::from_mut(next).cast();
+                    properties2_vk.p_next = <*mut _>::cast(next);
                 }
 
                 if image_view_info_vk.is_some() {
@@ -1602,7 +1602,7 @@ impl PhysicalDevice {
                         .insert(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default());
 
                     next.p_next = properties2_vk.p_next;
-                    properties2_vk.p_next = ptr::from_mut(next).cast();
+                    properties2_vk.p_next = <*mut _>::cast(next);
                 }
 
                 let result = {
@@ -2067,7 +2067,7 @@ impl PhysicalDevice {
             });
 
             next.p_next = info_vk.p_next.cast_mut();
-            info_vk.p_next = ptr::from_ref(next).cast();
+            info_vk.p_next = <*const _>::cast(next);
         }
 
         if full_screen_exclusive != FullScreenExclusive::Default {
@@ -2078,7 +2078,7 @@ impl PhysicalDevice {
                 });
 
             next.p_next = info_vk.p_next.cast_mut();
-            info_vk.p_next = ptr::from_ref(next).cast();
+            info_vk.p_next = <*const _>::cast(next);
         }
 
         if let Some(win32_monitor) = win32_monitor {
@@ -2090,7 +2090,7 @@ impl PhysicalDevice {
             );
 
             next.p_next = info_vk.p_next.cast_mut();
-            info_vk.p_next = ptr::from_ref(next).cast();
+            info_vk.p_next = <*const _>::cast(next);
         }
 
         /* Output */
@@ -2108,7 +2108,7 @@ impl PhysicalDevice {
                 .insert(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default());
 
             next.p_next = capabilities_vk.p_next.cast();
-            capabilities_vk.p_next = ptr::from_mut(next).cast();
+            capabilities_vk.p_next = <*mut _>::cast(next);
         }
 
         if present_mode.is_some() {
@@ -2122,7 +2122,7 @@ impl PhysicalDevice {
                 );
 
                 next.p_next = capabilities_vk.p_next.cast();
-                capabilities_vk.p_next = ptr::from_mut(next).cast();
+                capabilities_vk.p_next = <*mut _>::cast(next);
             }
 
             {
@@ -2130,7 +2130,7 @@ impl PhysicalDevice {
                     .insert(ash::vk::SurfacePresentScalingCapabilitiesEXT::default());
 
                 next.p_next = capabilities_vk.p_next.cast();
-                capabilities_vk.p_next = ptr::from_mut(next).cast();
+                capabilities_vk.p_next = <*mut _>::cast(next);
             }
         }
 
@@ -2143,7 +2143,7 @@ impl PhysicalDevice {
                 .insert(ash::vk::SurfaceProtectedCapabilitiesKHR::default());
 
             next.p_next = capabilities_vk.p_next.cast();
-            capabilities_vk.p_next = ptr::from_mut(next).cast();
+            capabilities_vk.p_next = <*mut _>::cast(next);
         }
 
         let fns = self.instance.fns();
@@ -2470,7 +2470,7 @@ impl PhysicalDevice {
                     });
 
                     next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = ptr::from_ref(next).cast();
+                    info_vk.p_next = <*const _>::cast(next);
                 }
 
                 if full_screen_exclusive != FullScreenExclusive::Default {
@@ -2482,7 +2482,7 @@ impl PhysicalDevice {
                     );
 
                     next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = ptr::from_ref(next).cast();
+                    info_vk.p_next = <*const _>::cast(next);
                 }
 
                 if let Some(win32_monitor) = win32_monitor {
@@ -2494,7 +2494,7 @@ impl PhysicalDevice {
                     );
 
                     next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = ptr::from_ref(next).cast();
+                    info_vk.p_next = <*const _>::cast(next);
                 }
 
                 let fns = self.instance.fns();
@@ -2749,7 +2749,7 @@ impl PhysicalDevice {
                     );
 
                     next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = ptr::from_ref(next).cast();
+                    info_vk.p_next = <*const _>::cast(next);
                 }
 
                 if let Some(win32_monitor) = win32_monitor {
@@ -2761,7 +2761,7 @@ impl PhysicalDevice {
                     );
 
                     next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = ptr::from_ref(next).cast();
+                    info_vk.p_next = <*const _>::cast(next);
                 }
 
                 let fns = self.instance.fns();
