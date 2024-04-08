@@ -630,7 +630,7 @@ impl RawRecordingCommandBuffer {
             dst_buffer.buffer().handle(),
             dst_buffer.offset(),
             size_of_val(data) as DeviceSize,
-            data as *const _ as *const _,
+            <*const _>::cast(data),
         );
 
         self

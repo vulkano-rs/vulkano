@@ -118,7 +118,7 @@ impl PipelineCache {
             p_initial_data: if initial_data.is_empty() {
                 ptr::null()
             } else {
-                initial_data.as_ptr() as _
+                initial_data.as_ptr().cast()
             },
             ..Default::default()
         };
@@ -215,7 +215,7 @@ impl PipelineCache {
                     self.device.handle(),
                     self.handle,
                     &mut count,
-                    data.as_mut_ptr() as *mut _,
+                    data.as_mut_ptr().cast(),
                 );
 
                 match result {

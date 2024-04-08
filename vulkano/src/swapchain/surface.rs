@@ -105,31 +105,27 @@ impl Surface {
 
         match (window_handle.as_raw(), display_handle.as_raw()) {
             (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => {
-                Self::from_android(
-                    instance,
-                    window.a_native_window.as_ptr() as *mut ash::vk::ANativeWindow,
-                    None,
-                )
+                Self::from_android(instance, window.a_native_window.as_ptr().cast(), None)
             }
             #[cfg(target_os = "macos")]
             (RawWindowHandle::AppKit(window), RawDisplayHandle::AppKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let metal_layer = get_metal_layer_macos(window.ns_view.as_ptr() as *mut c_void);
+                let metal_layer = get_metal_layer_macos(window.ns_view.as_ptr().cast());
 
-                Self::from_mac_os(instance, metal_layer as *const c_void, None)
+                Self::from_mac_os(instance, metal_layer.cast(), None)
             }
             #[cfg(target_os = "ios")]
             (RawWindowHandle::UiKit(window), RawDisplayHandle::UiKit(_display)) => {
                 // Ensure the layer is `CAMetalLayer`.
-                let metal_layer = get_metal_layer_ios(window.ui_view.as_ptr() as *mut c_void);
+                let metal_layer = get_metal_layer_ios(window.ui_view.as_ptr().cast());
 
-                Self::from_ios(instance, metal_layer.render_layer.0 as *const c_void, None)
+                Self::from_ios(instance, metal_layer.render_layer.0.cast(), None)
             }
             (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => {
                 Self::from_wayland(
                     instance,
-                    display.display.as_ptr() as *mut ash::vk::wl_display,
-                    window.surface.as_ptr() as *mut ash::vk::wl_surface,
+                    display.display.as_ptr().cast(),
+                    window.surface.as_ptr().cast(),
                     None,
                 )
             }
@@ -143,13 +139,13 @@ impl Surface {
             }
             (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => Self::from_xcb(
                 instance,
-                display.connection.unwrap().as_ptr() as *mut ash::vk::xcb_connection_t,
+                display.connection.unwrap().as_ptr().cast(),
                 window.window.get() as ash::vk::xcb_window_t,
                 None,
             ),
             (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => Self::from_xlib(
                 instance,
-                display.display.unwrap().as_ptr() as *mut ash::vk::Display,
+                display.display.unwrap().as_ptr().cast(),
                 window.window as ash::vk::Window,
                 None,
             ),
