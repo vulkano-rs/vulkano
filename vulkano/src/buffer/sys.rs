@@ -88,7 +88,7 @@ impl RawBuffer {
         } = &create_info;
 
         let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, &[] as _),
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
             Sharing::Concurrent(queue_family_indices) => (
                 ash::vk::SharingMode::CONCURRENT,
                 queue_family_indices.len() as u32,
@@ -114,7 +114,7 @@ impl RawBuffer {
             });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let handle = {
@@ -245,7 +245,7 @@ impl RawBuffer {
                 .insert(ash::vk::MemoryDedicatedRequirements::default());
 
             next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = next as *mut _ as *mut _;
+            memory_requirements2_vk.p_next = <*mut _>::cast(next);
         }
 
         unsafe {
@@ -864,7 +864,7 @@ impl BufferCreateInfo {
 #[cfg(test)]
 mod tests {
     use super::{BufferCreateInfo, BufferUsage, RawBuffer};
-    use crate::device::{Device, DeviceOwned};
+    use crate::device::DeviceOwned;
 
     #[test]
     fn create() {
@@ -882,7 +882,7 @@ mod tests {
 
         assert!(reqs.layout.size() >= 128);
         assert_eq!(buf.size(), 128);
-        assert_eq!(&**buf.device() as *const Device, &*device as *const Device);
+        assert_eq!(buf.device(), &device);
     }
 
     /* Re-enable when sparse binding is properly implemented

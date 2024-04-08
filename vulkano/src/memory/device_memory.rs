@@ -186,7 +186,7 @@ impl DeviceMemory {
             });
 
             next.p_next = allocate_info_vk.p_next;
-            allocate_info_vk.p_next = next as *const _ as *const _;
+            allocate_info_vk.p_next = <*const _>::cast(next);
         }
 
         if !export_handle_types.is_empty() {
@@ -196,7 +196,7 @@ impl DeviceMemory {
             });
 
             next.p_next = allocate_info_vk.p_next;
-            allocate_info_vk.p_next = next as *const _ as *const _;
+            allocate_info_vk.p_next = <*const _>::cast(next);
         }
 
         let imported_handle_type = import_info.as_ref().map(|import_info| match import_info {
@@ -226,7 +226,7 @@ impl DeviceMemory {
                     });
 
                     next.p_next = allocate_info_vk.p_next;
-                    allocate_info_vk.p_next = next as *const _ as *const _;
+                    allocate_info_vk.p_next = <*const _>::cast(next);
                 }
                 MemoryImportInfo::Win32 {
                     handle_type,
@@ -241,7 +241,7 @@ impl DeviceMemory {
                     );
 
                     next.p_next = allocate_info_vk.p_next;
-                    allocate_info_vk.p_next = next as *const _ as *const _;
+                    allocate_info_vk.p_next = <*const _>::cast(next);
                 }
             }
         }
@@ -253,7 +253,7 @@ impl DeviceMemory {
             });
 
             next.p_next = allocate_info_vk.p_next;
-            allocate_info_vk.p_next = next as *const _ as *const _;
+            allocate_info_vk.p_next = <*const _>::cast(next);
         }
 
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
@@ -2017,7 +2017,9 @@ impl MappedDeviceMemory {
     #[inline]
     pub unsafe fn read_unchecked(&self, range: Range<DeviceSize>) -> &[u8] {
         slice::from_raw_parts(
-            self.pointer.add((range.start - self.range.start) as usize) as *const u8,
+            self.pointer
+                .add((range.start - self.range.start).try_into().unwrap())
+                .cast(),
             (range.end - range.start) as usize,
         )
     }
@@ -2055,8 +2057,10 @@ impl MappedDeviceMemory {
     #[allow(clippy::mut_from_ref)]
     pub unsafe fn write_unchecked(&self, range: Range<DeviceSize>) -> &mut [u8] {
         slice::from_raw_parts_mut(
-            self.pointer.add((range.start - self.range.start) as usize) as *mut u8,
-            (range.end - range.start) as usize,
+            self.pointer
+                .add((range.start - self.range.start).try_into().unwrap())
+                .cast::<u8>(),
+            (range.end - range.start).try_into().unwrap(),
         )
     }
 

@@ -194,7 +194,7 @@ impl Sampler {
             );
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         if let Some(sampler_ycbcr_conversion) = sampler_ycbcr_conversion {
@@ -205,7 +205,7 @@ impl Sampler {
                 });
 
             next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = next as *const _ as *const _;
+            create_info_vk.p_next = <*const _>::cast(next);
         }
 
         let handle = unsafe {

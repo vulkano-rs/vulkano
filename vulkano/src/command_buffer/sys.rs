@@ -172,7 +172,7 @@ impl RawRecordingCommandBuffer {
                                 });
 
                             inheritance_info_vk.p_next =
-                                inheritance_rendering_info_vk as *const _ as *const _;
+                                <*const _>::cast(inheritance_rendering_info_vk);
                         }
                     }
                 }

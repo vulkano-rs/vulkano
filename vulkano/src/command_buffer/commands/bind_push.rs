@@ -1146,7 +1146,7 @@ impl RawRecordingCommandBuffer {
             let push_size = remaining_size.min(range.offset + range.size - current_offset);
             let data_offset = (current_offset - offset) as usize;
             debug_assert!(data_offset < size as usize);
-            let data = (push_constants as *const Pc as *const c_void).add(data_offset);
+            let data = <*const _>::cast::<c_void>(push_constants).add(data_offset);
 
             (fns.v1_0.cmd_push_constants)(
                 self.handle(),
@@ -1348,13 +1348,13 @@ impl RawRecordingCommandBuffer {
                 }
                 DescriptorWriteInfo::InlineUniformBlock(data) => {
                     write_vk.descriptor_count = data.len() as u32;
-                    write_vk.p_next = &per_write_vk.inline_uniform_block as *const _ as _;
+                    write_vk.p_next = <*const _>::cast(&per_write_vk.inline_uniform_block);
                     per_write_vk.inline_uniform_block.data_size = write_vk.descriptor_count;
-                    per_write_vk.inline_uniform_block.p_data = data.as_ptr() as *const _;
+                    per_write_vk.inline_uniform_block.p_data = data.as_ptr().cast();
                 }
                 DescriptorWriteInfo::AccelerationStructure(info) => {
                     write_vk.descriptor_count = info.len() as u32;
-                    write_vk.p_next = &per_write_vk.acceleration_structures as *const _ as _;
+                    write_vk.p_next = <*const _>::cast(&per_write_vk.acceleration_structures);
                     per_write_vk
                         .acceleration_structures
                         .acceleration_structure_count = write_vk.descriptor_count;
