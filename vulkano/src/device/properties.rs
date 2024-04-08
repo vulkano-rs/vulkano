@@ -5,8 +5,12 @@ use super::physical::{
     ShaderFloatControlsIndependence, SubgroupFeatures,
 };
 use crate::{
-    device::{DeviceExtensions, QueueFlags},
-    image::{SampleCount, SampleCounts},
+    buffer::BufferUsage,
+    device::{
+        physical::{LayeredDriverUnderlyingApi, PhysicalDeviceSchedulingControlsFlags},
+        DeviceExtensions, QueueFlags,
+    },
+    image::{sampler::ycbcr::ChromaLocation, ImageLayout, ImageUsage, SampleCount, SampleCounts},
     instance::InstanceExtensions,
     memory::DeviceAlignment,
     render_pass::ResolveModes,
@@ -256,6 +260,50 @@ impl FromVulkan<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
     #[inline]
     fn from_vulkan(val: ash::vk::SubgroupFeatureFlags) -> Option<Self> {
         Some(val.into())
+    }
+}
+
+impl FromVulkan<ash::vk::BufferUsageFlags> for BufferUsage {
+    #[inline]
+    fn from_vulkan(val: ash::vk::BufferUsageFlags) -> Option<Self> {
+        Some(val.into())
+    }
+}
+
+impl FromVulkan<ash::vk::ImageUsageFlags> for ImageUsage {
+    #[inline]
+    fn from_vulkan(val: ash::vk::ImageUsageFlags) -> Option<Self> {
+        Some(val.into())
+    }
+}
+
+impl FromVulkan<ash::vk::ChromaLocation> for ChromaLocation {
+    #[inline]
+    fn from_vulkan(val: ash::vk::ChromaLocation) -> Option<Self> {
+        val.try_into().ok()
+    }
+}
+
+impl FromVulkan<ash::vk::PhysicalDeviceSchedulingControlsFlagsARM>
+    for PhysicalDeviceSchedulingControlsFlags
+{
+    #[inline]
+    fn from_vulkan(val: ash::vk::PhysicalDeviceSchedulingControlsFlagsARM) -> Option<Self> {
+        Some(val.into())
+    }
+}
+
+impl FromVulkan<ash::vk::LayeredDriverUnderlyingApiMSFT> for LayeredDriverUnderlyingApi {
+    #[inline]
+    fn from_vulkan(val: ash::vk::LayeredDriverUnderlyingApiMSFT) -> Option<Self> {
+        val.try_into().ok()
+    }
+}
+
+impl FromVulkan<ash::vk::ImageLayout> for ImageLayout {
+    #[inline]
+    fn from_vulkan(val: ash::vk::ImageLayout) -> Option<Self> {
+        val.try_into().ok()
     }
 }
 

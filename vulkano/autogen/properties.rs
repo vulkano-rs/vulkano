@@ -95,7 +95,7 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                             properties_ffi.#ffi_member.map(|s|
                                 unsafe {
                                     std::slice::from_raw_parts(
-                                        s #ffi_member_field .#ffi_name as _,
+                                        s #ffi_member_field .#ffi_name .cast_const(),
                                         s #ffi_member_field .#len_field_name as _,
                                     )
                                 }
@@ -622,6 +622,14 @@ fn vulkano_type(ty: &str, len: Option<LenKind<'_>>) -> TokenStream {
             "VkShaderFloatControlsIndependence" => quote! { ShaderFloatControlsIndependence },
             "VkShaderStageFlags" => quote! { ShaderStages },
             "VkSubgroupFeatureFlags" => quote! { SubgroupFeatures },
+            "VkImageLayout" => quote! { ImageLayout },
+            "VkImageUsageFlags" => quote! { ImageUsage },
+            "VkBufferUsageFlags" => quote! { BufferUsage },
+            "VkChromaLocation" => quote! { ChromaLocation },
+            "VkLayeredDriverUnderlyingApiMSFT" => quote! { LayeredDriverUnderlyingApi },
+            "VkPhysicalDeviceSchedulingControlsFlagsARM" => {
+                quote! { PhysicalDeviceSchedulingControlsFlags }
+            }
             _ => unimplemented!("{}", ty),
         },
     }

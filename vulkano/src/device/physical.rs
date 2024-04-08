@@ -3623,6 +3623,27 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     }
 }
 
+vulkan_enum! {
+    #[non_exhaustive]
+
+    LayeredDriverUnderlyingApi = LayeredDriverUnderlyingApiMSFT(i32);
+
+    // TODO: document
+    None = NONE,
+
+    // TODO: document
+    D3D12 = D3D12,
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+
+    PhysicalDeviceSchedulingControlsFlags = PhysicalDeviceSchedulingControlsFlagsARM(u64);
+
+    // TODO: document
+    SHADER_CORE_COUNT = SHADER_CORE_COUNT,
+}
+
 vulkan_bitflags! {
     #[non_exhaustive]
 
