@@ -2261,6 +2261,7 @@ mod tests {
     use super::MemoryAllocateInfo;
     use crate::memory::{DeviceMemory, MemoryMapInfo, MemoryPropertyFlags};
     use std::ptr;
+    use ash::vk::DeviceSize;
 
     #[test]
     fn create() {
@@ -2443,7 +2444,7 @@ mod tests {
         memory
             .map(MemoryMapInfo {
                 offset: 0,
-                size: 16 * 1024,
+                size: DeviceSize::MAX,
                 placed_address: Some(address),
                 ..Default::default()
             })
