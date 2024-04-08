@@ -1446,10 +1446,10 @@ impl MemoryMapInfo {
             }));
         }
 
-        if !(size <= memory.allocation_size() - offset) {
+        if !(size <= memory.allocation_size() - offset) && size != DeviceSize::MAX {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
-                problem: "is not less than or equal to `self.allocation_size()` minus `offset`"
+                problem: "is not less than or equal to `self.allocation_size()` minus `offset` or equal to VK_WHOLE_SIZE"
                     .into(),
                 vuids: &["VUID-vkMapMemory-size-00681"],
                 ..Default::default()
