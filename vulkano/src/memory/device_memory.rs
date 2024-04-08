@@ -1477,7 +1477,6 @@ impl MemoryMapInfo {
                         "memory_map_placed",
                     )])]),
                     vuids: &["VUID-VkMemoryMapInfoKHR-flags-09569"],
-                    ..Default::default()
                 }));
             }
 
