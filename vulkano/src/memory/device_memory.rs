@@ -2260,8 +2260,8 @@ unsafe impl Sync for MappedDeviceMemory {}
 mod tests {
     use super::MemoryAllocateInfo;
     use crate::memory::{DeviceMemory, MemoryMapInfo, MemoryPropertyFlags};
-    use std::ptr;
     use ash::vk::DeviceSize;
+    use std::ptr;
 
     #[test]
     fn create() {
