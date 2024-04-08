@@ -3624,22 +3624,26 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct LayeredDriverUnderlyingApi {}
+pub struct LayeredDriverUnderlyingApi {
+    pub value: ash::vk::LayeredDriverUnderlyingApiMSFT,
+}
 
 impl From<ash::vk::LayeredDriverUnderlyingApiMSFT> for LayeredDriverUnderlyingApi {
-    fn from(_value: ash::vk::LayeredDriverUnderlyingApiMSFT) -> Self {
-        Self {}
+    fn from(value: ash::vk::LayeredDriverUnderlyingApiMSFT) -> Self {
+        Self { value }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct PhysicalDeviceSchedulingControlsFlags {}
+pub struct PhysicalDeviceSchedulingControlsFlags {
+    pub value: ash::vk::PhysicalDeviceSchedulingControlsFlagsARM,
+}
 
 impl From<ash::vk::PhysicalDeviceSchedulingControlsFlagsARM>
     for PhysicalDeviceSchedulingControlsFlags
 {
-    fn from(_value: ash::vk::PhysicalDeviceSchedulingControlsFlagsARM) -> Self {
-        Self {}
+    fn from(value: ash::vk::PhysicalDeviceSchedulingControlsFlagsARM) -> Self {
+        Self { value }
     }
 }
 
