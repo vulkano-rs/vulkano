@@ -3640,7 +3640,7 @@ vulkan_bitflags! {
 
     PhysicalDeviceSchedulingControlsFlags = PhysicalDeviceSchedulingControlsFlagsARM(u64);
 
-    // todo: document
+    // TODO: document
     SHADER_CORE_COUNT = SHADER_CORE_COUNT,
 }
 
