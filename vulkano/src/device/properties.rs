@@ -296,7 +296,7 @@ impl FromVulkan<ash::vk::PhysicalDeviceSchedulingControlsFlagsARM>
 impl FromVulkan<ash::vk::LayeredDriverUnderlyingApiMSFT> for LayeredDriverUnderlyingApi {
     #[inline]
     fn from_vulkan(val: ash::vk::LayeredDriverUnderlyingApiMSFT) -> Option<Self> {
-        Some(val.into())
+        val.try_into().ok()
     }
 }
 

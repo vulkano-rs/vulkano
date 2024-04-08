@@ -3623,28 +3623,25 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct LayeredDriverUnderlyingApi {
-    pub value: ash::vk::LayeredDriverUnderlyingApiMSFT,
+vulkan_enum! {
+    #[non_exhaustive]
+
+    LayeredDriverUnderlyingApi = LayeredDriverUnderlyingApiMSFT(i32);
+
+    // TODO: document
+    None = NONE,
+
+    // TODO: document
+    D3D12 = D3D12,
 }
 
-impl From<ash::vk::LayeredDriverUnderlyingApiMSFT> for LayeredDriverUnderlyingApi {
-    fn from(value: ash::vk::LayeredDriverUnderlyingApiMSFT) -> Self {
-        Self { value }
-    }
-}
+vulkan_bitflags! {
+    #[non_exhaustive]
 
-#[derive(Clone, Debug)]
-pub struct PhysicalDeviceSchedulingControlsFlags {
-    pub value: ash::vk::PhysicalDeviceSchedulingControlsFlagsARM,
-}
+    PhysicalDeviceSchedulingControlsFlags = PhysicalDeviceSchedulingControlsFlagsARM(u64);
 
-impl From<ash::vk::PhysicalDeviceSchedulingControlsFlagsARM>
-    for PhysicalDeviceSchedulingControlsFlags
-{
-    fn from(value: ash::vk::PhysicalDeviceSchedulingControlsFlagsARM) -> Self {
-        Self { value }
-    }
+    // todo: document
+    SHADER_CORE_COUNT = SHADER_CORE_COUNT,
 }
 
 vulkan_bitflags! {
