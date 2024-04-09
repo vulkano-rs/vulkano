@@ -1,17 +1,17 @@
 [package]
 name = "vulkano-macros"
 version = "0.34.0"
-edition = "2021"
-rust-version = "1.66.1"
-authors = ["The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-macros"
 description = "Macros used by vulkano"
-license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/vulkano-macros"
-homepage = "https://vulkano.rs"
-keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
-categories = ["rendering::graphics-api"]
 readme = "../README.md"
+edition = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
 
 [lib]
 proc-macro = true

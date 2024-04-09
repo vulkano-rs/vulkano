@@ -9,6 +9,15 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+edition = "2021"
+rust-version = "1.72.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
+license = "MIT OR Apache-2.0"
+homepage = "https://vulkano.rs"
+keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
+categories = ["rendering::graphics-api"]
+
 [workspace.dependencies.vulkano]
 version = "0.34"
 path = "vulkano"

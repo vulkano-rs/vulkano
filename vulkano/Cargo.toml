@@ -1,18 +1,18 @@
 [package]
 name = "vulkano"
 version = "0.34.0"
-edition = "2021"
-rust-version = "1.72.0"
-authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
-license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/vulkano"
-homepage = "https://vulkano.rs"
-keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
-categories = ["rendering::graphics-api"]
 readme = "../README.md"
 build = "build.rs"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 ahash = { workspace = true }
