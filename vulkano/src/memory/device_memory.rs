@@ -467,9 +467,6 @@ impl DeviceMemory {
             _ne: _,
         } = map_info;
 
-        // Sanity check: this would lead to UB when calculating pointer offsets.
-        // assert!(size <= isize::MAX.try_into().unwrap());
-
         let device = self.device();
 
         let ptr = {
