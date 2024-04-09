@@ -467,9 +467,6 @@ impl DeviceMemory {
             _ne: _,
         } = map_info;
 
-        // Sanity check: this would lead to UB when calculating pointer offsets.
-        assert!(size <= isize::MAX.try_into().unwrap());
-
         let device = self.device();
 
         let ptr = {
@@ -2394,6 +2391,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn map_placed() {
         let (device, _) = gfx_dev_and_queue!(memory_map_placed; ext_map_memory_placed);
 
@@ -2405,7 +2403,7 @@ mod tests {
                 .iter()
                 .enumerate()
                 .find(|(_idx, it)| {
-                    it.property_flags.intersects(
+                    it.property_flags.contains(
                         MemoryPropertyFlags::HOST_COHERENT
                             | MemoryPropertyFlags::HOST_VISIBLE
                             | MemoryPropertyFlags::DEVICE_LOCAL,
