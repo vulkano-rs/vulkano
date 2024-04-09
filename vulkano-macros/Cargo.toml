@@ -1,13 +1,13 @@
 [package]
 name = "vulkano-macros"
 version = "0.34.0"
+authors = ["The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-macros"
 description = "Macros used by vulkano"
 documentation = "https://docs.rs/vulkano-macros"
 readme = "../README.md"
 edition = { workspace = true }
 rust-version = { workspace = true }
-authors = { workspace = true }
 license = { workspace = true }
 homepage = { workspace = true }
 keywords = { workspace = true }

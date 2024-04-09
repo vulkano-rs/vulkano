@@ -1,13 +1,13 @@
 [package]
 name = "vulkano-shaders"
 version = "0.34.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-shaders"
 description = "Macro for generating Rust code from shaders"
 documentation = "https://docs.rs/vulkano-shaders"
 readme = "../README.md"
 edition = { workspace = true }
 rust-version = { workspace = true }
-authors = { workspace = true }
 license = { workspace = true }
 homepage = { workspace = true }
 keywords = { workspace = true }
