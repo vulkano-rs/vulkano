@@ -1,6 +1,6 @@
 use super::{DedicatedAllocation, DedicatedTo, DeviceAlignment};
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceExtensions, DeviceFeatures, DeviceOwned, DeviceProperties},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
@@ -1410,10 +1410,6 @@ pub struct MemoryMapInfo {
     /// [`DeviceFeatures::memory_map_placed`] to be enabled.
     ///
     /// Must align with [`DeviceProperties::min_placed_memory_map_alignment`].
-    ///
-    /// [`DeviceExtensions::ext_map_memory_placed`]: crate::device::DeviceExtensions::ext_map_memory_placed
-    /// [`DeviceFeatures::memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
-    /// [`DeviceProperties::min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
     pub placed_address: Option<*mut c_void>,
 
     pub _ne: crate::NonExhaustive,
@@ -1449,7 +1445,8 @@ impl MemoryMapInfo {
         if !(size <= memory.allocation_size() - offset) && size != DeviceSize::MAX {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
-                problem: "is not less than or equal to `self.allocation_size()` minus `offset` or equal to VK_WHOLE_SIZE"
+                problem: "is not less than or equal to `self.allocation_size()` minus `offset` or \
+                    equal to VK_WHOLE_SIZE"
                     .into(),
                 vuids: &["VUID-vkMapMemory-size-00681"],
                 ..Default::default()
@@ -1496,10 +1493,10 @@ impl MemoryMapInfo {
             ) {
                 return Err(Box::new(ValidationError {
                     context: "placed_address".into(),
-                    problem: "must be aligned to an integer multiple of `min_placed_memory_map_alignment` device property".into(),
-                    vuids: &[
-                        "VUID-VkMemoryMapPlacedInfoEXT-pPlacedAddress-09577"
-                    ],
+                    problem: "must be aligned to an integer multiple of \
+                        `min_placed_memory_map_alignment` device property"
+                        .into(),
+                    vuids: &["VUID-VkMemoryMapPlacedInfoEXT-pPlacedAddress-09577"],
                     ..Default::default()
                 }));
             }
@@ -1508,7 +1505,9 @@ impl MemoryMapInfo {
                 if !is_aligned(offset, min_placed_memory_map_alignment) {
                     return Err(Box::new(ValidationError {
                         context: "offset".into(),
-                        problem: "must be aligned to an integer multiple of `min_placed_memory_map_alignment` device property".into(),
+                        problem: "must be aligned to an integer multiple of \
+                            `min_placed_memory_map_alignment` device property"
+                            .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09573"],
                         ..Default::default()
                     }));
@@ -1517,7 +1516,10 @@ impl MemoryMapInfo {
                 if !is_aligned(size, min_placed_memory_map_alignment) && size != DeviceSize::MAX {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "must be aligned to an integer multiple of `min_placed_memory_map_alignment` device property or must be VK_WHOLE_SIZE".into(),
+                        problem: "must be aligned to an integer multiple of \
+                            `min_placed_memory_map_alignment` device property or must be \
+                            VK_WHOLE_SIZE"
+                            .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09574"],
                         ..Default::default()
                     }));
