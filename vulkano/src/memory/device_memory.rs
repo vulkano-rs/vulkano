@@ -2257,7 +2257,6 @@ unsafe impl Sync for MappedDeviceMemory {}
 mod tests {
     use super::MemoryAllocateInfo;
     use crate::memory::{DeviceMemory, MemoryMapInfo, MemoryPropertyFlags};
-    use ash::vk::DeviceSize;
     use std::ptr;
 
     #[test]
@@ -2390,7 +2389,7 @@ mod tests {
 
     #[test]
     fn map_placed() {
-        let (device, _) = gfx_dev_and_queue!(memory_map_placed; ext_map_memory_placed);
+        let (device, _) = gfx_dev_and_queue!(memory_map_placed, memory_map_range_placed; ext_map_memory_placed);
 
         let memory_type_index = {
             let physical_device = device.physical_device();
@@ -2441,7 +2440,7 @@ mod tests {
         memory
             .map(MemoryMapInfo {
                 offset: 0,
-                size: DeviceSize::MAX,
+                size: 16 * 1024,
                 placed_address: Some(address),
                 ..Default::default()
             })
