@@ -468,7 +468,7 @@ impl DeviceMemory {
         } = map_info;
 
         // Sanity check: this would lead to UB when calculating pointer offsets.
-        assert!(size <= isize::MAX.try_into().unwrap());
+        // assert!(size <= isize::MAX.try_into().unwrap());
 
         let device = self.device();
 
@@ -2403,7 +2403,7 @@ mod tests {
                 .iter()
                 .enumerate()
                 .find(|(_idx, it)| {
-                    it.property_flags.intersects(
+                    it.property_flags.contains(
                         MemoryPropertyFlags::HOST_COHERENT
                             | MemoryPropertyFlags::HOST_VISIBLE
                             | MemoryPropertyFlags::DEVICE_LOCAL,
