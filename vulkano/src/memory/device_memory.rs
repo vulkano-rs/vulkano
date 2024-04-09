@@ -2389,6 +2389,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn map_placed() {
         let (device, _) = gfx_dev_and_queue!(memory_map_placed; ext_map_memory_placed);
 
