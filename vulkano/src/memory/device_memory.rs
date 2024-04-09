@@ -467,34 +467,50 @@ impl DeviceMemory {
             _ne: _,
         } = map_info;
 
+        // Sanity check: this would lead to UB when calculating pointer offsets.
+        assert!(size <= isize::MAX.try_into().unwrap());
+
         let device = self.device();
 
         let ptr = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
 
-            if device.enabled_extensions().khr_map_memory2 {
+            if let Some(placed_address) = placed_address {
+                let features = device.enabled_features();
                 let map_info_vk = ash::vk::MemoryMapInfoKHR {
-                    flags: {
-                        if placed_address.is_some() {
-                            ash::vk::MemoryMapFlags::PLACED_EXT
-                        } else {
-                            ash::vk::MemoryMapFlags::empty()
-                        }
+                    flags: ash::vk::MemoryMapFlags::PLACED_EXT,
+                    memory: self.handle(),
+                    offset,
+                    size: if !features.memory_map_range_placed && size == self.allocation_size {
+                        DeviceSize::MAX
+                    } else {
+                        size
                     },
+                    ..Default::default()
+                };
+
+                let mut map_placed_info_vk = ash::vk::MemoryMapPlacedInfoEXT {
+                    p_placed_address: placed_address,
+                    ..Default::default()
+                };
+
+                let map_info_vk = map_info_vk.push_next(&mut map_placed_info_vk);
+
+                (fns.khr_map_memory2.map_memory2_khr)(
+                    device.handle(),
+                    &map_info_vk,
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+            } else if device.enabled_extensions().khr_map_memory2 {
+                let map_info_vk = ash::vk::MemoryMapInfoKHR {
+                    flags: ash::vk::MemoryMapFlags::empty(),
                     memory: self.handle(),
                     offset,
                     size,
                     ..Default::default()
-                };
-
-                let mut map_placed_info_ext = ash::vk::MemoryMapPlacedInfoEXT::default();
-                let map_info_vk = if let Some(placed_address) = placed_address {
-                    map_placed_info_ext.p_placed_address = placed_address;
-
-                    map_info_vk.push_next(&mut map_placed_info_ext)
-                } else {
-                    map_info_vk
                 };
 
                 (fns.khr_map_memory2.map_memory2_khr)(
@@ -1443,11 +1459,10 @@ impl MemoryMapInfo {
             }));
         }
 
-        if !(size <= memory.allocation_size() - offset) && size != DeviceSize::MAX {
+        if !(size <= memory.allocation_size() - offset) {
             return Err(Box::new(ValidationError {
                 context: "size".into(),
-                problem: "is not less than or equal to `self.allocation_size()` minus `offset` or \
-                    equal to VK_WHOLE_SIZE"
+                problem: "is not less than or equal to `self.allocation_size()` minus `offset`"
                     .into(),
                 vuids: &["VUID-vkMapMemory-size-00681"],
                 ..Default::default()
@@ -1514,12 +1529,11 @@ impl MemoryMapInfo {
                     }));
                 }
 
-                if !is_aligned(size, min_placed_memory_map_alignment) && size != DeviceSize::MAX {
+                if !is_aligned(size, min_placed_memory_map_alignment) {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
                         problem: "must be aligned to an integer multiple of \
-                            `min_placed_memory_map_alignment` device property or must be \
-                            VK_WHOLE_SIZE"
+                            `min_placed_memory_map_alignment` device property"
                             .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09574"],
                         ..Default::default()
@@ -1535,10 +1549,10 @@ impl MemoryMapInfo {
                     }));
                 }
 
-                if size != DeviceSize::MAX {
+                if size != memory.allocation_size {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "must be VK_WHOLE_SIZE".into(),
+                        problem: "must be memory.allocation_size".into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09572"],
                         ..Default::default()
                     }));
@@ -2447,8 +2461,7 @@ mod tests {
 
         memory
             .map(MemoryMapInfo {
-                offset: 0,
-                size: DeviceSize::MAX,
+                size: memory.allocation_size,
                 placed_address: Some(address),
                 ..Default::default()
             })
