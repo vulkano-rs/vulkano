@@ -855,39 +855,39 @@ impl GraphicsPipeline {
             p_stages: stages_vk.as_ptr(),
             p_vertex_input_state: vertex_input_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_input_assembly_state: input_assembly_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_tessellation_state: tessellation_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_viewport_state: viewport_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_rasterization_state: rasterization_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_multisample_state: multisample_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_depth_stencil_state: depth_stencil_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_color_blend_state: color_blend_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             p_dynamic_state: dynamic_state_vk
                 .as_ref()
-                .map(ptr::from_ref)
+                .map(|p| -> *const _ { p })
                 .unwrap_or(ptr::null()),
             layout: layout.handle(),
             render_pass: render_pass_vk,

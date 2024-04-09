@@ -2,6 +2,7 @@
 name = "vulkano-util"
 version = "0.34.0"
 edition = "2021"
+rust-version = "1.72.0"
 authors = ["The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-util"
 description = "Utility functionality to make usage of vulkano easier"
