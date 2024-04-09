@@ -477,15 +477,17 @@ impl DeviceMemory {
             let mut output = MaybeUninit::uninit();
 
             if let Some(placed_address) = placed_address {
-                let features = device.enabled_features();
                 let map_info_vk = ash::vk::MemoryMapInfoKHR {
                     flags: ash::vk::MemoryMapFlags::PLACED_EXT,
                     memory: self.handle(),
                     offset,
-                    size: if !features.memory_map_range_placed && size == self.allocation_size {
-                        DeviceSize::MAX
-                    } else {
-                        size
+                    size: {
+                        let features = device.enabled_features();
+                        if !features.memory_map_range_placed && size == self.allocation_size {
+                            DeviceSize::MAX
+                        } else {
+                            size
+                        }
                     },
                     ..Default::default()
                 };
