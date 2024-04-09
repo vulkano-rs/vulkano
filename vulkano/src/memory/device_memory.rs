@@ -1,6 +1,6 @@
 use super::{DedicatedAllocation, DedicatedTo, DeviceAlignment};
 use crate::{
-    device::{Device, DeviceExtensions, DeviceFeatures, DeviceOwned, DeviceProperties},
+    device::{Device, DeviceOwned},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
@@ -1407,6 +1407,10 @@ pub struct MemoryMapInfo {
     /// [`DeviceFeatures::memory_map_placed`] to be enabled.
     ///
     /// Must align with [`DeviceProperties::min_placed_memory_map_alignment`].
+    ///
+    /// [`DeviceExtensions::ext_map_memory_placed`]: crate::device::DeviceExtensions::ext_map_memory_placed
+    /// [`DeviceFeatures::memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
+    /// [`DeviceProperties::min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
     pub placed_address: Option<*mut c_void>,
 
     pub _ne: crate::NonExhaustive,
