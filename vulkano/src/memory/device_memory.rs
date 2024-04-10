@@ -493,7 +493,7 @@ impl DeviceMemory {
                 };
 
                 let mut map_placed_info_vk = ash::vk::MemoryMapPlacedInfoEXT {
-                    p_placed_address: placed_address,
+                    p_placed_address: placed_address.as_ptr(),
                     ..Default::default()
                 };
 
@@ -1429,7 +1429,7 @@ pub struct MemoryMapInfo {
     /// [`DeviceExtensions::ext_map_memory_placed`]: crate::device::DeviceExtensions::ext_map_memory_placed
     /// [`DeviceFeatures::memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
     /// [`DeviceProperties::min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
-    pub placed_address: Option<*mut c_void>,
+    pub placed_address: Option<NonNull<c_void>>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1506,7 +1506,7 @@ impl MemoryMapInfo {
                 .unwrap();
 
             if !is_aligned(
-                placed_address as DeviceSize,
+                placed_address.as_ptr() as DeviceSize,
                 min_placed_memory_map_alignment,
             ) {
                 return Err(Box::new(ValidationError {
@@ -2280,6 +2280,7 @@ mod tests {
     use super::MemoryAllocateInfo;
     use crate::memory::{DeviceMemory, MemoryMapInfo, MemoryPropertyFlags};
     use std::ptr;
+    use std::ptr::NonNull;
 
     #[test]
     fn create() {
@@ -2463,7 +2464,7 @@ mod tests {
         memory
             .map(MemoryMapInfo {
                 size: memory.allocation_size,
-                placed_address: Some(address),
+                placed_address: Some(NonNull::new(address).unwrap()),
                 ..Default::default()
             })
             .unwrap();
