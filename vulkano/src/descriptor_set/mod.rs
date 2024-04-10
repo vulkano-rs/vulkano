@@ -191,6 +191,9 @@ impl DescriptorSet {
     ) -> Result<(), Box<ValidationError>> {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return Ok(());
+        }
 
         self.inner
             .validate_update(&descriptor_writes, &descriptor_copies)?;
@@ -215,6 +218,9 @@ impl DescriptorSet {
     ) {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return;
+        }
 
         Self::update_inner(
             &self.inner,
@@ -236,6 +242,9 @@ impl DescriptorSet {
     ) -> Result<(), Box<ValidationError>> {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return Ok(());
+        }
 
         self.inner
             .validate_update(&descriptor_writes, &descriptor_copies)?;
@@ -258,6 +267,9 @@ impl DescriptorSet {
     ) {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return;
+        }
 
         Self::update_inner(
             &self.inner,
