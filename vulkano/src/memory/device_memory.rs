@@ -1426,7 +1426,7 @@ pub struct MemoryMapInfo {
     ///
     /// Requires the [`memory_map_placed`] feature to be enabled on the device.
     ///
-    /// Must align with [`DeviceProperties::min_placed_memory_map_alignment`].
+    /// Must be aligned to the [`min_placed_memory_map_alignment`] device property.
     ///
     /// [`DeviceExtensions::ext_map_memory_placed`]: crate::device::DeviceExtensions::ext_map_memory_placed
     /// [`DeviceFeatures::memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
