@@ -496,9 +496,7 @@ impl DeviceMemory {
                     ..Default::default()
                 };
 
-                let mut map_placed_info_vk = ash::vk::MemoryMapPlacedInfoEXT {
-                    ..Default::default()
-                };
+                let mut map_placed_info_vk = ash::vk::MemoryMapPlacedInfoEXT::default();
 
                 let map_info_vk = if let Some(it) = placed_address {
                     map_placed_info_vk.p_placed_address = it.as_ptr();
