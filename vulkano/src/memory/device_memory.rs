@@ -1512,7 +1512,7 @@ impl MemoryMapInfo {
             ) {
                 return Err(Box::new(ValidationError {
                     context: "placed_address".into(),
-                    problem: "must be aligned to an integer multiple of \
+                    problem: "must be aligned to an integer multiple of the \
                         `min_placed_memory_map_alignment` device property"
                         .into(),
                     vuids: &["VUID-VkMemoryMapPlacedInfoEXT-pPlacedAddress-09577"],
