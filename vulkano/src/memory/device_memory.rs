@@ -1476,17 +1476,6 @@ impl MemoryMapInfo {
         }
 
         if flags.contains(MemoryMapFlags::PLACED) {
-            if !memory.device.enabled_extensions().ext_map_memory_placed {
-                return Err(Box::new(ValidationError {
-                    context: "flags".into(),
-                    problem: "is PLACED".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
-                        "ext_map_memory_placed",
-                    )])]),
-                    ..Default::default()
-                }));
-            }
-
             let features = memory.device.enabled_features();
             if !features.memory_map_placed {
                 return Err(Box::new(ValidationError {
