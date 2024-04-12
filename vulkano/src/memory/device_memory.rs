@@ -1424,8 +1424,7 @@ pub struct MemoryMapInfo {
 
     /// The address in host memory to map to.
     ///
-    /// Requires [`DeviceExtensions::ext_map_memory_placed`] and
-    /// [`DeviceFeatures::memory_map_placed`] to be enabled.
+    /// Requires the [`memory_map_placed`] feature to be enabled on the device.
     ///
     /// Must align with [`DeviceProperties::min_placed_memory_map_alignment`].
     ///
