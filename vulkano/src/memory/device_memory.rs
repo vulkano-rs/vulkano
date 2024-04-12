@@ -1480,7 +1480,7 @@ impl MemoryMapInfo {
             if !features.memory_map_placed {
                 return Err(Box::new(ValidationError {
                     context: "flags".into(),
-                    problem: "is PLACED".into(),
+                    problem: "contains `MemoryMapFlags::PLACED`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "memory_map_placed",
                     )])]),
