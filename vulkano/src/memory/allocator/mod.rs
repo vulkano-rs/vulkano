@@ -238,6 +238,7 @@ use std::{
     ptr, slice,
     sync::Arc,
 };
+use vulkano::memory::MemoryMapFlags;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 ///
@@ -1094,6 +1095,7 @@ impl<S> GenericMemoryAllocator<S> {
             // - Mapping the whole range is always valid.
             unsafe {
                 memory.map_unchecked(MemoryMapInfo {
+                    flags: MemoryMapFlags::empty(),
                     offset: 0,
                     size: memory.allocation_size(),
                     placed_address: None,

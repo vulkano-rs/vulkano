@@ -461,6 +461,7 @@ impl DeviceMemory {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn map_unchecked(&mut self, map_info: MemoryMapInfo) -> Result<(), VulkanError> {
         let MemoryMapInfo {
+            flags,
             offset,
             size,
             placed_address,
@@ -478,7 +479,7 @@ impl DeviceMemory {
 
             if let Some(placed_address) = placed_address {
                 let map_info_vk = ash::vk::MemoryMapInfoKHR {
-                    flags: ash::vk::MemoryMapFlags::PLACED_EXT,
+                    flags: flags.into(),
                     memory: self.handle(),
                     offset,
                     size: {
@@ -508,7 +509,7 @@ impl DeviceMemory {
                 .map_err(VulkanError::from)?;
             } else if device.enabled_extensions().khr_map_memory2 {
                 let map_info_vk = ash::vk::MemoryMapInfoKHR {
-                    flags: ash::vk::MemoryMapFlags::empty(),
+                    flags: flags.into(),
                     memory: self.handle(),
                     offset,
                     size,
@@ -1391,9 +1392,24 @@ vulkan_bitflags! {
     DEVICE_ADDRESS_CAPTURE_REPLAY = DEVICE_ADDRESS_CAPTURE_REPLAY,*/
 }
 
+vulkan_bitflags! {
+    #[non_exhaustive]
+    MemoryMapFlags = MemoryMapFlags(u32);
+
+    PLACED_EXT = PLACED_EXT
+    RequiresOneOf([
+        RequiresAllOf([
+            DeviceFeature(memory_map_placed),
+            DeviceExtension(ext_map_memory_placed)
+        ]),
+    ]),
+}
+
 /// Parameters of a memory map operation.
 #[derive(Debug)]
 pub struct MemoryMapInfo {
+    pub flags: MemoryMapFlags,
+
     /// The offset (in bytes) from the beginning of the `DeviceMemory`, where the mapping starts.
     ///
     /// Must be less than the [`allocation_size`] of the device memory. If the the memory was not
@@ -1437,6 +1453,7 @@ pub struct MemoryMapInfo {
 impl MemoryMapInfo {
     pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
         let &Self {
+            flags,
             offset,
             size,
             placed_address,
@@ -1471,11 +1488,11 @@ impl MemoryMapInfo {
             }));
         }
 
-        if let Some(placed_address) = placed_address {
+        if flags.contains(MemoryMapFlags::PLACED_EXT) {
             if !memory.device.enabled_extensions().ext_map_memory_placed {
                 return Err(Box::new(ValidationError {
-                    context: "placed_address".into(),
-                    problem: "is not empty".into(),
+                    context: "flags".into(),
+                    problem: "is PLACED_EXT".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_map_memory_placed",
                     )])]),
@@ -1486,14 +1503,23 @@ impl MemoryMapInfo {
             let features = memory.device.enabled_features();
             if !features.memory_map_placed {
                 return Err(Box::new(ValidationError {
-                    context: "placed_address".into(),
-                    problem: "is not empty".into(),
+                    context: "flags".into(),
+                    problem: "is PLACED_EXT".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "memory_map_placed",
                     )])]),
                     vuids: &["VUID-VkMemoryMapInfoKHR-flags-09569"],
                 }));
             }
+
+            let Some(placed_address) = placed_address else {
+                return Err(Box::new(ValidationError {
+                    context: "placed_address".into(),
+                    problem: "is empty".into(),
+                    vuids: &["VUID-VkMemoryMapInfoKHR-flags-09570"],
+                    ..Default::default()
+                }));
+            };
 
             // SAFETY:
             // min_placed_memory_map_alignment is always provided when the device extension
@@ -1593,6 +1619,7 @@ impl Default for MemoryMapInfo {
     #[inline]
     fn default() -> Self {
         MemoryMapInfo {
+            flags: MemoryMapFlags::empty(),
             offset: 0,
             size: 0,
             placed_address: None,
@@ -2278,7 +2305,7 @@ unsafe impl Sync for MappedDeviceMemory {}
 #[cfg(test)]
 mod tests {
     use super::MemoryAllocateInfo;
-    use crate::memory::{DeviceMemory, MemoryMapInfo, MemoryPropertyFlags};
+    use crate::memory::{DeviceMemory, MemoryMapFlags, MemoryMapInfo, MemoryPropertyFlags};
     use std::{ptr, ptr::NonNull};
 
     #[test]
@@ -2462,6 +2489,7 @@ mod tests {
 
         memory
             .map(MemoryMapInfo {
+                flags: MemoryMapFlags::PLACED_EXT,
                 size: memory.allocation_size,
                 placed_address: Some(NonNull::new(address).unwrap()),
                 ..Default::default()
