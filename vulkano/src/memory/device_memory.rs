@@ -1447,6 +1447,11 @@ impl MemoryMapInfo {
             _ne: _,
         } = self;
 
+        flags.validate_device(&memory.device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkMemoryMapInfoKHR-flags-parameter"])
+        })?;
+
         if !(offset < memory.allocation_size()) {
             return Err(Box::new(ValidationError {
                 context: "offset".into(),
