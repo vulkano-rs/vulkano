@@ -1609,12 +1609,6 @@ vulkan_bitflags! {
     MemoryMapFlags = MemoryMapFlags(u32);
 
     PLACED = PLACED_EXT
-    RequiresOneOf([
-        RequiresAllOf([
-            DeviceFeature(memory_map_placed),
-            DeviceExtension(ext_map_memory_placed)
-        ]),
-    ]),
 }
 
 /// Parameters of a memory unmap operation.
