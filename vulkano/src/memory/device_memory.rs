@@ -1497,7 +1497,6 @@ impl MemoryMapInfo {
                 }));
             };
 
-            // SAFETY:
             // min_placed_memory_map_alignment is always provided when the device extension
             // ext_map_memory_placed is available.
             let min_placed_memory_map_alignment = memory
@@ -1513,7 +1512,7 @@ impl MemoryMapInfo {
             ) {
                 return Err(Box::new(ValidationError {
                     context: "placed_address".into(),
-                    problem: "must be aligned to an integer multiple of \
+                    problem: "must be aligned to an integer multiple of the \
                         `min_placed_memory_map_alignment` device property"
                         .into(),
                     vuids: &["VUID-VkMemoryMapPlacedInfoEXT-pPlacedAddress-09577"],
@@ -1525,7 +1524,7 @@ impl MemoryMapInfo {
                 if !is_aligned(offset, min_placed_memory_map_alignment) {
                     return Err(Box::new(ValidationError {
                         context: "offset".into(),
-                        problem: "must be aligned to an integer multiple of \
+                        problem: "must be aligned to an integer multiple of the \
                             `min_placed_memory_map_alignment` device property"
                             .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09573"],
@@ -1536,7 +1535,7 @@ impl MemoryMapInfo {
                 if !is_aligned(size, min_placed_memory_map_alignment) {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "must be aligned to an integer multiple of \
+                        problem: "must be aligned to an integer multiple of the \
                             `min_placed_memory_map_alignment` device property"
                             .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09574"],
@@ -1556,7 +1555,7 @@ impl MemoryMapInfo {
                 if size != memory.allocation_size {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "must be memory.allocation_size".into(),
+                        problem: "must be `self.allocation_size()`".into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09572"],
                         ..Default::default()
                     }));
