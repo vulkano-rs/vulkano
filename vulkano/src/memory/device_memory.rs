@@ -487,7 +487,7 @@ impl DeviceMemory {
 
                         // HACK: ext_map_memory_placed only accepts `VK_WHOLE_SIZE` unlike the rest
                         // of the API. See https://github.com/KhronosGroup/Vulkan-Docs/issues/2350
-                        if features.memory_map_placed
+                        if flags.contains(MemoryMapFlags::PLACED)
                             && !features.memory_map_range_placed
                             && size == self.allocation_size()
                         {
