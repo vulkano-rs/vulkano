@@ -1497,7 +1497,6 @@ impl MemoryMapInfo {
                 }));
             };
 
-            // SAFETY:
             // min_placed_memory_map_alignment is always provided when the device extension
             // ext_map_memory_placed is available.
             let min_placed_memory_map_alignment = memory
