@@ -1475,11 +1475,11 @@ impl MemoryMapInfo {
             }));
         }
 
-        if flags.contains(MemoryMapFlags::PLACED_EXT) {
+        if flags.contains(MemoryMapFlags::PLACED) {
             if !memory.device.enabled_extensions().ext_map_memory_placed {
                 return Err(Box::new(ValidationError {
                     context: "flags".into(),
-                    problem: "is PLACED_EXT".into(),
+                    problem: "is PLACED".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
                         "ext_map_memory_placed",
                     )])]),
@@ -1491,7 +1491,7 @@ impl MemoryMapInfo {
             if !features.memory_map_placed {
                 return Err(Box::new(ValidationError {
                     context: "flags".into(),
-                    problem: "is PLACED_EXT".into(),
+                    problem: "is PLACED".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "memory_map_placed",
                     )])]),
@@ -1619,7 +1619,7 @@ vulkan_bitflags! {
     #[non_exhaustive]
     MemoryMapFlags = MemoryMapFlags(u32);
 
-    PLACED_EXT = PLACED_EXT
+    PLACED = PLACED_EXT
     RequiresOneOf([
         RequiresAllOf([
             DeviceFeature(memory_map_placed),
@@ -2489,7 +2489,7 @@ mod tests {
 
         memory
             .map(MemoryMapInfo {
-                flags: MemoryMapFlags::PLACED_EXT,
+                flags: MemoryMapFlags::PLACED,
                 size: memory.allocation_size,
                 placed_address: Some(NonNull::new(address).unwrap()),
                 ..Default::default()

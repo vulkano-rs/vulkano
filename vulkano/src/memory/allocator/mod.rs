@@ -219,8 +219,8 @@ pub use self::{
 };
 use super::{
     DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
-    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapInfo, MemoryProperties, MemoryPropertyFlags,
-    MemoryRequirements, MemoryType,
+    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapFlags, MemoryMapInfo, MemoryProperties,
+    MemoryPropertyFlags, MemoryRequirements, MemoryType,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -238,7 +238,6 @@ use std::{
     ptr, slice,
     sync::Arc,
 };
-use vulkano::memory::MemoryMapFlags;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 ///
