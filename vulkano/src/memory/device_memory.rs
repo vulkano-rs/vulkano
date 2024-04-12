@@ -477,14 +477,20 @@ impl DeviceMemory {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
 
-            if let Some(placed_address) = placed_address {
+            if device.enabled_extensions().khr_map_memory2 {
                 let map_info_vk = ash::vk::MemoryMapInfoKHR {
                     flags: flags.into(),
                     memory: self.handle(),
                     offset,
                     size: {
                         let features = device.enabled_features();
-                        if !features.memory_map_range_placed && size == self.allocation_size {
+
+                        // HACK: ext_map_memory_placed only accepts `VK_WHOLE_SIZE` unlike the rest
+                        // of the API. See https://github.com/KhronosGroup/Vulkan-Docs/issues/2350
+                        if features.memory_map_placed
+                            && !features.memory_map_range_placed
+                            && size == self.allocation_size
+                        {
                             DeviceSize::MAX
                         } else {
                             size
@@ -494,26 +500,14 @@ impl DeviceMemory {
                 };
 
                 let mut map_placed_info_vk = ash::vk::MemoryMapPlacedInfoEXT {
-                    p_placed_address: placed_address.as_ptr(),
                     ..Default::default()
                 };
 
-                let map_info_vk = map_info_vk.push_next(&mut map_placed_info_vk);
-
-                (fns.khr_map_memory2.map_memory2_khr)(
-                    device.handle(),
-                    &map_info_vk,
-                    output.as_mut_ptr(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-            } else if device.enabled_extensions().khr_map_memory2 {
-                let map_info_vk = ash::vk::MemoryMapInfoKHR {
-                    flags: flags.into(),
-                    memory: self.handle(),
-                    offset,
-                    size,
-                    ..Default::default()
+                let map_info_vk = if let Some(it) = placed_address {
+                    map_placed_info_vk.p_placed_address = it.as_ptr();
+                    map_info_vk.push_next(&mut map_placed_info_vk)
+                } else {
+                    map_info_vk
                 };
 
                 (fns.khr_map_memory2.map_memory2_khr)(
