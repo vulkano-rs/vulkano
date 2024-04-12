@@ -489,7 +489,7 @@ impl DeviceMemory {
                         // of the API. See https://github.com/KhronosGroup/Vulkan-Docs/issues/2350
                         if features.memory_map_placed
                             && !features.memory_map_range_placed
-                            && size == self.allocation_size
+                            && size == self.allocation_size()
                         {
                             ash::vk::WHOLE_SIZE
                         } else {
