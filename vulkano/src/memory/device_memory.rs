@@ -1424,12 +1424,10 @@ pub struct MemoryMapInfo {
 
     /// The address in host memory to map to.
     ///
-    /// Requires [`DeviceExtensions::ext_map_memory_placed`] and
-    /// [`DeviceFeatures::memory_map_placed`] to be enabled.
+    /// Requires the [`memory_map_placed`] feature to be enabled on the device.
     ///
-    /// Must align with [`DeviceProperties::min_placed_memory_map_alignment`].
+    /// Must be aligned to the [`min_placed_memory_map_alignment`] device property.
     ///
-    /// [`DeviceExtensions::ext_map_memory_placed`]: crate::device::DeviceExtensions::ext_map_memory_placed
     /// [`DeviceFeatures::memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
     /// [`DeviceProperties::min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
     pub placed_address: Option<NonNull<c_void>>,
@@ -1485,7 +1483,7 @@ impl MemoryMapInfo {
             if !features.memory_map_placed {
                 return Err(Box::new(ValidationError {
                     context: "flags".into(),
-                    problem: "is PLACED".into(),
+                    problem: "contains `MemoryMapFlags::PLACED`".into(),
                     requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
                         "memory_map_placed",
                     )])]),
