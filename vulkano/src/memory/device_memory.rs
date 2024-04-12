@@ -1428,7 +1428,6 @@ pub struct MemoryMapInfo {
     ///
     /// Must be aligned to the [`min_placed_memory_map_alignment`] device property.
     ///
-    /// [`DeviceExtensions::ext_map_memory_placed`]: crate::device::DeviceExtensions::ext_map_memory_placed
     /// [`DeviceFeatures::memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
     /// [`DeviceProperties::min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
     pub placed_address: Option<NonNull<c_void>>,
