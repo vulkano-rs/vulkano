@@ -1608,7 +1608,7 @@ vulkan_bitflags! {
     #[non_exhaustive]
     MemoryMapFlags = MemoryMapFlags(u32);
 
-    PLACED = PLACED_EXT
+    PLACED = PLACED_EXT,
 }
 
 /// Parameters of a memory unmap operation.
