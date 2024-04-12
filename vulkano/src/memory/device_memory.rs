@@ -1392,19 +1392,6 @@ vulkan_bitflags! {
     DEVICE_ADDRESS_CAPTURE_REPLAY = DEVICE_ADDRESS_CAPTURE_REPLAY,*/
 }
 
-vulkan_bitflags! {
-    #[non_exhaustive]
-    MemoryMapFlags = MemoryMapFlags(u32);
-
-    PLACED_EXT = PLACED_EXT
-    RequiresOneOf([
-        RequiresAllOf([
-            DeviceFeature(memory_map_placed),
-            DeviceExtension(ext_map_memory_placed)
-        ]),
-    ]),
-}
-
 /// Parameters of a memory map operation.
 #[derive(Debug)]
 pub struct MemoryMapInfo {
@@ -1626,6 +1613,19 @@ impl Default for MemoryMapInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+vulkan_bitflags! {
+    #[non_exhaustive]
+    MemoryMapFlags = MemoryMapFlags(u32);
+
+    PLACED_EXT = PLACED_EXT
+    RequiresOneOf([
+        RequiresAllOf([
+            DeviceFeature(memory_map_placed),
+            DeviceExtension(ext_map_memory_placed)
+        ]),
+    ]),
 }
 
 /// Parameters of a memory unmap operation.
