@@ -1535,7 +1535,7 @@ impl MemoryMapInfo {
                 if !is_aligned(size, min_placed_memory_map_alignment) {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "must be aligned to an integer multiple of \
+                        problem: "must be aligned to an integer multiple of the \
                             `min_placed_memory_map_alignment` device property"
                             .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09574"],
