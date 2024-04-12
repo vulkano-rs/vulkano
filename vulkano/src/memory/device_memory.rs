@@ -491,7 +491,7 @@ impl DeviceMemory {
                             && !features.memory_map_range_placed
                             && size == self.allocation_size
                         {
-                            DeviceSize::MAX
+                            ash::vk::WHOLE_SIZE
                         } else {
                             size
                         }
