@@ -82,8 +82,9 @@ pub use self::{
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::view::BufferView,
-    descriptor_set::layout::{
-        DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType,
+    descriptor_set::{
+        layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
+        update::InvalidateDescriptorSet,
     },
     device::{Device, DeviceOwned},
     image::{sampler::Sampler, ImageLayout},
@@ -295,6 +296,42 @@ impl DescriptorSet {
             resources.copy(copy);
         }
     }
+
+    /// Invalidates descriptors within a descriptor set. Doesn't actually call into vulkan and only
+    /// invalidates the descriptors inside vulkano's resource tracking. Invalidated descriptors are
+    /// equivalent to uninitialized descriptors, in that binding a descriptor set to a particular
+    /// pipeline requires all shader-accessible descriptors to be valid.
+    ///
+    /// The intended use-case is an update-after-bind or bindless system, where entries in an
+    /// arrayed binding have to be invalidated so that the backing resource will be freed, and
+    /// not stay forever referenced until overridden by some update.
+    pub fn invalidate(
+        &self,
+        descriptor_invalidates: &[InvalidateDescriptorSet],
+    ) -> Result<(), Box<ValidationError>> {
+        self.validate_invalidate(descriptor_invalidates)?;
+        self.invalidate_unchecked(descriptor_invalidates);
+        Ok(())
+    }
+
+    pub fn invalidate_unchecked(&self, descriptor_invalidates: &[InvalidateDescriptorSet]) {
+        let mut resources = self.resources.write();
+        for invalidate in descriptor_invalidates {
+            resources.invalidate(invalidate);
+        }
+    }
+
+    pub(super) fn validate_invalidate(
+        &self,
+        descriptor_invalidates: &[InvalidateDescriptorSet],
+    ) -> Result<(), Box<ValidationError>> {
+        for (index, write) in descriptor_invalidates.iter().enumerate() {
+            write
+                .validate(self.layout(), self.variable_descriptor_count())
+                .map_err(|err| err.add_context(format!("descriptor_writes[{}]", index)))?;
+        }
+        Ok(())
+    }
 }
 
 unsafe impl VulkanObject for DescriptorSet {
@@ -443,6 +480,14 @@ impl DescriptorSetResources {
                 copy.dst_first_array_element,
                 copy.descriptor_count,
             );
+    }
+
+    #[inline]
+    pub(crate) fn invalidate(&mut self, invalidate: &InvalidateDescriptorSet) {
+        self.binding_resources
+            .get_mut(&invalidate.binding)
+            .expect("descriptor write has invalid binding number")
+            .invalidate(invalidate)
     }
 }
 
@@ -631,6 +676,47 @@ impl DescriptorBindingResources {
                     .clone_from_slice(&src[src_start..src_start + count]),
                 _ => panic!("descriptor copy has wrong resource type"),
             },
+        }
+    }
+
+    pub(crate) fn invalidate(&mut self, invalidate: &InvalidateDescriptorSet) {
+        fn invalidate_resources<T: Clone>(
+            resources: &mut [Option<T>],
+            invalidate: &InvalidateDescriptorSet,
+        ) {
+            let first = invalidate.first_array_element as usize;
+            resources
+                .get_mut(first..first + invalidate.descriptor_count as usize)
+                .expect("descriptor write for binding out of bounds")
+                .iter_mut()
+                .for_each(|resource| {
+                    *resource = None;
+                });
+        }
+
+        match self {
+            DescriptorBindingResources::None(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::Buffer(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::BufferView(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::ImageView(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::ImageViewSampler(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::Sampler(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::InlineUniformBlock => (),
+            DescriptorBindingResources::AccelerationStructure(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
         }
     }
 }
