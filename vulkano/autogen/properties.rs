@@ -94,7 +94,7 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                         quote! {
                             properties_ffi.#ffi_member.map(|s|
                                 unsafe {
-                                    UnalignedSlice::new(
+                                    std::slice::from_raw_parts(
                                         s #ffi_member_field .#ffi_name .cast_const(),
                                         s #ffi_member_field .#len_field_name as _,
                                     )
