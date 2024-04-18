@@ -94,7 +94,7 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                         quote! {
                             properties_ffi.#ffi_member.and_then(|s| {
                                 let ptr = s #ffi_member_field .#ffi_name .cast_const();
-                                if ptr == std::ptr::null() {
+                                if ptr.is_null() {
                                     return None;
                                 };
 
