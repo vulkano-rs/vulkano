@@ -92,14 +92,19 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                         let len_field_name = Ident::new(len_field_name.as_str(), Span::call_site());
 
                         quote! {
-                            properties_ffi.#ffi_member.map(|s|
-                                unsafe {
+                            properties_ffi.#ffi_member.and_then(|s| {
+                                let ptr = s #ffi_member_field .#ffi_name .cast_const();
+                                if ptr == std::ptr::null() {
+                                    return None;
+                                };
+
+                                Some(unsafe {
                                     std::slice::from_raw_parts(
-                                        s #ffi_member_field .#ffi_name .cast_const(),
+                                        ptr,
                                         s #ffi_member_field .#len_field_name as _,
                                     )
-                                }
-                            )
+                                })
+                            })
                         }
                     } else {
                         quote! { properties_ffi.#ffi_member.map(|s| s #ffi_member_field .#ffi_name) }
