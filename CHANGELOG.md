@@ -13,6 +13,7 @@
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
 - [winit](https://crates.io/crates/winit) 0.29
 - [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
+- Rust version: 1.72.0
 
 ### Public dependency updates
 
