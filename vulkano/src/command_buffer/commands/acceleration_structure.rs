@@ -21,7 +21,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{mem::size_of, ptr, sync::Arc};
+use std::{mem::size_of, sync::Arc};
 
 /// # Commands to do operations on acceleration structures.
 impl RecordingCommandBuffer {
@@ -1568,7 +1568,7 @@ impl RawRecordingCommandBuffer {
             .collect();
         let build_range_info_pointers_vk: SmallVec<[_; 8]> = build_range_info_elements_vk
             .iter()
-            .map(ptr::from_ref)
+            .map(|p| -> *const _ { p })
             .collect();
 
         let fns = self.device().fns();
