@@ -7,12 +7,12 @@ description = "Safe wrapper for the Vulkan graphics API"
 documentation = "https://docs.rs/vulkano"
 readme = "../README.md"
 build = "build.rs"
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-homepage.workspace = true
-keywords.workspace = true
-categories.workspace = true
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 ahash = { workspace = true }
