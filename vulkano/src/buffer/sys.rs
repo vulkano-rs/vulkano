@@ -11,16 +11,15 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{AllocationType, DeviceLayout},
-        is_aligned, DedicatedTo, ExternalMemoryHandleTypes, MemoryAllocateFlags,
-        MemoryPropertyFlags, MemoryRequirements, ResourceMemory,
+        allocator::AllocationType, is_aligned, DedicatedTo, ExternalMemoryHandleTypes,
+        MemoryAllocateFlags, MemoryPropertyFlags, MemoryRequirements, ResourceMemory,
     },
     sync::Sharing,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// A raw buffer, with no memory backing it.
 ///
@@ -78,44 +77,8 @@ impl RawBuffer {
         device: Arc<Device>,
         create_info: BufferCreateInfo,
     ) -> Result<Self, VulkanError> {
-        let &BufferCreateInfo {
-            flags,
-            ref sharing,
-            size,
-            usage,
-            external_memory_handle_types,
-            _ne: _,
-        } = &create_info;
-
-        let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
-            Sharing::Concurrent(queue_family_indices) => (
-                ash::vk::SharingMode::CONCURRENT,
-                queue_family_indices.len() as u32,
-                queue_family_indices.as_ptr(),
-            ),
-        };
-
-        let mut create_info_vk = ash::vk::BufferCreateInfo {
-            flags: flags.into(),
-            size,
-            usage: usage.into(),
-            sharing_mode,
-            queue_family_index_count,
-            p_queue_family_indices,
-            ..Default::default()
-        };
-        let mut external_memory_info_vk = None;
-
-        if !external_memory_handle_types.is_empty() {
-            let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryBufferCreateInfo {
-                handle_types: external_memory_handle_types.into(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
+        let mut extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk = create_info.to_vk(&mut extensions_vk);
 
         let handle = {
             let fns = device.fns();
@@ -225,28 +188,12 @@ impl RawBuffer {
     }
 
     fn get_memory_requirements(device: &Device, handle: ash::vk::Buffer) -> MemoryRequirements {
-        let info_vk = ash::vk::BufferMemoryRequirementsInfo2 {
-            buffer: handle,
-            ..Default::default()
-        };
+        let info_vk = ash::vk::BufferMemoryRequirementsInfo2::default().buffer(handle);
 
-        let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
-        let mut memory_dedicated_requirements_vk = None;
-
-        if device.api_version() >= Version::V1_1
-            || device.enabled_extensions().khr_dedicated_allocation
-        {
-            debug_assert!(
-                device.api_version() >= Version::V1_1
-                    || device.enabled_extensions().khr_get_memory_requirements2
-            );
-
-            let next = memory_dedicated_requirements_vk
-                .insert(ash::vk::MemoryDedicatedRequirements::default());
-
-            next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = <*mut _>::cast(next);
-        }
+        let mut memory_requirements2_extensions_vk =
+            MemoryRequirements::to_mut_vk2_extensions(device);
+        let mut memory_requirements2_vk =
+            MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
 
         unsafe {
             let fns = device.fns();
@@ -277,18 +224,16 @@ impl RawBuffer {
             }
         }
 
-        MemoryRequirements {
-            layout: DeviceLayout::from_size_alignment(
-                memory_requirements2_vk.memory_requirements.size,
-                memory_requirements2_vk.memory_requirements.alignment,
-            )
-            .unwrap(),
-            memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
-            prefers_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
-            requires_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
-        }
+        // Unborrow
+        let memory_requirements2_vk = ash::vk::MemoryRequirements2 {
+            _marker: PhantomData,
+            ..memory_requirements2_vk
+        };
+
+        MemoryRequirements::from_vk2(
+            &memory_requirements2_vk,
+            &memory_requirements2_extensions_vk,
+        )
     }
 
     /// Binds device memory to this buffer.
@@ -532,20 +477,14 @@ impl RawBuffer {
         self,
         allocation: ResourceMemory,
     ) -> Result<Buffer, (VulkanError, RawBuffer, ResourceMemory)> {
-        let memory = allocation.device_memory();
-        let memory_offset = allocation.offset();
+        let bind_info_vk = allocation.to_vk_bind_buffer_memory_info(self.handle());
 
         let fns = self.device.fns();
 
         let result = if self.device.api_version() >= Version::V1_1
             || self.device.enabled_extensions().khr_bind_memory2
         {
-            let bind_infos_vk = [ash::vk::BindBufferMemoryInfo {
-                buffer: self.handle,
-                memory: memory.handle(),
-                memory_offset,
-                ..Default::default()
-            }];
+            let bind_infos_vk = [bind_info_vk];
 
             if self.device.api_version() >= Version::V1_1 {
                 (fns.v1_1.bind_buffer_memory2)(
@@ -563,9 +502,9 @@ impl RawBuffer {
         } else {
             (fns.v1_0.bind_buffer_memory)(
                 self.device.handle(),
-                self.handle,
-                memory.handle(),
-                memory_offset,
+                bind_info_vk.buffer,
+                bind_info_vk.memory,
+                bind_info_vk.memory_offset,
             )
         }
         .result();
@@ -859,6 +798,55 @@ impl BufferCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &'a self,
+        extensions_vk: &'a mut BufferCreateInfoExtensionsVk,
+    ) -> ash::vk::BufferCreateInfo<'a> {
+        let &Self {
+            flags,
+            ref sharing,
+            size,
+            usage,
+            external_memory_handle_types: _,
+            _ne: _,
+        } = self;
+
+        let (sharing_mode_vk, queue_family_indices) = sharing.to_vk();
+
+        let mut val_vk = ash::vk::BufferCreateInfo::default()
+            .flags(flags.into())
+            .size(size)
+            .usage(usage.into())
+            .sharing_mode(sharing_mode_vk)
+            .queue_family_indices(queue_family_indices);
+
+        let BufferCreateInfoExtensionsVk { external_memory_vk } = extensions_vk;
+
+        if let Some(next) = external_memory_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> BufferCreateInfoExtensionsVk {
+        let &Self {
+            external_memory_handle_types,
+            ..
+        } = self;
+
+        let external_memory_vk = (!external_memory_handle_types.is_empty()).then(|| {
+            ash::vk::ExternalMemoryBufferCreateInfo::default()
+                .handle_types(external_memory_handle_types.into())
+        });
+
+        BufferCreateInfoExtensionsVk { external_memory_vk }
+    }
+}
+
+pub(crate) struct BufferCreateInfoExtensionsVk {
+    pub(crate) external_memory_vk: Option<ash::vk::ExternalMemoryBufferCreateInfo<'static>>,
 }
 
 #[cfg(test)]

@@ -287,18 +287,8 @@ impl BufferView {
         subbuffer: Subbuffer<impl ?Sized>,
         create_info: BufferViewCreateInfo,
     ) -> Result<Arc<BufferView>, VulkanError> {
-        let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
-
         let device = subbuffer.device();
-
-        let create_info_vk = ash::vk::BufferViewCreateInfo {
-            flags: ash::vk::BufferViewCreateFlags::empty(),
-            buffer: subbuffer.buffer().handle(),
-            format: format.into(),
-            offset: subbuffer.offset(),
-            range: subbuffer.size(),
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk(subbuffer.as_bytes());
 
         let handle = unsafe {
             let fns = device.fns();
@@ -436,6 +426,20 @@ impl BufferViewCreateInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(
+        &self,
+        subbuffer: &Subbuffer<[u8]>,
+    ) -> ash::vk::BufferViewCreateInfo<'static> {
+        let &Self { format, _ne: _ } = self;
+
+        ash::vk::BufferViewCreateInfo::default()
+            .flags(ash::vk::BufferViewCreateFlags::empty())
+            .buffer(subbuffer.buffer().handle())
+            .format(format.into())
+            .offset(subbuffer.offset())
+            .range(subbuffer.size())
     }
 }
 

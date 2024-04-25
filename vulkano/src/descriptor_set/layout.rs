@@ -12,6 +12,7 @@ use crate::{
     VulkanObject,
 };
 use ahash::HashMap;
+use smallvec::SmallVec;
 use std::{collections::BTreeMap, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
@@ -86,78 +87,11 @@ impl DescriptorSetLayout {
         device: Arc<Device>,
         create_info: DescriptorSetLayoutCreateInfo,
     ) -> Result<Arc<DescriptorSetLayout>, VulkanError> {
-        let &DescriptorSetLayoutCreateInfo {
-            flags,
-            ref bindings,
-            _ne: _,
-        } = &create_info;
-
-        struct PerBinding {
-            immutable_samplers_vk: Vec<ash::vk::Sampler>,
-        }
-
-        let mut bindings_vk = Vec::with_capacity(bindings.len());
-        let mut per_binding_vk = Vec::with_capacity(bindings.len());
-        let mut binding_flags_info_vk = None;
-        let mut binding_flags_vk = Vec::with_capacity(bindings.len());
-
-        for (&binding_num, binding) in bindings.iter() {
-            let &DescriptorSetLayoutBinding {
-                binding_flags,
-                descriptor_type,
-                descriptor_count,
-                stages,
-                ref immutable_samplers,
-                _ne: _,
-            } = binding;
-
-            bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
-                binding: binding_num,
-                descriptor_type: descriptor_type.into(),
-                descriptor_count,
-                stage_flags: stages.into(),
-                p_immutable_samplers: ptr::null(),
-                ..Default::default()
-            });
-            per_binding_vk.push(PerBinding {
-                immutable_samplers_vk: immutable_samplers
-                    .iter()
-                    .map(VulkanObject::handle)
-                    .collect(),
-            });
-            binding_flags_vk.push(binding_flags.into());
-        }
-
-        for (binding_vk, per_binding_vk) in bindings_vk.iter_mut().zip(per_binding_vk.iter()) {
-            let PerBinding {
-                immutable_samplers_vk,
-            } = per_binding_vk;
-
-            if !immutable_samplers_vk.is_empty() {
-                binding_vk.p_immutable_samplers = immutable_samplers_vk.as_ptr();
-            }
-        }
-
-        let mut create_info_vk = ash::vk::DescriptorSetLayoutCreateInfo {
-            flags: flags.into(),
-            binding_count: bindings_vk.len() as u32,
-            p_bindings: bindings_vk.as_ptr(),
-            ..Default::default()
-        };
-
-        if device.api_version() >= Version::V1_2
-            || device.enabled_extensions().ext_descriptor_indexing
-        {
-            let next =
-                binding_flags_info_vk.insert(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
-                    binding_count: binding_flags_vk.len() as u32,
-                    p_binding_flags: binding_flags_vk.as_ptr(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
+        let create_info_fields2_vk = create_info.to_vk_fields2();
+        let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields2_vk);
+        let create_info_vk =
+            create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
         let handle = {
             let fns = device.fns();
@@ -311,6 +245,17 @@ pub struct DescriptorSetLayoutCreateInfo {
     pub bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for DescriptorSetLayoutCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            flags: DescriptorSetLayoutCreateFlags::empty(),
+            bindings: BTreeMap::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl DescriptorSetLayoutCreateInfo {
@@ -480,17 +425,104 @@ impl DescriptorSetLayoutCreateInfo {
 
         Ok(())
     }
-}
 
-impl Default for DescriptorSetLayoutCreateInfo {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            flags: DescriptorSetLayoutCreateFlags::empty(),
-            bindings: BTreeMap::new(),
-            _ne: crate::NonExhaustive(()),
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a DescriptorSetLayoutCreateInfoFields1Vk<'_>,
+        extensions_vk: &'a mut DescriptorSetLayoutCreateInfoExtensionsVk<'_>,
+    ) -> ash::vk::DescriptorSetLayoutCreateInfo<'a> {
+        let &Self {
+            flags,
+            bindings: _,
+            _ne: _,
+        } = self;
+        let DescriptorSetLayoutCreateInfoFields1Vk { bindings_vk } = fields1_vk;
+
+        let mut val_vk = ash::vk::DescriptorSetLayoutCreateInfo::default()
+            .flags(flags.into())
+            .bindings(bindings_vk);
+
+        let DescriptorSetLayoutCreateInfoExtensionsVk { binding_flags_vk } = extensions_vk;
+
+        if let Some(next) = binding_flags_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a DescriptorSetLayoutCreateInfoFields2Vk,
+    ) -> DescriptorSetLayoutCreateInfoFields1Vk<'a> {
+        let DescriptorSetLayoutCreateInfoFields2Vk {
+            bindings_fields1_vk,
+            binding_flags_vk: _,
+        } = fields2_vk;
+
+        let bindings_vk = self
+            .bindings
+            .iter()
+            .zip(bindings_fields1_vk)
+            .map(|((&binding_num, binding), binding_fields1_vk)| {
+                let DescriptorSetLayoutBindingFields1Vk {
+                    immutable_samplers_vk,
+                } = binding_fields1_vk;
+
+                binding.to_vk(binding_num, immutable_samplers_vk)
+            })
+            .collect();
+
+        DescriptorSetLayoutCreateInfoFields1Vk { bindings_vk }
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields2_vk: &'a DescriptorSetLayoutCreateInfoFields2Vk,
+    ) -> DescriptorSetLayoutCreateInfoExtensionsVk<'a> {
+        let DescriptorSetLayoutCreateInfoFields2Vk {
+            binding_flags_vk, ..
+        } = fields2_vk;
+
+        let binding_flags_vk = self
+            .bindings
+            .values()
+            .any(|binding| !binding.binding_flags.is_empty())
+            .then(|| {
+                ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+                    .binding_flags(binding_flags_vk)
+            });
+
+        DescriptorSetLayoutCreateInfoExtensionsVk { binding_flags_vk }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> DescriptorSetLayoutCreateInfoFields2Vk {
+        let mut bindings_fields1_vk = SmallVec::new();
+        let mut binding_flags_vk = SmallVec::new();
+
+        for binding in self.bindings.values() {
+            bindings_fields1_vk.push(binding.to_vk_fields1());
+            binding_flags_vk.push(binding.to_vk_binding_flags());
+        }
+
+        DescriptorSetLayoutCreateInfoFields2Vk {
+            bindings_fields1_vk,
+            binding_flags_vk,
         }
     }
+}
+
+pub(crate) struct DescriptorSetLayoutCreateInfoExtensionsVk<'a> {
+    pub(crate) binding_flags_vk: Option<ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo<'a>>,
+}
+
+pub(crate) struct DescriptorSetLayoutCreateInfoFields1Vk<'a> {
+    pub(crate) bindings_vk: SmallVec<[ash::vk::DescriptorSetLayoutBinding<'a>; 4]>,
+}
+
+pub(crate) struct DescriptorSetLayoutCreateInfoFields2Vk {
+    pub(crate) bindings_fields1_vk: SmallVec<[DescriptorSetLayoutBindingFields1Vk; 4]>,
+    pub(crate) binding_flags_vk: SmallVec<[ash::vk::DescriptorBindingFlags; 4]>,
 }
 
 vulkan_bitflags! {
@@ -670,6 +702,21 @@ impl DescriptorSetLayoutBinding {
             ref immutable_samplers,
             _ne: _,
         } = self;
+
+        if !binding_flags.is_empty()
+            && !(device.api_version() >= Version::V1_2
+                || device.enabled_extensions().ext_descriptor_indexing)
+        {
+            return Err(Box::new(ValidationError {
+                context: "binding_flags".into(),
+                problem: "is not empty".into(),
+                requires_one_of: RequiresOneOf(&[
+                    RequiresAllOf(&[Requires::APIVersion(Version::V1_2)]),
+                    RequiresAllOf(&[Requires::DeviceExtension("ext_descriptor_indexing")]),
+                ]),
+                ..Default::default()
+            }));
+        }
 
         binding_flags.validate_device(device).map_err(|err| {
             err.add_context("binding_flags").set_vuids(&[
@@ -1009,6 +1056,53 @@ impl DescriptorSetLayoutBinding {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        binding_num: u32,
+        immutable_samplers_vk: &'a [ash::vk::Sampler],
+    ) -> ash::vk::DescriptorSetLayoutBinding<'a> {
+        let &Self {
+            binding_flags: _,
+            descriptor_type,
+            descriptor_count,
+            stages,
+            immutable_samplers: _,
+            _ne: _,
+        } = self;
+
+        let mut binding_vk = ash::vk::DescriptorSetLayoutBinding::default()
+            .binding(binding_num)
+            .descriptor_type(descriptor_type.into())
+            .descriptor_count(descriptor_count)
+            .stage_flags(stages.into());
+
+        if !immutable_samplers_vk.is_empty() {
+            binding_vk = binding_vk.immutable_samplers(immutable_samplers_vk);
+        }
+
+        binding_vk
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> DescriptorSetLayoutBindingFields1Vk {
+        let immutable_samplers_vk = self
+            .immutable_samplers
+            .iter()
+            .map(VulkanObject::handle)
+            .collect();
+
+        DescriptorSetLayoutBindingFields1Vk {
+            immutable_samplers_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_binding_flags(&self) -> ash::vk::DescriptorBindingFlags {
+        self.binding_flags.into()
+    }
+}
+
+pub(crate) struct DescriptorSetLayoutBindingFields1Vk {
+    pub(crate) immutable_samplers_vk: Vec<ash::vk::Sampler>,
 }
 
 impl From<&DescriptorBindingRequirements> for DescriptorSetLayoutBinding {
@@ -1043,11 +1137,7 @@ vulkan_bitflags! {
     /// descriptor type of the binding must be enabled.
     ///
     /// [`DescriptorPoolCreateFlags::UPDATE_AFTER_BIND`]: crate::descriptor_set::pool::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND
-    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    UPDATE_AFTER_BIND = UPDATE_AFTER_BIND,
 
     /// Allows descriptors in this binding to be updated after a command buffer has already
     /// recorded a bind command containing a descriptor set with this layout, as long as the
@@ -1064,11 +1154,7 @@ vulkan_bitflags! {
     /// being used, otherwise all *static use* by a shader invocation is considered used.
     ///
     /// [`descriptor_binding_update_unused_while_pending`]: crate::device::DeviceFeatures::descriptor_binding_update_unused_while_pending
-    UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    UPDATE_UNUSED_WHILE_PENDING = UPDATE_UNUSED_WHILE_PENDING,
 
     /// Allows descriptors to be left empty or invalid even if they are *statically used* by a
     /// shader invocation, as long as they are not *dynamically used* . Additionally, if
@@ -1079,11 +1165,7 @@ vulkan_bitflags! {
     /// The [`descriptor_binding_partially_bound`] feature must be enabled on the device.
     ///
     /// [`descriptor_binding_partially_bound`]: crate::device::DeviceFeatures::descriptor_binding_partially_bound
-    PARTIALLY_BOUND = PARTIALLY_BOUND
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    PARTIALLY_BOUND = PARTIALLY_BOUND,
 
     /// Whether the binding has a variable number of descriptors.
     ///
@@ -1096,11 +1178,7 @@ vulkan_bitflags! {
     /// [`DescriptorType::UniformBufferDynamic`] or [`DescriptorType::StorageBufferDynamic`].
     ///
     /// [`descriptor_binding_variable_descriptor_count`]: crate::device::DeviceFeatures::descriptor_binding_variable_descriptor_count
-    VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT
-    RequiresOneOf([
-        RequiresAllOf([APIVersion(V1_2)]),
-        RequiresAllOf([DeviceExtension(ext_descriptor_indexing)]),
-    ]),
+    VARIABLE_DESCRIPTOR_COUNT = VARIABLE_DESCRIPTOR_COUNT,
 }
 
 vulkan_enum! {
@@ -1251,6 +1329,70 @@ pub struct DescriptorSetLayoutSupport {
     ///
     /// [`descriptor_binding_variable_descriptor_count`]: crate::device::DeviceFeatures::descriptor_binding_variable_descriptor_count
     pub max_variable_descriptor_count: u32,
+}
+
+impl DescriptorSetLayoutSupport {
+    pub(crate) fn to_mut_vk(
+        extensions_vk: &mut DescriptorSetLayoutSupportExtensionsVk,
+    ) -> ash::vk::DescriptorSetLayoutSupport<'_> {
+        let mut val_vk = ash::vk::DescriptorSetLayoutSupport::default();
+
+        let DescriptorSetLayoutSupportExtensionsVk {
+            variable_descriptor_count_vk,
+        } = extensions_vk;
+
+        if let Some(next) = variable_descriptor_count_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_mut_vk_extensions(device: &Device) -> DescriptorSetLayoutSupportExtensionsVk {
+        let variable_descriptor_count_vk = (device.api_version() >= Version::V1_2
+            || device.enabled_extensions().ext_descriptor_indexing)
+            .then(ash::vk::DescriptorSetVariableDescriptorCountLayoutSupport::default);
+
+        DescriptorSetLayoutSupportExtensionsVk {
+            variable_descriptor_count_vk,
+        }
+    }
+
+    pub(crate) fn from_vk(
+        val_vk: &ash::vk::DescriptorSetLayoutSupport<'_>,
+        extensions_vk: &DescriptorSetLayoutSupportExtensionsVk,
+    ) -> Option<Self> {
+        let &ash::vk::DescriptorSetLayoutSupport { supported, .. } = val_vk;
+
+        (supported != ash::vk::FALSE).then(|| {
+            let mut val = DescriptorSetLayoutSupport {
+                max_variable_descriptor_count: 0,
+            };
+
+            let DescriptorSetLayoutSupportExtensionsVk {
+                variable_descriptor_count_vk,
+            } = extensions_vk;
+
+            if let Some(val_vk) = variable_descriptor_count_vk {
+                let &ash::vk::DescriptorSetVariableDescriptorCountLayoutSupport {
+                    max_variable_descriptor_count,
+                    ..
+                } = val_vk;
+
+                val = Self {
+                    max_variable_descriptor_count,
+                    ..val
+                };
+            }
+
+            val
+        })
+    }
+}
+
+pub(crate) struct DescriptorSetLayoutSupportExtensionsVk {
+    pub(crate) variable_descriptor_count_vk:
+        Option<ash::vk::DescriptorSetVariableDescriptorCountLayoutSupport<'static>>,
 }
 
 #[cfg(test)]

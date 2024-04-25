@@ -8,7 +8,7 @@
 //! knowledge if you want to avoid errors.
 
 #[allow(unused)]
-pub(crate) use self::pipeline::{PipelineStageAccess, PipelineStageAccessFlags};
+pub(crate) use self::pipeline::*;
 pub use self::{
     future::{now, GpuFuture},
     pipeline::{
@@ -17,6 +17,7 @@ pub use self::{
     },
 };
 use crate::{device::Queue, VulkanError};
+use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -72,6 +73,18 @@ where
     Exclusive,
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
     Concurrent(I),
+}
+
+impl Sharing<SmallVec<[u32; 4]>> {
+    pub(crate) fn to_vk(&self) -> (ash::vk::SharingMode, &[u32]) {
+        match self {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => (
+                ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.as_slice(),
+            ),
+        }
+    }
 }
 
 /// How the memory of a resource is currently being accessed.

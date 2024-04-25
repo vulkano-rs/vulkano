@@ -4,8 +4,7 @@ use crate::{
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
         DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
-        DescriptorSetWithOffsets, DescriptorSetsCollection, DescriptorWriteInfo,
-        WriteDescriptorSet,
+        DescriptorSetWithOffsets, DescriptorSetsCollection, WriteDescriptorSet,
     },
     device::{DeviceOwned, QueueFlags},
     memory::is_aligned,
@@ -1307,65 +1306,34 @@ impl RawRecordingCommandBuffer {
             return self;
         }
 
-        let set_layout = &pipeline_layout.set_layouts()[set_num as usize];
-
-        struct PerDescriptorWrite {
-            write_info: DescriptorWriteInfo,
-            acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR<'static>,
-            inline_uniform_block: ash::vk::WriteDescriptorSetInlineUniformBlock<'static>,
-        }
-
-        let mut writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
-        let mut per_writes_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(descriptor_writes.len());
-
-        for write in descriptor_writes {
-            let layout_binding = &set_layout.bindings()[&write.binding()];
-
-            writes_vk.push(write.to_vulkan(
-                ash::vk::DescriptorSet::null(),
-                layout_binding.descriptor_type,
-            ));
-            per_writes_vk.push(PerDescriptorWrite {
-                write_info: write.to_vulkan_info(layout_binding.descriptor_type),
-                acceleration_structures: Default::default(),
-                inline_uniform_block: Default::default(),
-            });
-        }
-
-        for (write_vk, per_write_vk) in writes_vk.iter_mut().zip(per_writes_vk.iter_mut()) {
-            match &mut per_write_vk.write_info {
-                DescriptorWriteInfo::Image(info) => {
-                    write_vk.descriptor_count = info.len() as u32;
-                    write_vk.p_image_info = info.as_ptr();
-                }
-                DescriptorWriteInfo::Buffer(info) => {
-                    write_vk.descriptor_count = info.len() as u32;
-                    write_vk.p_buffer_info = info.as_ptr();
-                }
-                DescriptorWriteInfo::BufferView(info) => {
-                    write_vk.descriptor_count = info.len() as u32;
-                    write_vk.p_texel_buffer_view = info.as_ptr();
-                }
-                DescriptorWriteInfo::InlineUniformBlock(data) => {
-                    write_vk.descriptor_count = data.len() as u32;
-                    write_vk.p_next = <*const _>::cast(&per_write_vk.inline_uniform_block);
-                    per_write_vk.inline_uniform_block.data_size = write_vk.descriptor_count;
-                    per_write_vk.inline_uniform_block.p_data = data.as_ptr().cast();
-                }
-                DescriptorWriteInfo::AccelerationStructure(info) => {
-                    write_vk.descriptor_count = info.len() as u32;
-                    write_vk.p_next = <*const _>::cast(&per_write_vk.acceleration_structures);
-                    per_write_vk
-                        .acceleration_structures
-                        .acceleration_structure_count = write_vk.descriptor_count;
-                    per_write_vk
-                        .acceleration_structures
-                        .p_acceleration_structures = info.as_ptr();
-                }
-            }
-
-            debug_assert!(write_vk.descriptor_count != 0);
-        }
+        let set_layout_bindings = &pipeline_layout.set_layouts()[set_num as usize].bindings();
+        let writes_fields1_vk: SmallVec<[_; 8]> = descriptor_writes
+            .iter()
+            .map(|write| {
+                let default_image_layout = set_layout_bindings[&write.binding()]
+                    .descriptor_type
+                    .default_image_layout();
+                write.to_vk_fields1(default_image_layout)
+            })
+            .collect();
+        let mut writes_extensions_vk: SmallVec<[_; 8]> = descriptor_writes
+            .iter()
+            .zip(&writes_fields1_vk)
+            .map(|(write, fields1_vk)| write.to_vk_extensions(fields1_vk))
+            .collect();
+        let writes_vk: SmallVec<[_; 8]> = descriptor_writes
+            .iter()
+            .zip(&writes_fields1_vk)
+            .zip(&mut writes_extensions_vk)
+            .map(|((write, write_info_vk), write_extension_vk)| {
+                write.to_vk(
+                    ash::vk::DescriptorSet::null(),
+                    set_layout_bindings[&write.binding()].descriptor_type,
+                    write_info_vk,
+                    write_extension_vk,
+                )
+            })
+            .collect();
 
         let fns = self.device().fns();
         (fns.khr_push_descriptor.cmd_push_descriptor_set_khr)(
