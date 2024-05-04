@@ -8,7 +8,7 @@ use nom::{
     sequence::{delimited, tuple},
     IResult,
 };
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use std::{collections::hash_map::Entry, fmt::Write as _};
 use vk_parse::{Extension, Type, TypeMember, TypeMemberDefinition, TypeMemberMarkup, TypeSpec};
@@ -89,21 +89,15 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
             if *optional {
                 let ffi_members = ffi_members.iter().map(|FFIMember { ident: ffi_member, tokens: ffi_member_field, len_field_name }| {
                     if let Some(len_field_name) = len_field_name {
-                        let len_field_name = Ident::new(len_field_name.as_str(), Span::call_site());
+                        let t = match len_field_name.as_str() {
+                            "copy_src_layout_count" => quote! { fields.properties_host_image_copy_ext.as_ref().unwrap().copy_src_layouts.as_slice() },
+                            "copy_dst_layout_count" => quote! { fields.properties_host_image_copy_ext.as_ref().unwrap().copy_dst_layouts.as_slice() },
+                            _ => unimplemented!()
+                        };
 
                         quote! {
-                            properties_ffi.#ffi_member.and_then(|s| {
-                                let ptr = s #ffi_member_field .#ffi_name .cast_const();
-                                if ptr.is_null() {
-                                    return None;
-                                };
-
-                                Some(unsafe {
-                                    std::slice::from_raw_parts(
-                                        ptr,
-                                        s #ffi_member_field .#len_field_name as _,
-                                    )
-                                })
+                            properties_ffi.#ffi_member.map(|s| {
+                                #t
                             })
                         }
                     } else {
@@ -153,7 +147,10 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
         }
 
         impl DeviceProperties {
-            pub(crate) fn build(properties_ffi: &DevicePropertiesFfi) -> Self {
+            pub(crate) fn build(
+                properties_ffi: &DevicePropertiesFfi,
+                fields: DevicePropertiesFieldsVk
+            ) -> Self {
                 DeviceProperties {
                     #(#from_items)*
                     _ne: crate::NonExhaustive(()),

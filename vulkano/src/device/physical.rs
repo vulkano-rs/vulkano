@@ -245,7 +245,12 @@ impl PhysicalDevice {
         let fns = instance.fns();
         (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties);
 
-        DeviceProperties::build(&output)
+        let fields = output.fields();
+        if !fields.is_empty() {
+            (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties);
+        }
+
+        DeviceProperties::build(&output, fields)
     }
 
     unsafe fn get_properties2(
@@ -272,7 +277,17 @@ impl PhysicalDevice {
                 .get_physical_device_properties2_khr)(handle, output.head_as_mut());
         }
 
-        DeviceProperties::build(&output)
+        let fields = output.fields();
+        if !fields.is_empty() {
+            if instance.api_version() >= Version::V1_1 {
+                (fns.v1_1.get_physical_device_properties2)(handle, output.head_as_mut());
+            } else {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_properties2_khr)(handle, output.head_as_mut());
+            }
+        }
+
+        DeviceProperties::build(&output, fields)
     }
 
     unsafe fn get_memory_properties(
