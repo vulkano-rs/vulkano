@@ -152,8 +152,8 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
             }
         }
 
-        impl From<&DevicePropertiesFfi> for DeviceProperties {
-            fn from(properties_ffi: &DevicePropertiesFfi) -> Self {
+        impl DeviceProperties {
+            pub(crate) fn build(properties_ffi: &DevicePropertiesFfi) -> Self {
                 DeviceProperties {
                     #(#from_items)*
                     _ne: crate::NonExhaustive(()),

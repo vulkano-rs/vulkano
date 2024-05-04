@@ -245,7 +245,7 @@ impl PhysicalDevice {
         let fns = instance.fns();
         (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties);
 
-        DeviceProperties::from(&output)
+        DeviceProperties::build(&output)
     }
 
     unsafe fn get_properties2(
@@ -261,6 +261,8 @@ impl PhysicalDevice {
             instance.enabled_extensions(),
         );
 
+        // todo: we want to make some sorta copy which holds
+
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
@@ -270,7 +272,7 @@ impl PhysicalDevice {
                 .get_physical_device_properties2_khr)(handle, output.head_as_mut());
         }
 
-        DeviceProperties::from(&output)
+        DeviceProperties::build(&output)
     }
 
     unsafe fn get_memory_properties(
