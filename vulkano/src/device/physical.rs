@@ -266,8 +266,6 @@ impl PhysicalDevice {
             instance.enabled_extensions(),
         );
 
-        // todo: we want to make some sorta copy which holds
-
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
