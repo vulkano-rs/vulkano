@@ -75,16 +75,15 @@ use self::{
 pub use self::{
     collection::DescriptorSetsCollection,
     update::{
-        CopyDescriptorSet, DescriptorBufferInfo, DescriptorImageViewInfo, WriteDescriptorSet,
-        WriteDescriptorSetElements,
+        CopyDescriptorSet, DescriptorBufferInfo, DescriptorImageViewInfo, InvalidateDescriptorSet,
+        WriteDescriptorSet, WriteDescriptorSetElements,
     },
 };
 use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::view::BufferView,
-    descriptor_set::{
-        layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
-        update::InvalidateDescriptorSet,
+    descriptor_set::layout::{
+        DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType,
     },
     device::{Device, DeviceOwned},
     image::{sampler::Sampler, ImageLayout},
