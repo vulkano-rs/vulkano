@@ -14,4 +14,4 @@ doc = false
 [dependencies]
 vulkano = { workspace = true, features = ["macros"] }
 vulkano-shaders = { workspace = true }
-winit = { workspace = true }
+winit = { workspace = true, default-features = true }

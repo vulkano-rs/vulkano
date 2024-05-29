@@ -16,4 +16,4 @@ ron = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 vulkano = { workspace = true, features = ["serde", "macros"] }
 vulkano-shaders = { workspace = true }
-winit = { workspace = true }
+winit = { workspace = true, default-features = true }

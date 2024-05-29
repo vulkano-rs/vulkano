@@ -20,4 +20,4 @@ vulkano-shaders = { workspace = true }
 vulkano-util = { workspace = true }
 # The Vulkan library doesn't provide any functionality to create and handle windows, as
 # this would be out of scope. In order to open a window, we are going to use the `winit` crate.
-winit = { workspace = true }
+winit = { workspace = true, default-features = true }
