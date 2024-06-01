@@ -418,12 +418,61 @@ impl DeviceMemory {
     /// `self` must not be host-mapped already and must be allocated from host-visible memory.
     #[inline]
     pub fn map(&mut self, map_info: MemoryMapInfo) -> Result<(), Validated<VulkanError>> {
-        self.validate_map(&map_info)?;
+        self.validate_map(&map_info, None)?;
 
         unsafe { Ok(self.map_unchecked(map_info)?) }
     }
 
-    fn validate_map(&self, map_info: &MemoryMapInfo) -> Result<(), Box<ValidationError>> {
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn map_unchecked(&mut self, map_info: MemoryMapInfo) -> Result<(), VulkanError> {
+        unsafe { self.map_unchecked_inner(map_info, None) }
+    }
+
+    /// Maps a range of memory to be accessed by the host at the specified `placed_address`.
+    ///
+    /// Requires the [`memory_map_placed`] feature to be enabled on the device.
+    ///
+    /// `placed_address` must be aligned to the [`min_placed_memory_map_alignment`] device
+    /// property.
+    ///
+    /// `self` must not be host-mapped already and must be allocated from host-visible memory.
+    ///
+    /// # Safety
+    ///
+    /// - The memory mapping specified by `placed_address` and `map_info.size` will be replaced,
+    ///   including mappings made by the Rust allocator, a library, or your application itself.
+    /// - The memory mapping specified by `placed_address` and `map_info.size` must not overlap any
+    ///   existing Vulkan memory mapping.
+    ///
+    /// [`memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
+    /// [`min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
+    #[inline]
+    pub unsafe fn map_placed(
+        &mut self,
+        map_info: MemoryMapInfo,
+        placed_address: NonNull<c_void>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_map(&map_info, Some(placed_address))?;
+
+        unsafe { Ok(self.map_placed_unchecked(map_info, placed_address)?) }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn map_placed_unchecked(
+        &mut self,
+        map_info: MemoryMapInfo,
+        placed_address: NonNull<c_void>,
+    ) -> Result<(), VulkanError> {
+        unsafe { self.map_unchecked_inner(map_info, Some(placed_address)) }
+    }
+
+    fn validate_map(
+        &self,
+        map_info: &MemoryMapInfo,
+        placed_address: Option<NonNull<c_void>>,
+    ) -> Result<(), Box<ValidationError>> {
         if self.mapping_state.is_some() {
             return Err(Box::new(ValidationError {
                 problem: "this device memory is already host-mapped".into(),
@@ -433,7 +482,7 @@ impl DeviceMemory {
         }
 
         map_info
-            .validate(self)
+            .validate(self, placed_address)
             .map_err(|err| err.add_context("map_info"))?;
 
         let memory_type = &self
@@ -458,13 +507,15 @@ impl DeviceMemory {
         Ok(())
     }
 
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn map_unchecked(&mut self, map_info: MemoryMapInfo) -> Result<(), VulkanError> {
+    unsafe fn map_unchecked_inner(
+        &mut self,
+        map_info: MemoryMapInfo,
+        placed_address: Option<NonNull<c_void>>,
+    ) -> Result<(), VulkanError> {
         let MemoryMapInfo {
             flags,
             offset,
             size,
-            placed_address,
             _ne: _,
         } = map_info;
 
@@ -482,17 +533,7 @@ impl DeviceMemory {
                     flags: flags.into(),
                     memory: self.handle(),
                     offset,
-                    size: {
-                        // HACK: ext_map_memory_placed only accepts `VK_WHOLE_SIZE` unlike the rest
-                        // of the API. See https://github.com/KhronosGroup/Vulkan-Docs/issues/2350
-                        if flags.contains(MemoryMapFlags::PLACED)
-                            && offset + size == self.allocation_size()
-                        {
-                            ash::vk::WHOLE_SIZE
-                        } else {
-                            size
-                        }
-                    },
+                    size,
                     ..Default::default()
                 };
 
@@ -1411,30 +1452,25 @@ pub struct MemoryMapInfo {
     /// [`non_coherent_atom_size`]: crate::device::DeviceProperties::non_coherent_atom_size
     pub size: DeviceSize,
 
-    /// The address in host memory to map to.
-    ///
-    /// Requires the [`memory_map_placed`] feature to be enabled on the device.
-    ///
-    /// Must be aligned to the [`min_placed_memory_map_alignment`] device property.
-    ///
-    /// [`memory_map_placed`]: crate::device::DeviceFeatures::memory_map_placed
-    /// [`min_placed_memory_map_alignment`]: crate::device::DeviceProperties::min_placed_memory_map_alignment
-    pub placed_address: Option<NonNull<c_void>>,
-
     pub _ne: crate::NonExhaustive,
 }
 
 impl MemoryMapInfo {
-    pub(crate) fn validate(&self, memory: &DeviceMemory) -> Result<(), Box<ValidationError>> {
+    pub(crate) fn validate(
+        &self,
+        memory: &DeviceMemory,
+        placed_address: Option<NonNull<c_void>>,
+    ) -> Result<(), Box<ValidationError>> {
         let &Self {
             flags,
             offset,
             size,
-            placed_address,
             _ne: _,
         } = self;
 
-        flags.validate_device(&memory.device).map_err(|err| {
+        let device = memory.device();
+
+        flags.validate_device(device).map_err(|err| {
             err.add_context("flags")
                 .set_vuids(&["VUID-VkMemoryMapInfoKHR-flags-parameter"])
         })?;
@@ -1468,8 +1504,7 @@ impl MemoryMapInfo {
         }
 
         if flags.contains(MemoryMapFlags::PLACED) {
-            let features = memory.device.enabled_features();
-            if !features.memory_map_placed {
+            if !device.enabled_features().memory_map_placed {
                 return Err(Box::new(ValidationError {
                     context: "flags".into(),
                     problem: "contains `MemoryMapFlags::PLACED`".into(),
@@ -1482,8 +1517,11 @@ impl MemoryMapInfo {
 
             let Some(placed_address) = placed_address else {
                 return Err(Box::new(ValidationError {
-                    context: "placed_address".into(),
-                    problem: "is empty".into(),
+                    context: "flags".into(),
+                    problem:
+                        "contains `MemoryMapFlags::PLACED`, but `DeviceMemory::map_placed` isn't \
+                        used to specify the placed address"
+                            .into(),
                     vuids: &["VUID-VkMemoryMapInfoKHR-flags-09570"],
                     ..Default::default()
                 }));
@@ -1491,8 +1529,7 @@ impl MemoryMapInfo {
 
             // min_placed_memory_map_alignment is always provided when the device extension
             // ext_map_memory_placed is available.
-            let min_placed_memory_map_alignment = memory
-                .device
+            let min_placed_memory_map_alignment = device
                 .physical_device()
                 .properties()
                 .min_placed_memory_map_alignment
@@ -1504,7 +1541,7 @@ impl MemoryMapInfo {
             ) {
                 return Err(Box::new(ValidationError {
                     context: "placed_address".into(),
-                    problem: "must be aligned to an integer multiple of the \
+                    problem: "is not aligned to an integer multiple of the \
                         `min_placed_memory_map_alignment` device property"
                         .into(),
                     vuids: &["VUID-VkMemoryMapPlacedInfoEXT-pPlacedAddress-09577"],
@@ -1512,11 +1549,11 @@ impl MemoryMapInfo {
                 }));
             }
 
-            if features.memory_map_range_placed {
+            if device.enabled_features().memory_map_range_placed {
                 if !is_aligned(offset, min_placed_memory_map_alignment) {
                     return Err(Box::new(ValidationError {
                         context: "offset".into(),
-                        problem: "must be aligned to an integer multiple of the \
+                        problem: "is not aligned to an integer multiple of the \
                             `min_placed_memory_map_alignment` device property"
                             .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09573"],
@@ -1527,7 +1564,7 @@ impl MemoryMapInfo {
                 if !is_aligned(size, min_placed_memory_map_alignment) {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "must be aligned to an integer multiple of the \
+                        problem: "is not aligned to an integer multiple of the \
                             `min_placed_memory_map_alignment` device property"
                             .into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09574"],
@@ -1538,17 +1575,46 @@ impl MemoryMapInfo {
                 if offset != 0 {
                     return Err(Box::new(ValidationError {
                         context: "offset".into(),
-                        problem: "must be zero".into(),
+                        problem: "is not zero".into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09571"],
                         ..Default::default()
                     }));
                 }
 
-                if size != memory.allocation_size {
+                if size != memory.allocation_size() {
                     return Err(Box::new(ValidationError {
                         context: "size".into(),
-                        problem: "must be `self.allocation_size()`".into(),
+                        problem: "is not `self.allocation_size()`".into(),
                         vuids: &["VUID-VkMemoryMapInfoKHR-flags-09572"],
+                        ..Default::default()
+                    }));
+                }
+
+                if !is_aligned(memory.allocation_size(), min_placed_memory_map_alignment) {
+                    return Err(Box::new(ValidationError {
+                        context: "flags".into(),
+                        problem: "contains `MemoryMapFlags::PLACED`, but `self.allocation_size()` \
+                            is not aligned to an integer multiple of the \
+                            `min_placed_memory_map_alignment` device property"
+                            .into(),
+                        vuids: &["VUID-VkMemoryMapInfoKHR-flags-09651"],
+                        ..Default::default()
+                    }));
+                }
+            }
+
+            if let Some(handle_type) = memory.imported_handle_type() {
+                if handle_type == ExternalMemoryHandleType::HostAllocation
+                    || handle_type == ExternalMemoryHandleType::HostMappedForeignMemory
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "flags".into(),
+                        problem: "contains `MemoryMapFlags::PLACED`, but \
+                            `self.imported_handle_type()` is \
+                            `ExternalMemoryHandleType::HostAllocation` or \
+                            `ExternalMemoryHandleType::HostMappedForeignMemory`"
+                            .into(),
+                        vuids: &["VUID-VkMemoryMapInfoKHR-flags-09575"],
                         ..Default::default()
                     }));
                 }
@@ -1589,7 +1655,6 @@ impl Default for MemoryMapInfo {
             flags: MemoryMapFlags::empty(),
             offset: 0,
             size: 0,
-            placed_address: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -2461,13 +2526,17 @@ mod tests {
             address
         };
 
-        memory
-            .map(MemoryMapInfo {
-                flags: MemoryMapFlags::PLACED,
-                size: memory.allocation_size,
-                placed_address: Some(NonNull::new(address).unwrap()),
-                ..Default::default()
-            })
-            .unwrap();
+        unsafe {
+            memory
+                .map_placed(
+                    MemoryMapInfo {
+                        flags: MemoryMapFlags::PLACED,
+                        size: memory.allocation_size,
+                        ..Default::default()
+                    },
+                    NonNull::new(address).unwrap(),
+                )
+                .unwrap();
+        }
     }
 }

@@ -1097,7 +1097,6 @@ impl<S> GenericMemoryAllocator<S> {
                     flags: MemoryMapFlags::empty(),
                     offset: 0,
                     size: memory.allocation_size(),
-                    placed_address: None,
                     _ne: crate::NonExhaustive(()),
                 })?;
             }
