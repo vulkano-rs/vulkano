@@ -65,7 +65,6 @@
 //!
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
-pub(crate) use self::update::DescriptorWriteInfo;
 use self::{
     allocator::DescriptorSetAllocator,
     layout::DescriptorSetLayout,

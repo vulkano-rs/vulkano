@@ -510,10 +510,7 @@ impl Buffer {
     pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
         let device = self.device();
 
-        let info_vk = ash::vk::BufferDeviceAddressInfo {
-            buffer: self.handle(),
-            ..Default::default()
-        };
+        let info_vk = ash::vk::BufferDeviceAddressInfo::default().buffer(self.handle());
 
         let ptr = {
             let fns = device.fns();
@@ -933,6 +930,20 @@ impl ExternalBufferInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PhysicalDeviceExternalBufferInfo<'static> {
+        let &Self {
+            flags,
+            usage,
+            handle_type,
+            _ne: _,
+        } = self;
+
+        ash::vk::PhysicalDeviceExternalBufferInfo::default()
+            .flags(flags.into())
+            .usage(usage.into())
+            .handle_type(handle_type.into())
+    }
 }
 
 /// The external memory properties supported for buffers with a given configuration.
@@ -941,6 +952,25 @@ impl ExternalBufferInfo {
 pub struct ExternalBufferProperties {
     /// The properties for external memory.
     pub external_memory_properties: ExternalMemoryProperties,
+}
+
+impl ExternalBufferProperties {
+    pub(crate) fn to_mut_vk() -> ash::vk::ExternalBufferProperties<'static> {
+        ash::vk::ExternalBufferProperties::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &ash::vk::ExternalBufferProperties<'_>) -> Self {
+        let &ash::vk::ExternalBufferProperties {
+            ref external_memory_properties,
+            ..
+        } = val_vk;
+
+        Self {
+            external_memory_properties: ExternalMemoryProperties::from_vk(
+                external_memory_properties,
+            ),
+        }
+    }
 }
 
 vulkan_enum! {

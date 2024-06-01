@@ -4,14 +4,12 @@ use crate::{
     pipeline::{
         graphics::{
             color_blend::LogicOp,
-            conservative_rasterization::ConservativeRasterizationMode,
             depth_stencil::{CompareOp, StencilFaces, StencilOp, StencilOps},
             input_assembly::PrimitiveTopology,
-            rasterization::{CullMode, DepthBiasState, FrontFace, LineStipple},
-            vertex_input::{
-                VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
-                VertexInputState,
+            rasterization::{
+                ConservativeRasterizationMode, CullMode, DepthBiasState, FrontFace, LineStipple,
             },
+            vertex_input::VertexInputState,
             viewport::{Scissor, Viewport},
         },
         DynamicState,
@@ -1367,21 +1365,21 @@ impl RawRecordingCommandBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn set_color_write_enable_unchecked(&mut self, enables: &[bool]) -> &mut Self {
-        let enables = enables
+        let enables_vk = enables
             .iter()
             .copied()
             .map(|v| v as ash::vk::Bool32)
             .collect::<SmallVec<[_; 4]>>();
 
-        if enables.is_empty() {
+        if enables_vk.is_empty() {
             return self;
         }
 
         let fns = self.device().fns();
         (fns.ext_color_write_enable.cmd_set_color_write_enable_ext)(
             self.handle(),
-            enables.len() as u32,
-            enables.as_ptr(),
+            enables_vk.len() as u32,
+            enables_vk.as_ptr(),
         );
 
         self
@@ -1924,7 +1922,7 @@ impl RawRecordingCommandBuffer {
     ) -> &mut Self {
         let rectangles = rectangles
             .iter()
-            .map(|v| v.into())
+            .map(|v| v.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if rectangles.is_empty() {
             return self;
@@ -2537,7 +2535,7 @@ impl RawRecordingCommandBuffer {
     ) -> &mut Self {
         let scissors = scissors
             .iter()
-            .map(ash::vk::Rect2D::from)
+            .map(|s| s.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
             return self;
@@ -2623,7 +2621,7 @@ impl RawRecordingCommandBuffer {
     pub unsafe fn set_scissor_with_count_unchecked(&mut self, scissors: &[Scissor]) -> &mut Self {
         let scissors = scissors
             .iter()
-            .map(ash::vk::Rect2D::from)
+            .map(|s| s.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
             return self;
@@ -3029,46 +3027,17 @@ impl RawRecordingCommandBuffer {
             _ne: _,
         } = vertex_input_state;
 
-        vertex_binding_descriptions_vk.extend(bindings.iter().map(|(&binding, binding_desc)| {
-            let &VertexInputBindingDescription {
-                stride,
-                input_rate,
-                _ne: _,
-            } = binding_desc;
+        vertex_binding_descriptions_vk.extend(
+            bindings
+                .iter()
+                .map(|(&binding, binding_desc)| binding_desc.to_vk2(binding)),
+        );
 
-            let divisor = match input_rate {
-                // VUID-VkVertexInputBindingDescription2EXT-divisor-06227
-                VertexInputRate::Vertex => 1,
-                VertexInputRate::Instance { divisor } => divisor,
-            };
-
-            ash::vk::VertexInputBindingDescription2EXT {
-                binding,
-                stride,
-                input_rate: input_rate.into(),
-                divisor,
-                ..Default::default()
-            }
-        }));
-
-        vertex_attribute_descriptions_vk.extend(attributes.iter().map(
-            |(&location, attribute_desc)| {
-                let &VertexInputAttributeDescription {
-                    binding,
-                    format,
-                    offset,
-                    _ne: _,
-                } = attribute_desc;
-
-                ash::vk::VertexInputAttributeDescription2EXT {
-                    location,
-                    binding,
-                    format: format.into(),
-                    offset,
-                    ..Default::default()
-                }
-            },
-        ));
+        vertex_attribute_descriptions_vk.extend(
+            attributes
+                .iter()
+                .map(|(&location, attribute_desc)| attribute_desc.to_vk2(location)),
+        );
 
         let fns = self.device().fns();
         (fns.ext_vertex_input_dynamic_state.cmd_set_vertex_input_ext)(
@@ -3158,7 +3127,7 @@ impl RawRecordingCommandBuffer {
     ) -> &mut Self {
         let viewports = viewports
             .iter()
-            .map(|v| v.into())
+            .map(|v| v.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
             return self;
@@ -3247,7 +3216,7 @@ impl RawRecordingCommandBuffer {
     ) -> &mut Self {
         let viewports = viewports
             .iter()
-            .map(|v| v.into())
+            .map(|v| v.to_vk())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
             return self;

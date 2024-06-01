@@ -176,28 +176,7 @@ impl SamplerYcbcrConversion {
         device: Arc<Device>,
         create_info: SamplerYcbcrConversionCreateInfo,
     ) -> Result<Arc<SamplerYcbcrConversion>, VulkanError> {
-        let &SamplerYcbcrConversionCreateInfo {
-            format,
-            ycbcr_model,
-            ycbcr_range,
-            component_mapping,
-            chroma_offset,
-            chroma_filter,
-            force_explicit_reconstruction,
-            _ne: _,
-        } = &create_info;
-
-        let create_info_vk = ash::vk::SamplerYcbcrConversionCreateInfo {
-            format: format.into(),
-            ycbcr_model: ycbcr_model.into(),
-            ycbcr_range: ycbcr_range.into(),
-            components: component_mapping.into(),
-            x_chroma_offset: chroma_offset[0].into(),
-            y_chroma_offset: chroma_offset[1].into(),
-            chroma_filter: chroma_filter.into(),
-            force_explicit_reconstruction: force_explicit_reconstruction as ash::vk::Bool32,
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = unsafe {
             let fns = device.fns();
@@ -835,6 +814,29 @@ impl SamplerYcbcrConversionCreateInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::SamplerYcbcrConversionCreateInfo<'static> {
+        let &Self {
+            format,
+            ycbcr_model,
+            ycbcr_range,
+            component_mapping,
+            chroma_offset,
+            chroma_filter,
+            force_explicit_reconstruction,
+            _ne: _,
+        } = self;
+
+        ash::vk::SamplerYcbcrConversionCreateInfo::default()
+            .format(format.into())
+            .ycbcr_model(ycbcr_model.into())
+            .ycbcr_range(ycbcr_range.into())
+            .components(component_mapping.to_vk())
+            .x_chroma_offset(chroma_offset[0].into())
+            .y_chroma_offset(chroma_offset[1].into())
+            .chroma_filter(chroma_filter.into())
+            .force_explicit_reconstruction(force_explicit_reconstruction)
     }
 }
 

@@ -64,17 +64,7 @@ impl CommandPool {
         device: Arc<Device>,
         create_info: CommandPoolCreateInfo,
     ) -> Result<Self, VulkanError> {
-        let &CommandPoolCreateInfo {
-            flags,
-            queue_family_index,
-            _ne: _,
-        } = &create_info;
-
-        let create_info_vk = ash::vk::CommandPoolCreateInfo {
-            flags: flags.into(),
-            queue_family_index,
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
             let fns = device.fns();
@@ -182,24 +172,20 @@ impl CommandPool {
         let out = if command_buffer_count == 0 {
             vec![]
         } else {
-            let allocate_info = ash::vk::CommandBufferAllocateInfo {
-                command_pool: self.handle,
-                level: level.into(),
-                command_buffer_count,
-                ..Default::default()
-            };
+            let allocate_info_vk = allocate_info.to_vk(self.handle);
+            let command_buffer_count = command_buffer_count as usize;
 
             unsafe {
                 let fns = self.device.fns();
-                let mut out = Vec::with_capacity(command_buffer_count as usize);
+                let mut out = Vec::with_capacity(command_buffer_count);
                 (fns.v1_0.allocate_command_buffers)(
                     self.device.handle(),
-                    &allocate_info,
+                    &allocate_info_vk,
                     out.as_mut_ptr(),
                 )
                 .result()
                 .map_err(VulkanError::from)?;
-                out.set_len(command_buffer_count as usize);
+                out.set_len(command_buffer_count);
                 out
             }
         };
@@ -394,6 +380,18 @@ impl CommandPoolCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::CommandPoolCreateInfo<'static> {
+        let &Self {
+            flags,
+            queue_family_index,
+            _ne: _,
+        } = self;
+
+        ash::vk::CommandPoolCreateInfo::default()
+            .flags(flags.into())
+            .queue_family_index(queue_family_index)
+    }
 }
 
 vulkan_bitflags! {
@@ -442,6 +440,24 @@ pub struct CommandBufferAllocateInfo {
     pub command_buffer_count: u32,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl CommandBufferAllocateInfo {
+    pub(crate) fn to_vk(
+        &self,
+        command_pool_vk: ash::vk::CommandPool,
+    ) -> ash::vk::CommandBufferAllocateInfo<'static> {
+        let &Self {
+            level,
+            command_buffer_count,
+            _ne: _,
+        } = self;
+
+        ash::vk::CommandBufferAllocateInfo::default()
+            .command_pool(command_pool_vk)
+            .level(level.into())
+            .command_buffer_count(command_buffer_count)
+    }
 }
 
 impl Default for CommandBufferAllocateInfo {

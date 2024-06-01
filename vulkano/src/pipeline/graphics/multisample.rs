@@ -8,7 +8,7 @@ use crate::{
 // TODO: handle some weird behaviors with non-floating-point targets
 
 /// State of the multisampling.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct MultisampleState {
     /// The number of rasterization samples to take per pixel. The GPU will pick this many
     /// different locations within each pixel and assign to each of these locations a different
@@ -133,5 +133,32 @@ impl MultisampleState {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PipelineMultisampleStateCreateInfo<'_> {
+        let &Self {
+            rasterization_samples,
+            sample_shading,
+            ref sample_mask,
+            alpha_to_coverage_enable,
+            alpha_to_one_enable,
+            _ne: _,
+        } = self;
+
+        let (sample_shading_enable_vk, min_sample_shading_vk) =
+            if let Some(min_sample_shading) = sample_shading {
+                (true, min_sample_shading)
+            } else {
+                (false, 0.0)
+            };
+
+        ash::vk::PipelineMultisampleStateCreateInfo::default()
+            .flags(ash::vk::PipelineMultisampleStateCreateFlags::empty())
+            .rasterization_samples(rasterization_samples.into())
+            .sample_shading_enable(sample_shading_enable_vk)
+            .min_sample_shading(min_sample_shading_vk)
+            .sample_mask(sample_mask)
+            .alpha_to_coverage_enable(alpha_to_coverage_enable)
+            .alpha_to_one_enable(alpha_to_one_enable)
     }
 }

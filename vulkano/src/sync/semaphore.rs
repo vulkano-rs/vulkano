@@ -71,6 +71,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use core::slice;
 use smallvec::SmallVec;
 use std::{fs::File, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc, time::Duration};
 
@@ -118,40 +119,8 @@ impl Semaphore {
         device: Arc<Device>,
         create_info: SemaphoreCreateInfo,
     ) -> Result<Semaphore, VulkanError> {
-        let &SemaphoreCreateInfo {
-            semaphore_type,
-            initial_value,
-            export_handle_types,
-            _ne: _,
-        } = &create_info;
-
-        let mut create_info_vk = ash::vk::SemaphoreCreateInfo {
-            flags: ash::vk::SemaphoreCreateFlags::empty(),
-            ..Default::default()
-        };
-        let mut semaphore_type_create_info_vk = None;
-        let mut export_semaphore_create_info_vk = None;
-
-        if semaphore_type != SemaphoreType::Binary {
-            let next = semaphore_type_create_info_vk.insert(ash::vk::SemaphoreTypeCreateInfo {
-                semaphore_type: semaphore_type.into(),
-                initial_value,
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if !export_handle_types.is_empty() {
-            let next = export_semaphore_create_info_vk.insert(ash::vk::ExportSemaphoreCreateInfo {
-                handle_types: export_handle_types.into(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
+        let mut create_info_extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
 
         let handle = {
             let fns = device.fns();
@@ -338,13 +307,7 @@ impl Semaphore {
         &self,
         signal_info: SemaphoreSignalInfo,
     ) -> Result<(), VulkanError> {
-        let &SemaphoreSignalInfo { value, _ne: _ } = &signal_info;
-
-        let signal_info_vk = ash::vk::SemaphoreSignalInfo {
-            semaphore: self.handle,
-            value,
-            ..Default::default()
-        };
+        let signal_info_vk = signal_info.to_vk(self.handle());
 
         let fns = self.device.fns();
 
@@ -407,22 +370,7 @@ impl Semaphore {
         wait_info: SemaphoreWaitInfo,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
-        let &SemaphoreWaitInfo {
-            flags,
-            value,
-            _ne: _,
-        } = &wait_info;
-
-        let semaphores_vk = [self.handle];
-        let values_vk = [value];
-
-        let wait_info_vk = ash::vk::SemaphoreWaitInfo {
-            flags: flags.into(),
-            semaphore_count: 1,
-            p_semaphores: semaphores_vk.as_ptr(),
-            p_values: values_vk.as_ptr(),
-            ..Default::default()
-        };
+        let wait_info_vk = wait_info.to_vk(&self.handle);
 
         let fns = self.device.fns();
 
@@ -493,39 +441,14 @@ impl Semaphore {
         wait_info: SemaphoreWaitMultipleInfo,
         timeout: Option<Duration>,
     ) -> Result<(), VulkanError> {
-        let &SemaphoreWaitMultipleInfo {
-            flags,
-            ref semaphores,
-            _ne: _,
-        } = &wait_info;
-
-        if semaphores.is_empty() {
+        if wait_info.semaphores.is_empty() {
             return Ok(());
         }
 
-        let mut semaphores_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
-        let mut values_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
+        let wait_info_fields1_vk = wait_info.to_vk_fields1();
+        let wait_info_vk = wait_info.to_vk(&wait_info_fields1_vk);
 
-        for value_info in semaphores {
-            let &SemaphoreWaitValueInfo {
-                ref semaphore,
-                value,
-                _ne: _,
-            } = value_info;
-
-            semaphores_vk.push(semaphore.handle);
-            values_vk.push(value);
-        }
-
-        let wait_info_vk = ash::vk::SemaphoreWaitInfo {
-            flags: flags.into(),
-            semaphore_count: semaphores_vk.len() as u32,
-            p_semaphores: semaphores_vk.as_ptr(),
-            p_values: values_vk.as_ptr(),
-            ..Default::default()
-        };
-
-        let device = &semaphores[0].semaphore.device;
+        let device = &wait_info.semaphores[0].semaphore.device;
         let fns = device.fns();
 
         if device.api_version() >= Version::V1_2 {
@@ -627,11 +550,9 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<File, VulkanError> {
-        let info_vk = ash::vk::SemaphoreGetFdInfoKHR {
-            semaphore: self.handle,
-            handle_type: handle_type.into(),
-            ..Default::default()
-        };
+        let info_vk = ash::vk::SemaphoreGetFdInfoKHR::default()
+            .semaphore(self.handle)
+            .handle_type(handle_type.into());
 
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
@@ -737,11 +658,9 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<ash::vk::HANDLE, VulkanError> {
-        let info_vk = ash::vk::SemaphoreGetWin32HandleInfoKHR {
-            semaphore: self.handle,
-            handle_type: handle_type.into(),
-            ..Default::default()
-        };
+        let info_vk = ash::vk::SemaphoreGetWin32HandleInfoKHR::default()
+            .semaphore(self.handle)
+            .handle_type(handle_type.into());
 
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
@@ -827,11 +746,9 @@ impl Semaphore {
         &self,
         handle_type: ExternalSemaphoreHandleType,
     ) -> Result<ash::vk::zx_handle_t, VulkanError> {
-        let info_vk = ash::vk::SemaphoreGetZirconHandleInfoFUCHSIA {
-            semaphore: self.handle,
-            handle_type: handle_type.into(),
-            ..Default::default()
-        };
+        let info_vk = ash::vk::SemaphoreGetZirconHandleInfoFUCHSIA::default()
+            .semaphore(self.handle)
+            .handle_type(handle_type.into());
 
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
@@ -913,32 +830,7 @@ impl Semaphore {
         &self,
         import_semaphore_fd_info: ImportSemaphoreFdInfo,
     ) -> Result<(), VulkanError> {
-        let ImportSemaphoreFdInfo {
-            flags,
-            handle_type,
-            file,
-            _ne: _,
-        } = import_semaphore_fd_info;
-
-        #[cfg(unix)]
-        let fd = {
-            use std::os::fd::IntoRawFd;
-            file.map_or(-1, |file| file.into_raw_fd())
-        };
-
-        #[cfg(not(unix))]
-        let fd = {
-            let _ = file;
-            -1
-        };
-
-        let info_vk = ash::vk::ImportSemaphoreFdInfoKHR {
-            semaphore: self.handle,
-            flags: flags.into(),
-            handle_type: handle_type.into(),
-            fd,
-            ..Default::default()
-        };
+        let info_vk = import_semaphore_fd_info.into_vk(self.handle());
 
         let fns = self.device.fns();
         (fns.khr_external_semaphore_fd.import_semaphore_fd_khr)(self.device.handle(), &info_vk)
@@ -1018,21 +910,7 @@ impl Semaphore {
         &self,
         import_semaphore_win32_handle_info: ImportSemaphoreWin32HandleInfo,
     ) -> Result<(), VulkanError> {
-        let ImportSemaphoreWin32HandleInfo {
-            flags,
-            handle_type,
-            handle,
-            _ne: _,
-        } = import_semaphore_win32_handle_info;
-
-        let info_vk = ash::vk::ImportSemaphoreWin32HandleInfoKHR {
-            semaphore: self.handle,
-            flags: flags.into(),
-            handle_type: handle_type.into(),
-            handle,
-            name: ptr::null(), // TODO: support?
-            ..Default::default()
-        };
+        let info_vk = import_semaphore_win32_handle_info.to_vk(self.handle());
 
         let fns = self.device.fns();
         (fns.khr_external_semaphore_win32
@@ -1096,20 +974,7 @@ impl Semaphore {
         &self,
         import_semaphore_zircon_handle_info: ImportSemaphoreZirconHandleInfo,
     ) -> Result<(), VulkanError> {
-        let ImportSemaphoreZirconHandleInfo {
-            flags,
-            handle_type,
-            zircon_handle,
-            _ne: _,
-        } = import_semaphore_zircon_handle_info;
-
-        let info_vk = ash::vk::ImportSemaphoreZirconHandleInfoFUCHSIA {
-            semaphore: self.handle,
-            flags: flags.into(),
-            handle_type: handle_type.into(),
-            zircon_handle,
-            ..Default::default()
-        };
+        let info_vk = import_semaphore_zircon_handle_info.to_vk(self.handle());
 
         let fns = self.device.fns();
         (fns.fuchsia_external_semaphore
@@ -1298,6 +1163,58 @@ impl SemaphoreCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut SemaphoreCreateInfoExtensionsVk,
+    ) -> ash::vk::SemaphoreCreateInfo<'a> {
+        let &Self {
+            semaphore_type: _,
+            initial_value: _,
+            export_handle_types: _,
+            _ne: _,
+        } = self;
+
+        let mut val_vk =
+            ash::vk::SemaphoreCreateInfo::default().flags(ash::vk::SemaphoreCreateFlags::empty());
+
+        let SemaphoreCreateInfoExtensionsVk { export_vk, type_vk } = extensions_vk;
+
+        if let Some(next) = export_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = type_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> SemaphoreCreateInfoExtensionsVk {
+        let &Self {
+            semaphore_type,
+            initial_value,
+            export_handle_types,
+            _ne: _,
+        } = self;
+
+        let export_vk = (!export_handle_types.is_empty()).then(|| {
+            ash::vk::ExportSemaphoreCreateInfo::default().handle_types(export_handle_types.into())
+        });
+        let type_vk = (semaphore_type != SemaphoreType::Binary).then(|| {
+            ash::vk::SemaphoreTypeCreateInfo::default()
+                .semaphore_type(semaphore_type.into())
+                .initial_value(initial_value)
+        });
+
+        SemaphoreCreateInfoExtensionsVk { export_vk, type_vk }
+    }
+}
+
+pub(crate) struct SemaphoreCreateInfoExtensionsVk {
+    pub(crate) export_vk: Option<ash::vk::ExportSemaphoreCreateInfo<'static>>,
+    pub(crate) type_vk: Option<ash::vk::SemaphoreTypeCreateInfo<'static>>,
 }
 
 vulkan_enum! {
@@ -1414,6 +1331,17 @@ impl SemaphoreSignalInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(
+        &self,
+        semaphore_vk: ash::vk::Semaphore,
+    ) -> ash::vk::SemaphoreSignalInfo<'static> {
+        let &Self { value, _ne: _ } = self;
+
+        ash::vk::SemaphoreSignalInfo::default()
+            .semaphore(semaphore_vk)
+            .value(value)
+    }
 }
 
 /// Parameters to wait for a single timeline semaphore.
@@ -1457,6 +1385,22 @@ impl SemaphoreWaitInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk<'a>(
+        &'a self,
+        semaphore_vk: &'a ash::vk::Semaphore,
+    ) -> ash::vk::SemaphoreWaitInfo<'a> {
+        let &Self {
+            flags,
+            ref value,
+            _ne: _,
+        } = self;
+
+        ash::vk::SemaphoreWaitInfo::default()
+            .flags(flags.into())
+            .semaphores(slice::from_ref(semaphore_vk))
+            .values(slice::from_ref(value))
     }
 }
 
@@ -1512,6 +1456,54 @@ impl SemaphoreWaitMultipleInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a SemaphoreWaitMultipleInfoFields1Vk,
+    ) -> ash::vk::SemaphoreWaitInfo<'a> {
+        let &Self {
+            flags,
+            semaphores: _,
+            _ne: _,
+        } = self;
+        let SemaphoreWaitMultipleInfoFields1Vk {
+            semaphores_vk,
+            values_vk,
+        } = fields1_vk;
+
+        ash::vk::SemaphoreWaitInfo::default()
+            .flags(flags.into())
+            .semaphores(semaphores_vk)
+            .values(values_vk)
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> SemaphoreWaitMultipleInfoFields1Vk {
+        let &SemaphoreWaitMultipleInfo { ref semaphores, .. } = self;
+
+        let mut semaphores_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
+        let mut values_vk: SmallVec<[_; 8]> = SmallVec::with_capacity(semaphores.len());
+
+        for value_info in semaphores {
+            let &SemaphoreWaitValueInfo {
+                ref semaphore,
+                value,
+                _ne: _,
+            } = value_info;
+
+            semaphores_vk.push(semaphore.handle);
+            values_vk.push(value);
+        }
+
+        SemaphoreWaitMultipleInfoFields1Vk {
+            semaphores_vk,
+            values_vk,
+        }
+    }
+}
+
+pub(crate) struct SemaphoreWaitMultipleInfoFields1Vk {
+    semaphores_vk: SmallVec<[ash::vk::Semaphore; 8]>,
+    values_vk: SmallVec<[u64; 8]>,
 }
 
 vulkan_bitflags! {
@@ -1673,6 +1665,36 @@ impl ImportSemaphoreFdInfo {
 
         Ok(())
     }
+
+    pub(crate) fn into_vk(
+        self,
+        semaphore_vk: ash::vk::Semaphore,
+    ) -> ash::vk::ImportSemaphoreFdInfoKHR<'static> {
+        let Self {
+            flags,
+            handle_type,
+            file,
+            _ne: _,
+        } = self;
+
+        #[cfg(unix)]
+        let fd = {
+            use std::os::fd::IntoRawFd;
+            file.map_or(-1, |file| file.into_raw_fd())
+        };
+
+        #[cfg(not(unix))]
+        let fd = {
+            let _ = file;
+            -1
+        };
+
+        ash::vk::ImportSemaphoreFdInfoKHR::default()
+            .semaphore(semaphore_vk)
+            .flags(flags.into())
+            .handle_type(handle_type.into())
+            .fd(fd)
+    }
 }
 
 #[derive(Debug)]
@@ -1760,6 +1782,25 @@ impl ImportSemaphoreWin32HandleInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(
+        &self,
+        semaphore_vk: ash::vk::Semaphore,
+    ) -> ash::vk::ImportSemaphoreWin32HandleInfoKHR<'static> {
+        let &Self {
+            flags,
+            handle_type,
+            handle,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImportSemaphoreWin32HandleInfoKHR::default()
+            .semaphore(semaphore_vk)
+            .flags(flags.into())
+            .handle_type(handle_type.into())
+            .handle(handle)
+        // .name() // TODO: support?
+    }
 }
 
 #[derive(Debug)]
@@ -1839,6 +1880,24 @@ impl ImportSemaphoreZirconHandleInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(
+        &self,
+        semaphore_vk: ash::vk::Semaphore,
+    ) -> ash::vk::ImportSemaphoreZirconHandleInfoFUCHSIA<'static> {
+        let &Self {
+            flags,
+            handle_type,
+            zircon_handle,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImportSemaphoreZirconHandleInfoFUCHSIA::default()
+            .semaphore(semaphore_vk)
+            .flags(flags.into())
+            .handle_type(handle_type.into())
+            .zircon_handle(zircon_handle)
     }
 }
 
@@ -1929,6 +1988,50 @@ impl ExternalSemaphoreInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut ExternalSemaphoreInfoExtensionsVk,
+    ) -> ash::vk::PhysicalDeviceExternalSemaphoreInfo<'a> {
+        let &Self {
+            handle_type,
+            semaphore_type: _,
+            initial_value: _,
+            _ne: _,
+        } = self;
+
+        let mut val_vk =
+            ash::vk::PhysicalDeviceExternalSemaphoreInfo::default().handle_type(handle_type.into());
+
+        let ExternalSemaphoreInfoExtensionsVk { type_vk } = extensions_vk;
+
+        if let Some(next) = type_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> ExternalSemaphoreInfoExtensionsVk {
+        let &Self {
+            handle_type: _,
+            semaphore_type,
+            initial_value,
+            _ne: _,
+        } = self;
+
+        let type_vk = (semaphore_type != SemaphoreType::Binary).then(|| {
+            ash::vk::SemaphoreTypeCreateInfo::default()
+                .semaphore_type(semaphore_type.into())
+                .initial_value(initial_value)
+        });
+
+        ExternalSemaphoreInfoExtensionsVk { type_vk }
+    }
+}
+
+pub(crate) struct ExternalSemaphoreInfoExtensionsVk {
+    pub(crate) type_vk: Option<ash::vk::SemaphoreTypeCreateInfo<'static>>,
 }
 
 /// The properties for exporting or importing external handles, when a semaphore is created
@@ -1951,6 +2054,30 @@ pub struct ExternalSemaphoreProperties {
     /// Which external handle types can be enabled along with the queried external handle type
     /// when creating the semaphore.
     pub compatible_handle_types: ExternalSemaphoreHandleTypes,
+}
+
+impl ExternalSemaphoreProperties {
+    pub(crate) fn to_mut_vk() -> ash::vk::ExternalSemaphoreProperties<'static> {
+        ash::vk::ExternalSemaphoreProperties::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &ash::vk::ExternalSemaphoreProperties<'_>) -> Self {
+        let &ash::vk::ExternalSemaphoreProperties {
+            export_from_imported_handle_types,
+            compatible_handle_types,
+            external_semaphore_features,
+            ..
+        } = val_vk;
+
+        ExternalSemaphoreProperties {
+            exportable: external_semaphore_features
+                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
+            importable: external_semaphore_features
+                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::IMPORTABLE),
+            export_from_imported_handle_types: export_from_imported_handle_types.into(),
+            compatible_handle_types: compatible_handle_types.into(),
+        }
+    }
 }
 
 #[cfg(test)]

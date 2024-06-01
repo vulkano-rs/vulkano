@@ -60,20 +60,7 @@ impl QueryPool {
         device: Arc<Device>,
         create_info: QueryPoolCreateInfo,
     ) -> Result<Arc<QueryPool>, VulkanError> {
-        let &QueryPoolCreateInfo {
-            query_type,
-            query_count,
-            pipeline_statistics,
-            _ne: _,
-        } = &create_info;
-
-        let create_info_vk = ash::vk::QueryPoolCreateInfo {
-            flags: ash::vk::QueryPoolCreateFlags::empty(),
-            query_type: query_type.into(),
-            query_count,
-            pipeline_statistics: pipeline_statistics.into(),
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = unsafe {
             let fns = device.fns();
@@ -523,6 +510,21 @@ impl QueryPoolCreateInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::QueryPoolCreateInfo<'static> {
+        let &Self {
+            query_type,
+            query_count,
+            pipeline_statistics,
+            _ne: _,
+        } = self;
+
+        ash::vk::QueryPoolCreateInfo::default()
+            .flags(ash::vk::QueryPoolCreateFlags::empty())
+            .query_type(query_type.into())
+            .query_count(query_count)
+            .pipeline_statistics(pipeline_statistics.into())
     }
 }
 

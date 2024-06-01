@@ -21,6 +21,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
+use smallvec::SmallVec;
 use std::iter;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
@@ -118,7 +119,7 @@ impl ColorBlendState {
     pub fn blend(mut self, blend: AttachmentBlend) -> Self {
         self.attachments
             .iter_mut()
-            .for_each(|attachment_state| attachment_state.blend = Some(blend));
+            .for_each(|attachment_state| attachment_state.blend = Some(blend.clone()));
         self
     }
 
@@ -460,6 +461,90 @@ impl ColorBlendState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a ColorBlendStateFields1Vk,
+        extensions_vk: &'a mut ColorBlendStateExtensionsVk<'_>,
+    ) -> ash::vk::PipelineColorBlendStateCreateInfo<'a> {
+        let &Self {
+            flags,
+            logic_op,
+            attachments: _,
+            blend_constants,
+            _ne: _,
+        } = self;
+        let ColorBlendStateFields1Vk {
+            color_blend_attachments_vk,
+            color_write_enables_vk: _,
+        } = fields1_vk;
+
+        let (logic_op_enable_vk, logic_op_vk) = if let Some(logic_op) = logic_op {
+            (true, logic_op.into())
+        } else {
+            (false, Default::default())
+        };
+
+        let mut val_vk = ash::vk::PipelineColorBlendStateCreateInfo::default()
+            .flags(flags.into())
+            .logic_op_enable(logic_op_enable_vk)
+            .logic_op(logic_op_vk)
+            .attachments(color_blend_attachments_vk)
+            .blend_constants(blend_constants);
+
+        let ColorBlendStateExtensionsVk { color_write_vk } = extensions_vk;
+
+        if let Some(next) = color_write_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a ColorBlendStateFields1Vk,
+    ) -> ColorBlendStateExtensionsVk<'a> {
+        let ColorBlendStateFields1Vk {
+            color_blend_attachments_vk: _,
+            color_write_enables_vk,
+        } = fields1_vk;
+
+        let color_write_vk = (!color_write_enables_vk.is_empty()).then(|| {
+            ash::vk::PipelineColorWriteCreateInfoEXT::default()
+                .color_write_enables(color_write_enables_vk)
+        });
+
+        ColorBlendStateExtensionsVk { color_write_vk }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> ColorBlendStateFields1Vk {
+        let mut color_blend_attachments_vk = SmallVec::with_capacity(self.attachments.len());
+        let mut color_write_enables_vk = SmallVec::with_capacity(self.attachments.len());
+        let mut has_color_write_enables = false;
+
+        for color_blend_attachment_state in &self.attachments {
+            color_blend_attachments_vk.push(color_blend_attachment_state.to_vk());
+            color_write_enables_vk.push(color_blend_attachment_state.color_write_enable as _);
+            has_color_write_enables |= !color_blend_attachment_state.color_write_enable;
+        }
+
+        ColorBlendStateFields1Vk {
+            color_blend_attachments_vk,
+            color_write_enables_vk: has_color_write_enables
+                .then_some(color_write_enables_vk)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+pub(crate) struct ColorBlendStateExtensionsVk<'a> {
+    pub(crate) color_write_vk: Option<ash::vk::PipelineColorWriteCreateInfoEXT<'a>>,
+}
+
+pub(crate) struct ColorBlendStateFields1Vk {
+    color_blend_attachments_vk: SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 4]>,
+    color_write_enables_vk: SmallVec<[ash::vk::Bool32; 4]>,
 }
 
 vulkan_bitflags! {
@@ -565,7 +650,7 @@ pub struct ColorBlendAttachmentState {
     /// that is written is determined by the `color_write_mask`. If disabled, the mask is ignored
     /// and nothing is written.
     ///
-    /// If set to anything other than `Fixed(true)`, the
+    /// If set to `false`, the
     /// [`color_write_enable`](crate::device::DeviceFeatures::color_write_enable) feature must be
     /// enabled on the device.
     ///
@@ -611,10 +696,26 @@ impl ColorBlendAttachmentState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PipelineColorBlendAttachmentState {
+        let &Self {
+            ref blend,
+            color_write_mask,
+            color_write_enable: _,
+        } = self;
+
+        ash::vk::PipelineColorBlendAttachmentState {
+            color_write_mask: color_write_mask.into(),
+            ..blend
+                .as_ref()
+                .map(AttachmentBlend::to_vk)
+                .unwrap_or_default()
+        }
+    }
 }
 
 /// Describes how the blending system should behave for an attachment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttachmentBlend {
     /// The operation to apply to the source color component before applying `color_op`.
     ///
@@ -866,19 +967,25 @@ impl AttachmentBlend {
 
         Ok(())
     }
-}
 
-impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
-    #[inline]
-    fn from(val: AttachmentBlend) -> Self {
+    pub(crate) fn to_vk(&self) -> ash::vk::PipelineColorBlendAttachmentState {
+        let &Self {
+            src_color_blend_factor,
+            dst_color_blend_factor,
+            color_blend_op,
+            src_alpha_blend_factor,
+            dst_alpha_blend_factor,
+            alpha_blend_op,
+        } = self;
+
         ash::vk::PipelineColorBlendAttachmentState {
             blend_enable: ash::vk::TRUE,
-            src_color_blend_factor: val.src_color_blend_factor.into(),
-            dst_color_blend_factor: val.dst_color_blend_factor.into(),
-            color_blend_op: val.color_blend_op.into(),
-            src_alpha_blend_factor: val.src_alpha_blend_factor.into(),
-            dst_alpha_blend_factor: val.dst_alpha_blend_factor.into(),
-            alpha_blend_op: val.alpha_blend_op.into(),
+            src_color_blend_factor: src_color_blend_factor.into(),
+            dst_color_blend_factor: dst_color_blend_factor.into(),
+            color_blend_op: color_blend_op.into(),
+            src_alpha_blend_factor: src_alpha_blend_factor.into(),
+            dst_alpha_blend_factor: dst_alpha_blend_factor.into(),
+            alpha_blend_op: alpha_blend_op.into(),
             color_write_mask: ash::vk::ColorComponentFlags::empty(),
         }
     }
