@@ -13,6 +13,7 @@
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
 - [winit](https://crates.io/crates/winit) 0.29
 - [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
+- Rust version: 1.72.0
 
 ### Public dependency updates
 
@@ -130,6 +131,7 @@ Changes to vulkano-util:
 - Support for the `ext_conservative_rasterization` extension.
 - Support for the `extended_dynamic_state3_conservative_rasterization_mode` device feature.
 - Support for the `extended_dynamic_state3_extra_primitive_overestimation_size` device feature.
+- Added `ResourceMemory::from_device_memory_unchecked`.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.

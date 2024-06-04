@@ -146,11 +146,43 @@ impl ResourceMemory {
         unsafe { Self::new_dedicated_unchecked(Arc::new(device_memory)) }
     }
 
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    /// Same as [`new_dedicated`], except that this allows creating aliasing resources.
+    ///
+    /// # Safety
+    ///
+    /// - Two resources must not alias each other, and if they do, you must ensure correct
+    ///   synchronization yourself.
     pub unsafe fn new_dedicated_unchecked(device_memory: Arc<DeviceMemory>) -> Self {
+        let size = device_memory.allocation_size();
+
+        unsafe { Self::from_device_memory_unchecked(device_memory, 0, size) }
+    }
+
+    /// Creates a new `ResourceMemory` from the given portion of the given device memory block. You
+    /// may use this when you need to portion an existing memory block in a specific way. Note that
+    /// when you don't have this requirement of placing resources at specific offsets, you should
+    /// use a memory allocator instead.
+    ///
+    /// # Safety
+    ///
+    /// - Two resources must not alias each other (as returned by [`Buffer::memory_requirements`]
+    ///   or [`Image::memory_requirements`]), and if they do, you must ensure correct
+    ///   synchronization yourself.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `offset + size` is greater than `device_memory.allocation_size()`.
+    pub unsafe fn from_device_memory_unchecked(
+        device_memory: Arc<DeviceMemory>,
+        offset: DeviceSize,
+        size: DeviceSize,
+    ) -> Self {
+        assert!(offset <= device_memory.allocation_size());
+        assert!(size <= device_memory.allocation_size() - offset);
+
         ResourceMemory {
-            offset: 0,
-            size: device_memory.allocation_size(),
+            offset,
+            size,
             allocation_type: AllocationType::Unknown,
             allocation_handle: AllocationHandle::null(),
             suballocation_handle: None,
