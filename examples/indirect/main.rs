@@ -454,7 +454,7 @@ fn main() -> Result<(), impl Error> {
 
                 // Pass the two buffers to the compute shader.
                 let layout = &compute_pipeline.layout().set_layouts()[0];
-                let cs_desciptor_set = DescriptorSet::new(
+                let cs_descriptor_set = DescriptorSet::new(
                     descriptor_set_allocator.clone(),
                     layout.clone(),
                     [
@@ -485,7 +485,7 @@ fn main() -> Result<(), impl Error> {
                         PipelineBindPoint::Compute,
                         compute_pipeline.layout().clone(),
                         0,
-                        cs_desciptor_set,
+                        cs_descriptor_set,
                     )
                     .unwrap();
 

@@ -206,7 +206,7 @@ impl Packed24_8 {
     }
 }
 
-// Allow refering to crate by its name to work around limitations of proc-macros
+// Allow referring to crate by its name to work around limitations of proc-macros
 // in doctests.
 // See https://github.com/rust-lang/cargo/issues/9886
 // and https://github.com/bkchr/proc-macro-crate/issues/10

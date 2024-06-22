@@ -91,11 +91,11 @@ To get started you are encouraged to use the following resources:
    examples (~50 lines of code) and then works up to rendering triangles and mandelbrots.
    The guide is currently outdated a little. We are planning to update it in the future, but it's
    a good place to start understanding the base building blocks of Vulkano API.
- - Github [Issues](https://github.com/vulkano-rs/vulkano/issues) - Raise a topic, ask a question
+ - GitHub [Issues](https://github.com/vulkano-rs/vulkano/issues) - Raise a topic, ask a question
    or report a bug. The new topics there are watched regularly by maintainers and other
    community users.
  - Gitter [Chat](https://gitter.im/vulkano-rs/Lobby) - Another place to raise a question. However,
-   the chat is not maintained regularly at this moment. Better use Github Issues for this purpose.
+   the chat is not maintained regularly at this moment. Better use GitHub Issues for this purpose.
 
 ## Contributing
 

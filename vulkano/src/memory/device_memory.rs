@@ -764,7 +764,7 @@ impl DeviceMemory {
         Ok(())
     }
 
-    /// Retrieves the amount of lazily-allocated memory that is currently commited to this
+    /// Retrieves the amount of lazily-allocated memory that is currently committed to this
     /// memory object.
     ///
     /// The device may change this value at any time, and the returned value may be

@@ -1,0 +1,19 @@
+[files]
+extend-exclude = [
+    ".git/",
+    "vulkano/spirv.core.grammar.json",
+]
+ignore-hidden = false
+
+[default]
+extend-ignore-re = [
+    "Jean-Noe Morissette",
+    "Simon Ser",
+]
+
+[default.extend-words]
+lod = "lod"
+uscaled = "uscaled"
+
+[default.extend-identifiers]
+ANDed = "ANDed"

@@ -25,7 +25,7 @@
 //!
 //! In the vulkano library, images that have memory bound to them are represented by [`Image`]. You
 //! can [create an `Image` directly] by providing a memory allocator and all the info for the image
-//! and allocation you want to create. This should satisify most use cases. The more low-level use
+//! and allocation you want to create. This should satisfy most use cases. The more low-level use
 //! cases such as importing memory for the image are described below.
 //!
 //! You can create an [`ImageView`] from any `Image`.

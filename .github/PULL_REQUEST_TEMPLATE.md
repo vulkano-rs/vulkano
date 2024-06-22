@@ -14,7 +14,7 @@
    Please remove any items from the template below that are not applicable.
 
 6. [ ] Describe in common words what is the purpose of this change, related
-   Github Issues, and highlight important implementation aspects.
+   GitHub Issues, and highlight important implementation aspects.
 
 Changelog:
 ```markdown

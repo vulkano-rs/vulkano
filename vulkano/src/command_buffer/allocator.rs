@@ -391,7 +391,7 @@ impl Entry {
             // there will be 2 references to the pool (one here and one in the allocation) and so
             // the pool won't be returned to the reserve when deallocating. However, since there
             // are no other allocations alive, there would be no other allocations that could
-            // return it to the reserve. To avoid dropping the pool unneccessarily, we simply
+            // return it to the reserve. To avoid dropping the pool unnecessarily, we simply
             // continue using it. In the case where there are other references, we drop ours, at
             // which point an allocation still holding a reference will be able to put the pool
             // into the reserve when deallocated.
