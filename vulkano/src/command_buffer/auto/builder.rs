@@ -529,11 +529,16 @@ impl<'a> MergedCommandInfo<'a> {
         } else {
             (None, SmallVec::new())
         };
+        let direct = if value.used_resources.direct.is_empty() {
+            SmallVec::new()
+        } else {
+            SmallVec::from_iter([&value.used_resources.direct])
+        };
         Self {
             name: value.name,
             render_pass: value.render_pass,
             pipeline,
-            direct: SmallVec::from_iter([&value.used_resources.direct]),
+            direct,
             deferred,
         }
     }
@@ -548,6 +553,7 @@ impl<'a> MergedCommandInfo<'a> {
             return Err(b);
         }
 
+        // success
         if self.pipeline == None {
             self.pipeline = b.pipeline;
         }
