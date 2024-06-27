@@ -1,5 +1,6 @@
 use super::{
     CommandBuffer, CommandInfo, RenderPassCommand, Resource, ResourceUseRef2, SubmitState,
+    UsedResources, UsedResourcesDeferred,
 };
 use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
@@ -267,6 +268,32 @@ impl RecordingCommandBuffer {
         used_resources: Vec<(ResourceUseRef2, Resource)>,
         record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
     ) {
+        self.add_command_resources(
+            name,
+            UsedResources {
+                direct: used_resources,
+                deferred: None,
+            },
+            record_func,
+        )
+    }
+
+    pub(in crate::command_buffer) fn add_command_deferred(
+        &mut self,
+        name: &'static str,
+        direct: Vec<(ResourceUseRef2, Resource)>,
+        deferred: Option<UsedResourcesDeferred>,
+        record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
+    ) {
+        self.add_command_resources(name, UsedResources::deferred(direct, deferred), record_func)
+    }
+
+    fn add_command_resources(
+        &mut self,
+        name: &'static str,
+        used_resources: UsedResources,
+        record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
+    ) {
         self.commands.push((
             CommandInfo {
                 name,
@@ -286,7 +313,7 @@ impl RecordingCommandBuffer {
         self.commands.push((
             CommandInfo {
                 name,
-                used_resources,
+                used_resources: UsedResources::direct(used_resources),
                 render_pass: RenderPassCommand::Begin,
             },
             Box::new(record_func),
@@ -302,7 +329,7 @@ impl RecordingCommandBuffer {
         self.commands.push((
             CommandInfo {
                 name,
-                used_resources,
+                used_resources: UsedResources::direct(used_resources),
                 render_pass: RenderPassCommand::End,
             },
             Box::new(record_func),
@@ -518,7 +545,8 @@ impl AutoSyncState {
             ..
         } = command_info;
 
-        for (use_ref, resource) in used_resources {
+        for res in used_resources.iter() {
+            let (use_ref, resource) = res.as_ref();
             match *resource {
                 Resource::Buffer {
                     ref buffer,
@@ -700,7 +728,8 @@ impl AutoSyncState {
             ..
         } = command_info;
 
-        for (use_ref, resource) in used_resources {
+        for res in used_resources.iter() {
+            let (use_ref, resource) = res.as_ref();
             match *resource {
                 Resource::Buffer {
                     ref buffer,
@@ -1593,6 +1622,7 @@ pub(in crate::command_buffer) struct RenderPassStateAttachmentResolveInfo {
     pub(in crate::command_buffer) _image_layout: ImageLayout,
 }
 
+#[derive(Clone)]
 pub(in crate::command_buffer) struct DescriptorSetState {
     pub(in crate::command_buffer) descriptor_sets: HashMap<u32, SetOrPush>,
     pub(in crate::command_buffer) pipeline_layout: Arc<PipelineLayout>,

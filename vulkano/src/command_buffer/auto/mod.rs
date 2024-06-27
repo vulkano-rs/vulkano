@@ -72,11 +72,13 @@ use crate::{
     buffer::Subbuffer,
     device::{Device, DeviceOwned},
     image::{Image, ImageLayout, ImageSubresourceRange},
+    pipeline::{ComputePipeline, GraphicsPipeline, Pipeline},
     sync::PipelineStageAccessFlags,
     DeviceSize, ValidationError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{
+    borrow::Cow,
     fmt::{Debug, Error as FmtError, Formatter},
     ops::Range,
     sync::{
@@ -287,9 +289,69 @@ pub(super) enum Resource {
     },
 }
 
+pub(in crate::command_buffer) struct UsedResources {
+    direct: Vec<(ResourceUseRef2, Resource)>,
+    deferred: Option<UsedResourcesDeferred>,
+}
+
+pub(in crate::command_buffer) enum UsedResourcesDeferred {
+    Compute(Arc<ComputePipeline>, DescriptorSetState),
+    Graphics(Arc<GraphicsPipeline>, DescriptorSetState),
+}
+
+impl UsedResourcesDeferred {
+    pub fn resolve(&self) -> Vec<(ResourceUseRef2, Resource)> {
+        fn handle_deferred(
+            pipeline: &Arc<impl Pipeline>,
+            state: &DescriptorSetState,
+        ) -> Vec<(ResourceUseRef2, Resource)> {
+            let mut used_resources = Vec::new();
+            RecordingCommandBuffer::add_descriptor_sets_resources(
+                &mut used_resources,
+                pipeline.as_ref(),
+                &state,
+            );
+            used_resources
+        }
+
+        match self {
+            UsedResourcesDeferred::Compute(pipeline, state) => handle_deferred(pipeline, state),
+            UsedResourcesDeferred::Graphics(pipeline, state) => handle_deferred(pipeline, state),
+        }
+    }
+}
+
+impl UsedResources {
+    #[inline]
+    pub fn direct(direct: Vec<(ResourceUseRef2, Resource)>) -> Self {
+        Self {
+            direct,
+            deferred: None,
+        }
+    }
+
+    #[inline]
+    pub fn deferred(
+        direct: Vec<(ResourceUseRef2, Resource)>,
+        deferred: Option<UsedResourcesDeferred>,
+    ) -> Self {
+        Self { direct, deferred }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Cow<'_, (ResourceUseRef2, Resource)>> {
+        self.direct.iter().map(Cow::Borrowed).chain(
+            self.deferred
+                .as_ref()
+                .map_or(Vec::new(), |deferred| deferred.resolve())
+                .into_iter()
+                .map(Cow::Owned),
+        )
+    }
+}
+
 struct CommandInfo {
     name: &'static str,
-    used_resources: Vec<(ResourceUseRef2, Resource)>,
+    used_resources: UsedResources,
     render_pass: RenderPassCommand,
 }
 
