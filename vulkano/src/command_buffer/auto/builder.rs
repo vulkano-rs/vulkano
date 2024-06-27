@@ -544,10 +544,13 @@ impl<'a> MergedCommandInfo<'a> {
             (RenderPassCommand::None, RenderPassCommand::None) => (),
             _ => return Err(b),
         }
-        if self.pipeline != b.pipeline {
+        if !(self.pipeline == b.pipeline || self.pipeline == None || b.pipeline == None) {
             return Err(b);
         }
 
+        if self.pipeline == None {
+            self.pipeline = b.pipeline;
+        }
         self.direct.append(&mut b.direct);
         // FIXME deferred must be merged together to prevent duplicate resources
         self.deferred.append(&mut b.deferred);
