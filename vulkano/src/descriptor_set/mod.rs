@@ -318,7 +318,7 @@ impl Hash for DescriptorSet {
 }
 
 /// The resources that are bound to a descriptor set.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DescriptorSetResources {
     binding_resources: HashMap<u32, DescriptorBindingResources>,
 }
@@ -435,7 +435,7 @@ impl DescriptorSetResources {
 }
 
 /// The resources that are bound to a single descriptor set binding.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DescriptorBindingResources {
     None(Elements<()>),
     Buffer(Elements<DescriptorBufferInfo>),
@@ -623,7 +623,7 @@ impl DescriptorBindingResources {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DescriptorSetWithOffsets {
     descriptor_set: Arc<DescriptorSet>,
     dynamic_offsets: SmallVec<[u32; 4]>,

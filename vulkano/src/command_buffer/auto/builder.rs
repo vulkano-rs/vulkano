@@ -40,12 +40,13 @@ use crate::{
     },
     DeviceSize, Validated, ValidationError, VulkanError,
 };
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry,
     fmt::Debug,
+    hash::{Hash, Hasher},
     mem::take,
     ops::{Range, RangeInclusive},
     sync::{atomic::AtomicBool, Arc},
@@ -565,7 +566,8 @@ impl<'a> MergedCommandInfo<'a> {
 
     fn resolve_deferred(&self, pipeline: &Arc<impl Pipeline>) -> Vec<(ResourceUseRef2, Resource)> {
         let mut used_resources = Vec::new();
-        for state in &self.deferred {
+        let deferred_deduplicated = HashSet::from_iter(self.deferred.iter().copied());
+        for state in &deferred_deduplicated {
             RecordingCommandBuffer::add_descriptor_sets_resources(
                 &mut used_resources,
                 pipeline.as_ref(),
@@ -1707,13 +1709,28 @@ pub(in crate::command_buffer) struct RenderPassStateAttachmentResolveInfo {
     pub(in crate::command_buffer) _image_layout: ImageLayout,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::command_buffer) struct DescriptorSetState {
     pub(in crate::command_buffer) descriptor_sets: HashMap<u32, SetOrPush>,
     pub(in crate::command_buffer) pipeline_layout: Arc<PipelineLayout>,
 }
 
-#[derive(Clone, Debug)]
+impl Hash for DescriptorSetState {
+    /// HashMaps cannot be hashed, so we do our best job manually
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.pipeline_layout.hash(state);
+        for (id, set_or_push) in &self.descriptor_sets {
+            id.hash(state);
+            match set_or_push {
+                SetOrPush::Set(set) => set.hash(state),
+                // push descriptors are expensive to hash and compare
+                SetOrPush::Push(_) => (),
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::command_buffer) enum SetOrPush {
     Set(DescriptorSetWithOffsets),
     Push(DescriptorSetResources),
