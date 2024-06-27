@@ -513,6 +513,7 @@ impl AutoSyncState {
     }
 }
 
+#[derive(Debug)]
 struct MergedCommandInfo<'a> {
     name: &'static str,
     render_pass: RenderPassCommand,
@@ -1697,13 +1698,13 @@ pub(in crate::command_buffer) struct RenderPassStateAttachmentResolveInfo {
     pub(in crate::command_buffer) _image_layout: ImageLayout,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(in crate::command_buffer) struct DescriptorSetState {
     pub(in crate::command_buffer) descriptor_sets: HashMap<u32, SetOrPush>,
     pub(in crate::command_buffer) pipeline_layout: Arc<PipelineLayout>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(in crate::command_buffer) enum SetOrPush {
     Set(DescriptorSetWithOffsets),
     Push(DescriptorSetResources),

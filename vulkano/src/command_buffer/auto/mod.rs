@@ -299,6 +299,15 @@ pub(in crate::command_buffer) enum PipelineEnum {
     Graphics(Arc<GraphicsPipeline>),
 }
 
+impl Debug for PipelineEnum {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PipelineEnum::Compute(p) => f.debug_tuple("Compute").field(&p.handle()).finish(),
+            PipelineEnum::Graphics(p) => f.debug_tuple("Graphics").field(&p.handle()).finish(),
+        }
+    }
+}
+
 impl UsedResources {
     #[inline]
     pub fn direct(direct: Vec<(ResourceUseRef2, Resource)>) -> Self {
