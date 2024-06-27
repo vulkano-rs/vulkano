@@ -1,6 +1,6 @@
 use super::{
-    CommandBuffer, CommandInfo, RenderPassCommand, Resource, ResourceUseRef2, SubmitState,
-    UsedResources, UsedResourcesDeferred,
+    CommandBuffer, CommandInfo, PipelineEnum, RenderPassCommand, Resource, ResourceUseRef2,
+    SubmitState, UsedResources,
 };
 use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
@@ -27,7 +27,8 @@ use crate::{
             vertex_input::VertexInputState,
             viewport::{Scissor, Viewport},
         },
-        ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+        ComputePipeline, DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout,
     },
     query::{QueryControlFlags, QueryPool, QueryType},
     range_map::RangeMap,
@@ -43,7 +44,6 @@ use ahash::HashMap;
 use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{
-    borrow::Cow,
     collections::hash_map::Entry,
     fmt::Debug,
     mem::take,
@@ -178,7 +178,7 @@ impl RecordingCommandBuffer {
 
         // Add barriers between the commands.
         auto_sync_state
-            .add_commands(self.commands.iter().map(|(cmd, _)| cmd))
+            .add_command_resources(self.commands.iter().map(|(cmd, _)| cmd))
             .map_err(|err| {
                 Box::new(ValidationError {
                     problem: format!(
@@ -283,7 +283,7 @@ impl RecordingCommandBuffer {
         &mut self,
         name: &'static str,
         direct: Vec<(ResourceUseRef2, Resource)>,
-        deferred: Option<UsedResourcesDeferred>,
+        deferred: Option<(PipelineEnum, DescriptorSetState)>,
         record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
     ) {
         self.add_command_resources(name, UsedResources::deferred(direct, deferred), record_func)
@@ -511,14 +511,96 @@ impl AutoSyncState {
             self.secondary_resources_usage,
         )
     }
+}
 
-    fn add_commands<'a>(
+struct MergedCommandInfo<'a> {
+    name: &'static str,
+    render_pass: RenderPassCommand,
+    pipeline: Option<&'a PipelineEnum>,
+    direct: SmallVec<[&'a Vec<(ResourceUseRef2, Resource)>; 6]>,
+    deferred: SmallVec<[&'a DescriptorSetState; 6]>,
+}
+
+impl<'a> MergedCommandInfo<'a> {
+    fn from(value: &'a CommandInfo) -> Self {
+        let (pipeline, deferred) = if let Some((pipeline, state)) = &value.used_resources.deferred {
+            (Some(pipeline), SmallVec::from_iter([state]))
+        } else {
+            (None, SmallVec::new())
+        };
+        Self {
+            name: value.name,
+            render_pass: value.render_pass,
+            pipeline,
+            direct: SmallVec::from_iter([&value.used_resources.direct]),
+            deferred,
+        }
+    }
+
+    fn try_merge(&mut self, b: &'a CommandInfo) -> Result<(), MergedCommandInfo<'a>> {
+        let mut b = Self::from(b);
+        match (self.render_pass, b.render_pass) {
+            (RenderPassCommand::None, RenderPassCommand::None) => (),
+            _ => return Err(b),
+        }
+        if self.pipeline != b.pipeline {
+            return Err(b);
+        }
+
+        self.direct.append(&mut b.direct);
+        // FIXME deferred must be merged together to prevent duplicate resources
+        self.deferred.append(&mut b.deferred);
+        Ok(())
+    }
+
+    fn resolve_deferred(&self, pipeline: &Arc<impl Pipeline>) -> Vec<(ResourceUseRef2, Resource)> {
+        let mut used_resources = Vec::new();
+        for state in &self.deferred {
+            RecordingCommandBuffer::add_descriptor_sets_resources(
+                &mut used_resources,
+                pipeline.as_ref(),
+                &state,
+            );
+        }
+        used_resources
+    }
+}
+
+impl AutoSyncState {
+    fn add_command_resources<'a>(
         &mut self,
         command_infos: impl Iterator<Item = &'a CommandInfo>,
     ) -> Result<(), UnsolvableResourceConflict> {
-        for cmd in command_infos {
-            self.check_resource_conflicts(cmd.name, cmd.used_resources.iter())?;
-            self.add_resources(cmd.name, cmd.used_resources.iter());
+        let merged = command_infos.fold(Vec::new(), |mut vec: Vec<MergedCommandInfo<'_>>, cmd| {
+            if let Some(last) = vec.last_mut() {
+                match last.try_merge(cmd) {
+                    Ok(_) => vec,
+                    Err(cmd) => {
+                        vec.push(cmd);
+                        vec
+                    }
+                }
+            } else {
+                vec.push(MergedCommandInfo::from(cmd));
+                vec
+            }
+        });
+
+        for cmd in &merged {
+            let deferred = match &cmd.pipeline {
+                Some(PipelineEnum::Compute(pipeline)) => cmd.resolve_deferred(pipeline),
+                Some(PipelineEnum::Graphics(pipeline)) => cmd.resolve_deferred(pipeline),
+                None => Vec::new(),
+            };
+            let used_resources = || {
+                cmd.direct
+                    .iter()
+                    .flat_map(|vec| vec.iter())
+                    .chain(deferred.iter())
+            };
+
+            self.check_resource_conflicts(cmd.name, used_resources())?;
+            self.add_resources(cmd.name, used_resources());
 
             match cmd.render_pass {
                 RenderPassCommand::None => (),
@@ -540,10 +622,9 @@ impl AutoSyncState {
     fn check_resource_conflicts<'a>(
         &self,
         command_name: &'static str,
-        used_resources: impl Iterator<Item = Cow<'a, (ResourceUseRef2, Resource)>>,
+        used_resources: impl Iterator<Item = &'a (ResourceUseRef2, Resource)>,
     ) -> Result<(), UnsolvableResourceConflict> {
-        for res in used_resources {
-            let (use_ref, resource) = res.as_ref();
+        for (use_ref, resource) in used_resources {
             match *resource {
                 Resource::Buffer {
                     ref buffer,
@@ -721,10 +802,9 @@ impl AutoSyncState {
     fn add_resources<'a>(
         &mut self,
         command_name: &'static str,
-        used_resources: impl Iterator<Item = Cow<'a, (ResourceUseRef2, Resource)>>,
+        used_resources: impl Iterator<Item = &'a (ResourceUseRef2, Resource)>,
     ) {
-        for res in used_resources {
-            let (use_ref, resource) = res.as_ref();
+        for (use_ref, resource) in used_resources {
             match *resource {
                 Resource::Buffer {
                     ref buffer,
