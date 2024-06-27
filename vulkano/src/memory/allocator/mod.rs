@@ -1838,14 +1838,17 @@ impl Default for GenericMemoryAllocatorCreateInfo<'_> {
     }
 }
 
-/// > **Note**: Returns `0` on overflow.
+/// Returns the smallest value greater or equal to `val` that is a multiple of `alignment`.
+///
+/// > **Note**: Returns zero on overflow.
 #[inline(always)]
-pub(crate) const fn align_up(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
+pub const fn align_up(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
     align_down(val.wrapping_add(alignment.as_devicesize() - 1), alignment)
 }
 
+/// Returns the largest value smaller or equal to `val` that is a multiple of `alignment`.
 #[inline(always)]
-pub(crate) const fn align_down(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
+pub const fn align_down(val: DeviceSize, alignment: DeviceAlignment) -> DeviceSize {
     val & !(alignment.as_devicesize() - 1)
 }
 
