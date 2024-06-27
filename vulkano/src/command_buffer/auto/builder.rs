@@ -43,6 +43,7 @@ use ahash::HashMap;
 use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{
+    borrow::Cow,
     collections::hash_map::Entry,
     fmt::Debug,
     mem::take,
@@ -176,20 +177,20 @@ impl RecordingCommandBuffer {
         );
 
         // Add barriers between the commands.
-        for (command_info, _) in self.commands.iter() {
-            auto_sync_state.add_command(command_info).map_err(|err| {
+        auto_sync_state
+            .add_commands(self.commands.iter().map(|(cmd, _)| cmd))
+            .map_err(|err| {
                 Box::new(ValidationError {
                     problem: format!(
                         "unsolvable resource conflict between:\n\
-                        command resource use: {:?}\n\
-                        previous conflicting command resource use: {:?}",
+                    command resource use: {:?}\n\
+                    previous conflicting command resource use: {:?}",
                         err.current_use_ref, err.previous_use_ref,
                     )
                     .into(),
                     ..Default::default()
                 })
             })?;
-        }
 
         let (mut barriers, resources_usage, secondary_resources_usage) = auto_sync_state.build();
         let final_barrier_index = self.commands.len();
@@ -511,41 +512,37 @@ impl AutoSyncState {
         )
     }
 
-    fn add_command(
+    fn add_commands<'a>(
         &mut self,
-        command_info: &CommandInfo,
+        command_infos: impl Iterator<Item = &'a CommandInfo>,
     ) -> Result<(), UnsolvableResourceConflict> {
-        self.check_resource_conflicts(command_info)?;
-        self.add_resources(command_info);
+        for cmd in command_infos {
+            self.check_resource_conflicts(cmd.name, cmd.used_resources.iter())?;
+            self.add_resources(cmd.name, cmd.used_resources.iter());
 
-        match command_info.render_pass {
-            RenderPassCommand::None => (),
-            RenderPassCommand::Begin => {
-                debug_assert!(self.latest_render_pass_enter.is_none());
-                self.latest_render_pass_enter = Some(self.command_index);
+            match cmd.render_pass {
+                RenderPassCommand::None => (),
+                RenderPassCommand::Begin => {
+                    debug_assert!(self.latest_render_pass_enter.is_none());
+                    self.latest_render_pass_enter = Some(self.command_index);
+                }
+                RenderPassCommand::End => {
+                    debug_assert!(self.latest_render_pass_enter.is_some());
+                    self.latest_render_pass_enter = None;
+                }
             }
-            RenderPassCommand::End => {
-                debug_assert!(self.latest_render_pass_enter.is_some());
-                self.latest_render_pass_enter = None;
-            }
+
+            self.command_index += 1;
         }
-
-        self.command_index += 1;
-
         Ok(())
     }
 
-    fn check_resource_conflicts(
+    fn check_resource_conflicts<'a>(
         &self,
-        command_info: &CommandInfo,
+        command_name: &'static str,
+        used_resources: impl Iterator<Item = Cow<'a, (ResourceUseRef2, Resource)>>,
     ) -> Result<(), UnsolvableResourceConflict> {
-        let &CommandInfo {
-            name: command_name,
-            ref used_resources,
-            ..
-        } = command_info;
-
-        for res in used_resources.iter() {
+        for res in used_resources {
             let (use_ref, resource) = res.as_ref();
             match *resource {
                 Resource::Buffer {
@@ -721,14 +718,12 @@ impl AutoSyncState {
     /// - `start_layout` and `end_layout` designate the image layout that the image is expected to
     ///   be in when the command starts, and the image layout that the image will be transitioned
     ///   to during the command. When it comes to buffers, you should pass `Undefined` for both.
-    fn add_resources(&mut self, command_info: &CommandInfo) {
-        let &CommandInfo {
-            name: command_name,
-            ref used_resources,
-            ..
-        } = command_info;
-
-        for res in used_resources.iter() {
+    fn add_resources<'a>(
+        &mut self,
+        command_name: &'static str,
+        used_resources: impl Iterator<Item = Cow<'a, (ResourceUseRef2, Resource)>>,
+    ) {
+        for res in used_resources {
             let (use_ref, resource) = res.as_ref();
             match *resource {
                 Resource::Buffer {
