@@ -550,12 +550,12 @@ impl<'a> MergedCommandInfo<'a> {
             (RenderPassCommand::None, RenderPassCommand::None) => (),
             _ => return Err(b),
         }
-        if !(self.pipeline == b.pipeline || self.pipeline == None || b.pipeline == None) {
+        if !(self.pipeline == b.pipeline || self.pipeline.is_none() || b.pipeline.is_none()) {
             return Err(b);
         }
 
         // success
-        if self.pipeline == None {
+        if self.pipeline.is_none() {
             self.pipeline = b.pipeline;
         }
         self.direct.append(&mut b.direct);
@@ -571,7 +571,7 @@ impl<'a> MergedCommandInfo<'a> {
             RecordingCommandBuffer::add_descriptor_sets_resources(
                 &mut used_resources,
                 pipeline.as_ref(),
-                &state,
+                state,
             );
         }
         used_resources
