@@ -3427,9 +3427,10 @@ impl RecordingCommandBuffer {
     }
 
     pub(in crate::command_buffer) fn add_descriptor_sets_resources<Pl: Pipeline>(
-        used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
+        used_resources: &mut Vec<(ResourceUseRef2, Resource, &'static str)>,
         pipeline: &Pl,
         descriptor_sets_state: &DescriptorSetState,
+        name: &'static str,
     ) {
         // I want to dedup descriptor sets right here
         for (&(set, binding), binding_reqs) in pipeline.descriptor_binding_requirements() {
@@ -3502,6 +3503,7 @@ impl RecordingCommandBuffer {
                                         range,
                                         memory_access,
                                     },
+                                    name,
                                 ));
                             }
                         }
@@ -3519,6 +3521,7 @@ impl RecordingCommandBuffer {
                                         range: range.clone(),
                                         memory_access,
                                     },
+                                    name,
                                 ));
                             }
                         }
@@ -3537,6 +3540,7 @@ impl RecordingCommandBuffer {
                                     range: buffer_view.range().clone(),
                                     memory_access,
                                 },
+                                name,
                             ));
                         }
                     }
@@ -3564,6 +3568,7 @@ impl RecordingCommandBuffer {
                                     start_layout: image_layout,
                                     end_layout: image_layout,
                                 },
+                                name,
                             ));
                         }
                     }
@@ -3591,6 +3596,7 @@ impl RecordingCommandBuffer {
                                     start_layout: image_layout,
                                     end_layout: image_layout,
                                 },
+                                name,
                             ));
                         }
                     }
@@ -3610,6 +3616,7 @@ impl RecordingCommandBuffer {
                                     range: 0..buffer.size(),
                                     memory_access,
                                 },
+                                name,
                             ));
                         }
                     }

@@ -516,27 +516,25 @@ impl AutoSyncState {
 
 #[derive(Debug)]
 struct MergedCommandInfo<'a> {
-    name: &'static str,
     render_pass: RenderPassCommand,
     pipeline: Option<&'a PipelineEnum>,
-    direct: SmallVec<[&'a Vec<(ResourceUseRef2, Resource)>; 6]>,
-    deferred: SmallVec<[&'a DescriptorSetState; 6]>,
+    direct: SmallVec<[(&'a Vec<(ResourceUseRef2, Resource)>, &'static str); 6]>,
+    deferred: SmallVec<[(&'a DescriptorSetState, &'static str); 6]>,
 }
 
 impl<'a> MergedCommandInfo<'a> {
     fn from(value: &'a CommandInfo) -> Self {
         let (pipeline, deferred) = if let Some((pipeline, state)) = &value.used_resources.deferred {
-            (Some(pipeline), SmallVec::from_iter([state]))
+            (Some(pipeline), SmallVec::from_iter([(state, value.name)]))
         } else {
             (None, SmallVec::new())
         };
         let direct = if value.used_resources.direct.is_empty() {
             SmallVec::new()
         } else {
-            SmallVec::from_iter([&value.used_resources.direct])
+            SmallVec::from_iter([(&value.used_resources.direct, value.name)])
         };
         Self {
-            name: value.name,
             render_pass: value.render_pass,
             pipeline,
             direct,
@@ -559,19 +557,22 @@ impl<'a> MergedCommandInfo<'a> {
             self.pipeline = b.pipeline;
         }
         self.direct.append(&mut b.direct);
-        // FIXME deferred must be merged together to prevent duplicate resources
         self.deferred.append(&mut b.deferred);
         Ok(())
     }
 
-    fn resolve_deferred(&self, pipeline: &Arc<impl Pipeline>) -> Vec<(ResourceUseRef2, Resource)> {
+    fn resolve_deferred(
+        &self,
+        pipeline: &Arc<impl Pipeline>,
+    ) -> Vec<(ResourceUseRef2, Resource, &'static str)> {
         let mut used_resources = Vec::new();
         let deferred_deduplicated = HashSet::from_iter(self.deferred.iter().copied());
-        for state in &deferred_deduplicated {
+        for (state, name) in &deferred_deduplicated {
             RecordingCommandBuffer::add_descriptor_sets_resources(
                 &mut used_resources,
                 pipeline.as_ref(),
                 state,
+                name,
             );
         }
         used_resources
@@ -607,12 +608,12 @@ impl AutoSyncState {
             let used_resources = || {
                 cmd.direct
                     .iter()
-                    .flat_map(|vec| vec.iter())
-                    .chain(deferred.iter())
+                    .flat_map(|(vec, name)| vec.iter().map(|(a, b)| (a, b, *name)))
+                    .chain(deferred.iter().map(|(a, b, c)| (a, b, *c)))
             };
 
-            self.check_resource_conflicts(cmd.name, used_resources())?;
-            self.add_resources(cmd.name, used_resources());
+            self.check_resource_conflicts(used_resources())?;
+            self.add_resources(used_resources());
 
             match cmd.render_pass {
                 RenderPassCommand::None => (),
@@ -633,10 +634,9 @@ impl AutoSyncState {
 
     fn check_resource_conflicts<'a>(
         &self,
-        command_name: &'static str,
-        used_resources: impl Iterator<Item = &'a (ResourceUseRef2, Resource)>,
+        used_resources: impl Iterator<Item = (&'a ResourceUseRef2, &'a Resource, &'static str)>,
     ) -> Result<(), UnsolvableResourceConflict> {
-        for (use_ref, resource) in used_resources {
+        for (use_ref, resource, command_name) in used_resources {
             match *resource {
                 Resource::Buffer {
                     ref buffer,
@@ -813,10 +813,9 @@ impl AutoSyncState {
     ///   to during the command. When it comes to buffers, you should pass `Undefined` for both.
     fn add_resources<'a>(
         &mut self,
-        command_name: &'static str,
-        used_resources: impl Iterator<Item = &'a (ResourceUseRef2, Resource)>,
+        used_resources: impl Iterator<Item = (&'a ResourceUseRef2, &'a Resource, &'static str)>,
     ) {
-        for (use_ref, resource) in used_resources {
+        for (use_ref, resource, command_name) in used_resources {
             match *resource {
                 Resource::Buffer {
                     ref buffer,
