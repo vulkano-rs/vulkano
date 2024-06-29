@@ -282,7 +282,7 @@ where
                     // Same remark as `CommandBuffer`.
                     assert!(fence.is_none());
                     debug_assert!(queue.device().physical_device().queue_family_properties()
-                        [queue.queue_family_index() as usize]
+                        [queue.queue_family_index().0 as usize]
                         .queue_flags
                         .intersects(QueueFlags::SPARSE_BINDING));
 

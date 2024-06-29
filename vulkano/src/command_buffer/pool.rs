@@ -8,7 +8,7 @@
 
 use crate::{
     command_buffer::CommandBufferLevel,
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, QueueFamilyIndex},
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
@@ -31,7 +31,7 @@ pub struct CommandPool {
     id: NonZeroU64,
 
     flags: CommandPoolCreateFlags,
-    queue_family_index: u32,
+    queue_family_index: QueueFamilyIndex,
 
     // Unimplement `Sync`, as Vulkan command pools are not thread-safe.
     _marker: PhantomData<Cell<ash::vk::CommandPool>>,
@@ -72,7 +72,7 @@ impl CommandPool {
 
         let create_info_vk = ash::vk::CommandPoolCreateInfo {
             flags: flags.into(),
-            queue_family_index,
+            queue_family_index: queue_family_index.0,
             ..Default::default()
         };
 
@@ -131,7 +131,7 @@ impl CommandPool {
 
     /// Returns the queue family on which command buffers of this pool can be executed.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
+    pub fn queue_family_index(&self) -> QueueFamilyIndex {
         self.queue_family_index
     }
 
@@ -353,7 +353,7 @@ pub struct CommandPoolCreateInfo {
     /// from this pool must be submitted on a queue belonging to that family.
     ///
     /// The default value is `u32::MAX`, which must be overridden.
-    pub queue_family_index: u32,
+    pub queue_family_index: QueueFamilyIndex,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -363,7 +363,7 @@ impl Default for CommandPoolCreateInfo {
     fn default() -> Self {
         Self {
             flags: CommandPoolCreateFlags::empty(),
-            queue_family_index: u32::MAX,
+            queue_family_index: QueueFamilyIndex(u32::MAX),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -382,7 +382,7 @@ impl CommandPoolCreateInfo {
                 .set_vuids(&["VUID-VkCommandPoolCreateInfo-flags-parameter"])
         })?;
 
-        if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
+        if queue_family_index.0 >= device.physical_device().queue_family_properties().len() as u32 {
             return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"

@@ -21,7 +21,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
-        QueueCreateInfo, QueueFlags,
+        QueueCreateInfo, QueueFamilyIndex, QueueFlags,
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
@@ -133,12 +133,13 @@ fn main() -> Result<(), impl Error> {
                     // a window surface, as we do in this example, we also need to check that
                     // queues in this queue family are capable of presenting images to the surface.
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.surface_support(i as u32, &surface).unwrap_or(false)
+                        && p.surface_support(QueueFamilyIndex(i as u32), &surface)
+                            .unwrap_or(false)
                 })
                 // The code here searches for the first queue family that is suitable. If none is
                 // found, `None` is returned to `filter_map`, which disqualifies this physical
                 // device.
-                .map(|i| (p, i as u32))
+                .map(|i| (p, QueueFamilyIndex(i as u32)))
         })
         // All the physical devices that pass the filters above are suitable for the application.
         // However, not every device is equal, some are preferred over others. Now, we assign each

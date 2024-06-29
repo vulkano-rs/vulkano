@@ -48,6 +48,7 @@ use std::{
     ops::{Range, RangeInclusive},
     sync::{atomic::AtomicBool, Arc},
 };
+use vulkano::device::QueueFamilyIndex;
 
 /// A command buffer in the recording state.
 ///
@@ -70,7 +71,7 @@ impl RecordingCommandBuffer {
     #[inline]
     pub fn new(
         allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
     ) -> Result<RecordingCommandBuffer, Validated<VulkanError>> {
@@ -81,7 +82,7 @@ impl RecordingCommandBuffer {
 
     fn validate_new(
         device: &Device,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), Box<ValidationError>> {
@@ -93,7 +94,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
     ) -> Result<Self, Validated<VulkanError>> {

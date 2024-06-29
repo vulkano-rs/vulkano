@@ -13,6 +13,7 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
+use vulkano::device::QueueFamilyIndex;
 
 /// A raw command buffer in the recording state.
 ///
@@ -27,7 +28,7 @@ use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
 pub struct RawRecordingCommandBuffer {
     allocation: ManuallyDrop<CommandBufferAlloc>,
     allocator: Arc<dyn CommandBufferAllocator>,
-    queue_family_index: u32,
+    queue_family_index: QueueFamilyIndex,
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
     inheritance_info: Option<CommandBufferInheritanceInfo>,
     pub(super) usage: CommandBufferUsage,
@@ -38,7 +39,7 @@ impl RawRecordingCommandBuffer {
     #[inline]
     pub fn new(
         allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
     ) -> Result<Self, Validated<VulkanError>> {
@@ -49,7 +50,7 @@ impl RawRecordingCommandBuffer {
 
     pub(super) fn validate_new(
         device: &Device,
-        _queue_family_index: u32,
+        _queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), Box<ValidationError>> {
@@ -76,7 +77,7 @@ impl RawRecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn new_unchecked(
         allocator: Arc<dyn CommandBufferAllocator>,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
     ) -> Result<Self, Validated<VulkanError>> {
@@ -214,7 +215,7 @@ impl RawRecordingCommandBuffer {
 
     /// Returns the queue family index that this command buffer was created for.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
+    pub fn queue_family_index(&self) -> QueueFamilyIndex {
         self.queue_family_index
     }
 
@@ -237,7 +238,8 @@ impl RawRecordingCommandBuffer {
     }
 
     pub(in crate::command_buffer) fn queue_family_properties(&self) -> &QueueFamilyProperties {
-        &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
+        &self.device().physical_device().queue_family_properties()
+            [self.queue_family_index.0 as usize]
     }
 }
 
@@ -343,7 +345,7 @@ unsafe impl Sync for RawCommandBuffer {}
 impl RawCommandBuffer {
     /// Returns the queue family index that this command buffer was created for.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
+    pub fn queue_family_index(&self) -> QueueFamilyIndex {
         self.inner.queue_family_index
     }
 

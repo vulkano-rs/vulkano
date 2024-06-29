@@ -16,7 +16,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
+        QueueFamilyIndex, QueueFlags,
     },
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
@@ -59,7 +59,7 @@ fn main() {
             p.queue_family_properties()
                 .iter()
                 .position(|q| q.queue_flags.intersects(QueueFlags::COMPUTE))
-                .map(|i| (p, i as u32))
+                .map(|i| (p, QueueFamilyIndex(i as u32)))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,

@@ -51,7 +51,7 @@ use vulkano::{
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-        QueueCreateInfo, QueueFlags,
+        QueueCreateInfo, QueueFamilyIndex, QueueFlags,
     },
     format::Format,
     image::{
@@ -123,9 +123,10 @@ fn main() -> Result<(), impl Error> {
                 .enumerate()
                 .position(|(i, q)| {
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.surface_support(i as u32, &surface).unwrap_or(false)
+                        && p.surface_support(QueueFamilyIndex(i as u32), &surface)
+                            .unwrap_or(false)
                 })
-                .map(|i| (p, i as u32))
+                .map(|i| (p, QueueFamilyIndex(i as u32)))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -151,12 +152,13 @@ fn main() -> Result<(), impl Error> {
     // For this, we need to find the queue family with the fewest queue flags set, since if the
     // queue fmaily has more flags than `TRANSFER | SPARSE_BINDING`, that means it is not dedicated
     // to transfer operations.
-    let transfer_family_index = physical_device
-        .queue_family_properties()
-        .iter()
-        .enumerate()
-        .filter(|(_, q)| {
-            q.queue_flags.intersects(QueueFlags::TRANSFER)
+    let transfer_family_index = QueueFamilyIndex(
+        physical_device
+            .queue_family_properties()
+            .iter()
+            .enumerate()
+            .filter(|(_, q)| {
+                q.queue_flags.intersects(QueueFlags::TRANSFER)
                 // Queue familes dedicated to transfers are not required to support partial 
                 // transfers of images, reported by a mininum granularity of [0, 0, 0]. If you need 
                 // to do partial transfers of images like we do in this example, you therefore have 
@@ -171,10 +173,11 @@ fn main() -> Result<(), impl Error> {
                 && q.min_image_transfer_granularity[0..2]
                     .iter()
                     .all(|&g| TRANSFER_GRANULARITY % g == 0)
-        })
-        .min_by_key(|(_, q)| q.queue_flags.count())
-        .unwrap()
-        .0 as u32;
+            })
+            .min_by_key(|(_, q)| q.queue_flags.count())
+            .unwrap()
+            .0 as u32,
+    );
 
     let (device, mut queues) = {
         let mut queue_create_infos = vec![QueueCreateInfo {
