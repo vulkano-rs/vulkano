@@ -6,12 +6,6 @@ extend-exclude = [
 ]
 ignore-hidden = false
 
-[default]
-extend-ignore-re = [
-    "Jean-Noe Morissette",
-    "Simon Ser",
-]
-
 [default.extend-words]
 lod = "lod"
 uscaled = "uscaled"
