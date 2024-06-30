@@ -99,7 +99,7 @@ fn main() {
 
                 // We set `local_size_x` and `local_size_y` to be variables configurable values 
                 // through specialization constants. Values `1` and `2` both define a constant ID 
-                // as well as a default value of 1 and 2 of the constants respecively. The 
+                // as well as a default value of 1 and 2 of the constants respectively. The 
                 // `local_size_z = 1` here is an ordinary constant of the local size on the Z axis.
                 //
                 // Unfortunately current GLSL language capabilities doesn't let us define exact 

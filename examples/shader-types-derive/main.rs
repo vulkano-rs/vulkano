@@ -75,7 +75,7 @@ fn main() {
 
     assert_eq!(
         Bar {
-            // `Padded<T, N>` implementes `From<T>`, so you can construct it this way as well.
+            // `Padded<T, N>` implements `From<T>`, so you can construct it this way as well.
             y: [5.1, 6.2].into(),
             ..Default::default()
         },

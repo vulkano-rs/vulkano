@@ -511,7 +511,7 @@ impl MemoryTypeFilter {
     /// because the memory is only written once before being consumed by the device and becoming
     /// outdated, it doesn't matter that the data is potentially transferred over the PCIe bus
     /// since it only happens once. Since this is only a preference, if you have some requirements
-    /// such as the memory being [`HOST_VISIBLE`], those requirements will take precendence.
+    /// such as the memory being [`HOST_VISIBLE`], those requirements will take precedence.
     ///
     /// For memory that the host doesn't access, and the device doesn't access directly, you may
     /// still prefer device-local memory if the memory is used regularly. For instance, an image

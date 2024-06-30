@@ -1,4 +1,4 @@
-// This example is a copy of `basic-compute-shaders.rs`, but initalizes half of the input buffer
+// This example is a copy of `basic-compute-shaders.rs`, but initializes half of the input buffer
 // and then we use `copy_buffer_dimensions` to copy the first half of the input buffer to the
 // second half.
 
@@ -147,7 +147,7 @@ fn main() {
                 | MemoryTypeFilter::HOST_RANDOM_ACCESS,
             ..Default::default()
         },
-        // We intitialize half of the array and leave the other half at 0, we will use the copy
+        // We initialize half of the array and leave the other half at 0, we will use the copy
         // command later to fill it.
         (0..65536u32).map(|n| if n < 65536 / 2 { n } else { 0 }),
     )
@@ -213,9 +213,9 @@ fn main() {
 
     let data_buffer_content = data_buffer.read().unwrap();
 
-    // Here we have the same data in the two halfs of the buffer.
+    // Here we have the same data in the two halves of the buffer.
     for n in 0..65536 / 2 {
-        // The two halfs should have the same data.
+        // The two halves should have the same data.
         assert_eq!(data_buffer_content[n as usize], n * 12);
         assert_eq!(data_buffer_content[n as usize + 65536 / 2], n * 12);
     }

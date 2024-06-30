@@ -1,5 +1,5 @@
 // A minimal particle-sandbox to demonstrate a reasonable use-case for a device-local buffer. We
-// gain significant runtime performance by writing the inital vertex values to the GPU using a
+// gain significant runtime performance by writing the initial vertex values to the GPU using a
 // staging buffer and then copying the data to a device-local buffer to be accessed solely by the
 // GPU through the compute shader and as a vertex array.
 
@@ -210,7 +210,7 @@ fn main() -> Result<(), impl Error> {
 
                 // Storage buffer binding, which we optimize by using a DeviceLocalBuffer.
                 layout (binding = 0) buffer VertexBuffer {
-                    VertexData verticies[];
+                    VertexData vertices[];
                 };
 
                 // Allow push constants to define a parameters of compute.
@@ -229,10 +229,10 @@ fn main() -> Result<(), impl Error> {
                 void main() {
                     const uint index = gl_GlobalInvocationID.x;
 
-                    vec2 vel = verticies[index].vel;
+                    vec2 vel = vertices[index].vel;
 
                     // Update particle position according to velocity.
-                    vec2 pos = verticies[index].pos + push.delta_time * vel;
+                    vec2 pos = vertices[index].pos + push.delta_time * vel;
 
                     // Bounce particle off screen-border.
                     if (abs(pos.x) > 1.0) {
@@ -260,8 +260,8 @@ fn main() -> Result<(), impl Error> {
                     }
 
                     // Set new values back into buffer.
-                    verticies[index].pos = pos;
-	                verticies[index].vel = vel * exp(friction * push.delta_time);
+                    vertices[index].pos = pos;
+	                vertices[index].vel = vel * exp(friction * push.delta_time);
                 }
             ",
         }
@@ -539,7 +539,7 @@ fn main() -> Result<(), impl Error> {
                 let delta_time = now.duration_since(last_frame_time).unwrap().as_secs_f32();
                 last_frame_time = now;
 
-                // Create push contants to be passed to compute shader.
+                // Create push constants to be passed to compute shader.
                 let push_constants = cs::PushConstants {
                     attractor: [0.75 * (3. * time).cos(), 0.6 * (0.75 * time).sin()],
                     attractor_strength: 1.2 * (2. * time).cos(),
@@ -574,7 +574,7 @@ fn main() -> Result<(), impl Error> {
                 let previous_future = match fences[previous_fence_index as usize].take() {
                     // Ensure current frame is synchronized with previous.
                     Some(fence) => fence.boxed(),
-                    // Create new future to guarentee synchronization with (fake) previous frame.
+                    // Create new future to guarantee synchronization with (fake) previous frame.
                     None => sync::now(device.clone()).boxed(),
                 };
 

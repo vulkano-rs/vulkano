@@ -1,0 +1,14 @@
+[files]
+extend-exclude = [
+    ".git/",
+    "vulkano/spirv.core.grammar.json",
+    "vulkano/vk.xml",
+]
+ignore-hidden = false
+
+[default.extend-words]
+lod = "lod"
+uscaled = "uscaled"
+
+[default.extend-identifiers]
+ANDed = "ANDed"
