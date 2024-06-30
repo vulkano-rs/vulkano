@@ -15,6 +15,6 @@ doc = false
 glium = "0.32.1"
 vulkano = { workspace = true, features = ["macros"]  }
 vulkano-shaders = { workspace = true }
-winit = { workspace = true }
+winit = { workspace = true, default-features = true }
 # Glium has still not been updated to the latest winit version
 winit_glium = { package = "winit", version = "0.27.1" }
