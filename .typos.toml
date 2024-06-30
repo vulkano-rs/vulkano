@@ -2,6 +2,7 @@
 extend-exclude = [
     ".git/",
     "vulkano/spirv.core.grammar.json",
+    "vulkano/vk.xml",
 ]
 ignore-hidden = false
 
