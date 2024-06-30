@@ -1,6 +1,7 @@
 use vulkano::{
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        QueueFamilyIndex,
     },
     instance::{
         debug::{
@@ -126,7 +127,7 @@ fn main() {
         .filter(|p| p.supported_extensions().contains(&device_extensions))
         .map(|p| {
             (!p.queue_family_properties().is_empty())
-                .then_some((p, 0))
+                .then_some((p, QueueFamilyIndex(0)))
                 .expect("couldn't find a queue family")
         })
         .min_by_key(|(p, _)| match p.properties().device_type {

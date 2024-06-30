@@ -5,7 +5,7 @@ use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo,
-        QueueFlags,
+        QueueFamilyIndex, QueueFlags,
     },
     instance::{
         debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
@@ -202,7 +202,7 @@ impl VulkanoContext {
             .queue_family_properties()
             .iter()
             .enumerate()
-            .map(|(i, q)| (i as u32, q))
+            .map(|(i, q)| (QueueFamilyIndex(i as u32), q))
             .find(|(_i, q)| q.queue_flags.intersects(QueueFlags::GRAPHICS))
             .map(|(i, _)| i)
             .expect("could not find a queue that supports graphics");
@@ -211,7 +211,7 @@ impl VulkanoContext {
             .queue_family_properties()
             .iter()
             .enumerate()
-            .map(|(i, q)| (i as u32, q))
+            .map(|(i, q)| (QueueFamilyIndex(i as u32), q))
             .find(|(i, q)| {
                 q.queue_flags.intersects(QueueFlags::COMPUTE) && *i != queue_family_graphics
             })

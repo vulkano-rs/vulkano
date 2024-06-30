@@ -12,7 +12,7 @@ use super::{
     CommandBufferLevel,
 };
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, QueueFamilyIndex},
     instance::InstanceOwnedDebugWrapper,
     Validated, ValidationError, VulkanError,
 };
@@ -59,7 +59,7 @@ pub unsafe trait CommandBufferAllocator: DeviceOwned + Send + Sync + 'static {
     /// Allocates a command buffer.
     fn allocate(
         &self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
     ) -> Result<CommandBufferAlloc, Validated<VulkanError>>;
 
@@ -213,7 +213,7 @@ impl StandardCommandBufferAllocator {
     #[inline]
     pub fn try_reset_pool(
         &self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         flags: CommandPoolResetFlags,
     ) -> Result<(), Validated<ResetCommandPoolError>> {
         if let Some(entry) = unsafe { &mut *self.entry(queue_family_index) }.as_mut() {
@@ -233,11 +233,11 @@ impl StandardCommandBufferAllocator {
     ///
     /// - Panics if `queue_family_index` is not less than the number of queue families.
     #[inline]
-    pub fn clear(&self, queue_family_index: u32) {
+    pub fn clear(&self, queue_family_index: QueueFamilyIndex) {
         unsafe { *self.entry(queue_family_index) = None };
     }
 
-    fn entry(&self, queue_family_index: u32) -> *mut Option<Entry> {
+    fn entry(&self, queue_family_index: QueueFamilyIndex) -> *mut Option<Entry> {
         let pools = self.pools.get_or(|| {
             self.device
                 .physical_device()
@@ -247,7 +247,7 @@ impl StandardCommandBufferAllocator {
                 .collect()
         });
 
-        pools[queue_family_index as usize].get()
+        pools[queue_family_index.0 as usize].get()
     }
 }
 
@@ -255,7 +255,7 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
     #[inline]
     fn allocate(
         &self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
     ) -> Result<CommandBufferAlloc, Validated<VulkanError>> {
         if !self
@@ -331,7 +331,7 @@ unsafe impl<T: CommandBufferAllocator> CommandBufferAllocator for Arc<T> {
     #[inline]
     fn allocate(
         &self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
     ) -> Result<CommandBufferAlloc, Validated<VulkanError>> {
         (**self).allocate(queue_family_index, level)
@@ -368,7 +368,7 @@ unsafe impl Send for Entry {}
 impl Entry {
     fn new(
         device: Arc<Device>,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         buffer_count: &[usize; 2],
         pool_reserve: Arc<ArrayQueue<Arc<Pool>>>,
     ) -> Result<Self, VulkanError> {
@@ -381,7 +381,7 @@ impl Entry {
 
     fn allocate(
         &mut self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         level: CommandBufferLevel,
         buffer_count: &[usize; 2],
     ) -> Result<CommandBufferAlloc, VulkanError> {
@@ -477,7 +477,7 @@ struct Pool {
 impl Pool {
     fn new(
         device: Arc<Device>,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         buffer_counts: &[usize; 2],
         pool_reserve: &Arc<ArrayQueue<Arc<Self>>>,
     ) -> Result<Arc<Self>, VulkanError> {

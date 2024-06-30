@@ -15,11 +15,42 @@ use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     ffi::CString,
+    fmt::{Display, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
+    ops::Deref,
     ptr,
     sync::Arc,
 };
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct QueueFamilyIndex(pub u32);
+
+impl Deref for QueueFamilyIndex {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for QueueFamilyIndex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "QueueFamilyIndex {}", self.0)
+    }
+}
+
+impl From<QueueFamilyIndex> for u32 {
+    fn from(value: QueueFamilyIndex) -> Self {
+        value.0
+    }
+}
+
+impl From<QueueFamilyIndex> for usize {
+    fn from(value: QueueFamilyIndex) -> Self {
+        value.0 as usize
+    }
+}
 
 /// Represents a queue where commands can be submitted.
 // TODO: should use internal synchronization?
@@ -29,7 +60,7 @@ pub struct Queue {
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
 
     flags: QueueCreateFlags,
-    queue_family_index: u32,
+    queue_family_index: QueueFamilyIndex,
     queue_index: u32, // index within family
 
     state: Mutex<QueueState>,
@@ -46,7 +77,7 @@ impl Queue {
 
         let queue_info_vk = ash::vk::DeviceQueueInfo2 {
             flags: flags.into(),
-            queue_family_index,
+            queue_family_index: queue_family_index.0,
             queue_index,
             ..Default::default()
         };
@@ -109,7 +140,7 @@ impl Queue {
 
     /// Returns the index of the queue family that this queue belongs to.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
+    pub fn queue_family_index(&self) -> QueueFamilyIndex {
         self.queue_family_index
     }
 
@@ -179,7 +210,7 @@ impl Hash for Queue {
 #[derive(Clone, Debug)]
 pub(super) struct DeviceQueueInfo {
     pub(super) flags: QueueCreateFlags,
-    pub(super) queue_family_index: u32,
+    pub(super) queue_family_index: QueueFamilyIndex,
     pub(super) queue_index: u32,
     pub(super) _ne: crate::NonExhaustive,
 }
@@ -189,7 +220,7 @@ impl Default for DeviceQueueInfo {
     fn default() -> Self {
         Self {
             flags: QueueCreateFlags::empty(),
-            queue_family_index: 0,
+            queue_family_index: QueueFamilyIndex(0),
             queue_index: 0,
             _ne: crate::NonExhaustive(()),
         }
@@ -776,7 +807,7 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), Box<ValidationError>> {
         let device = self.queue.device();
         let queue_family_properties = &device.physical_device().queue_family_properties()
-            [self.queue.queue_family_index as usize];
+            [self.queue.queue_family_index.0 as usize];
 
         if let Some(fence) = fence {
             // VUID-vkQueueSubmit2-commonparent

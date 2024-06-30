@@ -27,7 +27,7 @@ macro_rules! gfx_dev_and_queue {
     });
     ($($feature:ident),*; $($extension:ident),*) => ({
         use crate::device::physical::PhysicalDeviceType;
-        use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
+        use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo, QueueFamilyIndex};
         use crate::device::DeviceFeatures;
 
         let instance = instance!();
@@ -55,7 +55,7 @@ macro_rules! gfx_dev_and_queue {
             .filter_map(|p| {
                 p.queue_family_properties().iter()
                     .position(|q| q.queue_flags.intersects(crate::device::QueueFlags::GRAPHICS))
-                    .map(|i| (p, i as u32))
+                    .map(|i| (p, QueueFamilyIndex(i as u32)))
             })
             .min_by_key(|(p, _)| {
                 match p.properties().device_type {

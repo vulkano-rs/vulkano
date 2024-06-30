@@ -70,7 +70,7 @@ use super::{
 };
 use crate::{
     buffer::Subbuffer,
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, QueueFamilyIndex},
     image::{Image, ImageLayout, ImageSubresourceRange},
     sync::PipelineStageAccessFlags,
     DeviceSize, ValidationError, VulkanObject,
@@ -130,7 +130,7 @@ impl CommandBuffer {
 
     /// Returns the queue family index of this command buffer.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
+    pub fn queue_family_index(&self) -> QueueFamilyIndex {
         self.inner.queue_family_index()
     }
 
@@ -323,7 +323,7 @@ mod tests {
             },
             DescriptorSet, WriteDescriptorSet,
         },
-        device::{Device, DeviceCreateInfo, QueueCreateInfo},
+        device::{Device, DeviceCreateInfo, QueueCreateInfo, QueueFamilyIndex},
         image::sampler::{Sampler, SamplerCreateInfo},
         memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
         pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
@@ -366,7 +366,7 @@ mod tests {
             physical_device,
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index: 0,
+                    queue_family_index: QueueFamilyIndex(0),
                     ..Default::default()
                 }],
                 ..Default::default()

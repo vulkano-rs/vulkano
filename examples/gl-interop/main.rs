@@ -29,7 +29,7 @@ mod linux {
         },
         device::{
             physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-            QueueCreateInfo, QueueFlags,
+            QueueCreateInfo, QueueFamilyIndex, QueueFlags,
         },
         format::Format,
         image::{
@@ -555,9 +555,10 @@ mod linux {
                     .enumerate()
                     .position(|(i, q)| {
                         q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.surface_support(i as u32, &surface).unwrap_or(false)
+                            && p.surface_support(QueueFamilyIndex(i as u32), &surface)
+                                .unwrap_or(false)
                     })
-                    .map(|i| (p, i as u32))
+                    .map(|i| (p, QueueFamilyIndex(i as u32)))
             })
             .filter(|(p, _)| p.properties().driver_uuid.unwrap() == display.driver_uuid().unwrap())
             .filter(|(p, _)| {

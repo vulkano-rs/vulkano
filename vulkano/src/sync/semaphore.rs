@@ -1956,7 +1956,7 @@ pub struct ExternalSemaphoreProperties {
 #[cfg(test)]
 mod tests {
     use crate::{
-        device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo},
+        device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo, QueueFamilyIndex},
         instance::{Instance, InstanceCreateInfo, InstanceExtensions},
         sync::semaphore::{
             ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, Semaphore,
@@ -2019,7 +2019,7 @@ mod tests {
             physical_device,
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index: 0,
+                    queue_family_index: QueueFamilyIndex(0),
                     ..Default::default()
                 }],
                 enabled_extensions: DeviceExtensions {

@@ -9,7 +9,7 @@
 //! use vulkano::{
 //!     device::{
 //!         physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
-//!         QueueCreateInfo,
+//!         QueueCreateInfo, QueueFamilyIndex,
 //!     },
 //!     instance::{Instance, InstanceExtensions},
 //!     Version, VulkanLibrary,
@@ -38,7 +38,7 @@
 //!         physical_device,
 //!         DeviceCreateInfo {
 //!             queue_create_infos: vec![QueueCreateInfo {
-//!                 queue_family_index: 0,
+//!                 queue_family_index: QueueFamilyIndex(0),
 //!                 ..Default::default()
 //!             }],
 //!             enabled_extensions: extensions,
@@ -100,7 +100,7 @@ pub(crate) use self::properties::DevicePropertiesFfi;
 use self::{physical::PhysicalDevice, queue::DeviceQueueInfo};
 pub use self::{
     properties::DeviceProperties,
-    queue::{Queue, QueueFamilyProperties, QueueFlags, QueueGuard},
+    queue::{Queue, QueueFamilyIndex, QueueFamilyProperties, QueueFlags, QueueGuard},
 };
 pub use crate::fns::DeviceFunctions;
 use crate::{
@@ -161,7 +161,7 @@ pub struct Device {
     // This is the minimum of Instance::max_api_version and PhysicalDevice::api_version.
     api_version: Version,
     fns: DeviceFunctions,
-    active_queue_family_indices: SmallVec<[u32; 2]>,
+    active_queue_family_indices: SmallVec<[QueueFamilyIndex; 2]>,
 
     // This is required for validation in `memory::device_memory`, the count must only be modified
     // in that module.
@@ -355,7 +355,7 @@ impl Device {
 
                 ash::vk::DeviceQueueCreateInfo {
                     flags: flags.into(),
-                    queue_family_index,
+                    queue_family_index: queue_family_index.0,
                     queue_count: queues.len() as u32,
                     p_queue_priorities: queues.as_ptr(),
                     ..Default::default()
@@ -592,7 +592,7 @@ impl Device {
 
     /// Returns the queue family indices that this device uses.
     #[inline]
-    pub fn active_queue_family_indices(&self) -> &[u32] {
+    pub fn active_queue_family_indices(&self) -> &[QueueFamilyIndex] {
         &self.active_queue_family_indices
     }
 
@@ -2104,7 +2104,7 @@ pub struct QueueCreateInfo {
     /// The index of the queue family to create queues for.
     ///
     /// The default value is `0`.
-    pub queue_family_index: u32,
+    pub queue_family_index: QueueFamilyIndex,
 
     /// The queues to create for the given queue family, each with a relative priority.
     ///
@@ -2124,7 +2124,7 @@ impl Default for QueueCreateInfo {
     fn default() -> Self {
         Self {
             flags: QueueCreateFlags::empty(),
-            queue_family_index: 0,
+            queue_family_index: QueueFamilyIndex(0),
             queues: vec![0.5],
             _ne: crate::NonExhaustive(()),
         }
@@ -2159,7 +2159,7 @@ impl QueueCreateInfo {
 
         let queue_family_properties = physical_device
             .queue_family_properties()
-            .get(queue_family_index as usize)
+            .get(queue_family_index.0 as usize)
             .ok_or_else(|| {
                 Box::new(ValidationError {
                     context: "queue_family_index".into(),
@@ -2301,6 +2301,7 @@ pub struct MemoryFdProperties {
 mod tests {
     use crate::device::{
         Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, QueueCreateInfo,
+        QueueFamilyIndex,
     };
     use std::{ffi::CString, sync::Arc};
 
@@ -2365,7 +2366,7 @@ mod tests {
             physical_device,
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index,
+                    queue_family_index: QueueFamilyIndex(queue_family_index),
                     queues,
                     ..Default::default()
                 }],
@@ -2396,7 +2397,7 @@ mod tests {
             physical_device,
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index: 0,
+                    queue_family_index: QueueFamilyIndex(0),
                     ..Default::default()
                 }],
                 enabled_features: features,
@@ -2421,7 +2422,7 @@ mod tests {
             physical_device.clone(),
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index: 0,
+                    queue_family_index: QueueFamilyIndex(0),
                     queues: vec![1.4],
                     ..Default::default()
                 }],
@@ -2437,7 +2438,7 @@ mod tests {
             physical_device,
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index: 0,
+                    queue_family_index: QueueFamilyIndex(0),
                     queues: vec![-0.2],
                     ..Default::default()
                 }],

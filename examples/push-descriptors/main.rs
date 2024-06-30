@@ -8,7 +8,7 @@ use vulkano::{
     descriptor_set::{layout::DescriptorSetLayoutCreateFlags, WriteDescriptorSet},
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
+        QueueFamilyIndex, QueueFlags,
     },
     format::Format,
     image::{
@@ -78,9 +78,10 @@ fn main() -> Result<(), impl Error> {
                 .enumerate()
                 .position(|(i, q)| {
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.surface_support(i as u32, &surface).unwrap_or(false)
+                        && p.surface_support(QueueFamilyIndex(i as u32), &surface)
+                            .unwrap_or(false)
                 })
-                .map(|i| (p, i as u32))
+                .map(|i| (p, QueueFamilyIndex(i as u32)))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,

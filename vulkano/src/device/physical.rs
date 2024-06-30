@@ -3,8 +3,8 @@ use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     cache::{OnceCache, WeakArcOnceCache},
     device::{
-        properties::DeviceProperties, DeviceExtensions, DeviceFeatures, DeviceFeaturesFfi,
-        DevicePropertiesFfi,
+        properties::DeviceProperties, queue::QueueFamilyIndex, DeviceExtensions, DeviceFeatures,
+        DeviceFeaturesFfi, DevicePropertiesFfi,
     },
     display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
     format::{DrmFormatModifierProperties, Format, FormatProperties},
@@ -1958,7 +1958,7 @@ impl PhysicalDevice {
         assert_eq!(self.instance(), surface.instance());
 
         if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
-            self.surface_support_unchecked(index, surface)
+            self.surface_support_unchecked(QueueFamilyIndex(index), surface)
                 .unwrap_or_default()
         }) {
             return Err(Box::new(ValidationError {
@@ -2332,7 +2332,7 @@ impl PhysicalDevice {
         assert_eq!(self.instance(), surface.instance());
 
         if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
-            self.surface_support_unchecked(index, surface)
+            self.surface_support_unchecked(QueueFamilyIndex(index), surface)
                 .unwrap_or_default()
         }) {
             return Err(Box::new(ValidationError {
@@ -2632,7 +2632,7 @@ impl PhysicalDevice {
         assert_eq!(self.instance(), surface.instance());
 
         if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
-            self.surface_support_unchecked(index, surface)
+            self.surface_support_unchecked(QueueFamilyIndex(index), surface)
                 .unwrap_or_default()
         }) {
             return Err(Box::new(ValidationError {
@@ -2855,7 +2855,7 @@ impl PhysicalDevice {
     #[inline]
     pub fn surface_support(
         &self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         surface: &Surface,
     ) -> Result<bool, Validated<VulkanError>> {
         self.validate_surface_support(queue_family_index, surface)?;
@@ -2865,7 +2865,7 @@ impl PhysicalDevice {
 
     fn validate_surface_support(
         &self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         _surface: &Surface,
     ) -> Result<(), Box<ValidationError>> {
         if !self.instance.enabled_extensions().khr_surface {
@@ -2877,7 +2877,7 @@ impl PhysicalDevice {
             }));
         }
 
-        if queue_family_index >= self.queue_family_properties.len() as u32 {
+        if queue_family_index.0 >= self.queue_family_properties.len() as u32 {
             return Err(Box::new(ValidationError {
                 context: "queue_family_index".into(),
                 problem: "is not less than the number of queue families in the physical device"
@@ -2893,18 +2893,18 @@ impl PhysicalDevice {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn surface_support_unchecked(
         &self,
-        queue_family_index: u32,
+        queue_family_index: QueueFamilyIndex,
         surface: &Surface,
     ) -> Result<bool, VulkanError> {
         surface
             .surface_support
-            .get_or_try_insert((self.handle, queue_family_index), |_| {
+            .get_or_try_insert((self.handle, queue_family_index.0), |_| {
                 let fns = self.instance.fns();
 
                 let mut output = MaybeUninit::uninit();
                 (fns.khr_surface.get_physical_device_surface_support_khr)(
                     self.handle,
-                    queue_family_index,
+                    queue_family_index.0,
                     surface.handle(),
                     output.as_mut_ptr(),
                 )

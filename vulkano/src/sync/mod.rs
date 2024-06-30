@@ -16,7 +16,10 @@ pub use self::{
         MemoryBarrier, PipelineStage, PipelineStages, QueueFamilyOwnershipTransfer,
     },
 };
-use crate::{device::Queue, VulkanError};
+use crate::{
+    device::{Queue, QueueFamilyIndex},
+    VulkanError,
+};
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -40,7 +43,7 @@ pub enum SharingMode {
     /// The resource is used is only one queue family.
     Exclusive,
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
-    Concurrent(Vec<u32>), // TODO: Vec is too expensive here
+    Concurrent(Vec<QueueFamilyIndex>), // TODO: Vec is too expensive here
 }
 
 impl<'a> From<&'a Arc<Queue>> for SharingMode {
