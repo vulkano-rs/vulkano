@@ -219,8 +219,8 @@ pub use self::{
 };
 use super::{
     DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
-    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapInfo, MemoryProperties, MemoryPropertyFlags,
-    MemoryRequirements, MemoryType,
+    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapFlags, MemoryMapInfo, MemoryProperties,
+    MemoryPropertyFlags, MemoryRequirements, MemoryType,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -1094,6 +1094,7 @@ impl<S> GenericMemoryAllocator<S> {
             // - Mapping the whole range is always valid.
             unsafe {
                 memory.map_unchecked(MemoryMapInfo {
+                    flags: MemoryMapFlags::empty(),
                     offset: 0,
                     size: memory.allocation_size(),
                     _ne: crate::NonExhaustive(()),
