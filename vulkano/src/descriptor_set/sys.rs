@@ -86,6 +86,10 @@ impl RawDescriptorSet {
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
     ) -> Result<(), Box<ValidationError>> {
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return Ok(());
+        }
+
         self.validate_update(descriptor_writes, descriptor_copies)?;
 
         self.update_unchecked(descriptor_writes, descriptor_copies);
@@ -117,6 +121,10 @@ impl RawDescriptorSet {
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
     ) {
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return;
+        }
+
         struct PerDescriptorWrite {
             write_info: DescriptorWriteInfo,
             acceleration_structures: ash::vk::WriteDescriptorSetAccelerationStructureKHR<'static>,
