@@ -138,6 +138,7 @@ Other:
 - Validation between shader code and device extensions, features and properties.
 - Added `GenericMemoryAllocator::pools` for introspection of memory allocations, along with `DeviceMemoryPool`, `DeviceMemoryBlocks`, `DeviceMemoryBlock` and `Suballocator::suballocations`.
 - Added `ResourceMemory::from_device_memory_unchecked`.
+- Added `DescriptorSet::invalidate()` to make vulkano forget about resources that bound to a descriptor_set, so they can be freed.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
@@ -157,6 +158,7 @@ Other:
 - Fixed the alignment check when (sub)allocating buffers that would limit the alignment to 64 at maximum, even though some applications might need buffers with higher alignments that aren't read/written by the host. The check is now only present when reading/writing a buffer.
 - Fix UB in debug messenger when driver reports null pointers for empty arrays.
 - `FreeListAllocator` not giving out suballocations that are free and of suitable size/alignment in a certain edge case.
+- Fixed descriptor sets with `UPDATE_AFTER_BIND` or `PARTIALLY_BOUND` being wrongly validated on bind.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
