@@ -57,13 +57,13 @@ quote = "1.0"
 raw-window-handle = "0.6"
 serde = "1.0"
 serde_json = "1.0"
-shaderc = "0.8"
+shaderc = "0.8.3"
 slabbin = "1.0"
 smallvec = "1.8"
 syn = "2.0"
 thread_local = "1.1"
 vk-parse = "0.12"
-winit = "0.29"
+winit = { version = "0.29", default-features = false }
 
 # Only used in examples
 glam = "0.25"

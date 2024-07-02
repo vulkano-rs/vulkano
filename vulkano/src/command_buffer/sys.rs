@@ -337,7 +337,7 @@ pub struct RawCommandBuffer {
 // `RawRecordingCommandBuffer` is `!Send + !Sync` so that the implementation of
 // `CommandBufferAllocator::allocate` can assume that a command buffer in the recording state
 // doesn't leave the thread it was allocated on. However, as the safety contract states,
-// `CommandBufferAllocator::deallocate` must acccount for the possibility that a command buffer is
+// `CommandBufferAllocator::deallocate` must account for the possibility that a command buffer is
 // moved between threads after the recording is finished, and thus deallocated from another thread.
 // That's why this is sound.
 unsafe impl Send for RawCommandBuffer {}

@@ -219,8 +219,8 @@ pub use self::{
 };
 use super::{
     DedicatedAllocation, DeviceAlignment, DeviceMemory, ExternalMemoryHandleTypes,
-    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapInfo, MemoryProperties, MemoryPropertyFlags,
-    MemoryRequirements, MemoryType,
+    MemoryAllocateFlags, MemoryAllocateInfo, MemoryMapFlags, MemoryMapInfo, MemoryProperties,
+    MemoryPropertyFlags, MemoryRequirements, MemoryType,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -511,7 +511,7 @@ impl MemoryTypeFilter {
     /// because the memory is only written once before being consumed by the device and becoming
     /// outdated, it doesn't matter that the data is potentially transferred over the PCIe bus
     /// since it only happens once. Since this is only a preference, if you have some requirements
-    /// such as the memory being [`HOST_VISIBLE`], those requirements will take precendence.
+    /// such as the memory being [`HOST_VISIBLE`], those requirements will take precedence.
     ///
     /// For memory that the host doesn't access, and the device doesn't access directly, you may
     /// still prefer device-local memory if the memory is used regularly. For instance, an image
@@ -1094,6 +1094,7 @@ impl<S> GenericMemoryAllocator<S> {
             // - Mapping the whole range is always valid.
             unsafe {
                 memory.map_unchecked(MemoryMapInfo {
+                    flags: MemoryMapFlags::empty(),
                     offset: 0,
                     size: memory.allocation_size(),
                     _ne: crate::NonExhaustive(()),

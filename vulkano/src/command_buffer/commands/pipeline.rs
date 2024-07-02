@@ -10,8 +10,8 @@ use crate::{
         DrawMeshTasksIndirectCommand, RecordingCommandBuffer, ResourceInCommand, SubpassContents,
     },
     descriptor_set::{
-        layout::DescriptorType, DescriptorBindingResources, DescriptorBufferInfo,
-        DescriptorImageViewInfo,
+        layout::{DescriptorBindingFlags, DescriptorType},
+        DescriptorBindingResources, DescriptorBufferInfo, DescriptorImageViewInfo,
     },
     device::{DeviceOwned, QueueFlags},
     format::{FormatFeatures, NumericType},
@@ -2146,101 +2146,107 @@ impl RecordingCommandBuffer {
                 Ok(())
             };
 
-            let set_resources = descriptor_set_state
-                .descriptor_sets
-                .get(&set_num)
-                .ok_or_else(|| {
-                    Box::new(ValidationError {
-                        problem: format!(
-                            "the currently bound pipeline accesses descriptor set {set_num}, but \
-                        no descriptor set was previously bound"
-                        )
-                        .into(),
-                        // vuids?
-                        ..Default::default()
-                    })
-                })?
-                .resources();
+            let flags_skip_binding_validation =
+                DescriptorBindingFlags::UPDATE_AFTER_BIND | DescriptorBindingFlags::PARTIALLY_BOUND;
+            let requires_binding_validation =
+                (layout_binding.binding_flags & flags_skip_binding_validation).is_empty();
+            if requires_binding_validation {
+                let set_resources = descriptor_set_state
+                    .descriptor_sets
+                    .get(&set_num)
+                    .ok_or_else(|| {
+                        Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound pipeline accesses descriptor set {set_num}, \
+                                 but no descriptor set was previously bound"
+                            )
+                            .into(),
+                            // vuids?
+                            ..Default::default()
+                        })
+                    })?
+                    .resources();
 
-            let binding_resources = set_resources.binding(binding_num).unwrap();
+                let binding_resources = set_resources.binding(binding_num).unwrap();
 
-            match binding_resources {
-                DescriptorBindingResources::None(elements) => {
-                    validate_resources(
-                        vuid_type,
-                        set_num,
-                        binding_num,
-                        binding_reqs,
-                        elements,
-                        check_none,
-                    )?;
-                }
-                DescriptorBindingResources::Buffer(elements) => {
-                    validate_resources(
-                        vuid_type,
-                        set_num,
-                        binding_num,
-                        binding_reqs,
-                        elements,
-                        check_buffer,
-                    )?;
-                }
-                DescriptorBindingResources::BufferView(elements) => {
-                    validate_resources(
-                        vuid_type,
-                        set_num,
-                        binding_num,
-                        binding_reqs,
-                        elements,
-                        check_buffer_view,
-                    )?;
-                }
-                DescriptorBindingResources::ImageView(elements) => {
-                    validate_resources(
-                        vuid_type,
-                        set_num,
-                        binding_num,
-                        binding_reqs,
-                        elements,
-                        check_image_view,
-                    )?;
-                }
-                DescriptorBindingResources::ImageViewSampler(elements) => {
-                    validate_resources(
-                        vuid_type,
-                        set_num,
-                        binding_num,
-                        binding_reqs,
-                        elements,
-                        check_image_view_sampler,
-                    )?;
-                }
-                DescriptorBindingResources::Sampler(elements) => {
-                    validate_resources(
-                        vuid_type,
-                        set_num,
-                        binding_num,
-                        binding_reqs,
-                        elements,
-                        check_sampler,
-                    )?;
-                }
-                // Spec:
-                // Descriptor bindings with descriptor type of
-                // VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK can be undefined when
-                // the descriptor set is consumed; though values in that block will be undefined.
-                //
-                // TODO: We *may* still want to validate this?
-                DescriptorBindingResources::InlineUniformBlock => (),
-                DescriptorBindingResources::AccelerationStructure(elements) => {
-                    validate_resources(
-                        vuid_type,
-                        set_num,
-                        binding_num,
-                        binding_reqs,
-                        elements,
-                        check_acceleration_structure,
-                    )?;
+                match binding_resources {
+                    DescriptorBindingResources::None(elements) => {
+                        validate_resources(
+                            vuid_type,
+                            set_num,
+                            binding_num,
+                            binding_reqs,
+                            elements,
+                            check_none,
+                        )?;
+                    }
+                    DescriptorBindingResources::Buffer(elements) => {
+                        validate_resources(
+                            vuid_type,
+                            set_num,
+                            binding_num,
+                            binding_reqs,
+                            elements,
+                            check_buffer,
+                        )?;
+                    }
+                    DescriptorBindingResources::BufferView(elements) => {
+                        validate_resources(
+                            vuid_type,
+                            set_num,
+                            binding_num,
+                            binding_reqs,
+                            elements,
+                            check_buffer_view,
+                        )?;
+                    }
+                    DescriptorBindingResources::ImageView(elements) => {
+                        validate_resources(
+                            vuid_type,
+                            set_num,
+                            binding_num,
+                            binding_reqs,
+                            elements,
+                            check_image_view,
+                        )?;
+                    }
+                    DescriptorBindingResources::ImageViewSampler(elements) => {
+                        validate_resources(
+                            vuid_type,
+                            set_num,
+                            binding_num,
+                            binding_reqs,
+                            elements,
+                            check_image_view_sampler,
+                        )?;
+                    }
+                    DescriptorBindingResources::Sampler(elements) => {
+                        validate_resources(
+                            vuid_type,
+                            set_num,
+                            binding_num,
+                            binding_reqs,
+                            elements,
+                            check_sampler,
+                        )?;
+                    }
+                    // Spec:
+                    // Descriptor bindings with descriptor type of
+                    // VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK can be undefined when the descriptor
+                    // set is consumed; though values in that block will be undefined.
+                    //
+                    // TODO: We *may* still want to validate this?
+                    DescriptorBindingResources::InlineUniformBlock => (),
+                    DescriptorBindingResources::AccelerationStructure(elements) => {
+                        validate_resources(
+                            vuid_type,
+                            set_num,
+                            binding_num,
+                            binding_reqs,
+                            elements,
+                            check_acceleration_structure,
+                        )?;
+                    }
                 }
             }
         }

@@ -977,7 +977,7 @@ impl BufferContentsLayout {
         }
     }
 
-    /// Creates a new `BufferContentsLayout` from a sized layout. This is inteded for use by the
+    /// Creates a new `BufferContentsLayout` from a sized layout. This is intended for use by the
     /// derive macro only.
     #[doc(hidden)]
     #[inline]
@@ -994,7 +994,7 @@ impl BufferContentsLayout {
         }
     }
 
-    /// Creates a new `BufferContentsLayout` from a head and element layout. This is inteded for
+    /// Creates a new `BufferContentsLayout` from a head and element layout. This is intended for
     /// use by the derive macro only.
     #[doc(hidden)]
     #[inline]
@@ -1076,7 +1076,7 @@ impl BufferContentsLayout {
     /// the nearest multiple of the alignment of the element type and aligning the head to the
     /// alignment of the element type if there is a sized part. Doesn't do anything if there is no
     /// sized part. Returns [`None`] if the new head size would exceed [`DeviceLayout::MAX_SIZE`].
-    /// This is inteded for use by the derive macro only.
+    /// This is intended for use by the derive macro only.
     #[doc(hidden)]
     #[inline]
     pub const fn pad_to_alignment(&self) -> Option<Self> {

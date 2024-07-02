@@ -217,9 +217,10 @@ impl DescriptorPool {
         let allocate_infos = allocate_infos.into_iter();
 
         let (lower_size_bound, _) = allocate_infos.size_hint();
-        let mut layouts_vk = Vec::with_capacity(lower_size_bound);
-        let mut variable_descriptor_counts = Vec::with_capacity(lower_size_bound);
-        let mut layouts = Vec::with_capacity(lower_size_bound);
+        let mut layouts_vk: SmallVec<[_; 1]> = SmallVec::with_capacity(lower_size_bound);
+        let mut variable_descriptor_counts: SmallVec<[_; 1]> =
+            SmallVec::with_capacity(lower_size_bound);
+        let mut layouts: SmallVec<[_; 1]> = SmallVec::with_capacity(lower_size_bound);
 
         for info in allocate_infos {
             let DescriptorSetAllocateInfo {
@@ -233,7 +234,7 @@ impl DescriptorPool {
             layouts.push(layout);
         }
 
-        let mut output = vec![];
+        let mut output: SmallVec<[_; 1]> = SmallVec::new();
 
         if !layouts_vk.is_empty() {
             let mut variable_desc_count_alloc_info = None;

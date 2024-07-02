@@ -231,7 +231,8 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
                     | "robustStorageBufferAccessSizeAlignment"
                     | "robustUniformBufferAccessSizeAlignment"
                     | "storageTexelBufferOffsetAlignmentBytes"
-                    | "uniformTexelBufferOffsetAlignmentBytes" => {
+                    | "uniformTexelBufferOffsetAlignmentBytes"
+                    | "minPlacedMemoryMapAlignment" => {
                         quote! { DeviceAlignment }
                     }
                     _ => vulkano_type(ty, len),

@@ -15,8 +15,6 @@
 - [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
 - Rust version: 1.72.0
 
-### Public dependency updates
-
 ### Breaking changes
 
 Changes to (physical) device:
@@ -111,27 +109,36 @@ Changes to vulkano-util:
 
 ### Additions
 
-- Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
-- Support for the `khr_timeline_semaphore` extension.
+Extensions:
+- `khr_draw_indirect_count`
+- `khr_timeline_semaphore`
+- `ext_conservative_rasterization`
+- `ext_host_query_reset`
+- `ext_map_memory_placed`
+- `ext_mesh_shader`
+- `ext_vertex_input_dynamic_state`
+
+Device features:
+- `extended_dynamic_state3_conservative_rasterization_mode`
+- `extended_dynamic_state3_extra_primitive_overestimation_size`
+
+Vulkan APIs:
 - Ability to update existing descriptor sets.
-- Support for the `ext_vertex_input_dynamic_state` extension.
+- Support for querying memory requirements directly from the device.
+
+Other:
+- Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
 - Support for 64-bit values in vertex input.
 - Support for creating buffers and images that are not backed by vulkano-managed memory.
 - Documented the safety requirements of shaders in the `shader` module.
-- Support for the `khr_draw_indirect_count` extension.
-- Support for the `ext_mesh_shader` extension.
-- Support for querying memory requirements directly from the device.
 - Support for the `glam` crate in the `type_for_format` macro.
 - Added `DepthState::reverse` helper method.
-- Support for the `ext_host_query_reset` extension.
 - `VertexDefinition` now fully supports 64-bit types and struct types in input/output interfaces.
 - `VertexDefinition` now uses a placeholder name if a name is not present in the shader, instead of panicking.
 - Validation between shader code and device extensions, features and properties.
 - Added `GenericMemoryAllocator::pools` for introspection of memory allocations, along with `DeviceMemoryPool`, `DeviceMemoryBlocks`, `DeviceMemoryBlock` and `Suballocator::suballocations`.
-- Support for the `ext_conservative_rasterization` extension.
-- Support for the `extended_dynamic_state3_conservative_rasterization_mode` device feature.
-- Support for the `extended_dynamic_state3_extra_primitive_overestimation_size` device feature.
 - Added `ResourceMemory::from_device_memory_unchecked`.
+- Added `DescriptorSet::invalidate()` to make vulkano forget about resources that bound to a descriptor_set, so they can be freed.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
@@ -151,6 +158,7 @@ Changes to vulkano-util:
 - Fixed the alignment check when (sub)allocating buffers that would limit the alignment to 64 at maximum, even though some applications might need buffers with higher alignments that aren't read/written by the host. The check is now only present when reading/writing a buffer.
 - Fix UB in debug messenger when driver reports null pointers for empty arrays.
 - `FreeListAllocator` not giving out suballocations that are free and of suitable size/alignment in a certain edge case.
+- Fixed descriptor sets with `UPDATE_AFTER_BIND` or `PARTIALLY_BOUND` being wrongly validated on bind.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
@@ -357,7 +365,7 @@ Changes to the physical device:
 - vulkano-shaders: Use a placeholder name instead of erroring out, when the shader doesn't contain a name for a struct.
 - [#2203](https://github.com/vulkano-rs/vulkano/issues/2203): Shader reflection fails to find descriptor set variables if multiple `OpAccessChain` instructions are themselves chained.
 - vulkano-shaders: Invalid emitted code for shader input/output interfaces if the shader is missing a name decoration.
-- Fixed potential UB when using `MemoryAlloc::try_unwrap`, where the allocation was mapped on contruction of the `MemoryAlloc` but not unmapped on unwrapping, allowing double-mapping.
+- Fixed potential UB when using `MemoryAlloc::try_unwrap`, where the allocation was mapped on construction of the `MemoryAlloc` but not unmapped on unwrapping, allowing double-mapping.
 - Fixed a bug in `GenericMemoryAllocator::allocate`, where the root allocations weren't created with the configured `AllocationType`.
 - Specialization constants are now applied to the reflected SPIR-V code before any other reflection is performed.
 - Fragment shaders cannot use `dual_src_blend` device feature due to interface errors.
@@ -933,7 +941,7 @@ Miscellaneous:
 
 # Version 0.27.1 (2021-12-07)
 
-- Reimplement generic impl's for `BufferAcces`, `TypedBufferAccess` & `ImageAccess`.
+- Reimplement generic impl's for `BufferAccess`, `TypedBufferAccess` & `ImageAccess`.
 
 # Version 0.27.0 (2021-12-06)
 
@@ -1158,7 +1166,7 @@ already needed khr_external_memory and khr_external_memory_fd.
 - **Breaking** (but unlikely) Vulkano-shaders now compiles to SPIR-V 1.0 by default. If your shader needs features only available in a higher version, you can specify the target version on the `shader!` macro with the new `vulkan_version: "major.minor"` and `spirv_version: "major.minor"` arguments.
 - **Breaking** Changes to how image sample counts are represented.
   - Instead of an integer, functions with a parameter for number of image samples now take a value of `SampleCount`, an enum with variants named `SampleN`, where `N` is a power-of-two integer. It can be converted to a Vulkan `SampleCountFlags`, and from an integer with `try_from`.
-  - `sample_counts` field is originaly represented as u32 type, which is now represented by `SampleCounts` struct-type which is a boolean collection of supported `sample_counts`. It can be converted to and from a Vulkan `SampleCountFlags`.
+  - `sample_counts` field is originally represented as u32 type, which is now represented by `SampleCounts` struct-type which is a boolean collection of supported `sample_counts`. It can be converted to and from a Vulkan `SampleCountFlags`.
 - **Breaking** Changes to shader interfaces and pipeline layouts.
   - The module `descriptor::pipeline_layout` has been renamed to `pipeline::layout`.
   - The trait `ShaderInterfaceDef` has been replaced by a simple struct `ShaderInterface`, and its `elements` method returns a slice instead of an iterator. This means you no longer need to define a new type for a shader interface. The accompanying type `ShaderInterfaceDefEntry` has been renamed to `ShaderInterfaceEntry` to match. The `ShaderInterfaceDefMatch` trait and `EmptyShaderInterfaceDef` struct have been removed.
@@ -1388,7 +1396,7 @@ already needed khr_external_memory and khr_external_memory_fd.
 - **Breaking** Swapchain::new() now doesnt need to have the old_swapchain parameter anymore but requires the ColorSpace
 - **Breaking** Decouple descriptor sets from pipeline
 - **Breaking** Update Winit to 0.21.0
-- **Breaking** Add `host_cached` field to all `CpuAccessibleBuffer` initializers to allow the user to perfer host cached memory.
+- **Breaking** Add `host_cached` field to all `CpuAccessibleBuffer` initializers to allow the user to prefer host cached memory.
 - **Breaking** Added `fullscreen_exclusive` field to `Swapchain` initializers to allow the user to specify how fullscreen exclusivity should be handled.
     + Swapchain methods added: `Swapchain::acquire_fullscreen_exclusive()`, `Swapchain::release_fullscreen_exclusive()`, and `Swapchain::is_fullscreen_exclusive()`
 - Add function `execute_commands_from_vec` to handle submission of multiple secondary command buffers.
@@ -1397,9 +1405,9 @@ already needed khr_external_memory and khr_external_memory_fd.
 - Update MacOS dependency cocoa to 0.20
 - Fixed code generated by `shader!` macro so that SSBO's are supported again (broken in 0.16.0).
 - Added Swapchain::surface() - which returns the saved surface
-- Propogate new lines correctly in shader compile errors.
+- Propagate new lines correctly in shader compile errors.
 - `Queue` and `QueueFamily` now implement `PartialEq` and `Eq`
-- `Swapchain::acquire_next_image()`` now returns ``(image_id, suboptimal, aquire_future)``
+- `Swapchain::acquire_next_image()`` now returns ``(image_id, suboptimal, acquire_future)``
     + *suboptimal indicates that the swapchain is usable, but should be recreated*
 - Fixed Join Future implementation to not submit joined command buffers twice.
 - The traits `GraphicsPipelineAbstract` and `DescriptorSet` now require `DeviceOwned`.
@@ -1446,7 +1454,7 @@ This is an emergency breaking breaking change. It fixes Undefined Behaviour that
 # Version 0.12.0 (2019-05-24)
 
 - Update shaderc to 0.5.  New shaderc has improved pre-built options for libshaderc that significantly reduce package build time and are appropriate for use in CI
-- `QueueFamily::explicitly_supports_tranfers` only returns true if `vk::QUEUE_TRANSFER_BIT` is set instead of also always returning true.  Removed `supports_transfers`.
+- `QueueFamily::explicitly_supports_transfers` only returns true if `vk::QUEUE_TRANSFER_BIT` is set instead of also always returning true.  Removed `supports_transfers`.
 - Update to winit 0.19
 - Add support for `#include "..."` and `#include <...>` directives within source
   files.
@@ -1467,7 +1475,7 @@ This is an emergency breaking breaking change. It fixes Undefined Behaviour that
     +   `instance::Features` -> `device::Features`
     +   `instance::DeviceExtensions` -> `device::DeviceExtensions`
     +   `instance::RawDeviceExtensions` -> `device::RawDeviceExtensions`
-- Added `vulkano_shaders::shader!` proc macro, use this instead of `vulkano_shader_deriver::VulkanoShaders`.
+- Added `vulkano_shaders::shader!` proc macro, use this instead of `vulkano_shader_derive::VulkanoShaders`.
 - The entire `vulkano_shader_derive` crate is deprecated.
 - `vulkano_shaders::{reflect, compile, Error}` are no longer public.
 - Remove vulkano_shaders::build_glsl_shaders

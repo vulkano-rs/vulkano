@@ -366,7 +366,7 @@ impl From<AllocationType> for SuballocationType {
     }
 }
 
-/// Checks if resouces A and B share a page.
+/// Checks if resources A and B share a page.
 ///
 /// > **Note**: Assumes `a_offset + a_size > 0` and `a_offset + a_size <= b_offset`.
 fn are_blocks_on_same_page(

@@ -74,8 +74,8 @@ use self::{
 pub use self::{
     collection::DescriptorSetsCollection,
     update::{
-        CopyDescriptorSet, DescriptorBufferInfo, DescriptorImageViewInfo, WriteDescriptorSet,
-        WriteDescriptorSetElements,
+        CopyDescriptorSet, DescriptorBufferInfo, DescriptorImageViewInfo, InvalidateDescriptorSet,
+        WriteDescriptorSet, WriteDescriptorSetElements,
     },
 };
 use crate::{
@@ -190,6 +190,9 @@ impl DescriptorSet {
     ) -> Result<(), Box<ValidationError>> {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return Ok(());
+        }
 
         self.inner
             .validate_update(&descriptor_writes, &descriptor_copies)?;
@@ -214,6 +217,9 @@ impl DescriptorSet {
     ) {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return;
+        }
 
         Self::update_inner(
             &self.inner,
@@ -235,6 +241,9 @@ impl DescriptorSet {
     ) -> Result<(), Box<ValidationError>> {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return Ok(());
+        }
 
         self.inner
             .validate_update(&descriptor_writes, &descriptor_copies)?;
@@ -257,6 +266,9 @@ impl DescriptorSet {
     ) {
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
         let descriptor_copies: SmallVec<[_; 8]> = descriptor_copies.into_iter().collect();
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return;
+        }
 
         Self::update_inner(
             &self.inner,
@@ -281,6 +293,42 @@ impl DescriptorSet {
         for copy in descriptor_copies {
             resources.copy(copy);
         }
+    }
+
+    /// Invalidates descriptors within a descriptor set. Doesn't actually call into vulkan and only
+    /// invalidates the descriptors inside vulkano's resource tracking. Invalidated descriptors are
+    /// equivalent to uninitialized descriptors, in that binding a descriptor set to a particular
+    /// pipeline requires all shader-accessible descriptors to be valid.
+    ///
+    /// The intended use-case is an update-after-bind or bindless system, where entries in an
+    /// arrayed binding have to be invalidated so that the backing resource will be freed, and
+    /// not stay forever referenced until overridden by some update.
+    pub fn invalidate(
+        &self,
+        descriptor_invalidates: &[InvalidateDescriptorSet],
+    ) -> Result<(), Box<ValidationError>> {
+        self.validate_invalidate(descriptor_invalidates)?;
+        self.invalidate_unchecked(descriptor_invalidates);
+        Ok(())
+    }
+
+    pub fn invalidate_unchecked(&self, descriptor_invalidates: &[InvalidateDescriptorSet]) {
+        let mut resources = self.resources.write();
+        for invalidate in descriptor_invalidates {
+            resources.invalidate(invalidate);
+        }
+    }
+
+    pub(super) fn validate_invalidate(
+        &self,
+        descriptor_invalidates: &[InvalidateDescriptorSet],
+    ) -> Result<(), Box<ValidationError>> {
+        for (index, write) in descriptor_invalidates.iter().enumerate() {
+            write
+                .validate(self.layout(), self.variable_descriptor_count())
+                .map_err(|err| err.add_context(format!("descriptor_writes[{}]", index)))?;
+        }
+        Ok(())
     }
 }
 
@@ -430,6 +478,14 @@ impl DescriptorSetResources {
                 copy.dst_first_array_element,
                 copy.descriptor_count,
             );
+    }
+
+    #[inline]
+    pub(crate) fn invalidate(&mut self, invalidate: &InvalidateDescriptorSet) {
+        self.binding_resources
+            .get_mut(&invalidate.binding)
+            .expect("descriptor write has invalid binding number")
+            .invalidate(invalidate)
     }
 }
 
@@ -618,6 +674,47 @@ impl DescriptorBindingResources {
                     .clone_from_slice(&src[src_start..src_start + count]),
                 _ => panic!("descriptor copy has wrong resource type"),
             },
+        }
+    }
+
+    pub(crate) fn invalidate(&mut self, invalidate: &InvalidateDescriptorSet) {
+        fn invalidate_resources<T: Clone>(
+            resources: &mut [Option<T>],
+            invalidate: &InvalidateDescriptorSet,
+        ) {
+            let first = invalidate.first_array_element as usize;
+            resources
+                .get_mut(first..first + invalidate.descriptor_count as usize)
+                .expect("descriptor write for binding out of bounds")
+                .iter_mut()
+                .for_each(|resource| {
+                    *resource = None;
+                });
+        }
+
+        match self {
+            DescriptorBindingResources::None(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::Buffer(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::BufferView(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::ImageView(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::ImageViewSampler(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::Sampler(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
+            DescriptorBindingResources::InlineUniformBlock => (),
+            DescriptorBindingResources::AccelerationStructure(resources) => {
+                invalidate_resources(resources, invalidate)
+            }
         }
     }
 }

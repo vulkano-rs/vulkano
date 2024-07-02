@@ -1615,6 +1615,8 @@ pub struct CopyDescriptorSet {
     pub dst_binding: u32,
 
     /// The first array element in the destination descriptor set to copy into.
+    ///
+    /// The default value is 0.
     pub dst_first_array_element: u32,
 
     /// The number of descriptors (array elements) to copy.
@@ -1870,5 +1872,95 @@ impl CopyDescriptorSet {
             .dst_binding(dst_binding)
             .dst_array_element(dst_first_array_element)
             .descriptor_count(descriptor_count)
+    }
+}
+
+/// Invalidates descriptors within a descriptor set. Doesn't actually call into vulkan and only
+/// invalidates the descriptors inside vulkano's resource tracking. Invalidated descriptors are
+/// equivalent to uninitialized descriptors, in that binding a descriptor set to a particular
+/// pipeline requires all shader-accessible descriptors to be valid.
+///
+/// The intended use-case is an update-after-bind or bindless system, where entries in an arrayed
+/// binding have to be invalidated so that the backing resource will be freed, and not stay forever
+/// referenced until overridden by some update.
+pub struct InvalidateDescriptorSet {
+    /// The binding number in the descriptor set to invalidate.
+    ///
+    /// The default value is 0.
+    pub binding: u32,
+
+    /// The first array element in the descriptor set to invalidate.
+    ///
+    /// The default value is 0.
+    pub first_array_element: u32,
+
+    /// The number of descriptors (array elements) to invalidate.
+    ///
+    /// The default value is 1.
+    pub descriptor_count: u32,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl InvalidateDescriptorSet {
+    pub fn invalidate(binding: u32) -> Self {
+        Self::invalidate_array(binding, 0, 1)
+    }
+
+    pub fn invalidate_array(binding: u32, first_array_element: u32, descriptor_count: u32) -> Self {
+        Self {
+            binding,
+            first_array_element,
+            descriptor_count,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    pub(crate) fn validate(
+        &self,
+        layout: &DescriptorSetLayout,
+        variable_descriptor_count: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            binding,
+            first_array_element,
+            descriptor_count,
+            ..
+        } = self;
+
+        let layout_binding = match layout.bindings().get(&binding) {
+            Some(layout_binding) => layout_binding,
+            None => {
+                return Err(Box::new(ValidationError {
+                    context: "binding".into(),
+                    problem: "does not exist in the descriptor set layout".into(),
+                    vuids: &["VUID-VkWriteDescriptorSet-dstBinding-00315"],
+                    ..Default::default()
+                }));
+            }
+        };
+
+        debug_assert!(descriptor_count != 0);
+        let max_descriptor_count = if layout_binding
+            .binding_flags
+            .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+        {
+            variable_descriptor_count
+        } else {
+            layout_binding.descriptor_count
+        };
+
+        // VUID-VkWriteDescriptorSet-dstArrayElement-00321
+        if first_array_element + descriptor_count > max_descriptor_count {
+            return Err(Box::new(ValidationError {
+                problem: "`first_array_element` + the number of provided elements is greater than \
+                    the number of descriptors in the descriptor set binding"
+                    .into(),
+                vuids: &["VUID-VkWriteDescriptorSet-dstArrayElement-00321"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 }

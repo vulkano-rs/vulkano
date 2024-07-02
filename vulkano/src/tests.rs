@@ -19,13 +19,24 @@ macro_rules! instance {
 
 /// Creates a device and a queue for graphics operations.
 macro_rules! gfx_dev_and_queue {
+    () => ({
+        gfx_dev_and_queue!(;)
+    });
     ($($feature:ident),*) => ({
+        gfx_dev_and_queue!($($feature),*;)
+    });
+    ($($feature:ident),*; $($extension:ident),*) => ({
         use crate::device::physical::PhysicalDeviceType;
         use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
         use crate::device::DeviceFeatures;
 
         let instance = instance!();
-        let enabled_extensions = DeviceExtensions::empty();
+        let enabled_extensions = DeviceExtensions {
+            $(
+                $extension: true,
+            )*
+            .. DeviceExtensions::empty()
+        };
         let enabled_features = DeviceFeatures {
             $(
                 $feature: true,

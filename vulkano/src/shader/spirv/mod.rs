@@ -430,7 +430,7 @@ impl Spirv {
     ///
     /// # Panics
     ///
-    /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
+    /// - Panics if `id` is not defined in this module. This can in theory only happen if you are
     ///   mixing `Id`s from different modules.
     #[inline]
     pub fn id(&self, id: Id) -> &IdInfo {
@@ -441,7 +441,7 @@ impl Spirv {
     ///
     /// # Panics
     ///
-    /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
+    /// - Panics if `id` is not defined in this module. This can in theory only happen if you are
     ///   mixing `Id`s from different modules.
     #[inline]
     pub fn function(&self, id: Id) -> &FunctionInfo {

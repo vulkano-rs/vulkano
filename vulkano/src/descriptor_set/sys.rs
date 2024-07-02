@@ -83,6 +83,10 @@ impl RawDescriptorSet {
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
     ) -> Result<(), Box<ValidationError>> {
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return Ok(());
+        }
+
         self.validate_update(descriptor_writes, descriptor_copies)?;
 
         self.update_unchecked(descriptor_writes, descriptor_copies);
@@ -114,6 +118,10 @@ impl RawDescriptorSet {
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
     ) {
+        if descriptor_writes.is_empty() && descriptor_copies.is_empty() {
+            return;
+        }
+
         let set_layout_bindings = self.layout().bindings();
         let writes_fields1_vk: SmallVec<[_; 8]> = descriptor_writes
             .iter()

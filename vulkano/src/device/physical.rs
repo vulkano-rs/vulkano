@@ -768,7 +768,10 @@ impl PhysicalDevice {
                 .collect()
         };
 
-        *self.display_plane_properties.write() = properties_raw.clone();
+        self.display_plane_properties
+            .write()
+            .clone_from(&properties_raw);
+
         Ok(properties_raw)
     }
 

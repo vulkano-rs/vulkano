@@ -29,7 +29,7 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: rustup toolchain install stable
     - uses: Swatinem/rust-cache@v2
       if: ${{ ! matrix.self-hosted }}
@@ -44,7 +44,7 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: rustup toolchain install stable --component clippy
     - uses: Swatinem/rust-cache@v2
       with:
@@ -55,7 +55,13 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: rustup toolchain install nightly --component rustfmt
     - name: Run fmt check
       run: cargo +nightly fmt --check
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run typos
+      uses: crate-ci/typos@master

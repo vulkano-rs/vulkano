@@ -149,7 +149,7 @@ fn main() -> Result<(), impl Error> {
     // during the transfers either and the two tasks are truly asynchronous.
     //
     // For this, we need to find the queue family with the fewest queue flags set, since if the
-    // queue fmaily has more flags than `TRANSFER | SPARSE_BINDING`, that means it is not dedicated
+    // queue family has more flags than `TRANSFER | SPARSE_BINDING`, that means it is not dedicated
     // to transfer operations.
     let transfer_family_index = physical_device
         .queue_family_properties()
@@ -157,12 +157,12 @@ fn main() -> Result<(), impl Error> {
         .enumerate()
         .filter(|(_, q)| {
             q.queue_flags.intersects(QueueFlags::TRANSFER)
-                // Queue familes dedicated to transfers are not required to support partial 
-                // transfers of images, reported by a mininum granularity of [0, 0, 0]. If you need 
+                // Queue families dedicated to transfers are not required to support partial 
+                // transfers of images, reported by a minimum granularity of [0, 0, 0]. If you need 
                 // to do partial transfers of images like we do in this example, you therefore have 
                 // to make sure the queue family supports that.
                 && q.min_image_transfer_granularity != [0; 3]
-                // Unlike queue familes for graphics and/or compute, queue familes dedicated to
+                // Unlike queue families for graphics and/or compute, queue families dedicated to
                 // transfers don't have to support image transfers of arbitrary granularity.
                 // Therefore, if you are going to use one, you have to either make sure the
                 // granularity is granular enough for your needs, or you have to align your
@@ -182,7 +182,7 @@ fn main() -> Result<(), impl Error> {
             ..Default::default()
         }];
 
-        // It's possible that the physical device doesn't have any queue familes supporting
+        // It's possible that the physical device doesn't have any queue families supporting
         // transfers other than the graphics and/or compute queue family. In that case we must make
         // sure we don't request the same queue family twice.
         if transfer_family_index != graphics_family_index {
@@ -623,7 +623,7 @@ fn main() -> Result<(), impl Error> {
                         (
                             // Bind the uniform buffer designated for this frame.
                             uniform_buffer_sets[image_index as usize].clone(),
-                            // Bind the currenly most up-to-date texture.
+                            // Bind the currently most up-to-date texture.
                             sampler_sets[current_texture_index.load(Ordering::Acquire) as usize]
                                 .clone(),
                         ),

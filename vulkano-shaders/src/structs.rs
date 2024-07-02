@@ -844,11 +844,6 @@ impl TypeStruct {
                 if last.offset + last_size > offset {
                     bail!(shader.source, "struct members must not overlap");
                 }
-            } else if offset != 0 {
-                bail!(
-                    shader.source,
-                    "expected struct member at index 0 to have an `Offset` decoration of 0",
-                );
             }
 
             members.push(Member { ident, ty, offset });

@@ -46,6 +46,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 vk-parse = { workspace = true }
 
+[dev-dependencies]
+libc = "0.2.153"
+
 [features]
 default = ["macros"]
 macros = ["dep:vulkano-macros"]

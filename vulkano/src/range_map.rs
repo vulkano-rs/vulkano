@@ -154,7 +154,7 @@ where
             .take(2)
             .filter(|(start, Entry { end, value: _ })| {
                 // Does the candidate range either overlap
-                // or immediately preceed the range to insert?
+                // or immediately precede the range to insert?
                 // (Remember that it might actually cover the _whole_
                 // range to insert and then some.)
                 (*start..end).touches(&(&range.start..&range.end))

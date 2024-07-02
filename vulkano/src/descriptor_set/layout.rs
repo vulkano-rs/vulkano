@@ -236,7 +236,7 @@ pub struct DescriptorSetLayoutCreateInfo {
     /// Specifies how to create the descriptor set layout.
     pub flags: DescriptorSetLayoutCreateFlags,
 
-    /// The bindings of the desriptor set layout. These are specified according to binding number.
+    /// The bindings of the descriptor set layout. These are specified according to binding number.
     ///
     /// It is generally advisable to keep the binding numbers low. Higher binding numbers may
     /// use more memory inside Vulkan.

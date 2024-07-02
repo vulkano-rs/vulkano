@@ -1,6 +1,6 @@
 // Welcome to the triangle-util example!
 //
-// This is almost exactly the same as the triange example, except that it uses utility functions
+// This is almost exactly the same as the triangle example, except that it uses utility functions
 // to make life easier.
 //
 // This example assumes that you are already more or less familiar with graphics programming and
