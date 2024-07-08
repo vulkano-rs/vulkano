@@ -174,7 +174,14 @@ impl Image {
         Ok(Arc::new(image))
     }
 
-    fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
+    /// Creates an `Image` from a raw image, memory, and layout.
+    ///
+    /// # Safety
+    ///
+    /// This function does not perform any checks on the provided `RawImage`, `ImageMemory`, and
+    /// `ImageLayout`. The caller must ensure that they are compatible. The caller is responsible
+    /// for binding the image memory to the image.
+    pub unsafe fn from_raw(inner: RawImage, memory: ImageMemory, layout: ImageLayout) -> Self {
         let aspects = inner.format().aspects();
         let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.into_iter().collect();
         let mip_level_size = inner.array_layers() as DeviceSize;
