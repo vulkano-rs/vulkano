@@ -84,12 +84,7 @@ impl Event {
         device: Arc<Device>,
         create_info: EventCreateInfo,
     ) -> Result<Event, VulkanError> {
-        let &EventCreateInfo { flags, _ne: _ } = &create_info;
-
-        let create_info_vk = ash::vk::EventCreateInfo {
-            flags: flags.into(),
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
@@ -326,6 +321,12 @@ impl EventCreateInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::EventCreateInfo<'static> {
+        let &Self { flags, _ne: _ } = self;
+
+        ash::vk::EventCreateInfo::default().flags(flags.into())
     }
 }
 

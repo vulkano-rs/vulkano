@@ -19,7 +19,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{ops::Range, ptr, sync::Arc};
+use std::{ops::Range, sync::Arc};
 
 /// Represents a single write operation to the binding of a descriptor set.
 ///
@@ -1327,170 +1327,161 @@ impl WriteDescriptorSet {
         Ok(())
     }
 
-    pub(crate) fn to_vulkan_info(&self, descriptor_type: DescriptorType) -> DescriptorWriteInfo {
-        let default_image_layout = descriptor_type.default_image_layout();
-
-        match &self.elements {
-            WriteDescriptorSetElements::None(num_elements) => {
-                debug_assert!(matches!(descriptor_type, DescriptorType::Sampler));
-                DescriptorWriteInfo::Image(
-                    std::iter::repeat_with(|| ash::vk::DescriptorImageInfo {
-                        sampler: ash::vk::Sampler::null(),
-                        image_view: ash::vk::ImageView::null(),
-                        image_layout: ash::vk::ImageLayout::UNDEFINED,
-                    })
-                    .take(*num_elements as usize)
-                    .collect(),
-                )
-            }
-            WriteDescriptorSetElements::Buffer(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::UniformBuffer
-                        | DescriptorType::StorageBuffer
-                        | DescriptorType::UniformBufferDynamic
-                        | DescriptorType::StorageBufferDynamic
-                ));
-                DescriptorWriteInfo::Buffer(
-                    elements
-                        .iter()
-                        .map(|buffer_info| {
-                            let DescriptorBufferInfo { buffer, range } = buffer_info;
-
-                            debug_assert!(!range.is_empty());
-                            debug_assert!(range.end <= buffer.buffer().size());
-
-                            ash::vk::DescriptorBufferInfo {
-                                buffer: buffer.buffer().handle(),
-                                offset: buffer.offset() + range.start,
-                                range: range.end - range.start,
-                            }
-                        })
-                        .collect(),
-                )
-            }
-            WriteDescriptorSetElements::BufferView(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::UniformTexelBuffer | DescriptorType::StorageTexelBuffer
-                ));
-                DescriptorWriteInfo::BufferView(
-                    elements
-                        .iter()
-                        .map(|buffer_view| buffer_view.handle())
-                        .collect(),
-                )
-            }
-            WriteDescriptorSetElements::ImageView(elements) => {
-                // NOTE: combined image sampler can occur with immutable samplers
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::CombinedImageSampler
-                        | DescriptorType::SampledImage
-                        | DescriptorType::StorageImage
-                        | DescriptorType::InputAttachment
-                ));
-                DescriptorWriteInfo::Image(
-                    elements
-                        .iter()
-                        .map(|image_view_info| {
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            ash::vk::DescriptorImageInfo {
-                                sampler: ash::vk::Sampler::null(),
-                                image_view: image_view.handle(),
-                                image_layout: image_layout.into(),
-                            }
-                        })
-                        .collect(),
-                )
-            }
-            WriteDescriptorSetElements::ImageViewSampler(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::CombinedImageSampler
-                ));
-                DescriptorWriteInfo::Image(
-                    elements
-                        .iter()
-                        .map(|(image_view_info, sampler)| {
-                            let &DescriptorImageViewInfo {
-                                ref image_view,
-                                mut image_layout,
-                            } = image_view_info;
-
-                            if image_layout == ImageLayout::Undefined {
-                                image_layout = default_image_layout;
-                            }
-
-                            ash::vk::DescriptorImageInfo {
-                                sampler: sampler.handle(),
-                                image_view: image_view.handle(),
-                                image_layout: image_layout.into(),
-                            }
-                        })
-                        .collect(),
-                )
-            }
-            WriteDescriptorSetElements::Sampler(elements) => {
-                debug_assert!(matches!(descriptor_type, DescriptorType::Sampler));
-                DescriptorWriteInfo::Image(
-                    elements
-                        .iter()
-                        .map(|sampler| ash::vk::DescriptorImageInfo {
-                            sampler: sampler.handle(),
-                            image_view: ash::vk::ImageView::null(),
-                            image_layout: ash::vk::ImageLayout::UNDEFINED,
-                        })
-                        .collect(),
-                )
-            }
-            WriteDescriptorSetElements::InlineUniformBlock(data) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::InlineUniformBlock
-                ));
-                DescriptorWriteInfo::InlineUniformBlock(data.clone())
-            }
-            WriteDescriptorSetElements::AccelerationStructure(elements) => {
-                debug_assert!(matches!(
-                    descriptor_type,
-                    DescriptorType::AccelerationStructure
-                ));
-                DescriptorWriteInfo::AccelerationStructure(
-                    elements
-                        .iter()
-                        .map(|acceleration_structure| acceleration_structure.handle())
-                        .collect(),
-                )
-            }
-        }
-    }
-
-    pub(crate) fn to_vulkan(
+    pub(crate) fn to_vk<'a>(
         &self,
         dst_set: ash::vk::DescriptorSet,
         descriptor_type: DescriptorType,
-    ) -> ash::vk::WriteDescriptorSet<'static> {
-        ash::vk::WriteDescriptorSet {
-            dst_set,
-            dst_binding: self.binding,
-            dst_array_element: self.first_array_element,
-            descriptor_count: 0,
-            descriptor_type: descriptor_type.into(),
-            p_image_info: ptr::null(),
-            p_buffer_info: ptr::null(),
-            p_texel_buffer_view: ptr::null(),
-            ..Default::default()
+        fields1_vk: &'a WriteDescriptorSetFields1,
+        extensions_vk: &'a mut WriteDescriptorSetExtensionsVk<'_>,
+    ) -> ash::vk::WriteDescriptorSet<'a> {
+        let &Self {
+            binding,
+            first_array_element,
+            elements: _,
+        } = self;
+        let WriteDescriptorSetFields1 {
+            descriptor_infos_vk,
+        } = fields1_vk;
+
+        let mut val_vk = ash::vk::WriteDescriptorSet::default()
+            .dst_set(dst_set)
+            .dst_binding(binding)
+            .dst_array_element(first_array_element)
+            .descriptor_type(descriptor_type.into());
+
+        match descriptor_infos_vk {
+            DescriptorInfosVk::Image(info) => val_vk = val_vk.image_info(info),
+            DescriptorInfosVk::Buffer(info) => val_vk = val_vk.buffer_info(info),
+            DescriptorInfosVk::BufferView(info) => val_vk = val_vk.texel_buffer_view(info),
+            _ => (),
+        }
+
+        let WriteDescriptorSetExtensionsVk {
+            descriptor_type_extension_vk,
+        } = extensions_vk;
+
+        if let Some(descriptor_type_extension_vk) = descriptor_type_extension_vk {
+            match descriptor_type_extension_vk {
+                DescriptorTypeExtensionVk::AccelerationStructure(next) => {
+                    val_vk = val_vk
+                        .descriptor_count(next.acceleration_structure_count)
+                        .push_next(next)
+                }
+                DescriptorTypeExtensionVk::InlineUniformBlock(next) => {
+                    val_vk = val_vk.descriptor_count(next.data_size).push_next(next)
+                }
+            }
+        }
+
+        debug_assert!(val_vk.descriptor_count != 0);
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a WriteDescriptorSetFields1,
+    ) -> WriteDescriptorSetExtensionsVk<'a> {
+        let WriteDescriptorSetFields1 {
+            descriptor_infos_vk,
+        } = fields1_vk;
+
+        let descriptor_type_extension_vk = match descriptor_infos_vk {
+            DescriptorInfosVk::Image(_)
+            | DescriptorInfosVk::Buffer(_)
+            | DescriptorInfosVk::BufferView(_) => None,
+            DescriptorInfosVk::AccelerationStructure(info) => {
+                Some(DescriptorTypeExtensionVk::AccelerationStructure(
+                    ash::vk::WriteDescriptorSetAccelerationStructureKHR::default()
+                        .acceleration_structures(info),
+                ))
+            }
+            DescriptorInfosVk::InlineUniformBlock(data) => {
+                Some(DescriptorTypeExtensionVk::InlineUniformBlock(
+                    ash::vk::WriteDescriptorSetInlineUniformBlock::default().data(data),
+                ))
+            }
+        };
+
+        WriteDescriptorSetExtensionsVk {
+            descriptor_type_extension_vk,
         }
     }
+
+    pub(crate) fn to_vk_fields1(
+        &self,
+        default_image_layout: ImageLayout,
+    ) -> WriteDescriptorSetFields1 {
+        let descriptor_infos_vk = match &self.elements {
+            WriteDescriptorSetElements::None(num_elements) => DescriptorInfosVk::Image(
+                std::iter::repeat_with(ash::vk::DescriptorImageInfo::default)
+                    .take(*num_elements as usize)
+                    .collect(),
+            ),
+            WriteDescriptorSetElements::Buffer(elements) => DescriptorInfosVk::Buffer(
+                elements.iter().map(DescriptorBufferInfo::to_vk).collect(),
+            ),
+            WriteDescriptorSetElements::BufferView(elements) => {
+                DescriptorInfosVk::BufferView(elements.iter().map(VulkanObject::handle).collect())
+            }
+            WriteDescriptorSetElements::ImageView(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|image_view_info| image_view_info.to_vk(default_image_layout))
+                    .collect(),
+            ),
+            WriteDescriptorSetElements::ImageViewSampler(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|(image_view_info, sampler)| ash::vk::DescriptorImageInfo {
+                        sampler: sampler.handle(),
+                        ..image_view_info.to_vk(default_image_layout)
+                    })
+                    .collect(),
+            ),
+            WriteDescriptorSetElements::Sampler(elements) => DescriptorInfosVk::Image(
+                elements
+                    .iter()
+                    .map(|sampler| ash::vk::DescriptorImageInfo {
+                        sampler: sampler.handle(),
+                        ..Default::default()
+                    })
+                    .collect(),
+            ),
+            WriteDescriptorSetElements::InlineUniformBlock(data) => {
+                DescriptorInfosVk::InlineUniformBlock(data.clone())
+            }
+            WriteDescriptorSetElements::AccelerationStructure(elements) => {
+                DescriptorInfosVk::AccelerationStructure(
+                    elements.iter().map(VulkanObject::handle).collect(),
+                )
+            }
+        };
+
+        WriteDescriptorSetFields1 {
+            descriptor_infos_vk,
+        }
+    }
+}
+
+pub(crate) struct WriteDescriptorSetExtensionsVk<'a> {
+    pub(crate) descriptor_type_extension_vk: Option<DescriptorTypeExtensionVk<'a>>,
+}
+
+pub(crate) enum DescriptorTypeExtensionVk<'a> {
+    AccelerationStructure(ash::vk::WriteDescriptorSetAccelerationStructureKHR<'a>),
+    InlineUniformBlock(ash::vk::WriteDescriptorSetInlineUniformBlock<'a>),
+}
+
+pub(crate) struct WriteDescriptorSetFields1 {
+    pub(crate) descriptor_infos_vk: DescriptorInfosVk,
+}
+
+pub(crate) enum DescriptorInfosVk {
+    Image(SmallVec<[ash::vk::DescriptorImageInfo; 1]>),
+    Buffer(SmallVec<[ash::vk::DescriptorBufferInfo; 1]>),
+    BufferView(SmallVec<[ash::vk::BufferView; 1]>),
+    InlineUniformBlock(Vec<u8>),
+    AccelerationStructure(SmallVec<[ash::vk::AccelerationStructureKHR; 1]>),
 }
 
 /// The elements held by a `WriteDescriptorSet`.
@@ -1540,6 +1531,21 @@ pub struct DescriptorBufferInfo {
     pub range: Range<DeviceSize>,
 }
 
+impl DescriptorBufferInfo {
+    pub(crate) fn to_vk(&self) -> ash::vk::DescriptorBufferInfo {
+        let Self { buffer, range } = self;
+
+        debug_assert!(!range.is_empty());
+        debug_assert!(range.end <= buffer.buffer().size());
+
+        ash::vk::DescriptorBufferInfo {
+            buffer: buffer.buffer().handle(),
+            offset: buffer.offset() + range.start,
+            range: range.end - range.start,
+        }
+    }
+}
+
 /// Parameters to write an image view reference to a descriptor.
 #[derive(Clone, Debug)]
 pub struct DescriptorImageViewInfo {
@@ -1566,13 +1572,23 @@ pub struct DescriptorImageViewInfo {
     pub image_layout: ImageLayout,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) enum DescriptorWriteInfo {
-    Image(SmallVec<[ash::vk::DescriptorImageInfo; 1]>),
-    Buffer(SmallVec<[ash::vk::DescriptorBufferInfo; 1]>),
-    BufferView(SmallVec<[ash::vk::BufferView; 1]>),
-    InlineUniformBlock(Vec<u8>),
-    AccelerationStructure(SmallVec<[ash::vk::AccelerationStructureKHR; 1]>),
+impl DescriptorImageViewInfo {
+    pub(crate) fn to_vk(&self, default_image_layout: ImageLayout) -> ash::vk::DescriptorImageInfo {
+        let &Self {
+            ref image_view,
+            image_layout,
+        } = self;
+
+        ash::vk::DescriptorImageInfo {
+            sampler: ash::vk::Sampler::null(),
+            image_view: image_view.handle(),
+            image_layout: if image_layout == ImageLayout::Undefined {
+                default_image_layout.into()
+            } else {
+                image_layout.into()
+            },
+        }
+    }
 }
 
 /// Represents a single copy operation to the binding of a descriptor set.
@@ -1832,6 +1848,30 @@ impl CopyDescriptorSet {
         // Ensured as long as copies can only occur during descriptor set construction.
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(
+        &self,
+        dst_set: ash::vk::DescriptorSet,
+    ) -> ash::vk::CopyDescriptorSet<'static> {
+        let &Self {
+            ref src_set,
+            src_binding,
+            src_first_array_element,
+            dst_binding,
+            dst_first_array_element,
+            descriptor_count,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyDescriptorSet::default()
+            .src_set(src_set.handle())
+            .src_binding(src_binding)
+            .src_array_element(src_first_array_element)
+            .dst_set(dst_set)
+            .dst_binding(dst_binding)
+            .dst_array_element(dst_first_array_element)
+            .descriptor_count(descriptor_count)
     }
 }
 

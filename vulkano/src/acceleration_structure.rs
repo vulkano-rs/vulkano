@@ -165,22 +165,7 @@ impl AccelerationStructure {
         device: Arc<Device>,
         create_info: AccelerationStructureCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
-        let &AccelerationStructureCreateInfo {
-            create_flags,
-            ref buffer,
-            ty,
-            _ne: _,
-        } = &create_info;
-
-        let create_info_vk = ash::vk::AccelerationStructureCreateInfoKHR {
-            create_flags: create_flags.into(),
-            buffer: buffer.buffer().handle(),
-            offset: buffer.offset(),
-            size: buffer.size(),
-            ty: ty.into(),
-            device_address: 0, // TODO: allow user to specify
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
             let fns = device.fns();
@@ -258,10 +243,8 @@ impl AccelerationStructure {
     /// The device address of the acceleration structure may be different from the device address
     /// of the underlying buffer.
     pub fn device_address(&self) -> NonNullDeviceAddress {
-        let info_vk = ash::vk::AccelerationStructureDeviceAddressInfoKHR {
-            acceleration_structure: self.handle,
-            ..Default::default()
-        };
+        let info_vk = ash::vk::AccelerationStructureDeviceAddressInfoKHR::default()
+            .acceleration_structure(self.handle);
         let ptr = unsafe {
             let fns = self.device.fns();
             (fns.khr_acceleration_structure
@@ -409,6 +392,23 @@ impl AccelerationStructureCreateInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureCreateInfoKHR<'static> {
+        let &Self {
+            create_flags,
+            ref buffer,
+            ty,
+            _ne: _,
+        } = self;
+
+        ash::vk::AccelerationStructureCreateInfoKHR::default()
+            .create_flags(create_flags.into())
+            .buffer(buffer.buffer().handle())
+            .offset(buffer.offset())
+            .size(buffer.size())
+            .ty(ty.into())
+            .device_address(0) // TODO: allow user to specify
     }
 }
 
@@ -593,12 +593,10 @@ impl AccelerationStructureBuildGeometryInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vulkan(
+    pub(crate) fn to_vk<'a>(
         &self,
-    ) -> (
-        ash::vk::AccelerationStructureBuildGeometryInfoKHR<'static>,
-        Vec<ash::vk::AccelerationStructureGeometryKHR<'static>>,
-    ) {
+        fields1_vk: &'a AccelerationStructureBuildGeometryInfoFields1Vk,
+    ) -> ash::vk::AccelerationStructureBuildGeometryInfoKHR<'a> {
         let &Self {
             flags,
             ref mode,
@@ -607,176 +605,56 @@ impl AccelerationStructureBuildGeometryInfo {
             ref scratch_data,
             _ne: _,
         } = self;
+        let AccelerationStructureBuildGeometryInfoFields1Vk { geometries_vk } = fields1_vk;
 
-        let (ty, geometries_vk): (_, Vec<_>) = match geometries {
-            AccelerationStructureGeometries::Triangles(geometries) => (
-                ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-                geometries
-                    .iter()
-                    .map(|triangles_data| {
-                        let &AccelerationStructureGeometryTrianglesData {
-                            flags,
-                            vertex_format,
-                            ref vertex_data,
-                            vertex_stride,
-                            max_vertex,
-                            ref index_data,
-                            ref transform_data,
-                            _ne,
-                        } = triangles_data;
+        ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
+            .ty(geometries.to_vk_ty())
+            .flags(flags.into())
+            .mode(mode.to_vk())
+            .src_acceleration_structure(match mode {
+                BuildAccelerationStructureMode::Build => Default::default(),
+                BuildAccelerationStructureMode::Update(src_acceleration_structure) => {
+                    src_acceleration_structure.handle()
+                }
+            })
+            .dst_acceleration_structure(
+                dst_acceleration_structure
+                    .as_ref()
+                    .map_or_else(Default::default, VulkanObject::handle),
+            )
+            .geometries(geometries_vk)
+            .scratch_data(
+                scratch_data
+                    .as_ref()
+                    .map_or_else(Default::default, Subbuffer::to_vk_device_or_host_address),
+            )
+    }
 
-                        ash::vk::AccelerationStructureGeometryKHR {
-                            geometry_type: ash::vk::GeometryTypeKHR::TRIANGLES,
-                            geometry: ash::vk::AccelerationStructureGeometryDataKHR {
-                                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR {
-                                    vertex_format: vertex_format.into(),
-                                    vertex_data: ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: vertex_data.as_ref().map_or(
-                                            0,
-                                            |vertex_data| {
-                                                vertex_data.device_address().unwrap().into()
-                                            },
-                                        ),
-                                    },
-                                    vertex_stride: vertex_stride as DeviceSize,
-                                    max_vertex,
-                                    index_type: index_data
-                                        .as_ref()
-                                        .map_or(ash::vk::IndexType::NONE_KHR, |index_data| {
-                                            index_data.index_type().into()
-                                        }),
-                                    index_data: ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: index_data.as_ref().map_or(
-                                            0,
-                                            |index_data| {
-                                                index_data
-                                                    .as_bytes()
-                                                    .device_address()
-                                                    .unwrap()
-                                                    .get()
-                                            },
-                                        ),
-                                    },
-                                    transform_data: ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: transform_data.as_ref().map_or(
-                                            0,
-                                            |transform_data| {
-                                                transform_data.device_address().unwrap().get()
-                                            },
-                                        ),
-                                    },
-                                    ..Default::default()
-                                },
-                            },
-                            flags: flags.into(),
-                            ..Default::default()
-                        }
-                    })
-                    .collect(),
-            ),
-            AccelerationStructureGeometries::Aabbs(geometries) => (
-                ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-                geometries
-                    .iter()
-                    .map(|aabbs_data| {
-                        let &AccelerationStructureGeometryAabbsData {
-                            flags,
-                            ref data,
-                            stride,
-                            _ne: _,
-                        } = aabbs_data;
+    pub(crate) fn to_vk_fields1(&self) -> AccelerationStructureBuildGeometryInfoFields1Vk {
+        let Self { geometries, .. } = self;
 
-                        ash::vk::AccelerationStructureGeometryKHR {
-                            geometry_type: ash::vk::GeometryTypeKHR::AABBS,
-                            geometry: ash::vk::AccelerationStructureGeometryDataKHR {
-                                aabbs: ash::vk::AccelerationStructureGeometryAabbsDataKHR {
-                                    data: ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: data.as_ref().map_or(0, |data| {
-                                            data.device_address().unwrap().into()
-                                        }),
-                                    },
-                                    stride: stride as DeviceSize,
-                                    ..Default::default()
-                                },
-                            },
-                            flags: flags.into(),
-                            ..Default::default()
-                        }
-                    })
-                    .collect(),
-            ),
+        let geometries_vk = match geometries {
+            AccelerationStructureGeometries::Triangles(geometries) => geometries
+                .iter()
+                .map(AccelerationStructureGeometryTrianglesData::to_vk)
+                .collect(),
+
+            AccelerationStructureGeometries::Aabbs(geometries) => geometries
+                .iter()
+                .map(AccelerationStructureGeometryAabbsData::to_vk)
+                .collect(),
+
             AccelerationStructureGeometries::Instances(instances_data) => {
-                (ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL, {
-                    let &AccelerationStructureGeometryInstancesData {
-                        flags,
-                        ref data,
-                        _ne: _,
-                    } = instances_data;
-
-                    let (array_of_pointers, data) = match data {
-                        AccelerationStructureGeometryInstancesDataType::Values(data) => (
-                            ash::vk::FALSE,
-                            ash::vk::DeviceOrHostAddressConstKHR {
-                                device_address: data
-                                    .as_ref()
-                                    .map_or(0, |data| data.device_address().unwrap().into()),
-                            },
-                        ),
-                        AccelerationStructureGeometryInstancesDataType::Pointers(data) => (
-                            ash::vk::TRUE,
-                            ash::vk::DeviceOrHostAddressConstKHR {
-                                device_address: data
-                                    .as_ref()
-                                    .map_or(0, |data| data.device_address().unwrap().into()),
-                            },
-                        ),
-                    };
-
-                    [ash::vk::AccelerationStructureGeometryKHR {
-                        geometry_type: ash::vk::GeometryTypeKHR::INSTANCES,
-                        geometry: ash::vk::AccelerationStructureGeometryDataKHR {
-                            instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR {
-                                array_of_pointers,
-                                data,
-                                ..Default::default()
-                            },
-                        },
-                        flags: flags.into(),
-                        ..Default::default()
-                    }]
-                    .into_iter()
-                    .collect()
-                })
+                [instances_data.to_vk()].into_iter().collect()
             }
         };
 
-        (
-            ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-                ty,
-                flags: flags.into(),
-                mode: mode.into(),
-                src_acceleration_structure: match mode {
-                    BuildAccelerationStructureMode::Build => Default::default(),
-                    BuildAccelerationStructureMode::Update(src_acceleration_structure) => {
-                        src_acceleration_structure.handle()
-                    }
-                },
-                dst_acceleration_structure: dst_acceleration_structure
-                    .as_ref()
-                    .map_or_else(Default::default, VulkanObject::handle),
-                geometry_count: 0,
-                p_geometries: ptr::null(),
-                pp_geometries: ptr::null(),
-                scratch_data: ash::vk::DeviceOrHostAddressKHR {
-                    device_address: scratch_data.as_ref().map_or(0, |scratch_data| {
-                        scratch_data.device_address().unwrap().into()
-                    }),
-                },
-                ..Default::default()
-            },
-            geometries_vk,
-        )
+        AccelerationStructureBuildGeometryInfoFields1Vk { geometries_vk }
     }
+}
+
+pub(crate) struct AccelerationStructureBuildGeometryInfoFields1Vk {
+    pub(crate) geometries_vk: Vec<ash::vk::AccelerationStructureGeometryKHR<'static>>,
 }
 
 vulkan_bitflags! {
@@ -860,10 +738,9 @@ pub enum BuildAccelerationStructureMode {
         ash::vk::BuildAccelerationStructureModeKHR::UPDATE.as_raw(),
 }
 
-impl From<&BuildAccelerationStructureMode> for ash::vk::BuildAccelerationStructureModeKHR {
-    #[inline]
-    fn from(val: &BuildAccelerationStructureMode) -> Self {
-        match val {
+impl BuildAccelerationStructureMode {
+    pub(crate) fn to_vk(&self) -> ash::vk::BuildAccelerationStructureModeKHR {
+        match self {
             BuildAccelerationStructureMode::Build => {
                 ash::vk::BuildAccelerationStructureModeKHR::BUILD
             }
@@ -895,6 +772,20 @@ impl AccelerationStructureGeometries {
             AccelerationStructureGeometries::Triangles(geometries) => geometries.len(),
             AccelerationStructureGeometries::Aabbs(geometries) => geometries.len(),
             AccelerationStructureGeometries::Instances(_) => 1,
+        }
+    }
+
+    pub(crate) fn to_vk_ty(&self) -> ash::vk::AccelerationStructureTypeKHR {
+        match self {
+            AccelerationStructureGeometries::Triangles(_) => {
+                ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
+            }
+            AccelerationStructureGeometries::Aabbs(_) => {
+                ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
+            }
+            AccelerationStructureGeometries::Instances(_) => {
+                ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL
+            }
         }
     }
 }
@@ -1076,6 +967,48 @@ impl AccelerationStructureGeometryTrianglesData {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureGeometryKHR<'static> {
+        let &AccelerationStructureGeometryTrianglesData {
+            flags,
+            vertex_format,
+            ref vertex_data,
+            vertex_stride,
+            max_vertex,
+            ref index_data,
+            ref transform_data,
+            _ne,
+        } = self;
+
+        ash::vk::AccelerationStructureGeometryKHR::default()
+            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
+            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+                    .vertex_format(vertex_format.into())
+                    .vertex_data(vertex_data.as_ref().map_or_else(
+                        Default::default,
+                        Subbuffer::to_vk_device_or_host_address_const,
+                    ))
+                    .vertex_stride(vertex_stride as DeviceSize)
+                    .max_vertex(max_vertex)
+                    .index_type(
+                        index_data
+                            .as_ref()
+                            .map_or(ash::vk::IndexType::NONE_KHR, |index_data| {
+                                index_data.index_type().into()
+                            }),
+                    )
+                    .index_data(index_data.as_ref().map(IndexBuffer::as_bytes).map_or_else(
+                        Default::default,
+                        Subbuffer::to_vk_device_or_host_address_const,
+                    ))
+                    .transform_data(transform_data.as_ref().map_or_else(
+                        Default::default,
+                        Subbuffer::to_vk_device_or_host_address_const,
+                    )),
+            })
+            .flags(flags.into())
+    }
 }
 
 /// A 3x4 transformation matrix.
@@ -1146,6 +1079,27 @@ impl AccelerationStructureGeometryAabbsData {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureGeometryKHR<'static> {
+        let &Self {
+            flags,
+            ref data,
+            stride,
+            _ne: _,
+        } = self;
+
+        ash::vk::AccelerationStructureGeometryKHR::default()
+            .geometry_type(ash::vk::GeometryTypeKHR::AABBS)
+            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                aabbs: ash::vk::AccelerationStructureGeometryAabbsDataKHR::default()
+                    .data(data.as_ref().map_or_else(
+                        Default::default,
+                        Subbuffer::to_vk_device_or_host_address_const,
+                    ))
+                    .stride(stride as DeviceSize),
+            })
+            .flags(flags.into())
+    }
 }
 
 /// Specifies two opposing corners of an axis-aligned bounding box.
@@ -1206,6 +1160,25 @@ impl AccelerationStructureGeometryInstancesData {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureGeometryKHR<'static> {
+        let &Self {
+            flags,
+            ref data,
+            _ne: _,
+        } = self;
+
+        let (array_of_pointers_vk, data_vk) = data.to_vk();
+
+        ash::vk::AccelerationStructureGeometryKHR::default()
+            .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
+            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
+                    .array_of_pointers(array_of_pointers_vk)
+                    .data(data_vk),
+            })
+            .flags(flags.into())
+    }
 }
 
 /// The data type of an instances geometry.
@@ -1223,6 +1196,27 @@ pub enum AccelerationStructureGeometryInstancesDataType {
     /// The inner value can be `None` when calling [`Device::acceleration_structure_build_sizes`],
     /// but must be `Some` otherwise.
     Pointers(Option<Subbuffer<[DeviceSize]>>),
+}
+
+impl AccelerationStructureGeometryInstancesDataType {
+    pub(crate) fn to_vk(&self) -> (bool, ash::vk::DeviceOrHostAddressConstKHR) {
+        match self {
+            AccelerationStructureGeometryInstancesDataType::Values(data) => (
+                false,
+                data.as_ref().map_or_else(
+                    Default::default,
+                    Subbuffer::to_vk_device_or_host_address_const,
+                ),
+            ),
+            AccelerationStructureGeometryInstancesDataType::Pointers(data) => (
+                true,
+                data.as_ref().map_or_else(
+                    Default::default,
+                    Subbuffer::to_vk_device_or_host_address_const,
+                ),
+            ),
+        }
+    }
 }
 
 impl From<Subbuffer<[AccelerationStructureInstance]>>
@@ -1360,6 +1354,25 @@ pub struct AccelerationStructureBuildRangeInfo {
     pub transform_offset: u32,
 }
 
+impl AccelerationStructureBuildRangeInfo {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> ash::vk::AccelerationStructureBuildRangeInfoKHR {
+        let &Self {
+            primitive_count,
+            primitive_offset,
+            first_vertex,
+            transform_offset,
+        } = self;
+
+        ash::vk::AccelerationStructureBuildRangeInfoKHR {
+            primitive_count,
+            primitive_offset,
+            first_vertex,
+            transform_offset,
+        }
+    }
+}
+
 /// Parameters for copying an acceleration structure.
 #[derive(Clone, Debug)]
 pub struct CopyAccelerationStructureInfo {
@@ -1440,6 +1453,20 @@ impl CopyAccelerationStructureInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::CopyAccelerationStructureInfoKHR<'static> {
+        let &Self {
+            ref src,
+            ref dst,
+            mode,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyAccelerationStructureInfoKHR::default()
+            .src(src.handle())
+            .dst(dst.handle())
+            .mode(mode.into())
+    }
 }
 
 /// Parameters for copying from an acceleration structure into memory.
@@ -1507,6 +1534,20 @@ impl CopyAccelerationStructureToMemoryInfo {
         // TODO: unsafe
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::CopyAccelerationStructureToMemoryInfoKHR<'static> {
+        let &Self {
+            ref src,
+            ref dst,
+            mode,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyAccelerationStructureToMemoryInfoKHR::default()
+            .src(src.handle())
+            .dst(dst.to_vk_device_or_host_address())
+            .mode(mode.into())
     }
 }
 
@@ -1579,6 +1620,20 @@ impl CopyMemoryToAccelerationStructureInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::CopyMemoryToAccelerationStructureInfoKHR<'static> {
+        let &Self {
+            ref src,
+            ref dst,
+            mode,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyMemoryToAccelerationStructureInfoKHR::default()
+            .src(src.to_vk_device_or_host_address_const())
+            .dst(dst.handle())
+            .mode(mode.into())
+    }
 }
 
 vulkan_enum! {
@@ -1641,4 +1696,26 @@ pub struct AccelerationStructureBuildSizesInfo {
     pub build_scratch_size: DeviceSize,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl AccelerationStructureBuildSizesInfo {
+    pub(crate) fn to_mut_vk() -> ash::vk::AccelerationStructureBuildSizesInfoKHR<'static> {
+        ash::vk::AccelerationStructureBuildSizesInfoKHR::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &ash::vk::AccelerationStructureBuildSizesInfoKHR<'_>) -> Self {
+        let &ash::vk::AccelerationStructureBuildSizesInfoKHR {
+            acceleration_structure_size,
+            update_scratch_size,
+            build_scratch_size,
+            ..
+        } = val_vk;
+
+        AccelerationStructureBuildSizesInfo {
+            acceleration_structure_size,
+            update_scratch_size,
+            build_scratch_size,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }

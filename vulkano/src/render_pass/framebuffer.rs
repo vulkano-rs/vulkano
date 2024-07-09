@@ -247,27 +247,8 @@ impl Framebuffer {
     ) -> Result<Arc<Framebuffer>, VulkanError> {
         create_info.set_auto_extent_layers(&render_pass);
 
-        let &FramebufferCreateInfo {
-            flags,
-            ref attachments,
-            extent,
-            layers,
-            _ne: _,
-        } = &create_info;
-
-        let attachments_vk: SmallVec<[_; 4]> =
-            attachments.iter().map(VulkanObject::handle).collect();
-
-        let create_info_vk = ash::vk::FramebufferCreateInfo {
-            flags: flags.into(),
-            render_pass: render_pass.handle(),
-            attachment_count: attachments_vk.len() as u32,
-            p_attachments: attachments_vk.as_ptr(),
-            width: extent[0],
-            height: extent[1],
-            layers,
-            ..Default::default()
-        };
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let create_info_vk = create_info.to_vk(render_pass.handle(), &create_info_fields1_vk);
 
         let handle = unsafe {
             let fns = render_pass.device().fns();
@@ -632,6 +613,44 @@ impl FramebufferCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        render_pass_vk: ash::vk::RenderPass,
+        fields1_vk: &'a FramebufferCreateInfoFields1Vk,
+    ) -> ash::vk::FramebufferCreateInfo<'a> {
+        let &Self {
+            flags,
+            attachments: _,
+            extent,
+            layers,
+            _ne: _,
+        } = self;
+        let FramebufferCreateInfoFields1Vk { attachments_vk } = fields1_vk;
+
+        ash::vk::FramebufferCreateInfo::default()
+            .flags(flags.into())
+            .render_pass(render_pass_vk)
+            .attachments(attachments_vk)
+            .width(extent[0])
+            .height(extent[1])
+            .layers(layers)
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> FramebufferCreateInfoFields1Vk {
+        let &Self {
+            ref attachments, ..
+        } = self;
+
+        let attachments_vk: SmallVec<[_; 4]> =
+            attachments.iter().map(VulkanObject::handle).collect();
+
+        FramebufferCreateInfoFields1Vk { attachments_vk }
+    }
+}
+
+pub(crate) struct FramebufferCreateInfoFields1Vk {
+    pub(crate) attachments_vk: SmallVec<[ash::vk::ImageView; 4]>,
 }
 
 vulkan_bitflags! {

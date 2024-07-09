@@ -11,7 +11,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
@@ -112,6 +112,33 @@ impl AcquireNextImageInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(
+        &self,
+        swapchain_vk: ash::vk::SwapchainKHR,
+        device_mask_vk: u32,
+    ) -> ash::vk::AcquireNextImageInfoKHR<'static> {
+        let &Self {
+            timeout,
+            ref semaphore,
+            ref fence,
+            _ne: _,
+        } = self;
+
+        ash::vk::AcquireNextImageInfoKHR::default()
+            .swapchain(swapchain_vk)
+            .timeout(timeout.map_or(u64::MAX, |duration| {
+                u64::try_from(duration.as_nanos()).unwrap()
+            }))
+            .semaphore(
+                semaphore
+                    .as_ref()
+                    .map(VulkanObject::handle)
+                    .unwrap_or_default(),
+            )
+            .fence(fence.as_ref().map(VulkanObject::handle).unwrap_or_default())
+            .device_mask(device_mask_vk)
     }
 }
 
@@ -417,7 +444,7 @@ pub struct PresentInfo {
     /// The present operations to perform.
     ///
     /// The default value is empty.
-    pub swapchains: Vec<SwapchainPresentInfo>,
+    pub swapchain_infos: Vec<SwapchainPresentInfo>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -427,7 +454,7 @@ impl Default for PresentInfo {
     fn default() -> Self {
         Self {
             wait_semaphores: Vec::new(),
-            swapchains: Vec::new(),
+            swapchain_infos: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -437,7 +464,7 @@ impl PresentInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
         let &Self {
             ref wait_semaphores,
-            swapchains: ref swapchain_infos,
+            ref swapchain_infos,
             _ne: _,
         } = self;
 
@@ -463,7 +490,7 @@ impl PresentInfo {
                 image_index: _,
                 present_id: _,
                 present_mode,
-                present_regions: _,
+                present_region: _,
                 _ne: _,
             } = swapchain_info;
 
@@ -498,6 +525,191 @@ impl PresentInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a PresentInfoFields1Vk<'_>,
+        results_vk: &'a mut [ash::vk::Result],
+        extensions_vk: &'a mut PresentInfoExtensionsVk<'_>,
+    ) -> ash::vk::PresentInfoKHR<'a> {
+        let &Self {
+            wait_semaphores: _,
+            swapchain_infos: _,
+            _ne: _,
+        } = self;
+        let PresentInfoFields1Vk {
+            wait_semaphores_vk,
+            swapchains_vk,
+            image_indices_vk,
+            present_ids_vk: _,
+            present_modes_vk: _,
+            present_regions_vk: _,
+        } = fields1_vk;
+        let PresentInfoExtensionsVk {
+            present_id_vk,
+            present_mode_vk,
+            present_regions_vk,
+        } = extensions_vk;
+
+        let mut val_vk = ash::vk::PresentInfoKHR::default()
+            .wait_semaphores(wait_semaphores_vk)
+            .swapchains(swapchains_vk)
+            .image_indices(image_indices_vk)
+            .results(results_vk);
+
+        if let Some(next) = present_id_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_mode_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_regions_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_results(&self) -> Vec<ash::vk::Result> {
+        vec![ash::vk::Result::SUCCESS; self.swapchain_infos.len()]
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a PresentInfoFields1Vk<'_>,
+    ) -> PresentInfoExtensionsVk<'a> {
+        let PresentInfoFields1Vk {
+            wait_semaphores_vk: _,
+            swapchains_vk: _,
+            image_indices_vk: _,
+            present_ids_vk,
+            present_modes_vk,
+            present_regions_vk,
+        } = fields1_vk;
+
+        let mut has_present_ids = false;
+        let mut has_present_modes = false;
+        let mut has_present_regions = false;
+
+        for swapchain_info in &self.swapchain_infos {
+            let &SwapchainPresentInfo {
+                swapchain: _,
+                image_index: _,
+                present_id,
+                present_mode,
+                ref present_region,
+                _ne: _,
+            } = swapchain_info;
+
+            has_present_ids |= present_id.is_some();
+            has_present_modes |= present_mode.is_some();
+            has_present_regions |= !present_region.is_empty();
+        }
+
+        let present_id_vk =
+            has_present_ids.then(|| ash::vk::PresentIdKHR::default().present_ids(present_ids_vk));
+        let present_mode_vk = has_present_modes.then(|| {
+            ash::vk::SwapchainPresentModeInfoEXT::default().present_modes(present_modes_vk)
+        });
+        let present_regions_vk = has_present_regions
+            .then(|| ash::vk::PresentRegionsKHR::default().regions(present_regions_vk));
+
+        PresentInfoExtensionsVk {
+            present_id_vk,
+            present_mode_vk,
+            present_regions_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a PresentInfoFields2Vk,
+    ) -> PresentInfoFields1Vk<'a> {
+        let &Self {
+            ref wait_semaphores,
+            ref swapchain_infos,
+            _ne: _,
+        } = self;
+        let PresentInfoFields2Vk {
+            swapchain_infos_fields1_vk,
+        } = fields2_vk;
+
+        let wait_semaphores_vk = wait_semaphores
+            .iter()
+            .map(SemaphorePresentInfo::to_vk)
+            .collect();
+
+        let mut swapchains_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut image_indices_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_ids_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_modes_vk = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_regions_vk = SmallVec::with_capacity(swapchain_infos.len());
+
+        for (swapchain_info, fields1_vk) in swapchain_infos.iter().zip(swapchain_infos_fields1_vk) {
+            let &SwapchainPresentInfo {
+                ref swapchain,
+                image_index,
+                present_id,
+                present_mode,
+                present_region: _,
+                _ne: _,
+            } = swapchain_info;
+
+            let SwapchainPresentInfoFields1Vk {
+                present_region_rectangles_vk,
+            } = fields1_vk;
+
+            swapchains_vk.push(swapchain.handle());
+            image_indices_vk.push(image_index);
+            present_ids_vk.push(present_id.map_or(0, u64::from));
+            present_modes_vk.push(present_mode.map_or_else(Default::default, Into::into));
+            present_regions_vk.push(
+                ash::vk::PresentRegionKHR::default().rectangles(present_region_rectangles_vk),
+            );
+        }
+
+        PresentInfoFields1Vk {
+            wait_semaphores_vk,
+            swapchains_vk,
+            image_indices_vk,
+            present_ids_vk,
+            present_modes_vk,
+            present_regions_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> PresentInfoFields2Vk {
+        let swapchain_infos_fields1_vk = self
+            .swapchain_infos
+            .iter()
+            .map(SwapchainPresentInfo::to_vk_fields1)
+            .collect();
+
+        PresentInfoFields2Vk {
+            swapchain_infos_fields1_vk,
+        }
+    }
+}
+
+pub(crate) struct PresentInfoExtensionsVk<'a> {
+    pub(crate) present_id_vk: Option<ash::vk::PresentIdKHR<'a>>,
+    pub(crate) present_mode_vk: Option<ash::vk::SwapchainPresentModeInfoEXT<'a>>,
+    pub(crate) present_regions_vk: Option<ash::vk::PresentRegionsKHR<'a>>,
+}
+
+pub(crate) struct PresentInfoFields1Vk<'a> {
+    pub(crate) wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+    pub(crate) swapchains_vk: SmallVec<[ash::vk::SwapchainKHR; 4]>,
+    pub(crate) image_indices_vk: SmallVec<[u32; 4]>,
+    pub(crate) present_ids_vk: SmallVec<[u64; 4]>,
+    pub(crate) present_modes_vk: SmallVec<[ash::vk::PresentModeKHR; 4]>,
+    pub(crate) present_regions_vk: SmallVec<[ash::vk::PresentRegionKHR<'a>; 4]>,
+}
+
+pub(crate) struct PresentInfoFields2Vk {
+    pub(crate) swapchain_infos_fields1_vk: SmallVec<[SwapchainPresentInfoFields1Vk; 4]>,
 }
 
 /// Parameters for a single present operation on a swapchain.
@@ -560,7 +772,7 @@ pub struct SwapchainPresentInfo {
     /// If `present_regions` is empty, that means that all of the swapchain image must be updated.
     ///
     /// The default value is empty.
-    pub present_regions: Vec<RectangleLayer>,
+    pub present_region: Vec<RectangleLayer>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -574,7 +786,7 @@ impl SwapchainPresentInfo {
             image_index,
             present_id: None,
             present_mode: None,
-            present_regions: Vec::new(),
+            present_region: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -585,7 +797,7 @@ impl SwapchainPresentInfo {
             image_index,
             present_id,
             present_mode,
-            ref present_regions,
+            ref present_region,
             _ne: _,
         } = self;
 
@@ -621,7 +833,7 @@ impl SwapchainPresentInfo {
             }
         }
 
-        if !present_regions.is_empty() && !device.enabled_extensions().khr_incremental_present {
+        if !present_region.is_empty() && !device.enabled_extensions().khr_incremental_present {
             return Err(Box::new(ValidationError {
                 context: "present_regions".into(),
                 problem: "is not empty".into(),
@@ -632,7 +844,7 @@ impl SwapchainPresentInfo {
             }));
         }
 
-        for (index, rectangle_layer) in present_regions.iter().enumerate() {
+        for (index, rectangle_layer) in present_region.iter().enumerate() {
             let &RectangleLayer {
                 offset,
                 extent,
@@ -642,7 +854,7 @@ impl SwapchainPresentInfo {
             if offset[0] + extent[0] > swapchain.image_extent()[0] {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`present_regions[{0}].offset[0]` + `present_regions[{0}].extent[0]` is \
+                        "`present_region[{0}].offset[0]` + `present_regions[{0}].extent[0]` is \
                         greater than `swapchain.image_extent()[0]`",
                         index
                     )
@@ -655,7 +867,7 @@ impl SwapchainPresentInfo {
             if offset[1] + extent[1] > swapchain.image_extent()[1] {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`present_regions[{0}].offset[1]` + `present_regions[{0}].extent[1]` is \
+                        "`present_region[{0}].offset[1]` + `present_regions[{0}].extent[1]` is \
                         greater than `swapchain.image_extent()[1]`",
                         index
                     )
@@ -668,7 +880,7 @@ impl SwapchainPresentInfo {
             if layer >= swapchain.image_array_layers() {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`present_regions[{0}].layer` is greater than \
+                        "`present_region[{0}].layer` is greater than \
                         `swapchain.image_array_layers()`",
                         index
                     )
@@ -685,6 +897,22 @@ impl SwapchainPresentInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk_fields1(&self) -> SwapchainPresentInfoFields1Vk {
+        let present_region_rectangles_vk = self
+            .present_region
+            .iter()
+            .map(RectangleLayer::to_vk)
+            .collect();
+
+        SwapchainPresentInfoFields1Vk {
+            present_region_rectangles_vk,
+        }
+    }
+}
+
+pub(crate) struct SwapchainPresentInfoFields1Vk {
+    pub(crate) present_region_rectangles_vk: SmallVec<[ash::vk::RectLayerKHR; 4]>,
 }
 
 /// Represents a rectangular region on an image layer.
@@ -708,21 +936,25 @@ impl RectangleLayer {
             && self.offset[1] + self.extent[1] <= swapchain.image_extent()[1]
             && self.layer < swapchain.image_array_layers()
     }
-}
 
-impl From<&RectangleLayer> for ash::vk::RectLayerKHR {
-    #[inline]
-    fn from(val: &RectangleLayer) -> Self {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> ash::vk::RectLayerKHR {
+        let &Self {
+            offset,
+            extent,
+            layer,
+        } = self;
+
         ash::vk::RectLayerKHR {
             offset: ash::vk::Offset2D {
-                x: val.offset[0] as i32,
-                y: val.offset[1] as i32,
+                x: offset[0] as i32,
+                y: offset[1] as i32,
             },
             extent: ash::vk::Extent2D {
-                width: val.extent[0],
-                height: val.extent[1],
+                width: extent[0],
+                height: extent[1],
             },
-            layer: val.layer,
+            layer,
         }
     }
 }
@@ -767,6 +999,15 @@ impl SemaphorePresentInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::Semaphore {
+        let &Self {
+            ref semaphore,
+            _ne: _,
+        } = self;
+
+        semaphore.handle()
     }
 }
 
@@ -824,11 +1065,11 @@ where
         }
 
         if device.enabled_extensions().khr_incremental_present {
-            for rectangle in &swapchain_info.present_regions {
+            for rectangle in &swapchain_info.present_region {
                 assert!(rectangle.is_compatible_with(swapchain_info.swapchain.as_ref()));
             }
         } else {
-            swapchain_info.present_regions = Default::default();
+            swapchain_info.present_region = Default::default();
         }
 
         let _queue = self.previous.queue();
@@ -838,7 +1079,7 @@ where
 
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::QueuePresent(PresentInfo {
-                swapchains: vec![self.swapchain_info.clone()],
+                swapchain_infos: vec![self.swapchain_info.clone()],
                 ..Default::default()
             }),
             SubmitAnyBuilder::SemaphoresWait(semaphores) => {
@@ -847,7 +1088,7 @@ where
                         .into_iter()
                         .map(SemaphorePresentInfo::new)
                         .collect(),
-                    swapchains: vec![self.swapchain_info.clone()],
+                    swapchain_infos: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
@@ -855,7 +1096,7 @@ where
                 self.previous.flush()?;
 
                 SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    swapchains: vec![self.swapchain_info.clone()],
+                    swapchain_infos: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
@@ -863,24 +1104,26 @@ where
                 self.previous.flush()?;
 
                 SubmitAnyBuilder::QueuePresent(PresentInfo {
-                    swapchains: vec![self.swapchain_info.clone()],
+                    swapchain_infos: vec![self.swapchain_info.clone()],
                     ..Default::default()
                 })
             }
             SubmitAnyBuilder::QueuePresent(mut present_info) => {
-                if present_info.swapchains.first().map_or(false, |prev| {
+                if present_info.swapchain_infos.first().map_or(false, |prev| {
                     prev.present_mode.is_some() != self.swapchain_info.present_mode.is_some()
                 }) {
                     // If the present mode Option variants don't match, create a new command.
                     self.previous.flush()?;
 
                     SubmitAnyBuilder::QueuePresent(PresentInfo {
-                        swapchains: vec![self.swapchain_info.clone()],
+                        swapchain_infos: vec![self.swapchain_info.clone()],
                         ..Default::default()
                     })
                 } else {
                     // Otherwise, add our swapchain to the previous.
-                    present_info.swapchains.push(self.swapchain_info.clone());
+                    present_info
+                        .swapchain_infos
+                        .push(self.swapchain_info.clone());
 
                     SubmitAnyBuilder::QueuePresent(present_info)
                 }
@@ -900,7 +1143,7 @@ where
                 SubmitAnyBuilder::QueuePresent(present_info) => {
                     let PresentInfo {
                         wait_semaphores: _,
-                        swapchains,
+                        swapchain_infos: swapchains,
                         _ne: _,
                     } = &present_info;
 
@@ -909,7 +1152,7 @@ where
                             ref swapchain,
                             image_index: _,
                             present_id,
-                            present_regions: _,
+                            present_region: _,
                             present_mode: _,
                             _ne: _,
                         } = swapchain_info;

@@ -6,12 +6,34 @@ use crate::{
     render_pass::Subpass,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
+use smallvec::SmallVec;
 
 /// Selects the type of subpass that a graphics pipeline is created for.
 #[derive(Clone, Debug)]
 pub enum PipelineSubpassType {
     BeginRenderPass(Subpass),
     BeginRendering(PipelineRenderingCreateInfo),
+}
+
+impl PipelineSubpassType {
+    pub(crate) fn to_vk_rendering<'a>(
+        &self,
+        fields1_vk: &'a PipelineRenderingCreateInfoFields1Vk,
+    ) -> ash::vk::PipelineRenderingCreateInfo<'a> {
+        match self {
+            PipelineSubpassType::BeginRenderPass(_) => unreachable!(),
+            PipelineSubpassType::BeginRendering(rendering_info) => rendering_info.to_vk(fields1_vk),
+        }
+    }
+
+    pub(crate) fn to_vk_rendering_fields1(&self) -> Option<PipelineRenderingCreateInfoFields1Vk> {
+        match self {
+            PipelineSubpassType::BeginRenderPass(_) => None,
+            PipelineSubpassType::BeginRendering(rendering_info) => {
+                Some(rendering_info.to_vk_fields1())
+            }
+        }
+    }
 }
 
 impl From<Subpass> for PipelineSubpassType {
@@ -310,4 +332,46 @@ impl PipelineRenderingCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a PipelineRenderingCreateInfoFields1Vk,
+    ) -> ash::vk::PipelineRenderingCreateInfo<'a> {
+        let &Self {
+            view_mask,
+            color_attachment_formats: _,
+            depth_attachment_format,
+            stencil_attachment_format,
+            _ne: _,
+        } = self;
+        let PipelineRenderingCreateInfoFields1Vk {
+            color_attachment_formats_vk,
+        } = fields1_vk;
+
+        ash::vk::PipelineRenderingCreateInfo::default()
+            .view_mask(view_mask)
+            .color_attachment_formats(color_attachment_formats_vk)
+            .depth_attachment_format(
+                depth_attachment_format.map_or(ash::vk::Format::UNDEFINED, Into::into),
+            )
+            .stencil_attachment_format(
+                stencil_attachment_format.map_or(ash::vk::Format::UNDEFINED, Into::into),
+            )
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> PipelineRenderingCreateInfoFields1Vk {
+        let color_attachment_formats_vk = self
+            .color_attachment_formats
+            .iter()
+            .map(|format| format.map_or(ash::vk::Format::UNDEFINED, Into::into))
+            .collect();
+
+        PipelineRenderingCreateInfoFields1Vk {
+            color_attachment_formats_vk,
+        }
+    }
+}
+
+pub(crate) struct PipelineRenderingCreateInfoFields1Vk {
+    pub(crate) color_attachment_formats_vk: SmallVec<[ash::vk::Format; 4]>,
 }

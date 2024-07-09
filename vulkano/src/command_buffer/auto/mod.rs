@@ -715,7 +715,7 @@ mod tests {
                 let mut builder = RecordingCommandBuffer::new(
                     cb_allocator.clone(),
                     queue.queue_family_index(),
-                    CommandBufferLevel::Secondary,
+                    CommandBufferLevel::Primary,
                     CommandBufferBeginInfo {
                         usage: CommandBufferUsage::SimultaneousUse,
                         inheritance_info: Some(Default::default()),
@@ -743,7 +743,7 @@ mod tests {
                 let mut builder = RecordingCommandBuffer::new(
                     cb_allocator,
                     queue.queue_family_index(),
-                    CommandBufferLevel::Secondary,
+                    CommandBufferLevel::Primary,
                     CommandBufferBeginInfo {
                         usage: CommandBufferUsage::SimultaneousUse,
                         inheritance_info: Some(Default::default()),

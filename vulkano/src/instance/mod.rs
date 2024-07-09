@@ -83,7 +83,6 @@ use crate::{
     device::physical::{
         PhysicalDevice, PhysicalDeviceGroupProperties, PhysicalDeviceGroupPropertiesRaw,
     },
-    instance::debug::trampoline,
     macros::{impl_id_counter, vulkan_bitflags},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanLibrary,
     VulkanObject,
@@ -93,8 +92,7 @@ use ash::vk::Handle;
 use parking_lot::RwLock;
 use smallvec::SmallVec;
 use std::{
-    borrow::Cow,
-    ffi::CString,
+    ffi::{c_char, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     num::NonZeroU64,
@@ -367,140 +365,28 @@ impl Instance {
                 .unwrap(),
         );
 
-        let &InstanceCreateInfo {
-            mut flags,
-            ref application_name,
-            application_version,
-            ref engine_name,
-            engine_version,
-            max_api_version,
-            ref enabled_layers,
-            ref enabled_extensions,
-            ref debug_utils_messengers,
-            ref enabled_validation_features,
-            ref disabled_validation_features,
-            _ne: _,
-        } = &create_info;
-
-        let mut enabled_extensions = Cow::Borrowed(enabled_extensions);
-
-        if flags.intersects(InstanceCreateFlags::ENUMERATE_PORTABILITY) {
+        if create_info
+            .flags
+            .intersects(InstanceCreateFlags::ENUMERATE_PORTABILITY)
+        {
             // VUID-VkInstanceCreateInfo-flags-06559
             if library
-                .supported_extensions_with_layers(enabled_layers.iter().map(String::as_str))?
+                .supported_extensions_with_layers(
+                    create_info.enabled_layers.iter().map(String::as_str),
+                )?
                 .khr_portability_enumeration
             {
-                enabled_extensions.to_mut().khr_portability_enumeration = true;
+                create_info.enabled_extensions.khr_portability_enumeration = true;
             } else {
-                flags -= InstanceCreateFlags::ENUMERATE_PORTABILITY;
+                create_info.flags -= InstanceCreateFlags::ENUMERATE_PORTABILITY;
             }
         }
 
-        let enabled_layers_vk: Vec<CString> = enabled_layers
-            .iter()
-            .map(|name| CString::new(name.clone()).unwrap())
-            .collect();
-        let enabled_layers_ptrs_vk = enabled_layers_vk
-            .iter()
-            .map(|layer| layer.as_ptr())
-            .collect::<SmallVec<[_; 2]>>();
-
-        let enabled_extensions_vk: Vec<CString> = enabled_extensions.as_ref().into();
-        let enabled_extensions_ptrs_vk = enabled_extensions_vk
-            .iter()
-            .map(|extension| extension.as_ptr())
-            .collect::<SmallVec<[_; 2]>>();
-
-        let application_name_vk = application_name
-            .as_ref()
-            .map(|name| CString::new(name.clone()).unwrap());
-        let engine_name_vk = engine_name
-            .as_ref()
-            .map(|name| CString::new(name.clone()).unwrap());
-        let application_info_vk = ash::vk::ApplicationInfo {
-            p_application_name: application_name_vk
-                .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(ptr::null()),
-            application_version: application_version
-                .try_into()
-                .expect("Version out of range"),
-            p_engine_name: engine_name_vk
-                .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(ptr::null()),
-            engine_version: engine_version.try_into().expect("Version out of range"),
-            api_version: max_api_version
-                .unwrap()
-                .try_into()
-                .expect("Version out of range"),
-            ..Default::default()
-        };
-
-        let enable_validation_features_vk: SmallVec<[_; 5]> = enabled_validation_features
-            .iter()
-            .copied()
-            .map(Into::into)
-            .collect();
-        let disable_validation_features_vk: SmallVec<[_; 8]> = disabled_validation_features
-            .iter()
-            .copied()
-            .map(Into::into)
-            .collect();
-
-        let mut create_info_vk = ash::vk::InstanceCreateInfo {
-            flags: flags.into(),
-            p_application_info: &application_info_vk,
-            enabled_layer_count: enabled_layers_ptrs_vk.len() as u32,
-            pp_enabled_layer_names: enabled_layers_ptrs_vk.as_ptr(),
-            enabled_extension_count: enabled_extensions_ptrs_vk.len() as u32,
-            pp_enabled_extension_names: enabled_extensions_ptrs_vk.as_ptr(),
-            ..Default::default()
-        };
-        let mut validation_features_vk = None;
-
-        if !enabled_validation_features.is_empty() || !disabled_validation_features.is_empty() {
-            let next = validation_features_vk.insert(ash::vk::ValidationFeaturesEXT {
-                enabled_validation_feature_count: enable_validation_features_vk.len() as u32,
-                p_enabled_validation_features: enable_validation_features_vk.as_ptr(),
-                disabled_validation_feature_count: disable_validation_features_vk.len() as u32,
-                p_disabled_validation_features: disable_validation_features_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        let mut debug_utils_messenger_create_infos_vk: Vec<_> = debug_utils_messengers
-            .iter()
-            .map(|create_info| {
-                let &DebugUtilsMessengerCreateInfo {
-                    message_type,
-                    message_severity,
-                    ref user_callback,
-                    _ne: _,
-                } = create_info;
-
-                ash::vk::DebugUtilsMessengerCreateInfoEXT {
-                    flags: ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-                    message_severity: message_severity.into(),
-                    message_type: message_type.into(),
-                    pfn_user_callback: Some(trampoline),
-                    p_user_data: user_callback.as_ptr().cast_mut().cast(),
-                    ..Default::default()
-                }
-            })
-            .collect();
-
-        for i in 1..debug_utils_messenger_create_infos_vk.len() {
-            debug_utils_messenger_create_infos_vk[i - 1].p_next =
-                <*const _>::cast(&debug_utils_messenger_create_infos_vk[i]);
-        }
-
-        if let Some(info) = debug_utils_messenger_create_infos_vk.first() {
-            create_info_vk.p_next = <*const _>::cast(info);
-        }
+        let create_info_fields2_vk = create_info.to_vk_fields2();
+        let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields1_vk);
+        let create_info_vk =
+            create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
         let handle = {
             let mut output = MaybeUninit::uninit();
@@ -1151,6 +1037,220 @@ impl InstanceCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a InstanceCreateInfoFields1Vk<'_>,
+        extensions_vk: &'a mut InstanceCreateInfoExtensionsVk<'_>,
+    ) -> ash::vk::InstanceCreateInfo<'a> {
+        let &Self {
+            flags,
+            application_name: _,
+            application_version: _,
+            engine_name: _,
+            engine_version: _,
+            max_api_version: _,
+            enabled_layers: _,
+            enabled_extensions: _,
+            debug_utils_messengers: _,
+            enabled_validation_features: _,
+            disabled_validation_features: _,
+            _ne: _,
+        } = self;
+        let InstanceCreateInfoFields1Vk {
+            application_info_vk,
+            enabled_layer_names_vk,
+            enabled_extension_names_vk,
+            enable_validation_features_vk: _,
+            disable_validation_features_vk: _,
+        } = fields1_vk;
+
+        let mut val_vk = ash::vk::InstanceCreateInfo::default()
+            .flags(flags.into())
+            .application_info(application_info_vk)
+            .enabled_layer_names(enabled_layer_names_vk)
+            .enabled_extension_names(enabled_extension_names_vk);
+
+        let InstanceCreateInfoExtensionsVk {
+            debug_utils_messengers_vk,
+            validation_features_vk,
+        } = extensions_vk;
+
+        // push_next adds in reverse
+        for next in debug_utils_messengers_vk.iter_mut().rev() {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = validation_features_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a InstanceCreateInfoFields1Vk<'_>,
+    ) -> InstanceCreateInfoExtensionsVk<'a> {
+        let InstanceCreateInfoFields1Vk {
+            application_info_vk: _,
+            enabled_layer_names_vk: _,
+            enabled_extension_names_vk: _,
+            enable_validation_features_vk,
+            disable_validation_features_vk,
+        } = fields1_vk;
+
+        let validation_features_vk = (!enable_validation_features_vk.is_empty()
+            || !disable_validation_features_vk.is_empty())
+        .then(|| {
+            ash::vk::ValidationFeaturesEXT::default()
+                .enabled_validation_features(enable_validation_features_vk)
+                .disabled_validation_features(disable_validation_features_vk)
+        });
+
+        let debug_utils_messengers_vk: Vec<_> = self
+            .debug_utils_messengers
+            .iter()
+            .map(DebugUtilsMessengerCreateInfo::to_vk)
+            .collect();
+
+        InstanceCreateInfoExtensionsVk {
+            debug_utils_messengers_vk,
+            validation_features_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a InstanceCreateInfoFields2Vk,
+    ) -> InstanceCreateInfoFields1Vk<'a> {
+        let &Self {
+            flags: _,
+            application_name: _,
+            application_version,
+            engine_name: _,
+            engine_version,
+            max_api_version,
+            enabled_layers: _,
+            enabled_extensions: _,
+            debug_utils_messengers: _,
+            ref enabled_validation_features,
+            ref disabled_validation_features,
+            _ne: _,
+        } = self;
+        let InstanceCreateInfoFields2Vk {
+            application_name_vk,
+            engine_name_vk,
+            enabled_layers_vk,
+            enabled_extensions_vk,
+        } = fields2_vk;
+
+        let mut application_info_vk = ash::vk::ApplicationInfo::default()
+            .application_version(
+                application_version
+                    .try_into()
+                    .expect("Version out of range"),
+            )
+            .engine_version(engine_version.try_into().expect("Version out of range"))
+            .api_version(
+                max_api_version
+                    .unwrap()
+                    .try_into()
+                    .expect("Version out of range"),
+            );
+
+        if let Some(application_name_vk) = application_name_vk {
+            application_info_vk = application_info_vk.application_name(application_name_vk);
+        }
+
+        if let Some(engine_name_vk) = engine_name_vk {
+            application_info_vk = application_info_vk.application_name(engine_name_vk);
+        }
+
+        let enabled_layer_names_vk = enabled_layers_vk
+            .iter()
+            .map(|layer| layer.as_ptr())
+            .collect();
+        let enabled_extension_names_vk = enabled_extensions_vk
+            .iter()
+            .map(|extension| extension.as_ptr())
+            .collect();
+
+        let enable_validation_features_vk = enabled_validation_features
+            .iter()
+            .copied()
+            .map(Into::into)
+            .collect();
+        let disable_validation_features_vk = disabled_validation_features
+            .iter()
+            .copied()
+            .map(Into::into)
+            .collect();
+
+        InstanceCreateInfoFields1Vk {
+            application_info_vk,
+            enabled_layer_names_vk,
+            enabled_extension_names_vk,
+            enable_validation_features_vk,
+            disable_validation_features_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> InstanceCreateInfoFields2Vk {
+        let &Self {
+            flags: _,
+            ref application_name,
+            application_version: _,
+            ref engine_name,
+            engine_version: _,
+            max_api_version: _,
+            ref enabled_layers,
+            ref enabled_extensions,
+            debug_utils_messengers: _,
+            enabled_validation_features: _,
+            disabled_validation_features: _,
+            _ne: _,
+        } = self;
+
+        let application_name_vk = application_name
+            .as_ref()
+            .map(|name| CString::new(name.clone()).unwrap());
+        let engine_name_vk = engine_name
+            .as_ref()
+            .map(|name| CString::new(name.clone()).unwrap());
+        let enabled_layers_vk: Vec<CString> = enabled_layers
+            .iter()
+            .map(|name| CString::new(name.clone()).unwrap())
+            .collect();
+        let enabled_extensions_vk: Vec<CString> = enabled_extensions.into();
+
+        InstanceCreateInfoFields2Vk {
+            application_name_vk,
+            engine_name_vk,
+            enabled_layers_vk,
+            enabled_extensions_vk,
+        }
+    }
+}
+
+pub(crate) struct InstanceCreateInfoExtensionsVk<'a> {
+    pub(crate) debug_utils_messengers_vk: Vec<ash::vk::DebugUtilsMessengerCreateInfoEXT<'a>>,
+    pub(crate) validation_features_vk: Option<ash::vk::ValidationFeaturesEXT<'a>>,
+}
+
+pub(crate) struct InstanceCreateInfoFields1Vk<'a> {
+    pub(crate) application_info_vk: ash::vk::ApplicationInfo<'a>,
+    pub(crate) enabled_layer_names_vk: SmallVec<[*const c_char; 2]>,
+    pub(crate) enabled_extension_names_vk: SmallVec<[*const c_char; 2]>,
+    pub(crate) enable_validation_features_vk: SmallVec<[ash::vk::ValidationFeatureEnableEXT; 5]>,
+    pub(crate) disable_validation_features_vk: SmallVec<[ash::vk::ValidationFeatureDisableEXT; 5]>,
+}
+
+pub(crate) struct InstanceCreateInfoFields2Vk {
+    pub(crate) application_name_vk: Option<CString>,
+    pub(crate) engine_name_vk: Option<CString>,
+    pub(crate) enabled_layers_vk: Vec<CString>,
+    pub(crate) enabled_extensions_vk: Vec<CString>,
 }
 
 vulkan_bitflags! {

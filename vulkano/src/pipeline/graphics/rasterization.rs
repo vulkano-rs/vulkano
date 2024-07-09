@@ -78,6 +78,17 @@ pub struct RasterizationState {
     /// The default value is `None`.
     pub line_stipple: Option<LineStipple>,
 
+    /// Enables a mode of rasterization where the edges of primitives are modified so that
+    /// fragments are generated if the edge of a primitive touches any part of a pixel, or if a
+    /// pixel is fully covered by a primitive.
+    ///
+    /// If this is set to `Some`, the
+    /// [`ext_conservative_rasterization`](crate::device::DeviceExtensions::ext_conservative_rasterization)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is `None`.
+    pub conservative: Option<RasterizationConservativeState>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -94,6 +105,7 @@ impl Default for RasterizationState {
             line_width: 1.0,
             line_rasterization_mode: Default::default(),
             line_stipple: None,
+            conservative: None,
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -144,6 +156,7 @@ impl RasterizationState {
             line_width: _,
             line_rasterization_mode,
             ref line_stipple,
+            ref conservative,
             _ne: _,
         } = self;
 
@@ -344,8 +357,127 @@ impl RasterizationState {
             }
         }
 
+        if let Some(conservative) = conservative {
+            if !device.enabled_extensions().ext_conservative_rasterization {
+                return Err(Box::new(ValidationError {
+                    context: "conservative".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "ext_conservative_rasterization",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            conservative
+                .validate(device)
+                .map_err(|err| err.add_context("conservative"))?;
+        }
+
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut RasterizationStateExtensionsVk,
+    ) -> ash::vk::PipelineRasterizationStateCreateInfo<'a> {
+        let &Self {
+            depth_clamp_enable,
+            rasterizer_discard_enable,
+            polygon_mode,
+            cull_mode,
+            front_face,
+            ref depth_bias,
+            line_width,
+            line_rasterization_mode: _,
+            line_stipple: _,
+            conservative: _,
+            _ne: _,
+        } = self;
+
+        let (
+            depth_bias_enable_vk,
+            depth_bias_constant_factor_vk,
+            depth_bias_clamp_vk,
+            depth_bias_slope_factor_vk,
+        ) = if let Some(depth_bias_state) = depth_bias {
+            let &DepthBiasState {
+                constant_factor,
+                clamp,
+                slope_factor,
+            } = depth_bias_state;
+
+            (true, constant_factor, clamp, slope_factor)
+        } else {
+            (false, 0.0, 0.0, 0.0)
+        };
+
+        let mut val_vk = ash::vk::PipelineRasterizationStateCreateInfo::default()
+            .flags(ash::vk::PipelineRasterizationStateCreateFlags::empty())
+            .depth_clamp_enable(depth_clamp_enable)
+            .rasterizer_discard_enable(rasterizer_discard_enable)
+            .polygon_mode(polygon_mode.into())
+            .cull_mode(cull_mode.into())
+            .front_face(front_face.into())
+            .depth_bias_enable(depth_bias_enable_vk)
+            .depth_bias_constant_factor(depth_bias_constant_factor_vk)
+            .depth_bias_clamp(depth_bias_clamp_vk)
+            .depth_bias_slope_factor(depth_bias_slope_factor_vk)
+            .line_width(line_width);
+
+        let RasterizationStateExtensionsVk {
+            line_vk,
+            conservative_vk,
+        } = extensions_vk;
+
+        if let Some(next) = line_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = conservative_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> RasterizationStateExtensionsVk {
+        let &Self {
+            line_rasterization_mode,
+            ref line_stipple,
+            ref conservative,
+            ..
+        } = self;
+
+        let line_vk = (line_rasterization_mode != LineRasterizationMode::Default).then(|| {
+            let (stippled_line_enable, line_stipple_factor, line_stipple_pattern) =
+                if let Some(line_stipple) = line_stipple {
+                    (true, line_stipple.factor, line_stipple.pattern)
+                } else {
+                    (false, 1, 0)
+                };
+
+            ash::vk::PipelineRasterizationLineStateCreateInfoKHR::default()
+                .line_rasterization_mode(line_rasterization_mode.into())
+                .stippled_line_enable(stippled_line_enable)
+                .line_stipple_factor(line_stipple_factor)
+                .line_stipple_pattern(line_stipple_pattern)
+        });
+        let conservative_vk = conservative
+            .as_ref()
+            .map(RasterizationConservativeState::to_vk);
+
+        RasterizationStateExtensionsVk {
+            line_vk,
+            conservative_vk,
+        }
+    }
+}
+
+pub(crate) struct RasterizationStateExtensionsVk {
+    pub(crate) line_vk: Option<ash::vk::PipelineRasterizationLineStateCreateInfoKHR<'static>>,
+    pub(crate) conservative_vk:
+        Option<ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static>>,
 }
 
 /// The values to use for depth biasing.
@@ -525,4 +657,105 @@ pub struct LineStipple {
 
     /// The bit pattern used in stippled line rasterization.
     pub pattern: u16,
+}
+
+/// The state in a graphics pipeline describing how the conservative rasterization mode should
+/// behave.
+#[derive(Clone, Debug)]
+pub struct RasterizationConservativeState {
+    /// Sets the conservative rasterization mode.
+    ///
+    /// The default value is [`ConservativeRasterizationMode::Disabled`].
+    pub mode: ConservativeRasterizationMode,
+
+    /// The extra size in pixels to increase the generating primitive during conservative
+    /// rasterization. If the mode is set to anything other than
+    /// [`ConservativeRasterizationMode::Overestimate`] this value is ignored.
+    ///
+    ///  The default value is 0.0.
+    pub overestimation_size: f32,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for RasterizationConservativeState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            mode: ConservativeRasterizationMode::Disabled,
+            overestimation_size: 0.0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl RasterizationConservativeState {
+    pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            mode,
+            overestimation_size,
+            _ne: _,
+        } = self;
+
+        let properties = device.physical_device().properties();
+
+        mode.validate_device(device).map_err(|err| {
+            err.add_context("mode").set_vuids(&[
+                "VUID-VkPipelineRasterizationConservativeStateCreateInfoEXT-conservativeRasterizationMode-parameter",
+            ])
+        })?;
+
+        if overestimation_size < 0.0
+            || overestimation_size > properties.max_extra_primitive_overestimation_size.unwrap()
+        {
+            return Err(Box::new(ValidationError {
+                context: "overestimation size".into(),
+                problem: "the overestimation size is not in the range of 0.0 to `max_extra_primitive_overestimation_size` inclusive".into(),
+                vuids: &[
+                    "VUID-VkPipelineRasterizationConservativeStateCreateInfoEXT-extraPrimitiveOverestimationSize-01769",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn to_vk(
+        &self,
+    ) -> ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT<'static> {
+        let &Self {
+            mode,
+            overestimation_size,
+            _ne: _,
+        } = self;
+
+        ash::vk::PipelineRasterizationConservativeStateCreateInfoEXT::default()
+            .flags(ash::vk::PipelineRasterizationConservativeStateCreateFlagsEXT::empty())
+            .conservative_rasterization_mode(mode.into())
+            .extra_primitive_overestimation_size(overestimation_size)
+    }
+}
+
+vulkan_enum! {
+    #[non_exhaustive]
+
+    /// Describes how fragments will be generated based on how much is covered by a primitive.
+    ConservativeRasterizationMode = ConservativeRasterizationModeEXT(i32);
+
+    /// Conservative rasterization is disabled and rasterization proceeds as normal.
+    Disabled = DISABLED,
+
+    /// Fragments will be generated if any part of a primitive touches a pixel.
+    Overestimate = OVERESTIMATE,
+
+    /// Fragments will be generated only if a primitive completely covers a pixel.
+    Underestimate = UNDERESTIMATE,
+}
+
+impl Default for ConservativeRasterizationMode {
+    #[inline]
+    fn default() -> ConservativeRasterizationMode {
+        ConservativeRasterizationMode::Disabled
+    }
 }
