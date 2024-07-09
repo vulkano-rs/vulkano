@@ -4,6 +4,7 @@ members = [
     "vulkano",
     "vulkano-macros",
     "vulkano-shaders",
+    "vulkano-taskgraph",
     "vulkano-util",
     # "vulkano-win",
 ]
@@ -41,6 +42,7 @@ ahash = "0.8"
 # https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml
 ash = "0.38.0"
 bytemuck = "1.9"
+concurrent-slotmap = { git = "https://github.com/vulkano-rs/concurrent-slotmap", rev = "a65c7642f8a647739973157d0c04d07e4474ebec" }
 core-graphics-types = "0.1"
 crossbeam-queue = "0.3"
 half = "2.0"
@@ -54,6 +56,7 @@ parking_lot = "0.12"
 proc-macro2 = "1.0"
 proc-macro-crate = "2.0"
 quote = "1.0"
+rangemap = "1.5"
 raw-window-handle = "0.6"
 serde = "1.0"
 serde_json = "1.0"
