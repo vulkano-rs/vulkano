@@ -1,6 +1,6 @@
 //! Synchronization state tracking of all resources.
 
-use crate::{Id, InvalidSlotError, ObjectType, Ref};
+use crate::{Id, InvalidSlotError, Ref, BUFFER_TAG, FLIGHT_TAG, IMAGE_TAG, SWAPCHAIN_TAG};
 use ash::vk;
 use concurrent_slotmap::{epoch, SlotMap};
 use parking_lot::{Mutex, MutexGuard};
@@ -37,11 +37,6 @@ use vulkano::{
 };
 
 static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
-
-const BUFFER_TAG: u32 = ObjectType::Buffer as u32;
-const IMAGE_TAG: u32 = ObjectType::Image as u32;
-const SWAPCHAIN_TAG: u32 = ObjectType::Swapchain as u32;
-const FLIGHT_TAG: u32 = ObjectType::Flight as u32;
 
 /// Tracks the synchronization state of all resources.
 ///
@@ -117,7 +112,6 @@ pub struct Flight {
 
 #[derive(Debug)]
 pub(crate) struct FlightState {
-    pub(crate) swapchains: SmallVec<[Id<Swapchain>; 1]>,
     pub(crate) death_rows: SmallVec<[DeathRow; 3]>,
 }
 
@@ -214,6 +208,7 @@ impl Resources {
     /// # Panics
     ///
     /// - Panics if the instance of `surface` is not the same as that of `self.device()`.
+    /// - Panics if `flight_id` is invalid.
     /// - Panics if `create_info.min_image_count` is not greater than or equal to the number of
     ///   [frames] of the flight corresponding to `flight_id`.
     ///
@@ -276,7 +271,6 @@ impl Resources {
             current_frame: AtomicU32::new(0),
             fences,
             state: Mutex::new(FlightState {
-                swapchains: SmallVec::new(),
                 death_rows: (0..frame_count.get()).map(|_| Vec::new()).collect(),
             }),
         };
@@ -462,30 +456,11 @@ impl Resources {
             last_accesses: Mutex::new(RangeMap::new()),
         };
 
-        unsafe {
-            state.set_access(
-                ImageSubresourceRange {
-                    aspects: ImageAspects::COLOR,
-                    mip_levels: 0..1,
-                    array_layers: 0..state.swapchain.image_array_layers(),
-                },
-                ImageAccess::NONE,
-            );
-        }
+        unsafe { state.set_access(0..state.swapchain.image_array_layers(), ImageAccess::NONE) };
 
         let slot = self.swapchains.insert_with_tag(state, SWAPCHAIN_TAG, guard);
-        let id = Id::new(slot);
 
-        self.flights
-            .get(flight_id.slot, guard)
-            .unwrap()
-            .state
-            // FIXME:
-            .lock()
-            .swapchains
-            .push(id);
-
-        Ok(id)
+        Ok(Id::new(slot))
     }
 
     /// Removes the buffer corresponding to `id`.
@@ -524,20 +499,10 @@ impl Resources {
     ///   pending command buffer, and if it is used in any command buffer that's in the executable
     ///   or recording state, that command buffer must never be executed.
     pub unsafe fn remove_swapchain(&self, id: Id<Swapchain>) -> Result<Ref<'_, SwapchainState>> {
-        let state = self
-            .swapchains
+        self.swapchains
             .remove(id.slot, self.pin())
             .map(Ref)
-            .ok_or(InvalidSlotError::new(id))?;
-        let flight_id = state.flight_id;
-
-        let flight = self.flights.get(flight_id.slot, self.pin()).unwrap();
-        // FIXME:
-        let swapchains = &mut flight.state.lock().swapchains;
-        let index = swapchains.iter().position(|&x| x == id).unwrap();
-        swapchains.remove(index);
-
-        Ok(state)
+            .ok_or(InvalidSlotError::new(id))
     }
 
     /// Returns the buffer corresponding to `id`.
@@ -659,7 +624,7 @@ impl BufferState {
         assert!(!range.is_empty());
 
         BufferAccesses {
-            inner: MutexGuard::leak(self.last_accesses.lock()).overlapping(range),
+            overlapping: MutexGuard::leak(self.last_accesses.lock()).overlapping(range),
             // SAFETY: We locked the mutex above.
             _guard: unsafe { AccessesGuard::new(&self.last_accesses) },
         }
@@ -730,14 +695,14 @@ impl ImageState {
     #[inline]
     pub fn accesses(&self, subresource_range: ImageSubresourceRange) -> ImageAccesses<'_> {
         let subresource_ranges = SubresourceRanges::from_image(&self.image, subresource_range);
-        let map = MutexGuard::leak(self.last_accesses.lock());
+        let last_accesses = MutexGuard::leak(self.last_accesses.lock());
 
         ImageAccesses {
             mip_levels: self.image.mip_levels(),
             array_layers: self.image.array_layers(),
             subresource_ranges,
-            overlapping: map.overlapping(0..0),
-            map,
+            overlapping: last_accesses.overlapping(0..0),
+            last_accesses,
             // SAFETY: We locked the mutex above.
             _guard: unsafe { AccessesGuard::new(&self.last_accesses) },
         }
@@ -862,31 +827,33 @@ impl SwapchainState {
         &self.images[self.current_image_index.load(Ordering::Relaxed) as usize]
     }
 
-    pub(crate) fn accesses(&self, subresource_range: ImageSubresourceRange) -> ImageAccesses<'_> {
-        assert_eq!(subresource_range.aspects, ImageAspects::COLOR);
-
+    pub(crate) fn accesses(&self, array_layers: Range<u32>) -> ImageAccesses<'_> {
+        let subresource_range = ImageSubresourceRange {
+            aspects: ImageAspects::COLOR,
+            mip_levels: 0..1,
+            array_layers,
+        };
         let subresource_ranges =
             SubresourceRanges::new(subresource_range, 1, self.swapchain.image_array_layers());
-        let map = MutexGuard::leak(self.last_accesses.lock());
+        let last_accesses = MutexGuard::leak(self.last_accesses.lock());
 
         ImageAccesses {
             mip_levels: 1,
             array_layers: self.swapchain.image_array_layers(),
             subresource_ranges,
-            overlapping: map.overlapping(0..0),
-            map,
+            overlapping: last_accesses.overlapping(0..0),
+            last_accesses,
             // SAFETY: We locked the mutex above.
             _guard: unsafe { AccessesGuard::new(&self.last_accesses) },
         }
     }
 
-    pub(crate) unsafe fn set_access(
-        &self,
-        subresource_range: ImageSubresourceRange,
-        access: ImageAccess,
-    ) {
-        assert_eq!(subresource_range.aspects, ImageAspects::COLOR);
-
+    pub(crate) unsafe fn set_access(&self, array_layers: Range<u32>, access: ImageAccess) {
+        let subresource_range = ImageSubresourceRange {
+            aspects: ImageAspects::COLOR,
+            mip_levels: 0..1,
+            array_layers,
+        };
         let mut last_accesses = self.last_accesses.lock();
 
         for range in
@@ -964,7 +931,7 @@ pub type BufferRange = Range<DeviceSize>;
 ///
 /// [`accesses`]: BufferState::accesses
 pub struct BufferAccesses<'a> {
-    inner: rangemap::map::Overlapping<'a, DeviceSize, BufferAccess, Range<DeviceSize>>,
+    overlapping: rangemap::map::Overlapping<'a, DeviceSize, BufferAccess, Range<DeviceSize>>,
     _guard: AccessesGuard<'a, BufferAccess>,
 }
 
@@ -973,7 +940,7 @@ impl<'a> Iterator for BufferAccesses<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner
+        self.overlapping
             .next()
             .map(|(range, access)| (range.clone(), access))
     }
@@ -991,7 +958,7 @@ pub struct ImageAccesses<'a> {
     array_layers: u32,
     subresource_ranges: SubresourceRanges,
     overlapping: rangemap::map::Overlapping<'a, DeviceSize, ImageAccess, Range<DeviceSize>>,
-    map: &'a RangeMap<DeviceSize, ImageAccess>,
+    last_accesses: &'a RangeMap<DeviceSize, ImageAccess>,
     _guard: AccessesGuard<'a, ImageAccess>,
 }
 
@@ -1000,17 +967,17 @@ impl<'a> Iterator for ImageAccesses<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((range, access)) = self.overlapping.next() {
-            let subresource_range =
-                range_to_subresources(range.clone(), self.mip_levels, self.array_layers);
+        loop {
+            if let Some((range, access)) = self.overlapping.next() {
+                let subresource_range =
+                    range_to_subresources(range.clone(), self.mip_levels, self.array_layers);
 
-            Some((subresource_range, access))
-        } else if let Some(range) = self.subresource_ranges.next() {
-            self.overlapping = self.map.overlapping(range);
-
-            self.next()
-        } else {
-            None
+                break Some((subresource_range, access));
+            } else if let Some(range) = self.subresource_ranges.next() {
+                self.overlapping = self.last_accesses.overlapping(range);
+            } else {
+                break None;
+            }
         }
     }
 }
@@ -1080,6 +1047,7 @@ impl SubresourceRanges {
     ) -> Self {
         assert!(subresource_range.mip_levels.end <= image_mip_levels);
         assert!(subresource_range.array_layers.end <= image_array_layers);
+        assert!(!subresource_range.aspects.is_empty());
         assert!(!subresource_range.mip_levels.is_empty());
         assert!(!subresource_range.array_layers.is_empty());
 
@@ -1836,6 +1804,24 @@ access_types! {
         stage_mask: ALL_COMMANDS,
         access_mask: MEMORY_READ | MEMORY_WRITE,
         image_layout: General,
+    }
+}
+
+impl AccessType {
+    pub(crate) const fn is_valid_buffer_access_type(self) -> bool {
+        // Let's reuse the image layout lookup table, since it already exists.
+        let image_layout = self.image_layout();
+
+        matches!(image_layout, ImageLayout::Undefined) && !matches!(self, AccessType::None)
+    }
+
+    pub(crate) const fn is_valid_image_access_type(self) -> bool {
+        let image_layout = self.image_layout();
+
+        !matches!(
+            image_layout,
+            ImageLayout::Undefined | ImageLayout::PresentSrc,
+        )
     }
 }
 
