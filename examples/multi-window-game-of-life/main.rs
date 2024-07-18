@@ -198,7 +198,7 @@ fn compute_then_render(
 
     // Start the frame.
     let before_pipeline_future =
-        match window_renderer.acquire(Some(Duration::from_millis(0)), |swapchain_image_views| {
+        match window_renderer.acquire(Some(Duration::from_millis(1000)), |swapchain_image_views| {
             pipeline
                 .place_over_frame
                 .recreate_framebuffers(swapchain_image_views)
