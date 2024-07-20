@@ -3,10 +3,8 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use concurrent_slotmap::SlotId;
-use graph::ResourceAccesses;
-use resource::{
-    AccessType, BufferRange, BufferState, DeathRow, ImageState, Resources, SwapchainState,
-};
+use graph::{ResourceAccesses, ResourceMap};
+use resource::{AccessType, BufferRange, BufferState, DeathRow, ImageState, SwapchainState};
 use std::{
     any::{Any, TypeId},
     cell::Cell,
@@ -16,6 +14,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     ops::{Deref, DerefMut, Range, RangeBounds},
+    sync::Arc,
     thread,
 };
 use vulkano::{
@@ -117,10 +116,10 @@ impl<W: ?Sized> fmt::Debug for dyn Task<World = W> {
 ///
 /// This gives you access to the current command buffer, resources, as well as resource cleanup.
 pub struct TaskContext<'a> {
-    resources: &'a Resources,
+    resource_map: &'a ResourceMap<'a>,
     death_row: Cell<Option<&'a mut DeathRow>>,
     current_command_buffer: Cell<Option<&'a mut RawRecordingCommandBuffer>>,
-    command_buffers: Cell<Option<&'a mut Vec<RawCommandBuffer>>>,
+    command_buffers: Cell<Option<&'a mut Vec<Arc<RawCommandBuffer>>>>,
     accesses: &'a ResourceAccesses,
 }
 
@@ -160,7 +159,7 @@ impl<'a> TaskContext<'a> {
     ///
     /// [`raw_command_buffer`]: Self::raw_command_buffer
     #[inline]
-    pub unsafe fn push_command_buffer(&self, command_buffer: RawCommandBuffer) {
+    pub unsafe fn push_command_buffer(&self, command_buffer: Arc<RawCommandBuffer>) {
         let vec = self.command_buffers.take().unwrap();
         vec.push(command_buffer);
         self.command_buffers.set(Some(vec));
@@ -179,7 +178,7 @@ impl<'a> TaskContext<'a> {
     #[inline]
     pub unsafe fn extend_command_buffers(
         &self,
-        command_buffers: impl IntoIterator<Item = RawCommandBuffer>,
+        command_buffers: impl IntoIterator<Item = Arc<RawCommandBuffer>>,
     ) {
         let vec = self.command_buffers.take().unwrap();
         vec.extend(command_buffers);
@@ -189,28 +188,31 @@ impl<'a> TaskContext<'a> {
     /// Returns the buffer corresponding to `id`, or returns an error if it isn't present.
     #[inline]
     pub fn buffer(&self, id: Id<Buffer>) -> TaskResult<&'a BufferState> {
-        // SAFETY: Ensured by the caller of `Task::execute`.
-        Ok(unsafe { self.resources.buffer_unprotected(id) }?)
+        // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
+        // virtual IDs of the graph exhaustively.
+        Ok(unsafe { self.resource_map.buffer(id) }?)
     }
 
     /// Returns the image corresponding to `id`, or returns an error if it isn't present.
     #[inline]
     pub fn image(&self, id: Id<Image>) -> TaskResult<&'a ImageState> {
-        // SAFETY: Ensured by the caller of `Task::execute`.
-        Ok(unsafe { self.resources.image_unprotected(id) }?)
+        // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
+        // virtual IDs of the graph exhaustively.
+        Ok(unsafe { self.resource_map.image(id) }?)
     }
 
     /// Returns the swapchain corresponding to `id`, or returns an error if it isn't present.
     #[inline]
     pub fn swapchain(&self, id: Id<Swapchain>) -> TaskResult<&'a SwapchainState> {
-        // SAFETY: Ensured by the caller of `Task::execute`.
-        Ok(unsafe { self.resources.swapchain_unprotected(id) }?)
+        // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
+        // virtual IDs of the graph exhaustively.
+        Ok(unsafe { self.resource_map.swapchain(id) }?)
     }
 
-    /// Returns the `Resources` collection.
+    /// Returns the `ResourceMap`.
     #[inline]
-    pub fn resources(&self) -> &'a Resources {
-        self.resources
+    pub fn resource_map(&self) -> &'a ResourceMap<'a> {
+        self.resource_map
     }
 
     /// Tries to get read access to a portion of the buffer corresponding to `id`.
@@ -624,7 +626,7 @@ impl<'a> TaskContext<'a> {
     // FIXME: unsafe
     #[inline]
     pub unsafe fn destroy_buffer(&self, id: Id<Buffer>) -> TaskResult {
-        let state = unsafe { self.resources.remove_buffer(id) }?;
+        let state = unsafe { self.resource_map.resources().remove_buffer(id) }?;
         let death_row = self.death_row.take().unwrap();
         // FIXME:
         death_row.push(state.buffer().clone());
@@ -638,7 +640,7 @@ impl<'a> TaskContext<'a> {
     // FIXME: unsafe
     #[inline]
     pub unsafe fn destroy_image(&self, id: Id<Image>) -> TaskResult {
-        let state = unsafe { self.resources.remove_image(id) }?;
+        let state = unsafe { self.resource_map.resources().remove_image(id) }?;
         let death_row = self.death_row.take().unwrap();
         // FIXME:
         death_row.push(state.image().clone());
@@ -652,7 +654,7 @@ impl<'a> TaskContext<'a> {
     // FIXME: unsafe
     #[inline]
     pub unsafe fn destroy_swapchain(&self, id: Id<Swapchain>) -> TaskResult {
-        let state = unsafe { self.resources.remove_swapchain(id) }?;
+        let state = unsafe { self.resource_map.resources().remove_swapchain(id) }?;
         let death_row = self.death_row.take().unwrap();
         // FIXME:
         death_row.push(state.swapchain().clone());
@@ -904,6 +906,10 @@ impl<T> Id<T> {
 
     fn index(self) -> u32 {
         self.slot.index()
+    }
+
+    fn tag(self) -> u32 {
+        self.slot.tag()
     }
 }
 

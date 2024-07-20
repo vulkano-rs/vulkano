@@ -1,12 +1,16 @@
 //! The task graph data structure and associated types.
 
+pub use self::execute::{ExecuteError, ResourceMap};
 use crate::{
     resource::{AccessType, BufferRange, ImageLayoutType},
     Id, InvalidSlotError, QueueFamilyType, Task, BUFFER_TAG, IMAGE_TAG, SWAPCHAIN_TAG,
 };
 use concurrent_slotmap::{IterMut, IterUnprotected, SlotId, SlotMap};
 use smallvec::SmallVec;
-use std::{borrow::Cow, error::Error, fmt, hint, iter::FusedIterator, ops::Range, sync::Arc};
+use std::{
+    borrow::Cow, cell::RefCell, error::Error, fmt, hint, iter::FusedIterator, ops::Range, slice,
+    sync::Arc,
+};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo},
     device::{Device, DeviceOwned, Queue},
@@ -18,6 +22,8 @@ use vulkano::{
     sync::{semaphore::Semaphore, AccessFlags, PipelineStages},
     DeviceSize,
 };
+
+mod execute;
 
 const EXCLUSIVE_BIT: u32 = 1 << 6;
 const VIRTUAL_BIT: u32 = 1 << 7;
@@ -647,6 +653,10 @@ impl<W: ?Sized> TaskNode<W> {
 }
 
 impl ResourceAccesses {
+    fn iter(&self) -> slice::Iter<'_, ResourceAccess> {
+        self.inner.iter()
+    }
+
     pub(crate) fn contains_buffer_access(
         &self,
         id: Id<Buffer>,
@@ -655,7 +665,7 @@ impl ResourceAccesses {
     ) -> bool {
         debug_assert!(!range.is_empty());
 
-        self.inner.iter().any(|resource_access| {
+        self.iter().any(|resource_access| {
             matches!(resource_access, ResourceAccess::Buffer(a) if a.id == id
                 && a.access_type == access_type
                 && a.range.start <= range.start
@@ -674,7 +684,7 @@ impl ResourceAccesses {
         debug_assert!(!subresource_range.mip_levels.is_empty());
         debug_assert!(!subresource_range.array_layers.is_empty());
 
-        self.inner.iter().any(|resource_access| {
+        self.iter().any(|resource_access| {
             matches!(resource_access, ResourceAccess::Image(a) if a.id == id
                 && a.access_type == access_type
                 && a.layout_type == layout_type
@@ -695,7 +705,7 @@ impl ResourceAccesses {
     ) -> bool {
         debug_assert!(!array_layers.is_empty());
 
-        self.inner.iter().any(|resource_access| {
+        self.iter().any(|resource_access| {
             matches!(resource_access, ResourceAccess::Swapchain(a) if a.id == id
                 && a.access_type == access_type
                 && a.layout_type == layout_type
@@ -814,7 +824,7 @@ impl<W: ?Sized> TaskNodeBuilder<'_, W> {
     pub unsafe fn image_access_unchecked(
         &mut self,
         id: Id<Image>,
-        mut subresource_range: ImageSubresourceRange,
+        subresource_range: ImageSubresourceRange,
         access_type: AccessType,
         mut layout_type: ImageLayoutType,
     ) -> &mut Self {
@@ -908,7 +918,7 @@ pub struct ExecutableTaskGraph<W: ?Sized> {
     submissions: Vec<Submission>,
     buffer_barriers: Vec<BufferMemoryBarrier>,
     image_barriers: Vec<ImageMemoryBarrier>,
-    semaphores: Vec<Semaphore>,
+    semaphores: RefCell<Vec<Semaphore>>,
     swapchains: SmallVec<[Id<Swapchain>; 1]>,
     present_queue: Option<Arc<Queue>>,
 }

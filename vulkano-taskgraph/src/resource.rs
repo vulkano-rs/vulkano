@@ -8,6 +8,7 @@ use rangemap::RangeMap;
 use smallvec::SmallVec;
 use std::{
     any::Any,
+    cmp,
     hash::Hash,
     iter::FusedIterator,
     mem,
@@ -21,6 +22,7 @@ use std::{
 use thread_local::ThreadLocal;
 use vulkano::{
     buffer::{AllocateBufferError, Buffer, BufferCreateInfo},
+    command_buffer::allocator::StandardCommandBufferAllocator,
     device::{Device, DeviceOwned},
     image::{
         AllocateImageError, Image, ImageAspects, ImageCreateFlags, ImageCreateInfo, ImageLayout,
@@ -48,6 +50,7 @@ static REGISTERED_DEVICES: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 #[derive(Debug)]
 pub struct Resources {
     memory_allocator: Arc<dyn MemoryAllocator>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 
     global: epoch::GlobalHandle,
     locals: ThreadLocal<epoch::UniqueLocalHandle>,
@@ -140,10 +143,16 @@ impl Resources {
 
         registered_devices.push(device_addr);
 
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+
         let global = epoch::GlobalHandle::new();
 
         Resources {
             memory_allocator,
+            command_buffer_allocator,
             locals: ThreadLocal::new(),
             buffers: SlotMap::with_global(create_info.max_buffers, global.clone()),
             images: SlotMap::with_global(create_info.max_images, global.clone()),
@@ -520,6 +529,12 @@ impl Resources {
         unsafe { self.buffers.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
     }
 
+    #[inline]
+    pub(crate) unsafe fn buffer_unchecked_unprotected(&self, id: Id<Buffer>) -> &BufferState {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.buffers.index_unchecked_unprotected(id.index()) }
+    }
+
     /// Returns the image corresponding to `id`.
     #[inline]
     pub fn image(&self, id: Id<Image>) -> Result<Ref<'_, ImageState>> {
@@ -533,6 +548,12 @@ impl Resources {
     pub(crate) unsafe fn image_unprotected(&self, id: Id<Image>) -> Result<&ImageState> {
         // SAFETY: Enforced by the caller.
         unsafe { self.images.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
+    }
+
+    #[inline]
+    pub(crate) unsafe fn image_unchecked_unprotected(&self, id: Id<Image>) -> &ImageState {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.images.index_unchecked_unprotected(id.index()) }
     }
 
     /// Returns the swapchain corresponding to `id`.
@@ -551,6 +572,15 @@ impl Resources {
     ) -> Result<&SwapchainState> {
         // SAFETY: Enforced by the caller.
         unsafe { self.swapchains.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
+    }
+
+    #[inline]
+    pub(crate) unsafe fn swapchain_unchecked_unprotected(
+        &self,
+        id: Id<Swapchain>,
+    ) -> &SwapchainState {
+        // SAFETY: Enforced by the caller.
+        unsafe { self.swapchains.index_unchecked_unprotected(id.index()) }
     }
 
     /// Returns the [flight] corresponding to `id`.
@@ -573,6 +603,10 @@ impl Resources {
         self.locals.get_or(|| self.global.register_local()).pin()
     }
 
+    pub(crate) fn command_buffer_allocator(&self) -> &Arc<StandardCommandBufferAllocator> {
+        &self.command_buffer_allocator
+    }
+
     pub(crate) fn try_advance_global_and_collect(&self, guard: &epoch::Guard<'_>) {
         if guard.try_advance_global() {
             self.buffers.try_collect(guard);
@@ -585,6 +619,9 @@ impl Resources {
 
 impl Drop for Resources {
     fn drop(&mut self) {
+        // FIXME:
+        let _ = unsafe { self.device().wait_idle() };
+
         let mut registered_devices = REGISTERED_DEVICES.lock();
 
         // This can't panic because there's no way to construct this type without the device's
@@ -624,6 +661,7 @@ impl BufferState {
         assert!(!range.is_empty());
 
         BufferAccesses {
+            range: range.clone(),
             overlapping: MutexGuard::leak(self.last_accesses.lock()).overlapping(range),
             // SAFETY: We locked the mutex above.
             _guard: unsafe { AccessesGuard::new(&self.last_accesses) },
@@ -701,6 +739,7 @@ impl ImageState {
             mip_levels: self.image.mip_levels(),
             array_layers: self.image.array_layers(),
             subresource_ranges,
+            range: 0..0,
             overlapping: last_accesses.overlapping(0..0),
             last_accesses,
             // SAFETY: We locked the mutex above.
@@ -809,6 +848,13 @@ impl SwapchainState {
         &self.images
     }
 
+    /// Returns the ID of the [flight] which owns this swapchain.
+    #[inline]
+    #[must_use]
+    pub fn flight_id(&self) -> Id<Flight> {
+        self.flight_id
+    }
+
     /// Returns the image index that's acquired in the current frame, or returns `None` if no image
     /// index is acquired.
     #[inline]
@@ -841,6 +887,7 @@ impl SwapchainState {
             mip_levels: 1,
             array_layers: self.swapchain.image_array_layers(),
             subresource_ranges,
+            range: 0..0,
             overlapping: last_accesses.overlapping(0..0),
             last_accesses,
             // SAFETY: We locked the mutex above.
@@ -931,6 +978,7 @@ pub type BufferRange = Range<DeviceSize>;
 ///
 /// [`accesses`]: BufferState::accesses
 pub struct BufferAccesses<'a> {
+    range: BufferRange,
     overlapping: rangemap::map::Overlapping<'a, DeviceSize, BufferAccess, Range<DeviceSize>>,
     _guard: AccessesGuard<'a, BufferAccess>,
 }
@@ -940,9 +988,12 @@ impl<'a> Iterator for BufferAccesses<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.overlapping
-            .next()
-            .map(|(range, access)| (range.clone(), access))
+        self.overlapping.next().map(|(range, access)| {
+            let start = cmp::max(range.start, self.range.start);
+            let end = cmp::min(range.end, self.range.end);
+
+            (start..end, access)
+        })
     }
 }
 
@@ -957,6 +1008,7 @@ pub struct ImageAccesses<'a> {
     mip_levels: u32,
     array_layers: u32,
     subresource_ranges: SubresourceRanges,
+    range: Range<DeviceSize>,
     overlapping: rangemap::map::Overlapping<'a, DeviceSize, ImageAccess, Range<DeviceSize>>,
     last_accesses: &'a RangeMap<DeviceSize, ImageAccess>,
     _guard: AccessesGuard<'a, ImageAccess>,
@@ -969,11 +1021,14 @@ impl<'a> Iterator for ImageAccesses<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some((range, access)) = self.overlapping.next() {
+                let start = cmp::max(range.start, self.range.start);
+                let end = cmp::min(range.end, self.range.end);
                 let subresource_range =
-                    range_to_subresources(range.clone(), self.mip_levels, self.array_layers);
+                    range_to_subresources(start..end, self.mip_levels, self.array_layers);
 
                 break Some((subresource_range, access));
             } else if let Some(range) = self.subresource_ranges.next() {
+                self.range = range.clone();
                 self.overlapping = self.last_accesses.overlapping(range);
             } else {
                 break None;
