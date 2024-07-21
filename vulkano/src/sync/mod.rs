@@ -74,6 +74,23 @@ where
     Concurrent(I),
 }
 
+impl<I> Sharing<I>
+where
+    I: IntoIterator<Item = u32>,
+{
+    /// Returns `true` if `self` is the `Exclusive` variant.
+    #[inline]
+    pub fn is_exclusive(&self) -> bool {
+        matches!(self, Self::Exclusive)
+    }
+
+    /// Returns `true` if `self` is the `Concurrent` variant.
+    #[inline]
+    pub fn is_concurrent(&self) -> bool {
+        matches!(self, Self::Concurrent(..))
+    }
+}
+
 /// How the memory of a resource is currently being accessed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CurrentAccess {

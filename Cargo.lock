@@ -2339,7 +2339,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00bbb9a832cd697a36c2abd5ef58c263b0bc33cdf280f704b895646ed3e9f595"
 dependencies = [
  "libc",
- "windows-targets 0.52.0",
+ "windows-targets 0.52.5",
 ]
 
 [[package]]
@@ -2363,6 +2363,7 @@ dependencies = [
  "half",
  "heck",
  "indexmap",
+ "libc",
  "libloading 0.8.3",
  "nom",
  "objc",

@@ -3,7 +3,10 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use concurrent_slotmap::SlotId;
-use resource::{BufferRange, BufferState, DeathRow, ImageState, Resources, SwapchainState};
+use graph::ResourceAccesses;
+use resource::{
+    AccessType, BufferRange, BufferState, DeathRow, ImageState, Resources, SwapchainState,
+};
 use std::{
     any::{Any, TypeId},
     cell::Cell,
@@ -27,6 +30,7 @@ use vulkano::{
     DeviceSize, ValidationError, VulkanError,
 };
 
+pub mod graph;
 pub mod resource;
 
 /// A task represents a unit of work to be recorded to a command buffer.
@@ -117,6 +121,7 @@ pub struct TaskContext<'a> {
     death_row: Cell<Option<&'a mut DeathRow>>,
     current_command_buffer: Cell<Option<&'a mut RawRecordingCommandBuffer>>,
     command_buffers: Cell<Option<&'a mut Vec<RawCommandBuffer>>>,
+    accesses: &'a ResourceAccesses,
 }
 
 impl<'a> TaskContext<'a> {
@@ -246,6 +251,7 @@ impl<'a> TaskContext<'a> {
         #[cold]
         unsafe fn invalidate_subbuffer(
             tcx: &TaskContext<'_>,
+            id: Id<Buffer>,
             subbuffer: &Subbuffer<[u8]>,
             allocation: &ResourceMemory,
             atom_size: DeviceAlignment,
@@ -259,7 +265,7 @@ impl<'a> TaskContext<'a> {
             );
             let range = Range { start, end };
 
-            tcx.validate_read_buffer(subbuffer.buffer(), range.clone())?;
+            tcx.validate_read_buffer(id, range.clone())?;
 
             let memory_range = MappedMemoryRange {
                 offset: range.start,
@@ -310,10 +316,10 @@ impl<'a> TaskContext<'a> {
             // SAFETY:
             // `subbuffer.mapped_slice()` didn't return an error, which means that the subbuffer
             // falls within the mapped range of the memory.
-            unsafe { invalidate_subbuffer(self, subbuffer.as_bytes(), allocation, atom_size) }?;
+            unsafe { invalidate_subbuffer(self, id, subbuffer.as_bytes(), allocation, atom_size) }?;
         } else {
             let range = subbuffer.offset()..subbuffer.offset() + subbuffer.size();
-            self.validate_write_buffer(buffer, range)?;
+            self.validate_write_buffer(id, range)?;
         }
 
         // SAFETY: We checked that the task has read access to the subbuffer above, which also
@@ -325,8 +331,25 @@ impl<'a> TaskContext<'a> {
         Ok(BufferReadGuard { data })
     }
 
-    fn validate_read_buffer(&self, _buffer: &Buffer, _range: BufferRange) -> TaskResult {
-        todo!()
+    fn validate_read_buffer(
+        &self,
+        id: Id<Buffer>,
+        range: BufferRange,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .accesses
+            .contains_buffer_access(id, range, AccessType::HostRead)
+        {
+            return Err(Box::new(ValidationError {
+                context: "TaskContext::read_buffer".into(),
+                problem: "the task node does not have an access of type `AccessType::HostRead` \
+                    for the range of the buffer"
+                    .into(),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 
     /// Gets read access to a portion of the buffer corresponding to `id` without checking if this
@@ -429,6 +452,7 @@ impl<'a> TaskContext<'a> {
         #[cold]
         unsafe fn invalidate_subbuffer(
             tcx: &TaskContext<'_>,
+            id: Id<Buffer>,
             subbuffer: &Subbuffer<[u8]>,
             allocation: &ResourceMemory,
             atom_size: DeviceAlignment,
@@ -442,7 +466,7 @@ impl<'a> TaskContext<'a> {
             );
             let range = Range { start, end };
 
-            tcx.validate_write_buffer(subbuffer.buffer(), range.clone())?;
+            tcx.validate_write_buffer(id, range.clone())?;
 
             let memory_range = MappedMemoryRange {
                 offset: range.start,
@@ -493,10 +517,10 @@ impl<'a> TaskContext<'a> {
             // SAFETY:
             // `subbuffer.mapped_slice()` didn't return an error, which means that the subbuffer
             // falls within the mapped range of the memory.
-            unsafe { invalidate_subbuffer(self, subbuffer.as_bytes(), allocation, atom_size) }?;
+            unsafe { invalidate_subbuffer(self, id, subbuffer.as_bytes(), allocation, atom_size) }?;
         } else {
             let range = subbuffer.offset()..subbuffer.offset() + subbuffer.size();
-            self.validate_write_buffer(buffer, range)?;
+            self.validate_write_buffer(id, range)?;
         }
 
         // SAFETY: We checked that the task has write access to the subbuffer above, which also
@@ -512,8 +536,25 @@ impl<'a> TaskContext<'a> {
         })
     }
 
-    fn validate_write_buffer(&self, _buffer: &Buffer, _range: BufferRange) -> TaskResult {
-        todo!()
+    fn validate_write_buffer(
+        &self,
+        id: Id<Buffer>,
+        range: BufferRange,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .accesses
+            .contains_buffer_access(id, range, AccessType::HostWrite)
+        {
+            return Err(Box::new(ValidationError {
+                context: "TaskContext::write_buffer".into(),
+                problem: "the task node does not have an access of type `AccessType::HostWrite` \
+                    for the range of the buffer"
+                    .into(),
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 
     /// Gets write access to a portion of the buffer corresponding to `id` without checking if this
@@ -768,7 +809,7 @@ impl InvalidSlotError {
 impl fmt::Display for InvalidSlotError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let &InvalidSlotError { slot } = self;
-        let object_type = match slot.tag() {
+        let object_type = match slot.tag() & OBJECT_TYPE_MASK {
             0 => ObjectType::Buffer,
             1 => ObjectType::Image,
             2 => ObjectType::Swapchain,
@@ -860,6 +901,10 @@ impl<T> Id<T> {
             marker: PhantomData,
         }
     }
+
+    fn index(self) -> u32 {
+        self.slot.index()
+    }
 }
 
 impl<T> Clone for Id<T> {
@@ -874,8 +919,8 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("generation", &self.slot.generation())
             .field("index", &self.slot.index())
+            .field("generation", &self.slot.generation())
             .finish()
     }
 }
@@ -939,6 +984,13 @@ enum ObjectType {
     Swapchain = 2,
     Flight = 3,
 }
+
+const BUFFER_TAG: u32 = ObjectType::Buffer as u32;
+const IMAGE_TAG: u32 = ObjectType::Image as u32;
+const SWAPCHAIN_TAG: u32 = ObjectType::Swapchain as u32;
+const FLIGHT_TAG: u32 = ObjectType::Flight as u32;
+
+const OBJECT_TYPE_MASK: u32 = 0b11;
 
 // SAFETY: ZSTs can always be safely produced out of thin air, barring any safety invariants they
 // might impose, which in the case of `NonExhaustive` are none.
