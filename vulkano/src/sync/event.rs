@@ -230,8 +230,8 @@ impl Event {
     ///
     /// # Safety
     ///
-    /// - There must be an execution dependency between `reset` and the execution of any \
-    /// [`wait_events`] command that includes this event in its `events` parameter.
+    /// - There must be an execution dependency between `reset` and the execution of any
+    ///   [`wait_events`] command that includes this event in its `events` parameter.
     ///
     /// [`wait_events`]: crate::command_buffer::sys::RawRecordingCommandBuffer::wait_events
     #[inline]

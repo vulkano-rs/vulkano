@@ -141,7 +141,8 @@ mod traits;
 /// # Safety
 ///
 /// - The `x`, `y` and `z` values must not be greater than the respective elements of the
-/// [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) device limit.
+///   [`max_compute_work_group_count`](DeviceProperties::max_compute_work_group_count) device
+///   limit.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DispatchIndirectCommand {
