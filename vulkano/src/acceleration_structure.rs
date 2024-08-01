@@ -631,6 +631,8 @@ impl AccelerationStructureBuildGeometryInfo {
                                 triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR {
                                     vertex_format: vertex_format.into(),
                                     vertex_data: ash::vk::DeviceOrHostAddressConstKHR {
+                                        // TODO: RayTracing: This panics if the usage
+                                        // does not contain `BufferUsage::SHADER_DEVICE_ADDRESS`.
                                         device_address: vertex_data.as_ref().map_or(
                                             0,
                                             |vertex_data| {

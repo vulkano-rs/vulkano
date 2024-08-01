@@ -19,11 +19,11 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     pipeline::{cache::PipelineCache, layout::PipelineLayout, Pipeline, PipelineBindPoint},
-    shader::{spirv::ExecutionModel, DescriptorBindingRequirements, ShaderStage},
+    shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::HashMap;
-use std::{ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
+use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -54,7 +54,7 @@ impl ComputePipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
     ) -> Result<Arc<ComputePipeline>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
+        Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
     }
@@ -88,76 +88,8 @@ impl ComputePipeline {
             _ne: _,
         } = &create_info;
 
-        let stage_vk;
-        let name_vk;
-        let specialization_info_vk;
-        let specialization_map_entries_vk: Vec<_>;
-        let mut specialization_data_vk: Vec<u8>;
-        let required_subgroup_size_create_info;
-
-        {
-            let &PipelineShaderStageCreateInfo {
-                flags,
-                ref entry_point,
-                ref required_subgroup_size,
-                _ne: _,
-            } = stage;
-
-            let entry_point_info = entry_point.info();
-            name_vk = CString::new(entry_point_info.name.as_str()).unwrap();
-
-            specialization_data_vk = Vec::new();
-            specialization_map_entries_vk = entry_point
-                .module()
-                .specialization_info()
-                .iter()
-                .map(|(&constant_id, value)| {
-                    let data = value.as_bytes();
-                    let offset = specialization_data_vk.len() as u32;
-                    let size = data.len();
-                    specialization_data_vk.extend(data);
-
-                    ash::vk::SpecializationMapEntry {
-                        constant_id,
-                        offset,
-                        size,
-                    }
-                })
-                .collect();
-
-            specialization_info_vk = ash::vk::SpecializationInfo {
-                map_entry_count: specialization_map_entries_vk.len() as u32,
-                p_map_entries: specialization_map_entries_vk.as_ptr(),
-                data_size: specialization_data_vk.len(),
-                p_data: specialization_data_vk.as_ptr().cast(),
-                ..Default::default()
-            };
-            required_subgroup_size_create_info =
-                required_subgroup_size.map(|required_subgroup_size| {
-                    ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo {
-                        required_subgroup_size,
-                        ..Default::default()
-                    }
-                });
-            stage_vk = ash::vk::PipelineShaderStageCreateInfo {
-                p_next: required_subgroup_size_create_info.as_ref().map_or(
-                    ptr::null(),
-                    |required_subgroup_size_create_info| {
-                        <*const _>::cast(required_subgroup_size_create_info)
-                    },
-                ),
-                flags: flags.into(),
-                stage: ShaderStage::from(entry_point_info.execution_model).into(),
-                module: entry_point.module().handle(),
-                p_name: name_vk.as_ptr(),
-                p_specialization_info: if specialization_info_vk.data_size == 0 {
-                    ptr::null()
-                } else {
-                    &specialization_info_vk
-                },
-                ..Default::default()
-            };
-        }
+        let owned_stage_vk = stage.to_owned_vulkan();
+        let stage_vk = owned_stage_vk.to_vulkan();
 
         let create_infos_vk = ash::vk::ComputePipelineCreateInfo {
             flags: flags.into(),

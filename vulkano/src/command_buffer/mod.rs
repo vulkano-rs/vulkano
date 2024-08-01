@@ -1265,6 +1265,7 @@ pub enum ResourceInCommand {
     SecondaryCommandBuffer { index: u32 },
     Source,
     VertexBuffer { binding: u32 },
+    ShaderBindingTableBuffer,
 }
 
 #[doc(hidden)]

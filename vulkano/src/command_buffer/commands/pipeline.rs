@@ -22,6 +22,7 @@ use crate::{
             subpass::PipelineSubpassType,
             vertex_input::{RequiredVertexInputsVUIDs, VertexInputRate},
         },
+        ray_tracing::ShaderBindingTable,
         DynamicState, GraphicsPipeline, Pipeline, PipelineLayout,
     },
     query::QueryType,
@@ -1590,6 +1591,53 @@ impl RecordingCommandBuffer {
         );
 
         self
+    }
+
+    pub unsafe fn trace_rays(
+        &mut self,
+        shader_binding_table: ShaderBindingTable,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        // TODO: RayTrace: Validation
+
+        Ok(self.trace_rays_unchecked(shader_binding_table, width, height, depth))
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn trace_rays_unchecked(
+        &mut self,
+        shader_binding_table: ShaderBindingTable,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> &mut Self {
+        // TODO: RayTracing: as_deref()
+        let pipeline = self.builder_state.pipeline_ray_tracing.as_deref().unwrap();
+
+        let mut used_resources = Vec::new();
+        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        self.add_shader_binding_table_buffer_resources(
+            &mut used_resources,
+            shader_binding_table.buffer(),
+        );
+
+        self.add_command("ray_trace", used_resources, move |out| {
+            out.trace_rays_unchecked(&shader_binding_table, width, height, depth);
+        });
+
+        self
+    }
+
+    fn validate_trace_rays(
+        &self,
+        shader_binding_table: &ShaderBindingTable,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        todo!()
     }
 
     fn validate_pipeline_descriptor_sets<Pl: Pipeline>(
@@ -3696,6 +3744,21 @@ impl RecordingCommandBuffer {
             },
         ));
     }
+
+    fn add_shader_binding_table_buffer_resources(
+        &self,
+        used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
+        sbt_buffer: &Subbuffer<[u8]>,
+    ) {
+        used_resources.push((
+            ResourceInCommand::ShaderBindingTableBuffer.into(),
+            Resource::Buffer {
+                buffer: sbt_buffer.clone(),
+                range: 0..sbt_buffer.size(),
+                memory_access: PipelineStageAccessFlags::RayTracingShader_ShaderBindingTableRead,
+            },
+        ));
+    }
 }
 
 impl RawRecordingCommandBuffer {
@@ -4925,6 +4988,47 @@ impl RawRecordingCommandBuffer {
             count_buffer.offset(),
             max_draw_count,
             stride,
+        );
+
+        self
+    }
+
+    pub unsafe fn trace_rays(
+        &mut self,
+        shader_binding_table: &ShaderBindingTable,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        // self.validate_trace_ray()?;
+        // TODO: RayTracing: Validation
+
+        Ok(self.trace_rays_unchecked(shader_binding_table, width, height, depth))
+    }
+
+    fn validate_trace_rays(&self) -> Result<(), Box<ValidationError>> {
+        todo!()
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn trace_rays_unchecked(
+        &mut self,
+        shader_binding_table: &ShaderBindingTable,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+
+        (fns.khr_ray_tracing_pipeline.cmd_trace_rays_khr)(
+            self.handle(),
+            shader_binding_table.raygen(),
+            shader_binding_table.miss(),
+            shader_binding_table.hit(),
+            shader_binding_table.callable(),
+            width,
+            height,
+            depth,
         );
 
         self
