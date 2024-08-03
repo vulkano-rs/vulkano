@@ -72,6 +72,7 @@ use crate::{
     buffer::Subbuffer,
     device::{Device, DeviceOwned},
     image::{Image, ImageLayout, ImageSubresourceRange},
+    pipeline::{ComputePipeline, GraphicsPipeline},
     sync::PipelineStageAccessFlags,
     DeviceSize, ValidationError, VulkanObject,
 };
@@ -287,13 +288,51 @@ pub(super) enum Resource {
     },
 }
 
+pub(in crate::command_buffer) struct UsedResources {
+    direct: Vec<(ResourceUseRef2, Resource)>,
+    deferred: Option<(PipelineEnum, DescriptorSetState)>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub(in crate::command_buffer) enum PipelineEnum {
+    Compute(Arc<ComputePipeline>),
+    Graphics(Arc<GraphicsPipeline>),
+}
+
+impl Debug for PipelineEnum {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PipelineEnum::Compute(p) => f.debug_tuple("Compute").field(&p.handle()).finish(),
+            PipelineEnum::Graphics(p) => f.debug_tuple("Graphics").field(&p.handle()).finish(),
+        }
+    }
+}
+
+impl UsedResources {
+    #[inline]
+    pub fn direct(direct: Vec<(ResourceUseRef2, Resource)>) -> Self {
+        Self {
+            direct,
+            deferred: None,
+        }
+    }
+
+    #[inline]
+    pub fn deferred(
+        direct: Vec<(ResourceUseRef2, Resource)>,
+        deferred: Option<(PipelineEnum, DescriptorSetState)>,
+    ) -> Self {
+        Self { direct, deferred }
+    }
+}
+
 struct CommandInfo {
     name: &'static str,
-    used_resources: Vec<(ResourceUseRef2, Resource)>,
+    used_resources: UsedResources,
     render_pass: RenderPassCommand,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 enum RenderPassCommand {
     None,
     Begin,

@@ -1524,7 +1524,7 @@ impl WriteDescriptorSetElements {
 }
 
 /// Parameters to write a buffer reference to a descriptor.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DescriptorBufferInfo {
     /// The buffer to write to the descriptor.
     pub buffer: Subbuffer<[u8]>,
@@ -1541,7 +1541,7 @@ pub struct DescriptorBufferInfo {
 }
 
 /// Parameters to write an image view reference to a descriptor.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DescriptorImageViewInfo {
     /// The image view to write to the descriptor.
     pub image_view: Arc<ImageView>,

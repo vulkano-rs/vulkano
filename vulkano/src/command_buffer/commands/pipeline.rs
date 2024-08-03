@@ -4,7 +4,7 @@ use crate::{
     acceleration_structure::AccelerationStructure,
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
-        auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
+        auto::{PipelineEnum, RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
         sys::RawRecordingCommandBuffer,
         DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
         DrawMeshTasksIndirectCommand, RecordingCommandBuffer, ResourceInCommand, SubpassContents,
@@ -30,6 +30,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
 use std::{mem::size_of, sync::Arc};
+use vulkano::command_buffer::auto::DescriptorSetState;
 
 macro_rules! vuids {
     ($vuid_type:ident, $($id:literal),+ $(,)?) => {
@@ -104,19 +105,16 @@ impl RecordingCommandBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn dispatch_unchecked(&mut self, group_counts: [u32; 3]) -> &mut Self {
-        let pipeline = self
-            .builder_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_compute.as_ref().unwrap();
 
-        let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Compute(pipeline.clone()), state));
 
-        self.add_command(
+        self.add_command_deferred(
             "dispatch",
-            used_resources,
+            Default::default(),
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.dispatch_unchecked(group_counts);
             },
@@ -185,20 +183,18 @@ impl RecordingCommandBuffer {
         &mut self,
         indirect_buffer: Subbuffer<[DispatchIndirectCommand]>,
     ) -> &mut Self {
-        let pipeline = self
-            .builder_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_compute.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Compute(pipeline.clone()), state));
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
-        self.add_command(
+        self.add_command_deferred(
             "dispatch",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.dispatch_indirect_unchecked(&indirect_buffer);
             },
@@ -372,20 +368,18 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
 
-        self.add_command(
+        self.add_command_deferred(
             "draw",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
             },
@@ -478,21 +472,19 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_indirect",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
@@ -607,22 +599,20 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
         self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_indirect_count",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indirect_count_unchecked(
                     &indirect_buffer,
@@ -845,21 +835,19 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_indexed",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indexed_unchecked(
                     index_count,
@@ -973,22 +961,20 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_indexed_indirect",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
@@ -1117,23 +1103,21 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_vertex_buffers_resources(&mut used_resources, pipeline);
         self.add_index_buffer_resources(&mut used_resources);
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
         self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_indexed_indirect_count",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_indexed_indirect_count_unchecked(
                     &indirect_buffer,
@@ -1313,19 +1297,16 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
-        let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_mesh_tasks",
-            used_resources,
+            Default::default(),
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_mesh_tasks_unchecked(group_counts);
             },
@@ -1427,20 +1408,18 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_mesh_tasks_indirect",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_mesh_tasks_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
@@ -1564,21 +1543,19 @@ impl RecordingCommandBuffer {
             state.pipeline_used = true;
         }
 
-        let pipeline = self
-            .builder_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .as_ref();
+        let pipeline = self.builder_state.pipeline_graphics.as_ref().unwrap();
 
         let mut used_resources = Vec::new();
-        self.add_descriptor_sets_resources(&mut used_resources, pipeline);
+        let deferred = self
+            .prepare_descriptor_set_state(pipeline.as_ref())
+            .map(|state| (PipelineEnum::Graphics(pipeline.clone()), state));
         self.add_indirect_buffer_resources(&mut used_resources, indirect_buffer.as_bytes());
         self.add_indirect_buffer_resources(&mut used_resources, count_buffer.as_bytes());
 
-        self.add_command(
+        self.add_command_deferred(
             "draw_mesh_tasks_indirect_count",
             used_resources,
+            deferred,
             move |out: &mut RawRecordingCommandBuffer| {
                 out.draw_mesh_tasks_indirect_count_unchecked(
                     &indirect_buffer,
@@ -3445,20 +3422,23 @@ impl RecordingCommandBuffer {
         Ok(())
     }
 
-    fn add_descriptor_sets_resources<Pl: Pipeline>(
+    fn prepare_descriptor_set_state<Pl: Pipeline>(
         &self,
-        used_resources: &mut Vec<(ResourceUseRef2, Resource)>,
         pipeline: &Pl,
-    ) {
-        let descriptor_sets_state = match self
-            .builder_state
+    ) -> Option<DescriptorSetState> {
+        self.builder_state
             .descriptor_sets
             .get(&pipeline.bind_point())
-        {
-            Some(x) => x,
-            None => return,
-        };
+            .cloned()
+    }
 
+    pub(in crate::command_buffer) fn add_descriptor_sets_resources<Pl: Pipeline>(
+        used_resources: &mut Vec<(ResourceUseRef2, Resource, &'static str)>,
+        pipeline: &Pl,
+        descriptor_sets_state: &DescriptorSetState,
+        name: &'static str,
+    ) {
+        // I want to dedup descriptor sets right here
         for (&(set, binding), binding_reqs) in pipeline.descriptor_binding_requirements() {
             let descriptor_type = descriptor_sets_state.pipeline_layout.set_layouts()[set as usize]
                 .bindings()[&binding]
@@ -3529,6 +3509,7 @@ impl RecordingCommandBuffer {
                                         range,
                                         memory_access,
                                     },
+                                    name,
                                 ));
                             }
                         }
@@ -3546,6 +3527,7 @@ impl RecordingCommandBuffer {
                                         range: range.clone(),
                                         memory_access,
                                     },
+                                    name,
                                 ));
                             }
                         }
@@ -3564,6 +3546,7 @@ impl RecordingCommandBuffer {
                                     range: buffer_view.range().clone(),
                                     memory_access,
                                 },
+                                name,
                             ));
                         }
                     }
@@ -3591,6 +3574,7 @@ impl RecordingCommandBuffer {
                                     start_layout: image_layout,
                                     end_layout: image_layout,
                                 },
+                                name,
                             ));
                         }
                     }
@@ -3618,6 +3602,7 @@ impl RecordingCommandBuffer {
                                     start_layout: image_layout,
                                     end_layout: image_layout,
                                 },
+                                name,
                             ));
                         }
                     }
@@ -3637,6 +3622,7 @@ impl RecordingCommandBuffer {
                                     range: 0..buffer.size(),
                                     memory_access,
                                 },
+                                name,
                             ));
                         }
                     }
