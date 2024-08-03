@@ -573,7 +573,7 @@ impl ImageView {
             usage = implicit_default_usage;
             false
         } else {
-            usage == implicit_default_usage
+            usage != implicit_default_usage
         };
 
         let mut info_vk = ash::vk::ImageViewCreateInfo {
