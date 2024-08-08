@@ -146,7 +146,7 @@ fn compute_then_render(
 ) {
     // Start the frame.
     let before_pipeline_future =
-        match renderer.acquire(Some(Duration::from_millis(1)), |swapchain_image_views| {
+        match renderer.acquire(Some(Duration::from_millis(1000)), |swapchain_image_views| {
             app.place_over_frame
                 .recreate_framebuffers(swapchain_image_views)
         }) {
