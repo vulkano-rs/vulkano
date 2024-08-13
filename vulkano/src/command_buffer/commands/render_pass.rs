@@ -333,7 +333,11 @@ impl RecordingCommandBuffer {
 impl RecordingCommandBuffer {
     /// Begins a render pass without a render pass object or framebuffer.
     ///
+    /// Requires the [`dynamic_rendering`] device feature.
+    ///
     /// You must call this or `begin_render_pass` before you can record draw commands.
+    ///
+    /// [`dynamic_rendering`]: crate::device::DeviceFeatures::dynamic_rendering
     pub fn begin_rendering(
         &mut self,
         mut rendering_info: RenderingInfo,
