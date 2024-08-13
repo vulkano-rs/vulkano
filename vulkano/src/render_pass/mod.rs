@@ -2946,9 +2946,9 @@ impl SubpassDescription {
             }));
         }
 
-        let highest_view_index = 31 - view_mask.leading_zeros() as i32;
+        let view_count = u32::BITS - view_mask.leading_zeros();
 
-        if highest_view_index >= properties.max_multiview_view_count.unwrap_or(0) as i32 {
+        if view_count > properties.max_multiview_view_count.unwrap_or(0) {
             return Err(Box::new(ValidationError {
                 context: "view_mask".into(),
                 problem: "the highest enabled view index is not less than the \
