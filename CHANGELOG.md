@@ -162,6 +162,7 @@ Other:
 - `FreeListAllocator` not giving out suballocations that are free and of suitable size/alignment in a certain edge case.
 - Fixed descriptor sets with `UPDATE_AFTER_BIND` or `PARTIALLY_BOUND` being wrongly validated on bind.
 - Fixed non-default image view usage being ignored.
+- Fixed an off-by-one error in `SubpassDescription::validate`.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
