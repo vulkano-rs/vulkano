@@ -114,6 +114,7 @@ dependencies = [
  "rand",
  "vulkano",
  "vulkano-shaders",
+ "vulkano-taskgraph",
  "winit 0.29.15",
 ]
 
@@ -402,7 +403,7 @@ dependencies = [
 [[package]]
 name = "concurrent-slotmap"
 version = "0.1.0"
-source = "git+https://github.com/vulkano-rs/concurrent-slotmap?rev=bf52f0a55713bb29dde3e38bc3497b03473d1628#bf52f0a55713bb29dde3e38bc3497b03473d1628"
+source = "git+https://github.com/vulkano-rs/concurrent-slotmap?rev=fa906d916d8d126d3cc3a2b4ab9a29fa27bee62d#fa906d916d8d126d3cc3a2b4ab9a29fa27bee62d"
 dependencies = [
  "virtual-buffer",
 ]
@@ -1685,12 +1686,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rangemap"
-version = "1.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f60fcc7d6849342eff22c4350c8b9a989ee8ceabc4b481253e8946b9fe83d684"
-
-[[package]]
 name = "raw-window-handle"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2408,10 +2403,10 @@ dependencies = [
 name = "vulkano-taskgraph"
 version = "0.34.0"
 dependencies = [
+ "ahash",
  "ash",
  "concurrent-slotmap",
  "parking_lot",
- "rangemap",
  "smallvec",
  "thread_local",
  "vulkano",
