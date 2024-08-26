@@ -249,7 +249,7 @@ pub(super) fn reflect(
             unsafe {
                 ::vulkano::shader::ShaderModule::new(
                     device,
-                    ::vulkano::shader::ShaderModuleCreateInfo::new(&WORDS),
+                    ::vulkano::shader::ShaderModuleCreateInfo::new(WORDS),
                 )
             }
         }
