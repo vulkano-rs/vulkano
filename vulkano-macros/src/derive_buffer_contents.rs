@@ -13,7 +13,7 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
         .attrs
         .iter()
         .filter(|&attr| attr.path().is_ident("repr"))
-        .map(|attr| {
+        .all(|attr| {
             let mut is_repr_rust = true;
 
             let _ = attr.parse_nested_meta(|meta| {
@@ -25,8 +25,7 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             });
 
             is_repr_rust
-        })
-        .all(|b| b);
+        });
 
     if is_repr_rust {
         bail!(
@@ -131,48 +130,52 @@ fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
 
     let mut field_types = fields.iter().map(|field| &field.ty);
     let last_field_type = field_types.next_back().unwrap();
-    let mut layout = quote! { ::std::alloc::Layout::new::<()>() };
+    let layout;
+    let mut field_layouts = Vec::new();
 
     let mut bound_types = Vec::new();
 
-    // Construct the layout of the head and accumulate the types that have to implement
-    // `BufferContents` in order for the struct to implement the trait as well.
+    // Accumulate the field layouts and types that have to implement `BufferContents` in order for
+    // the struct to implement the trait as well.
     for field_type in field_types {
         bound_types.push(find_innermost_element_type(field_type));
-
-        layout = quote! {
-            extend_layout(#layout, ::std::alloc::Layout::new::<#field_type>())
-        };
+        field_layouts.push(quote! { ::std::alloc::Layout::new::<#field_type>() });
     }
 
     // The last field needs special treatment.
     match last_field_type {
-        // An array might not implement `BufferContents` depending on the element, and therefore we
-        // can't use `BufferContents::extend_from_layout` on it.
+        // An array might not implement `BufferContents` depending on the element.
         Type::Array(TypeArray { elem, .. }) => {
             bound_types.push(find_innermost_element_type(elem));
+
             layout = quote! {
                 ::#crate_ident::buffer::BufferContentsLayout::from_sized(
                     ::std::alloc::Layout::new::<Self>()
                 )
             };
         }
-        // A slice might contain an array same as above, and therefore we can't use
-        // `BufferContents::extend_from_layout` on it either.
+        // A slice might contain an array same as above.
         Type::Slice(TypeSlice { elem, .. }) => {
             bound_types.push(find_innermost_element_type(elem));
+
             layout = quote! {
-                ::#crate_ident::buffer::BufferContentsLayout::from_head_element_layout(
-                    #layout,
-                    ::std::alloc::Layout::new::<#elem>(),
+                ::#crate_ident::buffer::BufferContentsLayout::from_field_layouts(
+                    &[ #( #field_layouts ),* ],
+                    ::#crate_ident::buffer::BufferContentsLayout::from_slice(
+                        ::std::alloc::Layout::new::<#elem>(),
+                    ),
                 )
             };
         }
+        // Every other type surely implements `BufferContents`, so we can use the existing layout.
         ty => {
             bound_types.push(ty);
+
             layout = quote! {
-                <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                    .extend_from_layout(&#layout)
+                ::#crate_ident::buffer::BufferContentsLayout::from_field_layouts(
+                    &[ #( #field_layouts ),* ],
+                    <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT,
+                )
             };
         }
     }
@@ -198,46 +201,7 @@ fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
         {
             #( #bounds )*
 
-            // HACK: Very depressingly, `Layout::extend` is not const.
-            const fn extend_layout(
-                layout: ::std::alloc::Layout,
-                next: ::std::alloc::Layout,
-            ) -> ::std::alloc::Layout {
-                let padded_size = if let Some(val) =
-                    layout.size().checked_add(next.align() - 1)
-                {
-                    val & !(next.align() - 1)
-                } else {
-                    ::std::unreachable!()
-                };
-
-                // TODO: Replace with `Ord::max` once its constness is stabilized.
-                let align = if layout.align() >= next.align() {
-                    layout.align()
-                } else {
-                    next.align()
-                };
-
-                if let Some(size) = padded_size.checked_add(next.size()) {
-                    if let Ok(layout) = ::std::alloc::Layout::from_size_align(size, align) {
-                        layout
-                    } else {
-                        ::std::unreachable!()
-                    }
-                } else {
-                    ::std::unreachable!()
-                }
-            }
-
-            if let Some(layout) = #layout {
-                if let Some(layout) = layout.pad_to_alignment() {
-                    layout
-                } else {
-                    ::std::unreachable!()
-                }
-            } else {
-                ::std::panic!("zero-sized types are not valid buffer contents")
-            }
+            #layout
         }
     };
 
