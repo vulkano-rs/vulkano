@@ -471,7 +471,7 @@ impl<T> Subbuffer<T> {
 impl<T> Subbuffer<[T]> {
     /// Returns the number of elements in the slice.
     pub fn len(&self) -> DeviceSize {
-        debug_assert!(self.size % size_of::<T>() as DeviceSize == 0);
+        debug_assert_eq!(self.size % size_of::<T>() as DeviceSize, 0);
 
         self.size / size_of::<T>() as DeviceSize
     }
@@ -834,7 +834,7 @@ where
 
     #[inline(always)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
-        debug_assert!(slice.len() == size_of::<T>());
+        debug_assert_eq!(slice.len(), size_of::<T>());
 
         <*mut [u8]>::cast::<T>(slice.as_ptr())
     }
@@ -850,7 +850,7 @@ where
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
         let data = <*mut [u8]>::cast::<T>(slice.as_ptr());
         let len = slice.len() / size_of::<T>();
-        debug_assert!(slice.len() % size_of::<T>() == 0);
+        debug_assert_eq!(slice.len() % size_of::<T>(), 0);
 
         ptr::slice_from_raw_parts_mut(data, len)
     }

@@ -290,7 +290,7 @@ where
     const LAYOUT: BufferContentsLayout = BufferContentsLayout::from_sized(Layout::new::<Self>());
 
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
-        debug_assert!(slice.len() == size_of::<Padded<T, N>>());
+        debug_assert_eq!(slice.len(), size_of::<Padded<T, N>>());
 
         <*mut [u8]>::cast::<Padded<T, N>>(slice.as_ptr())
     }

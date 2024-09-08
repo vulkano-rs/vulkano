@@ -34,6 +34,18 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
         );
     }
 
+    let data = match &ast.data {
+        Data::Struct(data) => data,
+        Data::Enum(_) => bail!("deriving `BufferContents` for enums is not supported"),
+        Data::Union(_) => bail!("deriving `BufferContents` for unions is not supported"),
+    };
+
+    let fields = match &data.fields {
+        Fields::Named(FieldsNamed { named, .. }) => named,
+        Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => unnamed,
+        Fields::Unit => bail!("zero-sized types are not valid buffer contents"),
+    };
+
     let (impl_generics, type_generics, where_clause) = {
         let predicates = ast
             .generics
@@ -51,86 +63,10 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
         ast.generics.split_for_impl()
     };
 
-    let layout = write_layout(crate_ident, &ast)?;
-
-    Ok(quote! {
-        #[allow(unsafe_code)]
-        unsafe impl #impl_generics ::#crate_ident::buffer::BufferContents
-            for #struct_ident #type_generics #where_clause
-        {
-            const LAYOUT: ::#crate_ident::buffer::BufferContentsLayout = #layout;
-
-            #[inline(always)]
-            unsafe fn ptr_from_slice(slice: ::std::ptr::NonNull<[u8]>) -> *mut Self {
-                #[repr(C)]
-                union PtrRepr<T: ?Sized> {
-                    components: PtrComponents,
-                    ptr: *mut T,
-                }
-
-                #[derive(Clone, Copy)]
-                #[repr(C)]
-                struct PtrComponents {
-                    data: *mut u8,
-                    len: usize,
-                }
-
-                let data = <*mut [u8]>::cast::<u8>(slice.as_ptr());
-
-                let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                    .head_size() as usize;
-                let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
-                    .element_size()
-                    .unwrap_or(1) as usize;
-
-                ::std::debug_assert!(slice.len() >= head_size);
-                let tail_size = slice.len() - head_size;
-                ::std::debug_assert!(tail_size % element_size == 0);
-                let len = tail_size / element_size;
-
-                let components = PtrComponents { data, len };
-
-                // SAFETY: All fields must implement `BufferContents`. The last field, if it is
-                // unsized, must therefore be a slice or a DST derived from a slice. It cannot be
-                // any other kind of DST, unless unsafe code was used to achieve that.
-                //
-                // That means we can safely rely on knowing what kind of DST the implementing type
-                // is, but it doesn't tell us what the correct representation for the pointer of
-                // this kind of DST is. For that we have to rely on what the docs tell us, namely
-                // that for structs where the last field is a DST, the metadata is the same as the
-                // last field's. We also know that the metadata of a slice is its length measured
-                // in the number of elements. This tells us that the components of a pointer to the
-                // implementing type are the address to the start of the data, and a length. It
-                // still does not tell us what the representation of the pointer is though.
-                //
-                // In fact, there is no way to be certain that this representation is correct.
-                // *Theoretically* rustc could decide tomorrow that the metadata comes first and
-                // the address comes last, but the chance of that ever happening is zero.
-                //
-                // But what if the implementing type is actually sized? In that case this
-                // conversion will simply discard the length field, and only leave the pointer.
-                PtrRepr { components }.ptr
-            }
-        }
-    })
-}
-
-fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
-    let data = match &ast.data {
-        Data::Struct(data) => data,
-        Data::Enum(_) => bail!("deriving `BufferContents` for enums is not supported"),
-        Data::Union(_) => bail!("deriving `BufferContents` for unions is not supported"),
-    };
-
-    let fields = match &data.fields {
-        Fields::Named(FieldsNamed { named, .. }) => named,
-        Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => unnamed,
-        Fields::Unit => bail!("zero-sized types are not valid buffer contents"),
-    };
-
     let mut field_types = fields.iter().map(|field| &field.ty);
-    let last_field_type = field_types.next_back().unwrap();
-    let layout;
+    let Some(last_field_type) = field_types.next_back() else {
+        bail!("zero-sized types are not valid buffer contents");
+    };
     let mut field_layouts = Vec::new();
 
     let mut bound_types = Vec::new();
@@ -142,9 +78,13 @@ fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
         field_layouts.push(quote! { ::std::alloc::Layout::new::<#field_type>() });
     }
 
+    let layout;
+    let ptr_from_slice;
+
     // The last field needs special treatment.
     match last_field_type {
-        // An array might not implement `BufferContents` depending on the element.
+        // An array might not implement `BufferContents` depending on the element. However, we know
+        // the type must be sized, so we can generate the layout and function easily.
         Type::Array(TypeArray { elem, .. }) => {
             bound_types.push(find_innermost_element_type(elem));
 
@@ -153,8 +93,15 @@ fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
                     ::std::alloc::Layout::new::<Self>()
                 )
             };
+
+            ptr_from_slice = quote! {
+                debug_assert_eq!(slice.len(), ::std::mem::size_of::<Self>());
+
+                <*mut [u8]>::cast::<Self>(slice.as_ptr())
+            };
         }
-        // A slice might contain an array same as above.
+        // A slice might contain an array which might not implement `BufferContents`. However, we
+        // know the type must be unsized, so can generate the layout and function easily.
         Type::Slice(TypeSlice { elem, .. }) => {
             bound_types.push(find_innermost_element_type(elem));
 
@@ -166,8 +113,24 @@ fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
                     ),
                 )
             };
+
+            ptr_from_slice = quote! {
+                let data = <*mut [u8]>::cast::<#elem>(slice.as_ptr());
+
+                let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                    .head_size() as usize;
+                let element_size = ::std::mem::size_of::<#elem>();
+
+                ::std::debug_assert!(slice.len() >= head_size);
+                let tail_size = slice.len() - head_size;
+                ::std::debug_assert!(tail_size % element_size == 0);
+                let len = tail_size / element_size;
+
+                ::std::ptr::slice_from_raw_parts_mut(data, len) as *mut Self
+            };
         }
-        // Every other type surely implements `BufferContents`, so we can use the existing layout.
+        // Any other type may be either sized or unsized and the macro has no way of knowing. But
+        // it surely implements `BufferContents`, so we can use the existing layout and function.
         ty => {
             bound_types.push(ty);
 
@@ -177,14 +140,34 @@ fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
                     <#last_field_type as ::#crate_ident::buffer::BufferContents>::LAYOUT,
                 )
             };
-        }
-    }
 
-    let (impl_generics, _, where_clause) = ast.generics.split_for_impl();
+            ptr_from_slice = quote! {
+                let data = <*mut [u8]>::cast::<u8>(slice.as_ptr());
+
+                let head_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                    .head_size() as usize;
+                let element_size = <Self as ::#crate_ident::buffer::BufferContents>::LAYOUT
+                    .element_size()
+                    .unwrap_or(1) as usize;
+
+                ::std::debug_assert!(slice.len() >= head_size);
+                let tail_size = slice.len() - head_size;
+                ::std::debug_assert!(tail_size % element_size == 0);
+
+                <#last_field_type as ::#crate_ident::buffer::BufferContents>::ptr_from_slice(
+                    ::std::ptr::NonNull::new_unchecked(::std::ptr::slice_from_raw_parts_mut(
+                        data.add(head_size),
+                        tail_size,
+                    )),
+                )
+                .byte_sub(head_size) as *mut Self
+            };
+        }
+    };
 
     let bounds = bound_types.into_iter().map(|ty| {
         quote_spanned! { ty.span() =>
-            {
+            const _: () = {
                 // HACK: This works around Rust issue #48214, which makes it impossible to put
                 // these bounds in the where clause of the trait implementation where they actually
                 // belong until that is resolved.
@@ -193,19 +176,25 @@ fn write_layout(crate_ident: &Ident, ast: &DeriveInput) -> Result<TokenStream> {
                     fn assert_impl<T: ::#crate_ident::buffer::BufferContents + ?Sized>() {}
                     assert_impl::<#ty>();
                 }
-            }
+            };
         }
     });
 
-    let layout = quote! {
+    Ok(quote! {
+        #[allow(unsafe_code)]
+        unsafe impl #impl_generics ::#crate_ident::buffer::BufferContents
+            for #struct_ident #type_generics #where_clause
         {
-            #( #bounds )*
+            const LAYOUT: ::#crate_ident::buffer::BufferContentsLayout = #layout;
 
-            #layout
+            #[inline(always)]
+            unsafe fn ptr_from_slice(slice: ::std::ptr::NonNull<[u8]>) -> *mut Self {
+                #ptr_from_slice
+            }
         }
-    };
 
-    Ok(layout)
+        #( #bounds )*
+    })
 }
 
 // HACK: This works around an inherent limitation of bytemuck, namely that an array where the
