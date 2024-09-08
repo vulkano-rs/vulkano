@@ -318,8 +318,6 @@
 //! ```
 
 pub use self::{acquire_present::*, surface::*};
-#[cfg(target_os = "ios")]
-pub use surface::IOSMetalLayer;
 
 mod acquire_present;
 mod surface;

@@ -30,9 +30,8 @@ smallvec = { workspace = true }
 thread_local = { workspace = true }
 vulkano-macros = { workspace = true, optional = true }
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-objc = { workspace = true }
-core-graphics-types = { workspace = true }
+[target.'cfg(target_vendor = "apple")'.dependencies]
+raw-window-metal = { workspace = true }
 
 [target.'cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "hurd", target_os = "illumos", target_os = "linux", target_os = "netbsd", target_os = "openbsd", target_os = "solaris"))'.dependencies]
 x11-dl = { workspace = true, optional = true }

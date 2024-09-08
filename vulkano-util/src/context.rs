@@ -120,7 +120,7 @@ impl VulkanoContext {
     pub fn new(mut config: VulkanoConfig) -> Self {
         let library = match VulkanLibrary::new() {
             Ok(x) => x,
-            #[cfg(target_os = "macos")]
+            #[cfg(target_vendor = "apple")]
             Err(vulkano::library::LoadingError::LibraryLoadFailure(err)) => panic!(
                 "failed to load Vulkan library: {err}; did you install VulkanSDK from \
                 https://vulkan.lunarg.com/sdk/home?",
@@ -140,8 +140,7 @@ impl VulkanoContext {
                 khr_wayland_surface: true,
                 khr_android_surface: true,
                 khr_win32_surface: true,
-                mvk_ios_surface: true,
-                mvk_macos_surface: true,
+                ext_metal_surface: true,
                 ..InstanceExtensions::empty()
             })
             .union(&config.instance_create_info.enabled_extensions);
