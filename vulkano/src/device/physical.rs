@@ -29,6 +29,7 @@ use crate::{
 };
 use bytemuck::cast_slice;
 use parking_lot::RwLock;
+use raw_window_handle::{HandleError, HasDisplayHandle, RawDisplayHandle};
 use std::{
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
@@ -418,71 +419,6 @@ impl PhysicalDevice {
     #[inline]
     pub fn queue_family_properties(&self) -> &[QueueFamilyProperties] {
         &self.queue_family_properties
-    }
-
-    /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
-    /// the given queue family.
-    ///
-    /// # Safety
-    ///
-    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
-    #[inline]
-    pub unsafe fn directfb_presentation_support(
-        &self,
-        queue_family_index: u32,
-        dfb: *mut ash::vk::IDirectFB,
-    ) -> Result<bool, Box<ValidationError>> {
-        self.validate_directfb_presentation_support(queue_family_index, dfb)?;
-
-        Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
-    }
-
-    fn validate_directfb_presentation_support(
-        &self,
-        queue_family_index: u32,
-        _dfb: *mut ash::vk::IDirectFB,
-    ) -> Result<(), Box<ValidationError>> {
-        if !self.instance.enabled_extensions().ext_directfb_surface {
-            return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
-                    "ext_directfb_surface",
-                )])]),
-                ..Default::default()
-            }));
-        }
-
-        if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(Box::new(ValidationError {
-                context: "queue_family_index".into(),
-                problem: "is not less than the number of queue families in the physical device"
-                    .into(),
-                vuids: &[
-                    "VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-queueFamilyIndex-04119",
-                ],
-                ..Default::default()
-            }));
-        }
-
-        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-dfb-parameter
-        // Can't validate, therefore unsafe
-
-        Ok(())
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
-    pub unsafe fn directfb_presentation_support_unchecked(
-        &self,
-        queue_family_index: u32,
-        dfb: *mut ash::vk::IDirectFB,
-    ) -> bool {
-        let fns = self.instance.fns();
-        (fns.ext_directfb_surface
-            .get_physical_device_direct_fb_presentation_support_ext)(
-            self.handle,
-            queue_family_index,
-            dfb,
-        ) != 0
     }
 
     /// Returns the properties of displays attached to the physical device.
@@ -1675,69 +1611,6 @@ impl PhysicalDevice {
             })
     }
 
-    /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
-    /// of the given queue family.
-    ///
-    /// # Safety
-    ///
-    /// - `window` must be a valid QNX Screen `_screen_window` handle.
-    pub unsafe fn qnx_screen_presentation_support(
-        &self,
-        queue_family_index: u32,
-        window: *mut ash::vk::_screen_window,
-    ) -> Result<bool, Box<ValidationError>> {
-        self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
-
-        Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
-    }
-
-    fn validate_qnx_screen_presentation_support(
-        &self,
-        queue_family_index: u32,
-        _window: *mut ash::vk::_screen_window,
-    ) -> Result<(), Box<ValidationError>> {
-        if !self.instance.enabled_extensions().qnx_screen_surface {
-            return Err(Box::new(ValidationError {
-                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
-                    "qnx_screen_surface",
-                )])]),
-                ..Default::default()
-            }));
-        }
-
-        if queue_family_index >= self.queue_family_properties.len() as u32 {
-            return Err(Box::new(ValidationError {
-                context: "queue_family_index".into(),
-                problem: "is not less than the number of queue families in the physical device"
-                    .into(),
-                vuids: &[
-                    "VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-queueFamilyIndex-04743",
-                ],
-                ..Default::default()
-            }));
-        }
-
-        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-window-parameter
-        // Can't validate, therefore unsafe
-
-        Ok(())
-    }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub unsafe fn qnx_screen_presentation_support_unchecked(
-        &self,
-        queue_family_index: u32,
-        window: *mut ash::vk::_screen_window,
-    ) -> bool {
-        let fns = self.instance.fns();
-        (fns.qnx_screen_surface
-            .get_physical_device_screen_presentation_support_qnx)(
-            self.handle,
-            queue_family_index,
-            window,
-        ) != 0
-    }
-
     /// Returns the properties of sparse images with a given image configuration.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
@@ -2848,10 +2721,16 @@ impl PhysicalDevice {
         )
     }
 
-    /// Returns whether queues of the given queue family can draw on the given surface.
+    /// Returns whether queues of the given queue family support presentation to the given surface.
     ///
-    /// The results of this function are cached, so that future calls with the same arguments
-    /// do not need to make a call to the Vulkan API again.
+    /// The results of this function are cached, so that future calls with the same arguments do
+    /// not need to make a call to the Vulkan API again.
+    ///
+    /// See also [`presentation_support`] for determining if a queue family supports presentation
+    /// to the surface of any window of a given event loop, for instance in cases where you have no
+    /// window and hence no surface at hand to test with or when you could have multiple windows.
+    ///
+    /// [`presentation_support`]: Self::presentation_support
     #[inline]
     pub fn surface_support(
         &self,
@@ -3018,6 +2897,113 @@ impl PhysicalDevice {
                 err => return Err(VulkanError::from(err)),
             }
         }
+    }
+
+    /// Returns whether queues of the given queue family support presentation to surfaces of
+    /// windows of the given event loop.
+    ///
+    /// On the X11 platform, this checks if the given queue family supports presentation to
+    /// surfaces of windows created with the root visual. This means that if you create your
+    /// window(s) with a different visual, the result of this function doesn't guarantee support
+    /// for that window's surface, and you should use [`xcb_presentation_support`] or
+    /// [`xlib_presentation_support`] directly to determine support for presentation to such
+    /// surfaces.
+    ///
+    /// See also [`surface_support`] for determining if a queue family supports presentation to a
+    /// specific surface.
+    ///
+    /// [`xcb_presentation_support`]: Self::xcb_presentation_support
+    /// [`xlib_presentation_support`]: Self::xlib_presentation_support
+    /// [`surface_support`]: Self::surface_support
+    pub fn presentation_support(
+        &self,
+        queue_family_index: u32,
+        event_loop: &impl HasDisplayHandle,
+    ) -> Result<bool, Validated<HandleError>> {
+        let support = match event_loop
+            .display_handle()
+            .map_err(Validated::Error)?
+            .as_raw()
+        {
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap34.html#platformQuerySupport_android
+            RawDisplayHandle::Android(_) => true,
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap34.html#platformQuerySupport_macos
+            RawDisplayHandle::AppKit(_) => true,
+            RawDisplayHandle::Wayland(display) => {
+                let display = display.display.as_ptr();
+
+                unsafe { self.wayland_presentation_support(queue_family_index, display.cast()) }?
+            }
+            RawDisplayHandle::Windows(_display) => {
+                self.win32_presentation_support(queue_family_index)?
+            }
+            #[cfg(all(
+                any(
+                    target_os = "dragonfly",
+                    target_os = "freebsd",
+                    target_os = "hurd",
+                    target_os = "illumos",
+                    target_os = "linux",
+                    target_os = "netbsd",
+                    target_os = "openbsd",
+                    target_os = "solaris"
+                ),
+                feature = "x11"
+            ))]
+            RawDisplayHandle::Xcb(display) => {
+                let screen = display.screen;
+                let connection = display.connection.unwrap().as_ptr();
+                let visual_id = unsafe { get_xcb_root_visual_id(connection, screen) };
+
+                unsafe {
+                    self.xcb_presentation_support(queue_family_index, connection.cast(), visual_id)
+                }?
+            }
+            #[cfg(all(
+                any(
+                    target_os = "dragonfly",
+                    target_os = "freebsd",
+                    target_os = "hurd",
+                    target_os = "illumos",
+                    target_os = "linux",
+                    target_os = "netbsd",
+                    target_os = "openbsd",
+                    target_os = "solaris"
+                ),
+                feature = "x11"
+            ))]
+            RawDisplayHandle::Xlib(display) => {
+                let screen = display.screen;
+                let display = display.display.unwrap().as_ptr();
+                let visual_id = unsafe { get_xlib_root_visual_id(display, screen) };
+
+                unsafe {
+                    self.xlib_presentation_support(queue_family_index, display.cast(), visual_id)
+                }?
+            }
+            #[cfg(all(
+                any(
+                    target_os = "dragonfly",
+                    target_os = "freebsd",
+                    target_os = "hurd",
+                    target_os = "illumos",
+                    target_os = "linux",
+                    target_os = "netbsd",
+                    target_os = "openbsd",
+                    target_os = "solaris"
+                ),
+                not(feature = "x11")
+            ))]
+            RawDisplayHandle::Xcb(_) | RawDisplayHandle::Xlib(_) => panic!("unsupported platform"),
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap34.html#platformQuerySupport_ios
+            RawDisplayHandle::UiKit(_) => true,
+            _ => unimplemented!(
+                "the event loop was created with a windowing API that is not supported by \
+                Vulkan/Vulkano",
+            ),
+        };
+
+        Ok(support)
     }
 
     /// Queries whether the physical device supports presenting to Wayland surfaces from queues of
@@ -3188,7 +3174,7 @@ impl PhysicalDevice {
         &self,
         queue_family_index: u32,
         connection: *mut ash::vk::xcb_connection_t,
-        visual_id: ash::vk::VisualID,
+        visual_id: ash::vk::xcb_visualid_t,
     ) -> bool {
         let fns = self.instance.fns();
         (fns.khr_xcb_surface
@@ -3266,6 +3252,134 @@ impl PhysicalDevice {
             visual_id,
         ) != 0
     }
+
+    /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
+    /// the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    #[inline]
+    pub unsafe fn directfb_presentation_support(
+        &self,
+        queue_family_index: u32,
+        dfb: *mut ash::vk::IDirectFB,
+    ) -> Result<bool, Box<ValidationError>> {
+        self.validate_directfb_presentation_support(queue_family_index, dfb)?;
+
+        Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
+    }
+
+    fn validate_directfb_presentation_support(
+        &self,
+        queue_family_index: u32,
+        _dfb: *mut ash::vk::IDirectFB,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.instance.enabled_extensions().ext_directfb_surface {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "ext_directfb_surface",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(Box::new(ValidationError {
+                context: "queue_family_index".into(),
+                problem: "is not less than the number of queue families in the physical device"
+                    .into(),
+                vuids: &[
+                    "VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-queueFamilyIndex-04119",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-dfb-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn directfb_presentation_support_unchecked(
+        &self,
+        queue_family_index: u32,
+        dfb: *mut ash::vk::IDirectFB,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.ext_directfb_surface
+            .get_physical_device_direct_fb_presentation_support_ext)(
+            self.handle,
+            queue_family_index,
+            dfb,
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
+    /// of the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    pub unsafe fn qnx_screen_presentation_support(
+        &self,
+        queue_family_index: u32,
+        window: *mut ash::vk::_screen_window,
+    ) -> Result<bool, Box<ValidationError>> {
+        self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
+
+        Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
+    }
+
+    fn validate_qnx_screen_presentation_support(
+        &self,
+        queue_family_index: u32,
+        _window: *mut ash::vk::_screen_window,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self.instance.enabled_extensions().qnx_screen_surface {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::InstanceExtension(
+                    "qnx_screen_surface",
+                )])]),
+                ..Default::default()
+            }));
+        }
+
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(Box::new(ValidationError {
+                context: "queue_family_index".into(),
+                problem: "is not less than the number of queue families in the physical device"
+                    .into(),
+                vuids: &[
+                    "VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-queueFamilyIndex-04743",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-window-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn qnx_screen_presentation_support_unchecked(
+        &self,
+        queue_family_index: u32,
+        window: *mut ash::vk::_screen_window,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.qnx_screen_surface
+            .get_physical_device_screen_presentation_support_qnx)(
+            self.handle,
+            queue_family_index,
+            window,
+        ) != 0
+    }
 }
 
 impl Debug for PhysicalDevice {
@@ -3325,6 +3439,56 @@ unsafe impl InstanceOwned for PhysicalDevice {
 }
 
 impl_id_counter!(PhysicalDevice);
+
+#[cfg(all(
+    any(
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "hurd",
+        target_os = "illumos",
+        target_os = "linux",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "solaris"
+    ),
+    feature = "x11"
+))]
+unsafe fn get_xcb_root_visual_id(
+    connection: *mut std::ffi::c_void,
+    screen_id: std::ffi::c_int,
+) -> u32 {
+    use x11rb::connection::Connection;
+
+    let connection =
+        unsafe { x11rb::xcb_ffi::XCBConnection::from_raw_xcb_connection(connection, false) }
+            .unwrap();
+    let screen = &connection.setup().roots[screen_id as usize];
+
+    screen.root_visual
+}
+
+#[cfg(all(
+    any(
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "hurd",
+        target_os = "illumos",
+        target_os = "linux",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "solaris"
+    ),
+    feature = "x11"
+))]
+unsafe fn get_xlib_root_visual_id(
+    display: *mut std::ffi::c_void,
+    screen_id: std::ffi::c_int,
+) -> u32 {
+    let xlib_xcb = x11_dl::xlib_xcb::Xlib_xcb::open().unwrap();
+    let connection = unsafe { (xlib_xcb.XGetXCBConnection)(display.cast()) };
+
+    unsafe { get_xcb_root_visual_id(connection, screen_id) }
+}
 
 /// Properties of a group of physical devices that can be used to create a single logical device.
 #[derive(Clone, Debug)]

@@ -34,6 +34,10 @@ vulkano-macros = { workspace = true, optional = true }
 objc = { workspace = true }
 core-graphics-types = { workspace = true }
 
+[target.'cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "hurd", target_os = "illumos", target_os = "linux", target_os = "netbsd", target_os = "openbsd", target_os = "solaris"))'.dependencies]
+x11-dl = { workspace = true, optional = true }
+x11rb = { workspace = true, features = ["allow-unsafe-code"], optional = true }
+
 [build-dependencies]
 ahash = { workspace = true }
 heck = { workspace = true }
@@ -50,9 +54,10 @@ vk-parse = { workspace = true }
 libc = "0.2.153"
 
 [features]
-default = ["macros"]
-macros = ["dep:vulkano-macros"]
+default = ["macros", "x11"]
 document_unchecked = []
+macros = ["dep:vulkano-macros"]
+x11 = ["dep:x11-dl", "dep:x11rb"]
 
 [lints]
 workspace = true

@@ -71,6 +71,54 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
+    let device_extensions = DeviceExtensions {
+        khr_swapchain: true,
+        ..DeviceExtensions::empty()
+    };
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
+        .filter_map(|p| {
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                        && p.presentation_support(i as u32, &event_loop).unwrap()
+                })
+                .map(|i| (p, i as u32))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+            _ => 5,
+        })
+        .unwrap();
+
+    println!(
+        "Using device: {} (type: {:?})",
+        physical_device.properties().device_name,
+        physical_device.properties().device_type,
+    );
+
+    let (device, mut queues) = Device::new(
+        physical_device,
+        DeviceCreateInfo {
+            enabled_extensions: device_extensions,
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let queue = queues.next().unwrap();
+
     let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
@@ -80,84 +128,27 @@ fn main() -> Result<(), impl Error> {
     // Use the window's id as a means to access it from the hashmap.
     let window_id = window.id();
 
-    // Find the device and a queue.
-    // TODO: it is assumed the device, queue, and surface surface_capabilities are the same for all
-    // windows.
-
-    let (device, queue, surface_caps) = {
-        let device_extensions = DeviceExtensions {
-            khr_swapchain: true,
-            ..DeviceExtensions::empty()
-        };
-        let (physical_device, queue_family_index) = instance
-            .enumerate_physical_devices()
-            .unwrap()
-            .filter(|p| p.supported_extensions().contains(&device_extensions))
-            .filter_map(|p| {
-                p.queue_family_properties()
-                    .iter()
-                    .enumerate()
-                    .position(|(i, q)| {
-                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                            && p.surface_support(i as u32, &surface).unwrap_or(false)
-                    })
-                    .map(|i| (p, i as u32))
-            })
-            .min_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
-                _ => 5,
-            })
-            .unwrap();
-
-        println!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
-
-        let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index,
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
+    // The swapchain and framebuffer images for this particular window.
+    let (swapchain, images) = {
         let surface_capabilities = device
             .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
-
-        (device, queues.next().unwrap(), surface_capabilities)
-    };
-
-    // The swapchain and framebuffer images for this particular window.
-    let (swapchain, images) = {
         let image_format = device
             .physical_device()
             .surface_formats(&surface, Default::default())
             .unwrap()[0]
             .0;
-        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
         Swapchain::new(
             device.clone(),
             surface.clone(),
             SwapchainCreateInfo {
-                min_image_count: surface_caps.min_image_count.max(2),
+                min_image_count: surface_capabilities.min_image_count.max(2),
                 image_format,
                 image_extent: window.inner_size().into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_caps
+                composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .into_iter()
                     .next()
@@ -353,10 +344,9 @@ fn main() -> Result<(), impl Error> {
                 let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
                 let window_id = window.id();
                 let (swapchain, images) = {
-                    let composite_alpha = surface_caps
-                        .supported_composite_alpha
-                        .into_iter()
-                        .next()
+                    let surface_capabilities = device
+                        .physical_device()
+                        .surface_capabilities(&surface, Default::default())
                         .unwrap();
                     let image_format = device
                         .physical_device()
@@ -368,11 +358,15 @@ fn main() -> Result<(), impl Error> {
                         device.clone(),
                         surface,
                         SwapchainCreateInfo {
-                            min_image_count: surface_caps.min_image_count.max(2),
+                            min_image_count: surface_capabilities.min_image_count.max(2),
                             image_format,
                             image_extent: window.inner_size().into(),
                             image_usage: ImageUsage::COLOR_ATTACHMENT,
-                            composite_alpha,
+                            composite_alpha: surface_capabilities
+                                .supported_composite_alpha
+                                .into_iter()
+                                .next()
+                                .unwrap(),
                             ..Default::default()
                         },
                     )
