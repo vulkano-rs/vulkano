@@ -185,7 +185,7 @@ impl GraphicsPipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: GraphicsPipelineCreateInfo,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
+        Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
     }
@@ -239,99 +239,9 @@ impl GraphicsPipeline {
                 Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo<'static>>,
         }
 
-        let (mut stages_vk, mut per_stage_vk): (SmallVec<[_; 5]>, SmallVec<[_; 5]>) = stages
-            .iter()
-            .map(|stage| {
-                let &PipelineShaderStageCreateInfo {
-                    flags,
-                    ref entry_point,
-                    ref required_subgroup_size,
-                    _ne: _,
-                } = stage;
-
-                let entry_point_info = entry_point.info();
-                let stage = ShaderStage::from(entry_point_info.execution_model);
-
-                let mut specialization_data_vk: Vec<u8> = Vec::new();
-                let specialization_map_entries_vk: Vec<_> = entry_point
-                    .module()
-                    .specialization_info()
-                    .iter()
-                    .map(|(&constant_id, value)| {
-                        let data = value.as_bytes();
-                        let offset = specialization_data_vk.len() as u32;
-                        let size = data.len();
-                        specialization_data_vk.extend(data);
-
-                        ash::vk::SpecializationMapEntry {
-                            constant_id,
-                            offset,
-                            size,
-                        }
-                    })
-                    .collect();
-                let required_subgroup_size_create_info =
-                    required_subgroup_size.map(|required_subgroup_size| {
-                        ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo {
-                            required_subgroup_size,
-                            ..Default::default()
-                        }
-                    });
-                (
-                    ash::vk::PipelineShaderStageCreateInfo {
-                        flags: flags.into(),
-                        stage: stage.into(),
-                        module: entry_point.module().handle(),
-                        p_name: ptr::null(),
-                        p_specialization_info: ptr::null(),
-                        ..Default::default()
-                    },
-                    PerPipelineShaderStageCreateInfo {
-                        name_vk: CString::new(entry_point_info.name.as_str()).unwrap(), // TODO Borrow CStr for local data?
-                        specialization_info_vk: ash::vk::SpecializationInfo {
-                            map_entry_count: specialization_map_entries_vk.len() as u32,
-                            p_map_entries: ptr::null(),
-                            data_size: specialization_data_vk.len(),
-                            p_data: ptr::null(),
-                            ..Default::default()
-                        },
-                        specialization_map_entries_vk,
-                        specialization_data_vk,
-                        required_subgroup_size_create_info,
-                    },
-                )
-            })
-            .unzip();
-
-        for (
-            stage_vk,
-            PerPipelineShaderStageCreateInfo {
-                name_vk,
-                specialization_info_vk,
-                specialization_map_entries_vk,
-                specialization_data_vk,
-                required_subgroup_size_create_info,
-            },
-        ) in stages_vk.iter_mut().zip(per_stage_vk.iter_mut())
-        {
-            *stage_vk = ash::vk::PipelineShaderStageCreateInfo {
-                p_next: required_subgroup_size_create_info.as_ref().map_or(
-                    ptr::null(),
-                    |required_subgroup_size_create_info| {
-                        <*const _>::cast(required_subgroup_size_create_info)
-                    },
-                ),
-                p_name: name_vk.as_ptr(),
-                p_specialization_info: specialization_info_vk,
-                ..*stage_vk
-            };
-
-            *specialization_info_vk = ash::vk::SpecializationInfo {
-                p_map_entries: specialization_map_entries_vk.as_ptr(),
-                p_data: specialization_data_vk.as_ptr().cast(),
-                ..*specialization_info_vk
-            };
-        }
+        let owned_stages_vk: SmallVec<[_; 5]> =
+            stages.iter().map(|s| s.to_owned_vulkan()).collect();
+        let stages_vk: SmallVec<[_; 5]> = owned_stages_vk.iter().map(|s| s.to_vulkan()).collect();
 
         let mut vertex_input_state_vk = None;
         let mut vertex_binding_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();

@@ -10,8 +10,8 @@ use crate::{
     device::{DeviceOwned, QueueFlags},
     memory::is_aligned,
     pipeline::{
-        graphics::vertex_input::VertexBuffersCollection, ComputePipeline, GraphicsPipeline,
-        PipelineBindPoint, PipelineLayout,
+        graphics::vertex_input::VertexBuffersCollection, ray_tracing::RayTracingPipeline,
+        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
@@ -219,6 +219,32 @@ impl RecordingCommandBuffer {
             Default::default(),
             move |out: &mut RawRecordingCommandBuffer| {
                 out.bind_pipeline_graphics_unchecked(&pipeline);
+            },
+        );
+
+        self
+    }
+
+    pub fn bind_pipeline_ray_tracing(
+        &mut self,
+        pipeline: Arc<RayTracingPipeline>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        // TODO: RayTracing: Validation
+        unsafe { Ok(self.bind_pipeline_ray_tracing_unchecked(pipeline)) }
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_pipeline_ray_tracing_unchecked(
+        &mut self,
+        pipeline: Arc<RayTracingPipeline>,
+    ) -> &mut Self {
+        self.builder_state.pipeline_ray_tracing = Some(pipeline.clone());
+        // TODO: RayTracing: Do we need to reset dynamic states?
+        self.add_command(
+            "bind_pipeline_ray_tracing",
+            Default::default(),
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.bind_pipeline_ray_tracing_unchecked(&pipeline);
             },
         );
 
@@ -506,6 +532,9 @@ impl RawRecordingCommandBuffer {
                         ..Default::default()
                     }));
                 }
+            }
+            PipelineBindPoint::RayTracing => {
+                // TODO: RayTracing
             }
         }
 
@@ -872,6 +901,26 @@ impl RawRecordingCommandBuffer {
         (fns.v1_0.cmd_bind_pipeline)(
             self.handle(),
             ash::vk::PipelineBindPoint::GRAPHICS,
+            pipeline.handle(),
+        );
+
+        self
+    }
+
+    pub unsafe fn bind_pipeline_ray_tracing(&mut self, pipeline: &RayTracingPipeline) -> &mut Self {
+        // TODO: RayTracing: Validation
+        self.bind_pipeline_ray_tracing_unchecked(pipeline)
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_pipeline_ray_tracing_unchecked(
+        &mut self,
+        pipeline: &RayTracingPipeline,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        (fns.v1_0.cmd_bind_pipeline)(
+            self.handle(),
+            ash::vk::PipelineBindPoint::RAY_TRACING_KHR,
             pipeline.handle(),
         );
 
@@ -1254,6 +1303,9 @@ impl RawRecordingCommandBuffer {
                         ..Default::default()
                     }));
                 }
+            }
+            PipelineBindPoint::RayTracing => {
+                // TODO: RayTracing
             }
         }
 

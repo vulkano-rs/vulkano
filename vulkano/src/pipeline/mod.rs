@@ -23,6 +23,7 @@ pub mod cache;
 pub mod compute;
 pub mod graphics;
 pub mod layout;
+pub mod ray_tracing;
 pub(crate) mod shader;
 
 /// A trait for operations shared between pipeline types.
@@ -60,13 +61,13 @@ vulkan_enum! {
     // TODO: document
     Graphics = GRAPHICS,
 
-    /* TODO: enable
+
     // TODO: document
     RayTracing = RAY_TRACING_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
         RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
-    ]),*/
+    ]),
 
     /* TODO: enable
     // TODO: document

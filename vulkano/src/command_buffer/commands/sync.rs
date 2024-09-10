@@ -205,7 +205,9 @@ impl RawRecordingCommandBuffer {
             _ne: _,
         } = dependency_info;
 
-        if self.device().enabled_features().synchronization2 {
+        if self.device().enabled_features().synchronization2
+            || self.device().api_version() >= Version::V1_3
+        {
             let memory_barriers_vk: SmallVec<[_; 2]> = memory_barriers
                 .iter()
                 .map(|barrier| {

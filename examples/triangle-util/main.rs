@@ -7,30 +7,50 @@
 // that you want to learn Vulkan. This means that for example it won't go into details about what a
 // vertex or a shader is.
 
-use std::{error::Error, sync::Arc, time::Duration};
+use glam::{Mat4, Vec3};
+use std::{
+    error::Error,
+    mem::size_of,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    acceleration_structure::{
+        AccelerationStructure, AccelerationStructureBuildGeometryInfo,
+        AccelerationStructureBuildRangeInfo, AccelerationStructureBuildType,
+        AccelerationStructureCreateInfo, AccelerationStructureGeometries,
+        AccelerationStructureGeometryInstancesData, AccelerationStructureGeometryInstancesDataType,
+        AccelerationStructureGeometryTrianglesData, AccelerationStructureInstance,
+        AccelerationStructureType, BuildAccelerationStructureFlags, BuildAccelerationStructureMode,
+    },
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo,
-        SubpassContents,
+        CommandBufferUsage, RecordingCommandBuffer,
     },
-    image::view::ImageView,
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
-    pipeline::{
-        graphics::{
-            color_blend::{ColorBlendAttachmentState, ColorBlendState},
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            GraphicsPipelineCreateInfo,
+    descriptor_set::{
+        allocator::{DescriptorSetAllocator, StandardDescriptorSetAllocator},
+        layout::{
+            DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+            DescriptorType,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        DescriptorSet, WriteDescriptorSet,
     },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    device::{Device, DeviceExtensions, DeviceFeatures, DeviceOwnedVulkanObject},
+    format::Format,
+    image::{view::ImageView, ImageUsage},
+    instance::{InstanceCreateInfo, InstanceExtensions},
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    pipeline::{
+        graphics::{vertex_input::Vertex, viewport::Viewport},
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        ray_tracing::{
+            RayTracingPipeline, RayTracingPipelineCreateInfo, RayTracingShaderGroupCreateInfo,
+            ShaderBindingTable,
+        },
+        Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo,
+    },
+    shader::ShaderStages,
     sync::GpuFuture,
 };
 use vulkano_util::{
@@ -42,12 +62,74 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
+#[derive(BufferContents, Vertex)]
+#[repr(C)]
+struct MyVertex {
+    #[format(R32G32B32_SFLOAT)]
+    position: [f32; 3],
+}
+
+mod raygen {
+    vulkano_shaders::shader! {
+        ty: "raygen",
+        path: "raytrace.rgen",
+        vulkan_version: "1.2"
+    }
+}
+
+mod closest_hit {
+    vulkano_shaders::shader! {
+        ty: "closesthit",
+        path: "raytrace.rchit",
+        vulkan_version: "1.2"
+    }
+}
+
+mod miss {
+    vulkano_shaders::shader! {
+        ty: "miss",
+        path: "raytrace.rmiss",
+        vulkan_version: "1.2"
+    }
+}
+
 fn main() -> Result<(), impl Error> {
-    let context = VulkanoContext::new(VulkanoConfig::default());
+    let context = VulkanoContext::new(VulkanoConfig {
+        device_extensions: DeviceExtensions {
+            khr_swapchain: true,
+            khr_acceleration_structure: true,
+            khr_ray_tracing_pipeline: true,
+            khr_deferred_host_operations: true,
+            ..Default::default()
+        },
+        device_features: DeviceFeatures {
+            acceleration_structure: true,
+            ray_tracing_pipeline: true,
+            buffer_device_address: true,
+            synchronization2: true,
+            ..Default::default()
+        },
+        instance_create_info: InstanceCreateInfo {
+            enabled_layers: vec!["VK_LAYER_KHRONOS_validation".to_owned()],
+            enabled_extensions: InstanceExtensions {
+                ext_debug_utils: true,
+                ..InstanceExtensions::empty()
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    });
     let event_loop = EventLoop::new().unwrap();
     // Manages any windows and their rendering.
     let mut windows_manager = VulkanoWindows::default();
-    windows_manager.create_window(&event_loop, &context, &Default::default(), |_| {});
+    windows_manager.create_window(
+        &event_loop,
+        &context,
+        &Default::default(),
+        |swapchain_create_info| {
+            swapchain_create_info.image_usage |= ImageUsage::STORAGE;
+        },
+    );
     let window_renderer = windows_manager.get_primary_renderer_mut().unwrap();
 
     // Some little debug infos.
@@ -60,28 +142,24 @@ fn main() -> Result<(), impl Error> {
     // We now create a buffer that will store the shape of our triangle. We use `#[repr(C)]` here
     // to force rustc to use a defined layout for our data, as the default representation has *no
     // guarantees*.
-    #[derive(BufferContents, Vertex)]
-    #[repr(C)]
-    struct Vertex {
-        #[format(R32G32_SFLOAT)]
-        position: [f32; 2],
-    }
 
     let vertices = [
-        Vertex {
-            position: [-0.5, -0.25],
+        MyVertex {
+            position: [-0.5, -0.25, 0.0],
         },
-        Vertex {
-            position: [0.0, 0.5],
+        MyVertex {
+            position: [0.0, 0.5, 0.0],
         },
-        Vertex {
-            position: [0.25, -0.1],
+        MyVertex {
+            position: [0.25, -0.1, 0.0],
         },
     ];
     let vertex_buffer = Buffer::from_iter(
         context.memory_allocator().clone(),
         BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
+            usage: BufferUsage::VERTEX_BUFFER
+                | BufferUsage::SHADER_DEVICE_ADDRESS
+                | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
             ..Default::default()
         },
         AllocationCreateInfo {
@@ -93,88 +171,121 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
-    // The next step is to create the shaders.
-    //
-    // The raw shader creation API provided by the vulkano library is unsafe for various reasons,
-    // so The `shader!` macro provides a way to generate a Rust module from GLSL source - in the
-    // example below, the source is provided as a string input directly to the shader, but a path
-    // to a source file can be provided as well. Note that the user must specify the type of shader
-    // (e.g. "vertex", "fragment", etc.) using the `ty` option of the macro.
-    //
-    // The items generated by the `shader!` macro include a `load` function which loads the shader
-    // using an input logical device. The module also includes type definitions for layout
-    // structures defined in the shader source, for example uniforms and push constants.
-    //
-    // A more detailed overview of what the `shader!` macro generates can be found in the
-    // vulkano-shaders crate docs. You can view them at https://docs.rs/vulkano-shaders/
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            src: r"
-                #version 450
-
-                layout(location = 0) in vec2 position;
-
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0);
-                }
-            ",
-        }
-    }
-
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            src: r"
-                #version 450
-
-                layout(location = 0) out vec4 f_color;
-
-                void main() {
-                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-                }
-            ",
-        }
-    }
-
-    // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
-    // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
-    // manually.
-
-    // The next step is to create a *render pass*, which is an object that describes where the
-    // output of the graphics pipeline will go. It describes the layout of the images where the
-    // colors, depth and/or stencil information will be written.
-    let render_pass = vulkano::single_pass_renderpass!(
-        context.device().clone(),
-        attachments: {
-            // `color` is a custom name we give to the first and only attachment.
-            color: {
-                // `format: <ty>` indicates the type of the format of the image. This has to be one
-                // of the types of the `vulkano::format` module (or alternatively one of your
-                // structs that implements the `FormatDesc` trait). Here we use the same format as
-                // the swapchain.
-                format: window_renderer.swapchain_format(),
-                // `samples: 1` means that we ask the GPU to use one sample to determine the value
-                // of each pixel in the color attachment. We could use a larger value
-                // (multisampling) for antialiasing. An example of this can be found in
-                // msaa-renderpass.rs.
-                samples: 1,
-                // `load_op: Clear` means that we ask the GPU to clear the content of this
-                // attachment at the start of the drawing.
-                load_op: Clear,
-                // `store_op: Store` means that we ask the GPU to store the output of the draw in
-                // the actual image. We could also ask it to discard the result.
-                store_op: Store,
-            },
+    let uniform_buffer = Buffer::from_data(
+        context.memory_allocator().clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::UNIFORM_BUFFER,
+            ..Default::default()
         },
-        pass: {
-            // We use the attachment named `color` as the one and only color attachment.
-            color: [color],
-            // No depth-stencil attachment is indicated with empty brackets.
-            depth_stencil: {},
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        raygen::Camera {
+            projInverse: Default::default(),
+            viewInverse: Default::default(),
+            viewProj: Default::default(),
         },
     )
     .unwrap();
+
+    // Before we can start creating and recording command buffers, we need a way of allocating
+    // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
+    // underneath and provides a safe interface for them.
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        context.device().clone(),
+        Default::default(),
+    ));
+
+    let tlas = unsafe {
+        let mut builder = RecordingCommandBuffer::new(
+            command_buffer_allocator.clone(),
+            context.graphics_queue().queue_family_index(),
+            CommandBufferLevel::Primary,
+            CommandBufferBeginInfo {
+                usage: CommandBufferUsage::OneTimeSubmit,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let blas = build_acceleration_structure_triangles(
+            vertex_buffer.clone(),
+            context.memory_allocator().clone(),
+            context.device().clone(),
+            &mut builder,
+        );
+        blas.set_debug_utils_object_name("Triangle BLAS".into())
+            .unwrap();
+        let tlas = build_top_level_acceleration_structure(
+            blas,
+            context.memory_allocator().clone(),
+            context.device().clone(),
+            &mut builder,
+        );
+        tlas.set_debug_utils_object_name("Triangle TLAS".into())
+            .unwrap();
+
+        builder
+            .end()
+            .unwrap()
+            .execute(context.graphics_queue().clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
+        tlas
+    };
+
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+        context.device().clone(),
+        Default::default(),
+    ));
+
+    let descriptor_set_layout_0 = DescriptorSetLayout::new(
+        context.device().clone(),
+        DescriptorSetLayoutCreateInfo {
+            bindings: [
+                (
+                    0,
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::RAYGEN,
+                        ..DescriptorSetLayoutBinding::descriptor_type(
+                            DescriptorType::AccelerationStructure,
+                        )
+                    },
+                ),
+                (
+                    1,
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::RAYGEN,
+                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let descriptor_set_0 = DescriptorSet::new(
+        descriptor_set_allocator.clone(),
+        descriptor_set_layout_0,
+        [
+            WriteDescriptorSet::acceleration_structure(0, tlas),
+            WriteDescriptorSet::buffer(1, uniform_buffer.clone()),
+        ],
+        [],
+    )
+    .unwrap();
+    descriptor_set_0
+        .set_debug_utils_object_name("Descriptor Set 0".into())
+        .unwrap();
 
     // Before we draw, we have to create what is called a **pipeline**. A pipeline describes how
     // a GPU operation is to be performed. It is similar to an OpenGL program, but it also contains
@@ -186,23 +297,25 @@ fn main() -> Result<(), impl Error> {
         //
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
         // one.
-        let vs = vs::load(context.device().clone())
+        let raygen = raygen::load(context.device().clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let fs = fs::load(context.device().clone())
+        let closest_hit = closest_hit::load(context.device().clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
 
-        // Automatically generate a vertex input state from the vertex shader's input interface,
-        // that takes a single vertex buffer containing `Vertex` structs.
-        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
+        let miss = miss::load(context.device().clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
 
         // Make a list of the shader stages that the pipeline will have.
         let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
+            PipelineShaderStageCreateInfo::new(raygen),
+            PipelineShaderStageCreateInfo::new(miss),
+            PipelineShaderStageCreateInfo::new(closest_hit),
         ];
 
         // We must now create a **pipeline layout** object, which describes the locations and types
@@ -226,47 +339,44 @@ fn main() -> Result<(), impl Error> {
         )
         .unwrap();
 
-        // We have to indicate which subpass of which render pass this pipeline is going to be used
-        // in. The pipeline will only be usable from this particular subpass.
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        let groups = [
+            RayTracingShaderGroupCreateInfo {
+                // Raygen
+                general_shader: Some(0),
+                ..Default::default()
+            },
+            RayTracingShaderGroupCreateInfo {
+                // Miss
+                general_shader: Some(1),
+                ..Default::default()
+            },
+            RayTracingShaderGroupCreateInfo {
+                // Closest Hit
+                group_type: ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+                closest_hit_shader: Some(2),
+                ..Default::default()
+            },
+        ];
 
-        // Finally, create the pipeline.
-        GraphicsPipeline::new(
+        RayTracingPipeline::new(
             context.device().clone(),
             None,
-            GraphicsPipelineCreateInfo {
+            RayTracingPipelineCreateInfo {
                 stages: stages.into_iter().collect(),
-                // How vertex data is read from the vertex buffers into the vertex shader.
-                vertex_input_state: Some(vertex_input_state),
-                // How vertices are arranged into primitive shapes.
-                // The default primitive shape is a triangle.
-                input_assembly_state: Some(InputAssemblyState::default()),
-                // How primitives are transformed and clipped to fit the framebuffer.
-                // We use a resizable viewport, set to draw over the entire window.
-                viewport_state: Some(ViewportState::default()),
-                // How polygons are culled and converted into a raster of pixels.
-                // The default value does not perform any culling.
-                rasterization_state: Some(RasterizationState::default()),
-                // How multiple fragment shader samples are converted to a single pixel value.
-                // The default value does not perform any multisampling.
-                multisample_state: Some(MultisampleState::default()),
-                // How pixel values are combined with the values already present in the framebuffer.
-                // The default value overwrites the old value with the new one, without any
-                // blending.
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                // Dynamic states allows us to specify parts of the pipeline settings when
-                // recording the command buffer, before we perform drawing.
-                // Here, we specify that the viewport should be dynamic.
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
+                groups: groups.into_iter().collect(),
+                max_pipeline_ray_recursion_depth: 1,
+
+                ..RayTracingPipelineCreateInfo::layout(layout)
             },
         )
         .unwrap()
     };
+    pipeline
+        .set_debug_utils_object_name("Ray Tracing Pipeline".into())
+        .unwrap();
+
+    let shader_binding_table =
+        ShaderBindingTable::new(context.memory_allocator().clone(), &pipeline, 1, 1, 0).unwrap();
 
     // Dynamic viewports allow us to recreate just the viewport when the window is resized.
     // Otherwise we would have to recreate the whole pipeline.
@@ -281,25 +391,14 @@ fn main() -> Result<(), impl Error> {
     //
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
-    let mut framebuffers = window_size_dependent_setup(
-        window_renderer.swapchain_image_views(),
-        render_pass.clone(),
-        &mut viewport,
-    );
-
-    // Before we can start creating and recording command buffers, we need a way of allocating
-    // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
-    // underneath and provides a safe interface for them.
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        context.device().clone(),
-        Default::default(),
-    ));
 
     // Initialization is finally finished!
 
     // In the loop below we are going to submit commands to the GPU. Submitting a command produces
     // an object that implements the `GpuFuture` trait, which holds the resources for as long as
     // they are in use by the GPU.
+
+    let rotation_start = Instant::now();
 
     event_loop.run(move |event, elwt| {
         elwt.set_control_flow(ControlFlow::Poll);
@@ -321,27 +420,45 @@ fn main() -> Result<(), impl Error> {
                 event: WindowEvent::RedrawRequested,
                 ..
             } => {
+                let window_size_dependent_items = window_size_dependent_setup(
+                    window_renderer.swapchain_image_views()[window_renderer.image_index() as usize]
+                        .clone(),
+                    descriptor_set_allocator.clone(),
+                    context.device().clone(),
+                );
+
                 // Do not draw the frame when the screen size is zero. On Windows, this can
                 // occur when minimizing the application.
-                let image_extent: [u32; 2] = window_renderer.window().inner_size().into();
-
-                if image_extent.contains(&0) {
+                if window_size_dependent_items.extent.contains(&0) {
                     return;
                 }
 
+                let elapsed = rotation_start.elapsed();
+
+                // NOTE: This teapot was meant for OpenGL where the origin is at the lower left
+                // instead the origin is at the upper left in Vulkan, so we reverse the Y axis.
+                let aspect_ratio = window_size_dependent_items.extent[0] as f32
+                    / window_size_dependent_items.extent[1] as f32;
+
+                let proj =
+                    Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, aspect_ratio, 0.01, 100.0);
+                let view = Mat4::look_at_rh(
+                    Vec3::new(0.3, 0.3, 1.0),
+                    Vec3::new(0.0, 0.0, 0.0),
+                    Vec3::new(0.0, -1.0, 0.0),
+                );
+
+                let uniform_data = raygen::Camera {
+                    projInverse: proj.inverse().to_cols_array_2d(),
+                    viewInverse: view.inverse().to_cols_array_2d(),
+                    viewProj: (proj * view).to_cols_array_2d(),
+                };
+
+                *uniform_buffer.write().unwrap() = uniform_data;
+
                 // Begin rendering by acquiring the gpu future from the window renderer.
                 let previous_frame_end = window_renderer
-                    .acquire(Some(Duration::from_millis(1)), |swapchain_images| {
-                        // Whenever the window resizes we need to recreate everything dependent
-                        // on the window size. In this example that
-                        // includes the swapchain, the framebuffers
-                        // and the dynamic state viewport.
-                        framebuffers = window_size_dependent_setup(
-                            swapchain_images,
-                            render_pass.clone(),
-                            &mut viewport,
-                        );
-                    })
+                    .acquire(Some(Duration::from_millis(1)), |_| {})
                     .unwrap();
 
                 // In order to draw, we have to record a *command buffer*. The command buffer object
@@ -365,52 +482,29 @@ fn main() -> Result<(), impl Error> {
                 .unwrap();
 
                 builder
-                    // Before we can draw, we have to *enter a render pass*.
-                    .begin_render_pass(
-                        RenderPassBeginInfo {
-                            // A list of values to clear the attachments with. This list contains
-                            // one item for each attachment in the render pass. In this case, there
-                            // is only one attachment, and we clear it with a blue color.
-                            //
-                            // Only attachments that have `AttachmentLoadOp::Clear` are provided
-                            // with clear values, any others should use `None` as the clear value.
-                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-
-                            ..RenderPassBeginInfo::framebuffer(
-                                framebuffers[window_renderer.image_index() as usize].clone(),
-                            )
-                        },
-                        SubpassBeginInfo {
-                            // The contents of the first (and only) subpass.
-                            // This can be either `Inline` or `SecondaryCommandBuffers`.
-                            // The latter is a bit more advanced and is not covered here.
-                            contents: SubpassContents::Inline,
-                            ..Default::default()
-                        },
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::RayTracing,
+                        pipeline.layout().clone(),
+                        0,
+                        vec![
+                            descriptor_set_0.clone(),
+                            window_size_dependent_items.image_descriptor_set,
+                        ],
                     )
                     .unwrap()
-                    // We are now inside the first subpass of the render pass.
-                    //
-                    // TODO: Document state setting and how it affects subsequent draw commands.
-                    .set_viewport(0, [viewport.clone()].into_iter().collect())
-                    .unwrap()
-                    .bind_pipeline_graphics(pipeline.clone())
-                    .unwrap()
-                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .bind_pipeline_ray_tracing(pipeline.clone())
                     .unwrap();
 
                 unsafe {
                     builder
-                        // We add a draw command.
-                        .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                        .trace_rays(
+                            shader_binding_table.clone(),
+                            window_size_dependent_items.extent[0],
+                            window_size_dependent_items.extent[1],
+                            1,
+                        )
                         .unwrap();
                 }
-
-                builder
-                    // We leave the render pass. Note that if we had multiple subpasses we could
-                    // have called `next_subpass` to jump to the next subpass.
-                    .end_render_pass(Default::default())
-                    .unwrap();
 
                 // Finish recording the command buffer by calling `end`.
                 let command_buffer = builder.end().unwrap();
@@ -429,6 +523,8 @@ fn main() -> Result<(), impl Error> {
                 // only be presented once the GPU has finished executing the command buffer
                 // that draws the triangle.
                 window_renderer.present(future, false);
+
+                panic!("Done");
             }
             Event::AboutToWait => window_renderer.window().request_redraw(),
             _ => (),
@@ -436,26 +532,223 @@ fn main() -> Result<(), impl Error> {
     })
 }
 
+struct WindowSizeDependentItems {
+    extent: [u32; 3],
+    image_descriptor_set: Arc<DescriptorSet>,
+}
+
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
-    swapchain_images: &[Arc<ImageView>],
-    render_pass: Arc<RenderPass>,
-    viewport: &mut Viewport,
-) -> Vec<Arc<Framebuffer>> {
-    let extent = swapchain_images[0].image().extent();
-    viewport.extent = [extent[0] as f32, extent[1] as f32];
+    target_image_view: Arc<ImageView>,
+    descriptor_set_allocator: Arc<dyn DescriptorSetAllocator>,
+    device: Arc<Device>,
+) -> WindowSizeDependentItems {
+    let extent = target_image_view.image().extent();
 
-    swapchain_images
-        .iter()
-        .map(|swapchain_image| {
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![swapchain_image.clone()],
+    let descriptor_set_layout = DescriptorSetLayout::new(
+        device,
+        DescriptorSetLayoutCreateInfo {
+            bindings: [(
+                0,
+                DescriptorSetLayoutBinding {
+                    stages: ShaderStages::RAYGEN,
+                    ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::StorageImage)
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let image_descriptor_set = DescriptorSet::new(
+        descriptor_set_allocator.clone(),
+        descriptor_set_layout.clone(),
+        [WriteDescriptorSet::image_view(0, target_image_view.clone())],
+        [],
+    )
+    .unwrap();
+    image_descriptor_set
+        .set_debug_utils_object_name("Image Descriptor Set".into())
+        .unwrap();
+
+    WindowSizeDependentItems {
+        extent,
+        image_descriptor_set,
+    }
+}
+
+unsafe fn build_acceleration_structure_triangles(
+    vertex_buffer: Subbuffer<[MyVertex]>,
+    allocator: Arc<dyn MemoryAllocator>,
+    device: Arc<Device>,
+    command_buffer: &mut RecordingCommandBuffer,
+) -> Arc<AccelerationStructure> {
+    let primitive_count = (vertex_buffer.len() / 3) as u32;
+    let as_geometry_triangles_data = AccelerationStructureGeometryTrianglesData {
+        // TODO: Modify constructor?
+        max_vertex: vertex_buffer.len() as _,
+        vertex_data: Some(vertex_buffer.into_bytes()),
+        vertex_stride: size_of::<MyVertex>() as _,
+        ..AccelerationStructureGeometryTrianglesData::new(Format::R32G32B32_SFLOAT)
+    };
+
+    let as_geometries =
+        AccelerationStructureGeometries::Triangles(vec![as_geometry_triangles_data]);
+
+    let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
+        mode: BuildAccelerationStructureMode::Build,
+        flags: BuildAccelerationStructureFlags::PREFER_FAST_TRACE,
+        ..AccelerationStructureBuildGeometryInfo::new(as_geometries)
+    };
+
+    let as_build_sizes_info = device
+        .acceleration_structure_build_sizes(
+            AccelerationStructureBuildType::Device,
+            &as_build_geometry_info,
+            &[primitive_count],
+        )
+        .unwrap();
+
+    let scratch_buffer = Buffer::new_slice::<u8>(
+        allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::SHADER_DEVICE_ADDRESS | BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo::default(),
+        as_build_sizes_info.build_scratch_size,
+    )
+    .unwrap();
+
+    let as_create_info = AccelerationStructureCreateInfo {
+        ty: AccelerationStructureType::BottomLevel,
+        ..AccelerationStructureCreateInfo::new(
+            Buffer::new_slice::<u8>(
+                allocator,
+                BufferCreateInfo {
+                    usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
+                        | BufferUsage::SHADER_DEVICE_ADDRESS,
                     ..Default::default()
                 },
+                AllocationCreateInfo::default(),
+                as_build_sizes_info.acceleration_structure_size,
             )
-            .unwrap()
-        })
-        .collect::<Vec<_>>()
+            .unwrap(),
+        )
+    };
+    let acceleration = unsafe { AccelerationStructure::new(device, as_create_info).unwrap() };
+
+    as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
+    as_build_geometry_info.scratch_data = Some(scratch_buffer);
+
+    let as_build_range_info = AccelerationStructureBuildRangeInfo {
+        primitive_count,
+        ..Default::default()
+    };
+
+    command_buffer
+        .build_acceleration_structure(
+            as_build_geometry_info,
+            Some(as_build_range_info).into_iter().collect(),
+        )
+        .unwrap();
+
+    acceleration
+}
+
+unsafe fn build_top_level_acceleration_structure(
+    acceleration_structure: Arc<AccelerationStructure>,
+    allocator: Arc<dyn MemoryAllocator>,
+    device: Arc<Device>,
+    command_buffer: &mut RecordingCommandBuffer,
+) -> Arc<AccelerationStructure> {
+    let primitive_count = 1;
+    let as_instance = AccelerationStructureInstance {
+        acceleration_structure_reference: acceleration_structure.device_address().into(), // TODO: Need to hold AS
+        ..Default::default()
+    };
+
+    let instance_buffer = Buffer::from_iter(
+        allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::SHADER_DEVICE_ADDRESS
+                | BufferUsage::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        [as_instance],
+    )
+    .unwrap();
+
+    let as_geometry_instances_data = AccelerationStructureGeometryInstancesData::new(
+        AccelerationStructureGeometryInstancesDataType::Values(Some(instance_buffer)),
+    );
+
+    let as_geometries = AccelerationStructureGeometries::Instances(as_geometry_instances_data);
+
+    let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
+        mode: BuildAccelerationStructureMode::Build,
+        flags: BuildAccelerationStructureFlags::PREFER_FAST_TRACE,
+        ..AccelerationStructureBuildGeometryInfo::new(as_geometries)
+    };
+
+    let as_build_sizes_info = device
+        .acceleration_structure_build_sizes(
+            AccelerationStructureBuildType::Device,
+            &as_build_geometry_info,
+            &[primitive_count],
+        )
+        .unwrap();
+
+    let scratch_buffer = Buffer::new_slice::<u8>(
+        allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::SHADER_DEVICE_ADDRESS | BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo::default(),
+        as_build_sizes_info.build_scratch_size,
+    )
+    .unwrap();
+
+    let as_create_info = AccelerationStructureCreateInfo {
+        ty: AccelerationStructureType::TopLevel,
+        ..AccelerationStructureCreateInfo::new(
+            Buffer::new_slice::<u8>(
+                allocator,
+                BufferCreateInfo {
+                    usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
+                        | BufferUsage::SHADER_DEVICE_ADDRESS,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+                as_build_sizes_info.acceleration_structure_size,
+            )
+            .unwrap(),
+        )
+    };
+    let acceleration = unsafe { AccelerationStructure::new(device, as_create_info).unwrap() };
+
+    as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
+    as_build_geometry_info.scratch_data = Some(scratch_buffer);
+
+    let as_build_range_info = AccelerationStructureBuildRangeInfo {
+        primitive_count,
+        ..Default::default()
+    };
+
+    command_buffer
+        .build_acceleration_structure(
+            as_build_geometry_info,
+            Some(as_build_range_info).into_iter().collect(),
+        )
+        .unwrap();
+
+    acceleration
 }
