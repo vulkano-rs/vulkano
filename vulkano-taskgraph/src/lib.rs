@@ -1,10 +1,11 @@
-// FIXME:
-#![allow(unused)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use concurrent_slotmap::SlotId;
-use graph::{ResourceAccesses, ResourceMap};
-use resource::{AccessType, BufferRange, BufferState, DeathRow, ImageState, SwapchainState};
+use graph::{CompileInfo, ExecuteError, ResourceMap, TaskGraph};
+use resource::{
+    AccessType, BufferState, DeathRow, Flight, HostAccessType, ImageLayoutType, ImageState,
+    Resources, SwapchainState,
+};
 use std::{
     any::{Any, TypeId},
     cell::Cell,
@@ -13,24 +14,108 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::{Deref, DerefMut, Range, RangeBounds},
+    mem,
+    ops::{Deref, RangeBounds},
     sync::Arc,
-    thread,
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferMemory, Subbuffer},
     command_buffer::sys::{RawCommandBuffer, RawRecordingCommandBuffer},
+    device::Queue,
     image::Image,
-    memory::{
-        allocator::{align_down, align_up},
-        DeviceAlignment, MappedMemoryRange, ResourceMemory,
-    },
     swapchain::Swapchain,
-    DeviceSize, ValidationError, VulkanError,
+    DeviceSize, ValidationError,
 };
 
 pub mod graph;
 pub mod resource;
+
+/// Creates a [`TaskGraph`] with one task node, compiles it, and executes it.
+pub unsafe fn execute(
+    queue: Arc<Queue>,
+    resources: Arc<Resources>,
+    flight_id: Id<Flight>,
+    task: impl FnOnce(&mut RawRecordingCommandBuffer, &mut TaskContext<'_>) -> TaskResult,
+    host_buffer_accesses: impl IntoIterator<Item = (Id<Buffer>, HostAccessType)>,
+    buffer_accesses: impl IntoIterator<Item = (Id<Buffer>, AccessType)>,
+    image_accesses: impl IntoIterator<Item = (Id<Image>, AccessType, ImageLayoutType)>,
+) -> Result<(), ExecuteError> {
+    #[repr(transparent)]
+    struct OnceTask<'a>(
+        &'a dyn Fn(&mut RawRecordingCommandBuffer, &mut TaskContext<'_>) -> TaskResult,
+    );
+
+    // SAFETY: The task is constructed inside this function and never leaves its scope, so there is
+    // no way it could be sent to another thread.
+    unsafe impl Send for OnceTask<'_> {}
+
+    // SAFETY: The task is constructed inside this function and never leaves its scope, so there is
+    // no way it could be shared with another thread.
+    unsafe impl Sync for OnceTask<'_> {}
+
+    impl Task for OnceTask<'static> {
+        type World = ();
+
+        unsafe fn execute(
+            &self,
+            cbf: &mut RawRecordingCommandBuffer,
+            tcx: &mut TaskContext<'_>,
+            _: &Self::World,
+        ) -> TaskResult {
+            (self.0)(cbf, tcx)
+        }
+    }
+
+    let task = Cell::new(Some(task));
+    let trampoline = move |cbf: &mut RawRecordingCommandBuffer, tcx: &mut TaskContext<'_>| {
+        // `ExecutableTaskGraph::execute` calls each task exactly once, and we only execute the
+        // task graph once.
+        (Cell::take(&task).unwrap())(cbf, tcx)
+    };
+
+    let mut task_graph = TaskGraph::new(resources, 1, 64 * 1024);
+
+    for (id, access_type) in host_buffer_accesses {
+        task_graph.add_host_buffer_access(id, access_type);
+    }
+
+    let mut node = task_graph.create_task_node(
+        "",
+        QueueFamilyType::Specific {
+            index: queue.queue_family_index(),
+        },
+        // SAFETY: The task never leaves this function scope, so it is safe to pretend that the
+        // local `trampoline` and its captures from the outer scope live forever.
+        unsafe { mem::transmute::<OnceTask<'_>, OnceTask<'static>>(OnceTask(&trampoline)) },
+    );
+
+    for (id, access_type) in buffer_accesses {
+        node.buffer_access(id, access_type);
+    }
+
+    for (id, access_type, layout_type) in image_accesses {
+        node.image_access(id, access_type, layout_type);
+    }
+
+    // SAFETY:
+    // * The user must ensure that there are no accesses that are incompatible with the queue.
+    // * The user must ensure that there are no accesses incompatible with the device.
+    let task_graph = unsafe {
+        task_graph.compile(CompileInfo {
+            queues: vec![queue],
+            present_queue: None,
+            flight_id,
+            _ne: crate::NE,
+        })
+    }
+    .unwrap();
+
+    let resource_map = ResourceMap::new(&task_graph).unwrap();
+
+    // SAFETY: The user must ensure that there are no other task graphs executing that access any
+    // of the same subresources.
+    unsafe { task_graph.execute(resource_map, &(), || {}) }
+}
 
 /// A task represents a unit of work to be recorded to a command buffer.
 pub trait Task: Any + Send + Sync {
@@ -39,19 +124,25 @@ pub trait Task: Any + Send + Sync {
     // Potentially TODO:
     // fn update(&mut self, ...) {}
 
-    /// Executes the task, which should record its commands using the provided context.
+    /// Executes the task, which should record its commands using the provided command buffer and
+    /// context.
     ///
     /// # Safety
     ///
-    /// - Every subresource in the [task's input/output interface] must not be written to
-    ///   concurrently in any other tasks during execution on the device.
-    /// - Every subresource in the task's input/output interface, if it's a [host access], must not
-    ///   be written to concurrently in any other tasks during execution on the host.
-    /// - Every subresource in the task's input interface, if it's an [image access], must have had
-    ///   its layout transitioned to the layout specified in the interface.
-    /// - Every subresource in the task's input interface, if the resource's [sharing mode] is
-    ///   exclusive, must be currently owned by the queue family the task is executing on.
-    unsafe fn execute(&self, tcx: &mut TaskContext<'_>, world: &Self::World) -> TaskResult;
+    /// - Every resource in the [task's access set] must not be written to concurrently in any
+    ///   other tasks during execution on the device.
+    /// - Every resource in the task's access set, if it's an [image access], must have had its
+    ///   layout transitioned to the layout specified in the access.
+    /// - Every resource in the task's access set, if the resource's [sharing mode] is exclusive,
+    ///   must be currently owned by the queue family the task is executing on.
+    ///
+    /// [sharing mode]: vulkano::sync::Sharing
+    unsafe fn execute(
+        &self,
+        cbf: &mut RawRecordingCommandBuffer,
+        tcx: &mut TaskContext<'_>,
+        world: &Self::World,
+    ) -> TaskResult;
 }
 
 impl<W: ?Sized + 'static> dyn Task<World = W> {
@@ -112,101 +203,78 @@ impl<W: ?Sized> fmt::Debug for dyn Task<World = W> {
     }
 }
 
+/// An implementation of a phantom task, which is zero-sized and doesn't do anything.
+///
+/// You may want to use this if all you're interested in is the automatic synchronization and don't
+/// have any other commands to execute. A common example would be doing a queue family ownership
+/// transfer after doing an upload.
+impl<W: ?Sized + 'static> Task for PhantomData<fn() -> W> {
+    type World = W;
+
+    unsafe fn execute(
+        &self,
+        _cbf: &mut RawRecordingCommandBuffer,
+        _tcx: &mut TaskContext<'_>,
+        _world: &Self::World,
+    ) -> TaskResult {
+        Ok(())
+    }
+}
+
 /// The context of a task.
 ///
 /// This gives you access to the current command buffer, resources, as well as resource cleanup.
 pub struct TaskContext<'a> {
     resource_map: &'a ResourceMap<'a>,
     death_row: Cell<Option<&'a mut DeathRow>>,
-    current_command_buffer: Cell<Option<&'a mut RawRecordingCommandBuffer>>,
+    current_frame_index: u32,
     command_buffers: Cell<Option<&'a mut Vec<Arc<RawCommandBuffer>>>>,
-    accesses: &'a ResourceAccesses,
 }
 
 impl<'a> TaskContext<'a> {
-    /// Returns the current raw command buffer for the task.
-    ///
-    /// While this method is safe, using the command buffer isn't. You must guarantee that any
-    /// subresources you use while recording commands are either accounted for in the [task's
-    /// input/output interface], or that those subresources don't require any synchronization
-    /// (including layout transitions and queue family ownership transfers), or that no other task
-    /// is accessing the subresources at the same time without appropriate synchronization.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if called more than once.
-    // TODO: We could alternatively to ^ pass two parameters to `Task::execute`.
-    #[inline]
-    pub fn raw_command_buffer(&self) -> &'a mut RawRecordingCommandBuffer {
-        self.current_command_buffer
-            .take()
-            .expect("`TaskContext::raw_command_buffer` can only be called once")
-    }
-
-    /// Pushes a command buffer into the list of command buffers to be executed on the queue.
-    ///
-    /// All command buffers will be executed in the order in which they are pushed after the task
-    /// has finished execution. That means in particular, that commands recorded by the task will
-    /// start execution before execution of any pushed command buffers starts.
-    ///
-    /// # Safety
-    ///
-    /// The same safety preconditions apply as outlined in the [`raw_command_buffer`] method. Since
-    /// the command buffer will be executed on the same queue right after the current command
-    /// buffer, without any added synchronization, it must be safe to do so. The given command
-    /// buffer must not do any accesses not accounted for in the [task's input/output interface],
-    /// or ensure that such accesses are appropriately synchronized.
-    ///
-    /// [`raw_command_buffer`]: Self::raw_command_buffer
-    #[inline]
-    pub unsafe fn push_command_buffer(&self, command_buffer: Arc<RawCommandBuffer>) {
-        let vec = self.command_buffers.take().unwrap();
-        vec.push(command_buffer);
-        self.command_buffers.set(Some(vec));
-    }
-
-    /// Extends the list of command buffers to be executed on the queue.
-    ///
-    /// This function behaves identically to the [`push_command_buffer`] method, except that it
-    /// pushes all command buffers from the given iterator in order.
-    ///
-    /// # Safety
-    ///
-    /// See the [`push_command_buffer`] method for the safety preconditions.
-    ///
-    /// [`push_command_buffer`]: Self::push_command_buffer
-    #[inline]
-    pub unsafe fn extend_command_buffers(
-        &self,
-        command_buffers: impl IntoIterator<Item = Arc<RawCommandBuffer>>,
-    ) {
-        let vec = self.command_buffers.take().unwrap();
-        vec.extend(command_buffers);
-        self.command_buffers.set(Some(vec));
-    }
-
     /// Returns the buffer corresponding to `id`, or returns an error if it isn't present.
     #[inline]
     pub fn buffer(&self, id: Id<Buffer>) -> TaskResult<&'a BufferState> {
-        // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
-        // virtual IDs of the graph exhaustively.
-        Ok(unsafe { self.resource_map.buffer(id) }?)
+        if id.is_virtual() {
+            // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
+            // virtual IDs of the graph exhaustively.
+            Ok(unsafe { self.resource_map.buffer(id) }?)
+        } else {
+            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
+            Ok(unsafe { self.resource_map.resources().buffer_unprotected(id) }?)
+        }
     }
 
     /// Returns the image corresponding to `id`, or returns an error if it isn't present.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `id` refers to a swapchain image.
     #[inline]
     pub fn image(&self, id: Id<Image>) -> TaskResult<&'a ImageState> {
-        // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
-        // virtual IDs of the graph exhaustively.
-        Ok(unsafe { self.resource_map.image(id) }?)
+        assert_ne!(id.object_type(), ObjectType::Swapchain);
+
+        if id.is_virtual() {
+            // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
+            // virtual IDs of the graph exhaustively.
+            Ok(unsafe { self.resource_map.image(id) }?)
+        } else {
+            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
+            Ok(unsafe { self.resource_map.resources().image_unprotected(id) }?)
+        }
     }
 
     /// Returns the swapchain corresponding to `id`, or returns an error if it isn't present.
     #[inline]
     pub fn swapchain(&self, id: Id<Swapchain>) -> TaskResult<&'a SwapchainState> {
-        // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
-        // virtual IDs of the graph exhaustively.
-        Ok(unsafe { self.resource_map.swapchain(id) }?)
+        if id.is_virtual() {
+            // SAFETY: The caller of `Task::execute` must ensure that `self.resource_map` maps the
+            // virtual IDs of the graph exhaustively.
+            Ok(unsafe { self.resource_map.swapchain(id) }?)
+        } else {
+            // SAFETY: `ResourceMap` owns an `epoch::Guard`.
+            Ok(unsafe { self.resource_map.resources().swapchain_unprotected(id) }?)
+        }
     }
 
     /// Returns the `ResourceMap`.
@@ -215,21 +283,17 @@ impl<'a> TaskContext<'a> {
         self.resource_map
     }
 
+    /// Returns the index of the current [frame] in [flight].
+    #[inline]
+    #[must_use]
+    pub fn current_frame_index(&self) -> u32 {
+        self.current_frame_index
+    }
+
     /// Tries to get read access to a portion of the buffer corresponding to `id`.
     ///
-    /// If host read access of the portion of the buffer is not accounted for in the [task's
-    /// input/output interface], this method will return an error.
-    ///
-    /// If the memory backing the buffer is not [host-coherent], then this method will check a
-    /// range that is potentially larger than the given range, because the range given to
-    /// [`invalidate_range`] must be aligned to the [`non_coherent_atom_size`]. This means that for
-    /// example if your Vulkan implementation reports an atom size of 64, and you tried to put 2
-    /// subbuffers of size 32 in the same buffer, one at offset 0 and one at offset 32, while the
-    /// buffer is backed by non-coherent memory, then invalidating one subbuffer would also
-    /// invalidate the other subbuffer. This can lead to data races and is therefore not allowed.
-    /// What you should do in that case is ensure that each subbuffer is aligned to the
-    /// non-coherent atom size, so in this case one would be at offset 0 and the other at offset
-    /// 64.
+    /// If host read access for the buffer is not accounted for in the [task graph's host access
+    /// set], this method will return an error.
     ///
     /// If the memory backing the buffer is not managed by vulkano (i.e. the buffer was created
     /// by [`RawBuffer::assume_bound`]), then it can't be read using this method and an error will
@@ -241,111 +305,31 @@ impl<'a> TaskContext<'a> {
     /// - Panics if [`Subbuffer::slice`] with the given `range` panics.
     /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
     ///
-    /// [host-coherent]: vulkano::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`invalidate_range`]: vulkano::memory::ResourceMemory::invalidate_range
-    /// [`non_coherent_atom_size`]: vulkano::device::DeviceProperties::non_coherent_atom_size
     /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
     pub fn read_buffer<T: BufferContents + ?Sized>(
         &self,
         id: Id<Buffer>,
         range: impl RangeBounds<DeviceSize>,
-    ) -> TaskResult<BufferReadGuard<'_, T>> {
-        #[cold]
-        unsafe fn invalidate_subbuffer(
-            tcx: &TaskContext<'_>,
-            id: Id<Buffer>,
-            subbuffer: &Subbuffer<[u8]>,
-            allocation: &ResourceMemory,
-            atom_size: DeviceAlignment,
-        ) -> TaskResult {
-            // This works because the memory allocator must align allocations to the non-coherent
-            // atom size when the memory is host-visible but not host-coherent.
-            let start = align_down(subbuffer.offset(), atom_size);
-            let end = cmp::min(
-                align_up(subbuffer.offset() + subbuffer.size(), atom_size),
-                allocation.size(),
-            );
-            let range = Range { start, end };
+    ) -> TaskResult<&T> {
+        self.validate_read_buffer(id)?;
 
-            tcx.validate_read_buffer(id, range.clone())?;
-
-            let memory_range = MappedMemoryRange {
-                offset: range.start,
-                size: range.end - range.start,
-                _ne: crate::NE,
-            };
-
-            // SAFETY:
-            // - We checked that the task has read access to the subbuffer above.
-            // - The caller must guarantee that the subbuffer falls within the mapped range of
-            //   memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
-            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
-            //   non-coherent atom size must fall within the mapped range of the memory.
-            unsafe { allocation.invalidate_range_unchecked(memory_range) }
-                .map_err(HostAccessError::Invalidate)?;
-
-            Ok(())
-        }
-
-        assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
-
-        let buffer = self.buffer(id)?.buffer();
-        let subbuffer = Subbuffer::from(buffer.clone())
-            .slice(range)
-            .reinterpret::<T>();
-
-        let allocation = match buffer.memory() {
-            BufferMemory::Normal(a) => a,
-            BufferMemory::Sparse => {
-                todo!("`TaskContext::read_buffer` doesn't support sparse binding yet")
-            }
-            BufferMemory::External => {
-                return Err(TaskError::HostAccess(HostAccessError::Unmanaged))
-            }
-            _ => unreachable!(),
-        };
-
-        let mapped_slice = subbuffer.mapped_slice().map_err(|err| match err {
-            vulkano::sync::HostAccessError::NotHostMapped => HostAccessError::NotHostMapped,
-            vulkano::sync::HostAccessError::OutOfMappedRange => HostAccessError::OutOfMappedRange,
-            _ => unreachable!(),
-        })?;
-
-        let atom_size = allocation.atom_size();
-
-        if let Some(atom_size) = atom_size {
-            // SAFETY:
-            // `subbuffer.mapped_slice()` didn't return an error, which means that the subbuffer
-            // falls within the mapped range of the memory.
-            unsafe { invalidate_subbuffer(self, id, subbuffer.as_bytes(), allocation, atom_size) }?;
-        } else {
-            let range = subbuffer.offset()..subbuffer.offset() + subbuffer.size();
-            self.validate_write_buffer(id, range)?;
-        }
-
-        // SAFETY: We checked that the task has read access to the subbuffer above, which also
+        // SAFETY: We checked that the task has read access to the buffer above, which also
         // includes the guarantee that no other tasks can be writing the subbuffer on neither the
-        // host nor the device. The same task cannot obtain another `BufferWriteGuard` to the
-        // subbuffer because `TaskContext::write_buffer` requires a mutable reference.
-        let data = unsafe { &*T::ptr_from_slice(mapped_slice) };
-
-        Ok(BufferReadGuard { data })
+        // host nor the device. The same task cannot obtain another mutable reference to the buffer
+        // because `TaskContext::write_buffer` requires a mutable reference.
+        unsafe { self.read_buffer_unchecked(id, range) }
     }
 
-    fn validate_read_buffer(
-        &self,
-        id: Id<Buffer>,
-        range: BufferRange,
-    ) -> Result<(), Box<ValidationError>> {
+    fn validate_read_buffer(&self, id: Id<Buffer>) -> Result<(), Box<ValidationError>> {
         if !self
-            .accesses
-            .contains_buffer_access(id, range, AccessType::HostRead)
+            .resource_map
+            .virtual_resources()
+            .contains_host_buffer_access(id, HostAccessType::Read)
         {
             return Err(Box::new(ValidationError {
                 context: "TaskContext::read_buffer".into(),
-                problem: "the task node does not have an access of type `AccessType::HostRead` \
-                    for the range of the buffer"
+                problem: "the task graph does not have an access of type `HostAccessType::Read` \
+                    for the buffer"
                     .into(),
                 ..Default::default()
             }));
@@ -355,13 +339,7 @@ impl<'a> TaskContext<'a> {
     }
 
     /// Gets read access to a portion of the buffer corresponding to `id` without checking if this
-    /// access is accounted for in the [task's input/output interface].
-    ///
-    /// This method doesn't do any host cache control. If the memory backing the buffer is not
-    /// [host-coherent], you must call [`invalidate_range`] in order for any device writes to be
-    /// visible to the host, and must not forget that such flushes must be aligned to the
-    /// [`non_coherent_atom_size`] and hence the aligned range must be accounted for in the task's
-    /// input/output interface.
+    /// access is accounted for in the [task graph's host access set].
     ///
     /// If the memory backing the buffer is not managed by vulkano (i.e. the buffer was created
     /// by [`RawBuffer::assume_bound`]), then it can't be read using this method and an error will
@@ -369,7 +347,7 @@ impl<'a> TaskContext<'a> {
     ///
     /// # Safety
     ///
-    /// This access must be accounted for in the task's input/output interface.
+    /// This access must be accounted for in the task graph's host access set.
     ///
     /// # Panics
     ///
@@ -377,9 +355,6 @@ impl<'a> TaskContext<'a> {
     /// - Panics if [`Subbuffer::slice`] with the given `range` panics.
     /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
     ///
-    /// [host-coherent]: vulkano::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`invalidate_range`]: vulkano::memory::ResourceMemory::invalidate_range
-    /// [`non_coherent_atom_size`]: vulkano::device::DeviceProperties::non_coherent_atom_size
     /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
     pub unsafe fn read_buffer_unchecked<T: BufferContents + ?Sized>(
         &self,
@@ -393,10 +368,10 @@ impl<'a> TaskContext<'a> {
             .slice(range)
             .reinterpret::<T>();
 
-        match buffer.memory() {
+        let allocation = match buffer.memory() {
             BufferMemory::Normal(a) => a,
             BufferMemory::Sparse => {
-                todo!("`TaskContext::read_buffer_unchecked` doesn't support sparse binding yet");
+                todo!("`TaskContext::read_buffer` doesn't support sparse binding yet");
             }
             BufferMemory::External => {
                 return Err(TaskError::HostAccess(HostAccessError::Unmanaged));
@@ -404,11 +379,13 @@ impl<'a> TaskContext<'a> {
             _ => unreachable!(),
         };
 
-        let mapped_slice = subbuffer.mapped_slice().map_err(|err| match err {
+        unsafe { allocation.mapped_slice_unchecked(..) }.map_err(|err| match err {
             vulkano::sync::HostAccessError::NotHostMapped => HostAccessError::NotHostMapped,
             vulkano::sync::HostAccessError::OutOfMappedRange => HostAccessError::OutOfMappedRange,
             _ => unreachable!(),
         })?;
+
+        let mapped_slice = subbuffer.mapped_slice().unwrap();
 
         // SAFETY: The caller must ensure that access to the data is synchronized.
         let data = unsafe { &*T::ptr_from_slice(mapped_slice) };
@@ -418,19 +395,8 @@ impl<'a> TaskContext<'a> {
 
     /// Tries to get write access to a portion of the buffer corresponding to `id`.
     ///
-    /// If host write access of the portion of the buffer is not accounted for in the [task's
-    /// input/output interface], this method will return an error.
-    ///
-    /// If the memory backing the buffer is not [host-coherent], then this method will check a
-    /// range that is potentially larger than the given range, because the range given to
-    /// [`flush_range`] must be aligned to the [`non_coherent_atom_size`]. This means that for
-    /// example if your Vulkan implementation reports an atom size of 64, and you tried to put 2
-    /// subbuffers of size 32 in the same buffer, one at offset 0 and one at offset 32, while the
-    /// buffer is backed by non-coherent memory, then invalidating one subbuffer would also
-    /// invalidate the other subbuffer. This can lead to data races and is therefore not allowed.
-    /// What you should do in that case is ensure that each subbuffer is aligned to the
-    /// non-coherent atom size, so in this case one would be at offset 0 and the other at offset
-    /// 64.
+    /// If host write access for the buffer is not accounted for in the [task graph's host access
+    /// set], this method will return an error.
     ///
     /// If the memory backing the buffer is not managed by vulkano (i.e. the buffer was created
     /// by [`RawBuffer::assume_bound`]), then it can't be written using this method and an error
@@ -442,53 +408,62 @@ impl<'a> TaskContext<'a> {
     /// - Panics if [`Subbuffer::slice`] with the given `range` panics.
     /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
     ///
-    /// [host-coherent]: vulkano::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`flush_range`]: vulkano::memory::ResourceMemory::flush_range
-    /// [`non_coherent_atom_size`]: vulkano::device::DeviceProperties::non_coherent_atom_size
     /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
     pub fn write_buffer<T: BufferContents + ?Sized>(
         &mut self,
         id: Id<Buffer>,
         range: impl RangeBounds<DeviceSize>,
-    ) -> TaskResult<BufferWriteGuard<'_, T>> {
-        #[cold]
-        unsafe fn invalidate_subbuffer(
-            tcx: &TaskContext<'_>,
-            id: Id<Buffer>,
-            subbuffer: &Subbuffer<[u8]>,
-            allocation: &ResourceMemory,
-            atom_size: DeviceAlignment,
-        ) -> TaskResult {
-            // This works because the memory allocator must align allocations to the non-coherent
-            // atom size when the memory is host-visible but not host-coherent.
-            let start = align_down(subbuffer.offset(), atom_size);
-            let end = cmp::min(
-                align_up(subbuffer.offset() + subbuffer.size(), atom_size),
-                allocation.size(),
-            );
-            let range = Range { start, end };
+    ) -> TaskResult<&mut T> {
+        self.validate_write_buffer(id)?;
 
-            tcx.validate_write_buffer(id, range.clone())?;
+        // SAFETY: We checked that the task has write access to the buffer above, which also
+        // includes the guarantee that no other tasks can be accessing the buffer on neither the
+        // host nor the device. The same task cannot obtain another mutable reference to the buffer
+        // because `TaskContext::write_buffer` requires a mutable reference.
+        unsafe { self.write_buffer_unchecked(id, range) }
+    }
 
-            let memory_range = MappedMemoryRange {
-                offset: range.start,
-                size: range.end - range.start,
-                _ne: crate::NE,
-            };
-
-            // SAFETY:
-            // - We checked that the task has write access to the subbuffer above.
-            // - The caller must guarantee that the subbuffer falls within the mapped range of
-            //   memory.
-            // - We ensure that memory mappings are always aligned to the non-coherent atom size for
-            //   non-host-coherent memory, therefore the subbuffer's range aligned to the
-            //   non-coherent atom size must fall within the mapped range of the memory.
-            unsafe { allocation.invalidate_range_unchecked(memory_range) }
-                .map_err(HostAccessError::Invalidate)?;
-
-            Ok(())
+    fn validate_write_buffer(&self, id: Id<Buffer>) -> Result<(), Box<ValidationError>> {
+        if !self
+            .resource_map
+            .virtual_resources()
+            .contains_host_buffer_access(id, HostAccessType::Write)
+        {
+            return Err(Box::new(ValidationError {
+                context: "TaskContext::write_buffer".into(),
+                problem: "the task graph does not have an access of type `HostAccessType::Write` \
+                    for the buffer"
+                    .into(),
+                ..Default::default()
+            }));
         }
 
+        Ok(())
+    }
+
+    /// Gets write access to a portion of the buffer corresponding to `id` without checking if this
+    /// access is accounted for in the [task graph's host access set].
+    ///
+    /// If the memory backing the buffer is not managed by vulkano (i.e. the buffer was created
+    /// by [`RawBuffer::assume_bound`]), then it can't be written using this method and an error
+    /// will be returned.
+    ///
+    /// # Safety
+    ///
+    /// This access must be accounted for in the task graph's host access set.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the alignment of `T` is greater than 64.
+    /// - Panics if [`Subbuffer::slice`] with the given `range` panics.
+    /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
+    ///
+    /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
+    pub unsafe fn write_buffer_unchecked<T: BufferContents + ?Sized>(
+        &mut self,
+        id: Id<Buffer>,
+        range: impl RangeBounds<DeviceSize>,
+    ) -> TaskResult<&mut T> {
         assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
 
         let buffer = self.buffer(id)?.buffer();
@@ -507,113 +482,13 @@ impl<'a> TaskContext<'a> {
             _ => unreachable!(),
         };
 
-        let mapped_slice = subbuffer.mapped_slice().map_err(|err| match err {
+        unsafe { allocation.mapped_slice_unchecked(..) }.map_err(|err| match err {
             vulkano::sync::HostAccessError::NotHostMapped => HostAccessError::NotHostMapped,
             vulkano::sync::HostAccessError::OutOfMappedRange => HostAccessError::OutOfMappedRange,
             _ => unreachable!(),
         })?;
 
-        let atom_size = allocation.atom_size();
-
-        if let Some(atom_size) = atom_size {
-            // SAFETY:
-            // `subbuffer.mapped_slice()` didn't return an error, which means that the subbuffer
-            // falls within the mapped range of the memory.
-            unsafe { invalidate_subbuffer(self, id, subbuffer.as_bytes(), allocation, atom_size) }?;
-        } else {
-            let range = subbuffer.offset()..subbuffer.offset() + subbuffer.size();
-            self.validate_write_buffer(id, range)?;
-        }
-
-        // SAFETY: We checked that the task has write access to the subbuffer above, which also
-        // includes the guarantee that no other tasks can be accessing the subbuffer on neither the
-        // host nor the device. The same task cannot obtain another `BufferWriteGuard` to the
-        // subbuffer because `TaskContext::write_buffer` requires a mutable reference.
-        let data = unsafe { &mut *T::ptr_from_slice(mapped_slice) };
-
-        Ok(BufferWriteGuard {
-            subbuffer: subbuffer.into_bytes(),
-            data,
-            atom_size,
-        })
-    }
-
-    fn validate_write_buffer(
-        &self,
-        id: Id<Buffer>,
-        range: BufferRange,
-    ) -> Result<(), Box<ValidationError>> {
-        if !self
-            .accesses
-            .contains_buffer_access(id, range, AccessType::HostWrite)
-        {
-            return Err(Box::new(ValidationError {
-                context: "TaskContext::write_buffer".into(),
-                problem: "the task node does not have an access of type `AccessType::HostWrite` \
-                    for the range of the buffer"
-                    .into(),
-                ..Default::default()
-            }));
-        }
-
-        Ok(())
-    }
-
-    /// Gets write access to a portion of the buffer corresponding to `id` without checking if this
-    /// access is accounted for in the [task's input/output interface].
-    ///
-    /// This method doesn't do any host cache control. If the memory backing the buffer is not
-    /// [host-coherent], you must call [`flush_range`] in order for any writes to be available to
-    /// the host memory domain, and must not forget that such flushes must be aligned to the
-    /// [`non_coherent_atom_size`] and hence the aligned range must be accounted for in the task's
-    /// input/output interface.
-    ///
-    /// If the memory backing the buffer is not managed by vulkano (i.e. the buffer was created
-    /// by [`RawBuffer::assume_bound`]), then it can't be written using this method and an error
-    /// will be returned.
-    ///
-    /// # Safety
-    ///
-    /// This access must be accounted for in the task's input/output interface.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the alignment of `T` is greater than 64.
-    /// - Panics if [`Subbuffer::slice`] with the given `range` panics.
-    /// - Panics if [`Subbuffer::reinterpret`] to the given `T` panics.
-    ///
-    /// [host-coherent]: vulkano::memory::MemoryPropertyFlags::HOST_COHERENT
-    /// [`flush_range`]: vulkano::memory::ResourceMemory::flush_range
-    /// [`non_coherent_atom_size`]: vulkano::device::DeviceProperties::non_coherent_atom_size
-    /// [`RawBuffer::assume_bound`]: vulkano::buffer::sys::RawBuffer::assume_bound
-    pub unsafe fn write_buffer_unchecked<T: BufferContents + ?Sized>(
-        &mut self,
-        id: Id<Buffer>,
-        range: impl RangeBounds<DeviceSize>,
-    ) -> TaskResult<&mut T> {
-        assert!(T::LAYOUT.alignment().as_devicesize() <= 64);
-
-        let buffer = self.buffer(id)?.buffer();
-        let subbuffer = Subbuffer::from(buffer.clone())
-            .slice(range)
-            .reinterpret::<T>();
-
-        match buffer.memory() {
-            BufferMemory::Normal(a) => a,
-            BufferMemory::Sparse => {
-                todo!("`TaskContext::write_buffer_unchecked` doesn't support sparse binding yet");
-            }
-            BufferMemory::External => {
-                return Err(TaskError::HostAccess(HostAccessError::Unmanaged));
-            }
-            _ => unreachable!(),
-        };
-
-        let mapped_slice = subbuffer.mapped_slice().map_err(|err| match err {
-            vulkano::sync::HostAccessError::NotHostMapped => HostAccessError::NotHostMapped,
-            vulkano::sync::HostAccessError::OutOfMappedRange => HostAccessError::OutOfMappedRange,
-            _ => unreachable!(),
-        })?;
+        let mapped_slice = subbuffer.mapped_slice().unwrap();
 
         // SAFETY: The caller must ensure that access to the data is synchronized.
         let data = unsafe { &mut *T::ptr_from_slice(mapped_slice) };
@@ -662,86 +537,44 @@ impl<'a> TaskContext<'a> {
 
         Ok(())
     }
-}
 
-/// Allows you to read a subbuffer from the host.
-///
-/// This type is created by the [`read_buffer`] method on [`TaskContext`].
-///
-/// [`read_buffer`]: TaskContext::read_buffer
-// NOTE(Marc): This type doesn't actually do anything, but exists for forward-compatibility.
-#[derive(Debug)]
-pub struct BufferReadGuard<'a, T: ?Sized> {
-    data: &'a T,
-}
-
-impl<T: ?Sized> Deref for BufferReadGuard<'_, T> {
-    type Target = T;
-
+    /// Pushes a command buffer into the list of command buffers to be executed on the queue.
+    ///
+    /// All command buffers will be executed in the order in which they are pushed after the task
+    /// has finished execution. That means in particular, that commands recorded by the task will
+    /// start execution before execution of any pushed command buffers starts.
+    ///
+    /// # Safety
+    ///
+    /// Since the command buffer will be executed on the same queue right after the current command
+    /// buffer, without any added synchronization, it must be safe to do so. The given command
+    /// buffer must not do any accesses not accounted for in the [task's access set], or ensure
+    /// that such accesses are appropriately synchronized.
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.data
+    pub unsafe fn push_command_buffer(&self, command_buffer: Arc<RawCommandBuffer>) {
+        let vec = self.command_buffers.take().unwrap();
+        vec.push(command_buffer);
+        self.command_buffers.set(Some(vec));
     }
-}
 
-/// Allows you to write a subbuffer from the host.
-///
-/// This type is created by the [`write_buffer`] method on [`TaskContext`].
-///
-/// [`write_buffer`]: TaskContext::write_buffer
-pub struct BufferWriteGuard<'a, T: ?Sized> {
-    subbuffer: Subbuffer<[u8]>,
-    data: &'a mut T,
-    atom_size: Option<DeviceAlignment>,
-}
-
-impl<T: ?Sized> Deref for BufferWriteGuard<'_, T> {
-    type Target = T;
-
+    /// Extends the list of command buffers to be executed on the queue.
+    ///
+    /// This function behaves identically to the [`push_command_buffer`] method, except that it
+    /// pushes all command buffers from the given iterator in order.
+    ///
+    /// # Safety
+    ///
+    /// See the [`push_command_buffer`] method for the safety preconditions.
+    ///
+    /// [`push_command_buffer`]: Self::push_command_buffer
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.data
-    }
-}
-
-impl<T: ?Sized> DerefMut for BufferWriteGuard<'_, T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.data
-    }
-}
-
-impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
-    #[inline]
-    fn drop(&mut self) {
-        #[cold]
-        fn flush_subbuffer(subbuffer: &Subbuffer<[u8]>, atom_size: DeviceAlignment) {
-            let allocation = match subbuffer.buffer().memory() {
-                BufferMemory::Normal(a) => a,
-                _ => unreachable!(),
-            };
-
-            let memory_range = MappedMemoryRange {
-                offset: align_down(subbuffer.offset(), atom_size),
-                size: cmp::min(
-                    align_up(subbuffer.offset() + subbuffer.size(), atom_size),
-                    allocation.size(),
-                ) - subbuffer.offset(),
-                _ne: crate::NE,
-            };
-
-            // SAFETY: `TaskContext::write_buffer` ensures that the task has write access to this
-            // subbuffer aligned to the non-coherent atom size.
-            if let Err(err) = unsafe { allocation.flush_range_unchecked(memory_range) } {
-                if !thread::panicking() {
-                    panic!("failed to flush buffer write: {err:?}");
-                }
-            }
-        }
-
-        if let Some(atom_size) = self.atom_size {
-            flush_subbuffer(&self.subbuffer, atom_size);
-        }
+    pub unsafe fn extend_command_buffers(
+        &self,
+        command_buffers: impl IntoIterator<Item = Arc<RawCommandBuffer>>,
+    ) {
+        let vec = self.command_buffers.take().unwrap();
+        vec.extend(command_buffers);
+        self.command_buffers.set(Some(vec));
     }
 }
 
@@ -799,27 +632,21 @@ impl Error for TaskError {
 /// Error that can happen when trying to retrieve a Vulkan object or state by [`Id`].
 #[derive(Debug)]
 pub struct InvalidSlotError {
-    slot: SlotId,
+    id: Id,
 }
 
 impl InvalidSlotError {
     fn new<O>(id: Id<O>) -> Self {
-        InvalidSlotError { slot: id.slot }
+        InvalidSlotError { id: id.erase() }
     }
 }
 
 impl fmt::Display for InvalidSlotError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let &InvalidSlotError { slot } = self;
-        let object_type = match slot.tag() & OBJECT_TYPE_MASK {
-            0 => ObjectType::Buffer,
-            1 => ObjectType::Image,
-            2 => ObjectType::Swapchain,
-            3 => ObjectType::Flight,
-            _ => unreachable!(),
-        };
+        let &InvalidSlotError { id } = self;
+        let object_type = id.object_type();
 
-        write!(f, "invalid slot for object type {object_type:?}: {slot:?}")
+        write!(f, "invalid slot for object type `{object_type:?}`: {id:?}")
     }
 }
 
@@ -828,7 +655,6 @@ impl Error for InvalidSlotError {}
 /// Error that can happen when attempting to read or write a resource from the host.
 #[derive(Debug)]
 pub enum HostAccessError {
-    Invalidate(VulkanError),
     Unmanaged,
     NotHostMapped,
     OutOfMappedRange,
@@ -837,7 +663,6 @@ pub enum HostAccessError {
 impl fmt::Display for HostAccessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let msg = match self {
-            Self::Invalidate(_) => "invalidating the device memory failed",
             Self::Unmanaged => "the resource is not managed by vulkano",
             Self::NotHostMapped => "the device memory is not current host-mapped",
             Self::OutOfMappedRange => {
@@ -849,14 +674,7 @@ impl fmt::Display for HostAccessError {
     }
 }
 
-impl Error for HostAccessError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Invalidate(err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl Error for HostAccessError {}
 
 /// Specifies the type of queue family that a task can be executed on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -891,13 +709,19 @@ pub enum QueueFamilyType {
 ///
 /// Note that this ID **is not** globally unique. It is unique in the scope of a logical device.
 #[repr(transparent)]
-pub struct Id<T> {
+pub struct Id<T = ()> {
     slot: SlotId,
     marker: PhantomData<fn() -> T>,
 }
 
 impl<T> Id<T> {
-    fn new(slot: SlotId) -> Self {
+    /// An ID that's guaranteed to be invalid.
+    pub const INVALID: Self = Id {
+        slot: SlotId::INVALID,
+        marker: PhantomData,
+    };
+
+    const unsafe fn new(slot: SlotId) -> Self {
         Id {
             slot,
             marker: PhantomData,
@@ -908,8 +732,53 @@ impl<T> Id<T> {
         self.slot.index()
     }
 
-    fn tag(self) -> u32 {
-        self.slot.tag()
+    /// Returns `true` if this ID represents a [virtual resource].
+    #[inline]
+    pub const fn is_virtual(self) -> bool {
+        self.slot.tag() & Id::VIRTUAL_BIT != 0
+    }
+
+    /// Returns `true` if this ID represents a resource with the exclusive sharing mode.
+    fn is_exclusive(self) -> bool {
+        self.slot.tag() & Id::EXCLUSIVE_BIT != 0
+    }
+
+    fn erase(self) -> Id {
+        unsafe { Id::new(self.slot) }
+    }
+
+    fn object_type(self) -> ObjectType {
+        match self.slot.tag() & Id::OBJECT_TYPE_MASK {
+            Buffer::TAG => ObjectType::Buffer,
+            Image::TAG => ObjectType::Image,
+            Swapchain::TAG => ObjectType::Swapchain,
+            Flight::TAG => ObjectType::Flight,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Id<Swapchain> {
+    /// Returns the ID that always refers to the swapchain image that's currently acquired from the
+    /// swapchain.
+    #[inline]
+    pub const fn current_image_id(self) -> Id<Image> {
+        unsafe { Id::new(self.slot) }
+    }
+}
+
+impl Id {
+    const OBJECT_TYPE_MASK: u32 = 0b11;
+
+    const VIRTUAL_BIT: u32 = 1 << 7;
+    const EXCLUSIVE_BIT: u32 = 1 << 6;
+
+    fn is<O: Object>(self) -> bool {
+        self.object_type() == O::TYPE
+    }
+
+    unsafe fn parametrize<O: Object>(self) -> Id<O> {
+        unsafe { Id::new(self.slot) }
     }
 }
 
@@ -924,10 +793,14 @@ impl<T> Copy for Id<T> {}
 
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Id")
-            .field("index", &self.slot.index())
-            .field("generation", &self.slot.generation())
-            .finish()
+        if *self == Id::INVALID {
+            f.pad("Id::INVALID")
+        } else {
+            f.debug_struct("Id")
+                .field("index", &self.slot.index())
+                .field("generation", &self.slot.generation())
+                .finish()
+        }
     }
 }
 
@@ -983,7 +856,29 @@ impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+trait Object {
+    const TYPE: ObjectType;
+
+    const TAG: u32 = Self::TYPE as u32;
+}
+
+impl Object for Buffer {
+    const TYPE: ObjectType = ObjectType::Buffer;
+}
+
+impl Object for Image {
+    const TYPE: ObjectType = ObjectType::Image;
+}
+
+impl Object for Swapchain {
+    const TYPE: ObjectType = ObjectType::Swapchain;
+}
+
+impl Object for Flight {
+    const TYPE: ObjectType = ObjectType::Flight;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ObjectType {
     Buffer = 0,
     Image = 1,
@@ -991,14 +886,56 @@ enum ObjectType {
     Flight = 3,
 }
 
-const BUFFER_TAG: u32 = ObjectType::Buffer as u32;
-const IMAGE_TAG: u32 = ObjectType::Image as u32;
-const SWAPCHAIN_TAG: u32 = ObjectType::Swapchain as u32;
-const FLIGHT_TAG: u32 = ObjectType::Flight as u32;
-
-const OBJECT_TYPE_MASK: u32 = 0b11;
-
 // SAFETY: ZSTs can always be safely produced out of thin air, barring any safety invariants they
 // might impose, which in the case of `NonExhaustive` are none.
 const NE: vulkano::NonExhaustive =
     unsafe { ::std::mem::transmute::<(), ::vulkano::NonExhaustive>(()) };
+
+#[cfg(test)]
+mod tests {
+    macro_rules! test_queues {
+        () => {{
+            let Ok(library) = vulkano::VulkanLibrary::new() else {
+                return;
+            };
+            let Ok(instance) = vulkano::instance::Instance::new(library, Default::default()) else {
+                return;
+            };
+            let Ok(mut physical_devices) = instance.enumerate_physical_devices() else {
+                return;
+            };
+            let Some(physical_device) = physical_devices.find(|p| {
+                p.queue_family_properties().iter().any(|q| {
+                    q.queue_flags
+                        .contains(vulkano::device::QueueFlags::GRAPHICS)
+                })
+            }) else {
+                return;
+            };
+            let queue_create_infos = physical_device
+                .queue_family_properties()
+                .iter()
+                .enumerate()
+                .map(|(i, _)| vulkano::device::QueueCreateInfo {
+                    queue_family_index: i as u32,
+                    ..Default::default()
+                })
+                .collect();
+            let Ok((device, queues)) = vulkano::device::Device::new(
+                physical_device,
+                vulkano::device::DeviceCreateInfo {
+                    queue_create_infos,
+                    ..Default::default()
+                },
+            ) else {
+                return;
+            };
+
+            (
+                $crate::resource::Resources::new(device, Default::default()),
+                queues.collect::<Vec<_>>(),
+            )
+        }};
+    }
+    pub(crate) use test_queues;
+}
