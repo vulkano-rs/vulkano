@@ -141,6 +141,8 @@ Other:
 - Added `DescriptorSet::invalidate()` to make vulkano forget about resources that bound to a descriptor_set, so they can be freed.
 - Added `memory::allocator::{align_down, align_up}`.
 - Added `Sharing::{is_exclusive,is_concurrent}`.
+- Added `AccessFlags::{contains_reads,contains_writes}`.
+- Added `PhysicalDevice::presentation_support` for determining presentation support to the surface of any window of a given event loop.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
