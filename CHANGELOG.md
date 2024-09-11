@@ -56,6 +56,8 @@ Changes to descriptor set allocation:
 Changes to `Surface`:
 - `Surface::required_extensions` now returns a result.
 - `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
+- `Surface::update_ios_sublayer_on_resize` was removed as it is no longer necessary.
+- `Surface::from_window[_ref]` was changed to use `VK_EXT_metal_surface` internally on macOS and iOS.
 
 Changes to surface creation and support functions:
 - Where handles to foreign window system objects are passed, Vulkano no longer takes a generic pointer, but takes the same pointer type that Ash does.
@@ -143,6 +145,7 @@ Other:
 - Added `Sharing::{is_exclusive,is_concurrent}`.
 - Added `AccessFlags::{contains_reads,contains_writes}`.
 - Added `PhysicalDevice::presentation_support` for determining presentation support to the surface of any window of a given event loop.
+- Added support for tvOS.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
@@ -165,6 +168,8 @@ Other:
 - Fixed descriptor sets with `UPDATE_AFTER_BIND` or `PARTIALLY_BOUND` being wrongly validated on bind.
 - Fixed non-default image view usage being ignored.
 - Fixed an off-by-one error in `SubpassDescription::validate`.
+- Made resizing smooth on macOS and iOS, and let it interoperate better with windowing libraries.
+- Fixed compiling on iOS.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
