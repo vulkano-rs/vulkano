@@ -1,7 +1,3 @@
-#[cfg(target_os = "ios")]
-use crate::get_metal_layer_ios;
-#[cfg(target_os = "macos")]
-use crate::get_metal_layer_macos;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
@@ -19,29 +15,21 @@ pub fn create_surface_from_handle(
             RawWindowHandle::AndroidNdk(h) => {
                 Surface::from_android(instance, h.a_native_window, Some(window))
             }
-            RawWindowHandle::UiKit(_h) => {
-                #[cfg(target_os = "ios")]
-                {
-                    // Ensure the layer is CAMetalLayer
-                    let metal_layer = get_metal_layer_ios(_h.ui_view);
-                    Surface::from_ios(instance, metal_layer.render_layer.0 as _, Some(window))
-                }
-                #[cfg(not(target_os = "ios"))]
-                {
-                    panic!("UiKit handle should only be used when target_os == 'ios'");
-                }
+            #[cfg(target_vendor = "apple")]
+            RawWindowHandle::AppKit(handle) => {
+                let view = std::ptr::NonNull::new(handle.ns_view).unwrap();
+                let layer = raw_window_metal::Layer::from_ns_view(view);
+
+                // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
+                Surface::from_metal(instance, layer.as_ptr(), Some(window))
             }
-            RawWindowHandle::AppKit(_h) => {
-                #[cfg(target_os = "macos")]
-                {
-                    // Ensure the layer is CAMetalLayer
-                    let metal_layer = get_metal_layer_macos(_h.ns_view);
-                    Surface::from_mac_os(instance, metal_layer as _, Some(window))
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    panic!("AppKit handle should only be used when target_os == 'macos'");
-                }
+            #[cfg(target_vendor = "apple")]
+            RawWindowHandle::UiKit(handle) => {
+                let view = std::ptr::NonNull::new(handle.ui_view).unwrap();
+                let layer = raw_window_metal::Layer::from_ui_view(view);
+
+                // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
+                Surface::from_metal(instance, layer.as_ptr(), Some(window))
             }
             RawWindowHandle::Wayland(h) => {
                 let d = match window.raw_display_handle() {
@@ -88,29 +76,21 @@ pub unsafe fn create_surface_from_handle_ref(
             RawWindowHandle::AndroidNdk(h) => {
                 Surface::from_android(instance, h.a_native_window, None)
             }
-            RawWindowHandle::UiKit(_h) => {
-                #[cfg(target_os = "ios")]
-                {
-                    // Ensure the layer is CAMetalLayer
-                    let metal_layer = get_metal_layer_ios(_h.ui_view);
-                    Surface::from_ios(instance, metal_layer.render_layer.0 as _, None)
-                }
-                #[cfg(not(target_os = "ios"))]
-                {
-                    panic!("UiKit handle should only be used when target_os == 'ios'");
-                }
+            #[cfg(target_vendor = "apple")]
+            (RawWindowHandle::AppKit(handle), _) => {
+                let view = std::ptr::NonNull::new(handle.ns_view).unwrap();
+                let layer = raw_window_metal::Layer::from_ns_view(view);
+
+                // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
+                Surface::from_metal(instance, layer.as_ptr(), None)
             }
-            RawWindowHandle::AppKit(_h) => {
-                #[cfg(target_os = "macos")]
-                {
-                    // Ensure the layer is CAMetalLayer
-                    let metal_layer = get_metal_layer_macos(_h.ns_view);
-                    Surface::from_mac_os(instance, metal_layer as _, None)
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    panic!("AppKit handle should only be used when target_os == 'macos'");
-                }
+            #[cfg(target_vendor = "apple")]
+            (RawWindowHandle::UiKit(handle), _) => {
+                let view = std::ptr::NonNull::new(handle.ui_view).unwrap();
+                let layer = raw_window_metal::Layer::from_ui_view(view);
+
+                // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
+                Surface::from_metal(instance, layer.as_ptr(), None)
             }
             RawWindowHandle::Wayland(h) => {
                 let d = match window.raw_display_handle() {

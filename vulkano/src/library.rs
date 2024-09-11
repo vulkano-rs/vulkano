@@ -40,7 +40,7 @@ pub struct VulkanLibrary {
 impl VulkanLibrary {
     /// Loads the default Vulkan library for this system.
     pub fn new() -> Result<Arc<Self>, LoadingError> {
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "tvos"))]
         #[allow(non_snake_case)]
         fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
             let loader = crate::statically_linked_vulkan_loader!();
@@ -48,7 +48,7 @@ impl VulkanLibrary {
             Ok(Box::new(loader))
         }
 
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "tvos")))]
         fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
             #[cfg(windows)]
             fn get_paths() -> [&'static Path; 1] {

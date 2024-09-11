@@ -373,10 +373,6 @@ impl VulkanoWindowRenderer {
             self.remove_additional_image_view(i);
             self.add_additional_image_view(i, format, usage);
         }
-        #[cfg(target_os = "ios")]
-        unsafe {
-            self.surface.update_ios_sublayer_on_resize();
-        }
         self.recreate_swapchain = false;
     }
 }

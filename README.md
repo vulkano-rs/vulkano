@@ -155,7 +155,7 @@ Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compi
 Note that in general vulkano does **not** require you to install the official Vulkan SDK. This is
 not something specific to vulkano (you don't need the SDK to write programs that use Vulkan, even
 without vulkano), but many people are unaware of that and install the SDK thinking that it is
-required. However, macOS and iOS platforms do require a little more Vulkan setup since it is not
+required. However, macOS, iOS and tvOS platforms do require a little more Vulkan setup since it is not
 natively supported. See below for more details.
 
 Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys crate, the following tools must be installed and available on `PATH`:
@@ -203,17 +203,16 @@ On arch based system
 sudo pacman -Sy base-devel git python cmake vulkan-devel --noconfirm
 ```
 
-### macOS and iOS Specific Setup
+### macOS, iOS and tvOS Specific Setup
 
-Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
-an open-source Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
-and iOS platforms.
+Vulkan is not natively supported by macOS, iOS and tvOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
+an open-source Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS, iOS and tvOS platforms.
 
 The easiest way to get vulkano up and running with MoltenVK is to install the
 [Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). There are [installation instructions](https://vulkan.lunarg.com/doc/sdk/latest/mac/getting_started.html) on the LunarG website.
 
-On iOS, vulkano links directly to the MoltenVK framework. There is nothing else to do besides
-installing it. Note that the Vulkan SDK for macOS also comes with the iOS framework.
+On iOS and tvOS, vulkano links directly to the MoltenVK framework. There is nothing else to do besides
+installing it. Note that the Vulkan SDK for macOS also comes with the framework for iOS and tvOS.
 
 ## License
 
