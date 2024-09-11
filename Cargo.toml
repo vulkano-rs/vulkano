@@ -71,6 +71,8 @@ syn = "2.0"
 thread_local = "1.1"
 vk-parse = "0.12"
 winit = { version = "0.29", default-features = false }
+x11-dl = "2.0"
+x11rb = "0.13"
 
 # Only used in examples
 glam = "0.25"

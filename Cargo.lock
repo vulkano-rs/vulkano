@@ -2374,6 +2374,8 @@ dependencies = [
  "thread_local",
  "vk-parse",
  "vulkano-macros",
+ "x11-dl",
+ "x11rb",
 ]
 
 [[package]]

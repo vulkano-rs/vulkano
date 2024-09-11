@@ -80,15 +80,6 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
-    // The objective of this example is to draw a triangle on a window. To do so, we first need to
-    // create the window. We use the `WindowBuilder` from the `winit` crate to do that here.
-    //
-    // Before we can render to a window, we must first create a `vulkano::swapchain::Surface`
-    // object from it, which represents the drawable surface of a window. For that we must wrap the
-    // `winit::window::Window` in an `Arc`.
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
-
     // Choose device extensions that we're going to use. In order to present images to a surface,
     // we need a `Swapchain`, which is provided by the `khr_swapchain` extension.
     let mut device_extensions = DeviceExtensions {
@@ -133,7 +124,7 @@ fn main() -> Result<(), impl Error> {
                     // a window surface, as we do in this example, we also need to check that
                     // queues in this queue family are capable of presenting images to the surface.
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.surface_support(i as u32, &surface).unwrap_or(false)
+                        && p.presentation_support(i as u32, &event_loop).unwrap()
                 })
                 // The code here searches for the first queue family that is suitable. If none is
                 // found, `None` is returned to `filter_map`, which disqualifies this physical
@@ -216,6 +207,15 @@ fn main() -> Result<(), impl Error> {
     // use one queue in this example, so we just retrieve the first and only element of the
     // iterator.
     let queue = queues.next().unwrap();
+
+    // The objective of this example is to draw a triangle on a window. To do so, we first need to
+    // create the window. We use the `WindowBuilder` from the `winit` crate to do that here.
+    //
+    // Before we can render to a window, we must first create a `vulkano::swapchain::Surface`
+    // object from it, which represents the drawable surface of a window. For that we must wrap the
+    // `winit::window::Window` in an `Arc`.
+    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating a
     // swapchain allocates the color buffers that will contain the image that will ultimately be

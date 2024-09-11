@@ -110,9 +110,6 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
-
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::empty()
@@ -127,7 +124,7 @@ fn main() -> Result<(), impl Error> {
                 .enumerate()
                 .position(|(i, q)| {
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.surface_support(i as u32, &surface).unwrap_or(false)
+                        && p.presentation_support(i as u32, &event_loop).unwrap()
                 })
                 .map(|i| (p, i as u32))
         })
@@ -231,6 +228,9 @@ fn main() -> Result<(), impl Error> {
 
     let graphics_flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
     let transfer_flight_id = resources.create_flight(1).unwrap();
+
+    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     let swapchain_format = device
         .physical_device()
