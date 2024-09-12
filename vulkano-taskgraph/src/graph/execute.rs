@@ -2,6 +2,7 @@ use super::{
     BarrierIndex, ExecutableTaskGraph, Instruction, NodeIndex, ResourceAccess, SemaphoreIndex,
 };
 use crate::{
+    command_buffer::RecordingCommandBuffer,
     resource::{
         BufferAccess, BufferState, DeathRow, ImageAccess, ImageState, Resources, SwapchainState,
     },
@@ -11,7 +12,6 @@ use ash::vk;
 use concurrent_slotmap::epoch;
 use smallvec::SmallVec;
 use std::{
-    cell::Cell,
     error::Error,
     fmt, mem,
     ops::Range,
@@ -48,7 +48,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
     /// - Panics if `resource_map` maps to any swapchain that isn't owned by the flight.
     /// - Panics if the oldest frame of the flight wasn't [waited] on.
     ///
-    /// [waited]: Flight::wait
+    /// [waited]: crate::resource::Flight::wait
     pub unsafe fn execute(
         &self,
         resource_map: ResourceMap<'_>,
@@ -280,7 +280,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         for instruction in self.instructions.iter().cloned() {
             if execute_initial_barriers {
-                let submission = state.current_submission();
+                let submission = current_submission!(state);
                 state.initial_pipeline_barrier(
                     submission.initial_buffer_barrier_range.clone(),
                     submission.initial_image_barrier_range.clone(),
@@ -308,7 +308,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     buffer_barrier_range,
                     image_barrier_range,
                 } => {
-                    state.pipeline_barrier(buffer_barrier_range, image_barrier_range);
+                    state.pipeline_barrier(buffer_barrier_range, image_barrier_range)?;
                 }
                 Instruction::SignalSemaphore {
                     semaphore_index,
@@ -369,7 +369,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
 
         for instruction in self.instructions.iter().cloned() {
             if execute_initial_barriers {
-                let submission = state.current_submission();
+                let submission = current_submission!(state);
                 state.initial_pipeline_barrier(
                     submission.initial_buffer_barrier_range.clone(),
                     submission.initial_image_barrier_range.clone(),
@@ -397,7 +397,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                     buffer_barrier_range,
                     image_barrier_range,
                 } => {
-                    state.pipeline_barrier(buffer_barrier_range, image_barrier_range);
+                    state.pipeline_barrier(buffer_barrier_range, image_barrier_range)?;
                 }
                 Instruction::SignalSemaphore {
                     semaphore_index,
@@ -653,9 +653,6 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             queue_submit2 = fns.khr_synchronization2.queue_submit2_khr;
         }
 
-        let current_command_buffer =
-            create_command_buffer(resource_map, &executable.submissions[0].queue)?;
-
         Ok(ExecuteState2 {
             executable,
             resource_map,
@@ -668,15 +665,11 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             queue_submit2,
             per_submits: SmallVec::new(),
             current_per_submit: PerSubmitInfo2::default(),
-            current_command_buffer: Some(current_command_buffer),
+            current_command_buffer: None,
             command_buffers: Vec::new(),
             current_buffer_barriers: Vec::new(),
             current_image_barriers: Vec::new(),
         })
-    }
-
-    fn current_submission(&self) -> &super::Submission {
-        &self.executable.submissions[*self.submission_count]
     }
 
     fn initial_pipeline_barrier(
@@ -690,7 +683,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 
     fn convert_initial_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-        let queue_family_index = self.current_submission().queue.queue_family_index();
+        let queue_family_index = current_submission!(self).queue.queue_family_index();
 
         for barrier in &self.executable.buffer_barriers[barrier_range] {
             let state = unsafe { self.resource_map.buffer_unchecked(barrier.buffer) };
@@ -732,7 +725,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 
     fn convert_initial_image_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-        let queue_family_index = self.current_submission().queue.queue_family_index();
+        let queue_family_index = current_submission!(self).queue.queue_family_index();
 
         for barrier in &self.executable.image_barriers[barrier_range] {
             let (image, access) = match barrier.image.object_type() {
@@ -810,20 +803,25 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 
     fn execute_task(&mut self, node_index: NodeIndex) -> Result {
         if !self.current_buffer_barriers.is_empty() || !self.current_image_barriers.is_empty() {
-            self.flush_barriers();
+            self.flush_barriers()?;
         }
 
         let task_node = unsafe { self.executable.graph.nodes.task_node_unchecked(node_index) };
         let task = &task_node.task;
-        let current_command_buffer = self.current_command_buffer.as_mut().unwrap();
+        let mut current_command_buffer = unsafe {
+            RecordingCommandBuffer::new(
+                current_command_buffer!(self),
+                self.resource_map,
+                self.death_row,
+            )
+        };
         let mut context = TaskContext {
             resource_map: self.resource_map,
-            death_row: Cell::new(Some(self.death_row)),
             current_frame_index: self.current_frame_index,
-            command_buffers: Cell::new(Some(&mut self.command_buffers)),
+            command_buffers: &mut self.command_buffers,
         };
 
-        unsafe { task.execute(current_command_buffer, &mut context, self.world) }
+        unsafe { task.execute(&mut current_command_buffer, &mut context, self.world) }
             .map_err(|error| ExecuteError::Task { node_index, error })?;
 
         if !self.command_buffers.is_empty() {
@@ -844,11 +842,11 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         &mut self,
         buffer_barrier_range: Range<BarrierIndex>,
         image_barrier_range: Range<BarrierIndex>,
-    ) {
+    ) -> Result {
         self.convert_buffer_barriers(buffer_barrier_range);
         self.convert_image_barriers(image_barrier_range);
 
-        self.flush_barriers();
+        self.flush_barriers()
     }
 
     fn convert_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
@@ -951,10 +949,10 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
         );
     }
 
-    fn flush_barriers(&mut self) {
+    fn flush_barriers(&mut self) -> Result {
         unsafe {
             (self.cmd_pipeline_barrier2)(
-                self.current_command_buffer.as_ref().unwrap().handle(),
+                current_command_buffer!(self).handle(),
                 &vk::DependencyInfo::default()
                     .buffer_memory_barriers(&self.current_buffer_barriers)
                     .image_memory_barriers(&self.current_image_barriers),
@@ -963,6 +961,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
 
         self.current_buffer_barriers.clear();
         self.current_image_barriers.clear();
+
+        Ok(())
     }
 
     fn flush_submit(&mut self) -> Result {
@@ -980,7 +980,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                 .flush_mapped_memory_ranges(self.resource_map)
         }?;
 
-        let submission = self.current_submission();
+        let submission = current_submission!(self);
 
         let mut submit_infos = SmallVec::<[_; 4]>::with_capacity(self.per_submits.len());
         submit_infos.extend(self.per_submits.iter().map(|per_submit| {
@@ -1010,23 +1010,21 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
             .map_err(VulkanError::from)
         })?;
 
+        drop(submit_infos);
+        self.per_submits.clear();
+
         *self.submission_count += 1;
 
         Ok(())
     }
 
     unsafe fn flush_current_command_buffer(&mut self) -> Result {
-        if let Some(command_buffer) = self.current_command_buffer.take() {
-            let command_buffer = unsafe { command_buffer.end() }?;
-            self.current_per_submit.command_buffer_infos.push(
-                vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()),
-            );
-            self.death_row.push(Arc::new(command_buffer));
-            self.current_command_buffer = Some(create_command_buffer(
-                self.resource_map,
-                &self.current_submission().queue,
-            )?);
-        }
+        let current_command_buffer = self.current_command_buffer.take().unwrap();
+        let command_buffer = unsafe { current_command_buffer.end() }?;
+        self.current_per_submit
+            .command_buffer_infos
+            .push(vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer.handle()));
+        self.death_row.push(Arc::new(command_buffer));
 
         Ok(())
     }
@@ -1074,9 +1072,6 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         let cmd_pipeline_barrier = fns.v1_0.cmd_pipeline_barrier;
         let queue_submit = fns.v1_0.queue_submit;
 
-        let current_command_buffer =
-            create_command_buffer(resource_map, &executable.submissions[0].queue)?;
-
         Ok(ExecuteState {
             executable,
             resource_map,
@@ -1089,17 +1084,13 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             queue_submit,
             per_submits: SmallVec::new(),
             current_per_submit: PerSubmitInfo::default(),
-            current_command_buffer: Some(current_command_buffer),
+            current_command_buffer: None,
             command_buffers: Vec::new(),
             current_buffer_barriers: Vec::new(),
             current_image_barriers: Vec::new(),
             current_src_stage_mask: vk::PipelineStageFlags::empty(),
             current_dst_stage_mask: vk::PipelineStageFlags::empty(),
         })
-    }
-
-    fn current_submission(&self) -> &super::Submission {
-        &self.executable.submissions[*self.submission_count]
     }
 
     fn initial_pipeline_barrier(
@@ -1113,7 +1104,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
     fn convert_initial_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-        let queue_family_index = self.current_submission().queue.queue_family_index();
+        let queue_family_index = current_submission!(self).queue.queue_family_index();
 
         for barrier in &self.executable.buffer_barriers[barrier_range] {
             let state = unsafe { self.resource_map.buffer_unchecked(barrier.buffer) };
@@ -1156,7 +1147,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
     fn convert_initial_image_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
         let barrier_range = barrier_range.start as usize..barrier_range.end as usize;
-        let queue_family_index = self.current_submission().queue.queue_family_index();
+        let queue_family_index = current_submission!(self).queue.queue_family_index();
 
         for barrier in &self.executable.image_barriers[barrier_range] {
             let (image, access) = match barrier.image.object_type() {
@@ -1237,20 +1228,25 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
     fn execute_task(&mut self, node_index: NodeIndex) -> Result {
         if !self.current_buffer_barriers.is_empty() || !self.current_image_barriers.is_empty() {
-            self.flush_barriers();
+            self.flush_barriers()?;
         }
 
         let task_node = unsafe { self.executable.graph.nodes.task_node_unchecked(node_index) };
         let task = &task_node.task;
-        let current_command_buffer = self.current_command_buffer.as_mut().unwrap();
+        let mut current_command_buffer = unsafe {
+            RecordingCommandBuffer::new(
+                current_command_buffer!(self),
+                self.resource_map,
+                self.death_row,
+            )
+        };
         let mut context = TaskContext {
             resource_map: self.resource_map,
-            death_row: Cell::new(Some(self.death_row)),
             current_frame_index: self.current_frame_index,
-            command_buffers: Cell::new(Some(&mut self.command_buffers)),
+            command_buffers: &mut self.command_buffers,
         };
 
-        unsafe { task.execute(current_command_buffer, &mut context, self.world) }
+        unsafe { task.execute(&mut current_command_buffer, &mut context, self.world) }
             .map_err(|error| ExecuteError::Task { node_index, error })?;
 
         if !self.command_buffers.is_empty() {
@@ -1271,11 +1267,11 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         &mut self,
         buffer_barrier_range: Range<BarrierIndex>,
         image_barrier_range: Range<BarrierIndex>,
-    ) {
+    ) -> Result {
         self.convert_buffer_barriers(buffer_barrier_range);
         self.convert_image_barriers(image_barrier_range);
 
-        self.flush_barriers();
+        self.flush_barriers()
     }
 
     fn convert_buffer_barriers(&mut self, barrier_range: Range<BarrierIndex>) {
@@ -1384,7 +1380,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         Ok(())
     }
 
-    fn flush_barriers(&mut self) {
+    fn flush_barriers(&mut self) -> Result {
         if self.current_src_stage_mask.is_empty() {
             self.current_src_stage_mask = vk::PipelineStageFlags::TOP_OF_PIPE;
         }
@@ -1395,7 +1391,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
 
         unsafe {
             (self.cmd_pipeline_barrier)(
-                self.current_command_buffer.as_ref().unwrap().handle(),
+                current_command_buffer!(self).handle(),
                 self.current_src_stage_mask,
                 self.current_dst_stage_mask,
                 vk::DependencyFlags::empty(),
@@ -1412,6 +1408,8 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
         self.current_image_barriers.clear();
         self.current_src_stage_mask = vk::PipelineStageFlags::empty();
         self.current_dst_stage_mask = vk::PipelineStageFlags::empty();
+
+        Ok(())
     }
 
     fn submit(&mut self) -> Result {
@@ -1420,7 +1418,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                 .flush_mapped_memory_ranges(self.resource_map)
         }?;
 
-        let submission = self.current_submission();
+        let submission = current_submission!(self);
 
         let mut submit_infos = SmallVec::<[_; 4]>::with_capacity(self.per_submits.len());
         submit_infos.extend(self.per_submits.iter().map(|per_submit| {
@@ -1451,39 +1449,57 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
             .map_err(VulkanError::from)
         })?;
 
+        drop(submit_infos);
+        self.per_submits.clear();
+
         *self.submission_count += 1;
 
         Ok(())
     }
 
     unsafe fn flush_current_command_buffer(&mut self) -> Result {
-        if let Some(command_buffer) = self.current_command_buffer.take() {
-            let command_buffer = unsafe { command_buffer.end() }?;
-            self.current_per_submit
-                .command_buffers
-                .push(command_buffer.handle());
-            self.death_row.push(Arc::new(command_buffer));
-            self.current_command_buffer = Some(create_command_buffer(
-                self.resource_map,
-                &self.current_submission().queue,
-            )?);
-        }
+        let current_command_buffer = self.current_command_buffer.take().unwrap();
+        let command_buffer = unsafe { current_command_buffer.end() }?;
+        self.current_per_submit
+            .command_buffers
+            .push(command_buffer.handle());
+        self.death_row.push(Arc::new(command_buffer));
 
         Ok(())
     }
 }
 
+macro_rules! current_submission {
+    ($state:expr) => {
+        &$state.executable.submissions[*$state.submission_count]
+    };
+}
+use current_submission;
+
+macro_rules! current_command_buffer {
+    ($state:expr) => {{
+        if $state.current_command_buffer.is_none() {
+            $state.current_command_buffer = Some(create_command_buffer(
+                $state.resource_map,
+                &current_submission!($state).queue,
+            )?);
+        }
+
+        $state.current_command_buffer.as_mut().unwrap()
+    }};
+}
+use current_command_buffer;
+
 fn create_command_buffer(
     resource_map: &ResourceMap<'_>,
     queue: &Queue,
 ) -> Result<RawRecordingCommandBuffer, VulkanError> {
+    let allocator = resource_map.physical_resources.command_buffer_allocator();
+
     // SAFETY: The parameters are valid.
     unsafe {
         RawRecordingCommandBuffer::new_unchecked(
-            resource_map
-                .physical_resources
-                .command_buffer_allocator()
-                .clone(),
+            allocator.clone(),
             queue.queue_family_index(),
             CommandBufferLevel::Primary,
             CommandBufferBeginInfo {
@@ -1965,6 +1981,11 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn buffer_unchecked(&self, id: Id<Buffer>) -> &BufferState {
+        #[cfg(debug_assertions)]
+        if self.virtual_resources.get(id.erase()).is_err() {
+            std::process::abort();
+        }
+
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
 
@@ -1980,6 +2001,11 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn image_unchecked(&self, id: Id<Image>) -> &ImageState {
+        #[cfg(debug_assertions)]
+        if self.virtual_resources.get(id.erase()).is_err() {
+            std::process::abort();
+        }
+
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
 
@@ -1998,6 +2024,11 @@ impl<'a> ResourceMap<'a> {
     }
 
     pub(crate) unsafe fn swapchain_unchecked(&self, id: Id<Swapchain>) -> &SwapchainState {
+        #[cfg(debug_assertions)]
+        if self.virtual_resources.get(id.erase()).is_err() {
+            std::process::abort();
+        }
+
         // SAFETY: The caller must ensure that `id` is a valid virtual ID.
         let &slot = unsafe { self.map.get_unchecked(id.index() as usize) };
 
