@@ -1576,7 +1576,8 @@ impl ImageSubresourceRange {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::ImageSubresourceRange {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ImageSubresourceRange {
         let &Self {
             aspects,
             ref mip_levels,

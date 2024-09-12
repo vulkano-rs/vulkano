@@ -10,8 +10,6 @@ use crate::{
     DebugWrapper, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError,
     VulkanObject,
 };
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 use raw_window_handle::{
     HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
@@ -37,10 +35,6 @@ pub struct Surface {
     id: NonZeroU64,
     api: SurfaceApi,
     object: Option<Arc<dyn Any + Send + Sync>>,
-    // FIXME: This field is never set.
-    #[cfg(target_os = "ios")]
-    metal_layer: IOSMetalLayer,
-
     // Data queried by the user at runtime, cached for faster lookups.
     // This is stored here rather than on `PhysicalDevice` to ensure that it's freed when the
     // `Surface` is destroyed.
@@ -63,9 +57,8 @@ impl Surface {
         };
         match event_loop.display_handle()?.as_raw() {
             RawDisplayHandle::Android(_) => extensions.khr_android_surface = true,
-            // FIXME: `mvk_macos_surface` and `mvk_ios_surface` are deprecated.
-            RawDisplayHandle::AppKit(_) => extensions.mvk_macos_surface = true,
-            RawDisplayHandle::UiKit(_) => extensions.mvk_ios_surface = true,
+            RawDisplayHandle::AppKit(_) => extensions.ext_metal_surface = true,
+            RawDisplayHandle::UiKit(_) => extensions.ext_metal_surface = true,
             RawDisplayHandle::Windows(_) => extensions.khr_win32_surface = true,
             RawDisplayHandle::Wayland(_) => extensions.khr_wayland_surface = true,
             RawDisplayHandle::Xcb(_) => extensions.khr_xcb_surface = true,
@@ -108,19 +101,19 @@ impl Surface {
             (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => {
                 Self::from_android(instance, window.a_native_window.as_ptr().cast(), None)
             }
-            #[cfg(target_os = "macos")]
-            (RawWindowHandle::AppKit(window), RawDisplayHandle::AppKit(_display)) => {
-                // Ensure the layer is `CAMetalLayer`.
-                let metal_layer = get_metal_layer_macos(window.ns_view.as_ptr().cast());
+            #[cfg(target_vendor = "apple")]
+            (RawWindowHandle::AppKit(handle), _) => {
+                let layer = raw_window_metal::Layer::from_ns_view(handle.ns_view);
 
-                Self::from_mac_os(instance, metal_layer.cast(), None)
+                // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
+                Self::from_metal(instance, layer.as_ptr().as_ptr(), None)
             }
-            #[cfg(target_os = "ios")]
-            (RawWindowHandle::UiKit(window), RawDisplayHandle::UiKit(_display)) => {
-                // Ensure the layer is `CAMetalLayer`.
-                let metal_layer = get_metal_layer_ios(window.ui_view.as_ptr().cast());
+            #[cfg(target_vendor = "apple")]
+            (RawWindowHandle::UiKit(handle), _) => {
+                let layer = raw_window_metal::Layer::from_ui_view(handle.ui_view);
 
-                Self::from_ios(instance, metal_layer.render_layer.0.cast(), None)
+                // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
+                Self::from_metal(instance, layer.as_ptr().as_ptr(), None)
             }
             (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => {
                 Self::from_wayland(
@@ -178,8 +171,6 @@ impl Surface {
             id: Self::next_id(),
             api,
             object,
-            #[cfg(target_os = "ios")]
-            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
             surface_formats: OnceCache::new(),
             surface_present_modes: OnceCache::new(),
             surface_support: OnceCache::new(),
@@ -837,13 +828,20 @@ impl Surface {
         )))
     }
 
-    /// Creates a `Surface` from a Metal `CAMetalLayer`.
+    /// Create a `Surface` from a [`CAMetalLayer`].
+    ///
+    /// If you want to create this from a `NSView` or `UIView`, it is
+    /// recommended that you use the `raw-window-metal` crate to get access to
+    /// a layer without overwriting the view's layer.
+    ///
+    /// [`CAMetalLayer`]: https://developer.apple.com/documentation/quartzcore/cametallayer
     ///
     /// # Safety
     ///
-    /// - `layer` must be a valid Metal `CAMetalLayer` handle.
-    /// - The object referred to by `layer` must outlive the created `Surface`. The `object`
-    ///   parameter can be used to ensure this.
+    /// `layer` must point to a valid, initialized, non-NULL `CAMetalLayer`.
+    ///
+    /// The surface will retain the layer internally, so you do not need to
+    /// keep the source from where this came from alive.
     pub unsafe fn from_metal(
         instance: Arc<Instance>,
         layer: *const ash::vk::CAMetalLayer,
@@ -856,7 +854,7 @@ impl Surface {
 
     fn validate_from_metal(
         instance: &Instance,
-        _layer: *const ash::vk::CAMetalLayer,
+        layer: *const ash::vk::CAMetalLayer,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().ext_metal_surface {
             return Err(Box::new(ValidationError {
@@ -866,6 +864,8 @@ impl Surface {
                 ..Default::default()
             }));
         }
+
+        assert!(!layer.is_null(), "CAMetalLayer must not be NULL");
 
         Ok(())
     }
@@ -1386,24 +1386,6 @@ impl Surface {
     pub fn object(&self) -> Option<&Arc<dyn Any + Send + Sync>> {
         self.object.as_ref()
     }
-
-    /// Resizes the sublayer bounds on iOS.
-    /// It may not be necessary if original window size matches device's, but often it does not.
-    /// Thus this should be called after a resize has occurred and swapchain has been recreated.
-    ///
-    /// On iOS, we've created CAMetalLayer as a sublayer. However, when the view changes size,
-    /// its sublayers are not automatically resized, and we must resize
-    /// it here.
-    #[cfg(target_os = "ios")]
-    #[inline]
-    pub unsafe fn update_ios_sublayer_on_resize(&self) {
-        use core_graphics_types::geometry::CGRect;
-        let class = class!(CAMetalLayer);
-        let main_layer: *mut Object = self.metal_layer.main_layer.0;
-        let bounds: CGRect = msg_send![main_layer, bounds];
-        let render_layer: *mut Object = self.metal_layer.render_layer.0;
-        let () = msg_send![render_layer, setFrame: bounds];
-    }
 }
 
 impl Drop for Surface {
@@ -1457,52 +1439,6 @@ impl Debug for Surface {
 }
 
 impl_id_counter!(Surface);
-
-/// Get sublayer from iOS main view (ui_view). The sublayer is created as `CAMetalLayer`.
-#[cfg(target_os = "ios")]
-unsafe fn get_metal_layer_ios(ui_view: *mut c_void) -> IOSMetalLayer {
-    use core_graphics_types::{base::CGFloat, geometry::CGRect};
-
-    let view: *mut Object = ui_view.cast();
-    let main_layer: *mut Object = msg_send![view, layer];
-    let class = class!(CAMetalLayer);
-    let new_layer: *mut Object = msg_send![class, new];
-    let frame: CGRect = msg_send![main_layer, bounds];
-    let () = msg_send![new_layer, setFrame: frame];
-    let () = msg_send![main_layer, addSublayer: new_layer];
-    let screen: *mut Object = msg_send![class!(UIScreen), mainScreen];
-    let scale_factor: CGFloat = msg_send![screen, nativeScale];
-    let () = msg_send![view, setContentScaleFactor: scale_factor];
-    IOSMetalLayer::new(view, new_layer)
-}
-
-/// Get (and set) `CAMetalLayer` to `ns_view`. This is necessary to be able to render on Mac.
-#[cfg(target_os = "macos")]
-unsafe fn get_metal_layer_macos(ns_view: *mut c_void) -> *mut Object {
-    use core_graphics_types::base::CGFloat;
-    use objc::runtime::{BOOL, NO, YES};
-
-    let view: *mut Object = ns_view.cast();
-    let main_layer: *mut Object = msg_send![view, layer];
-    let class = class!(CAMetalLayer);
-    let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
-    if is_valid_layer == NO {
-        let new_layer: *mut Object = msg_send![class, new];
-        let () = msg_send![new_layer, setEdgeAntialiasingMask: 0];
-        let () = msg_send![new_layer, setPresentsWithTransaction: false];
-        let () = msg_send![new_layer, removeAllAnimations];
-        let () = msg_send![view, setLayer: new_layer];
-        let () = msg_send![view, setWantsLayer: YES];
-        let window: *mut Object = msg_send![view, window];
-        if !window.is_null() {
-            let scale_factor: CGFloat = msg_send![window, backingScaleFactor];
-            let () = msg_send![new_layer, setContentsScale: scale_factor];
-        }
-        new_layer
-    } else {
-        main_layer
-    }
-}
 
 /// Parameters to create a surface from a display mode and plane.
 #[derive(Clone, Debug)]
@@ -1743,8 +1679,8 @@ impl TryFrom<RawWindowHandle> for SurfaceApi {
 
     fn try_from(handle: RawWindowHandle) -> Result<Self, Self::Error> {
         match handle {
-            RawWindowHandle::UiKit(_) => Ok(SurfaceApi::Ios),
-            RawWindowHandle::AppKit(_) => Ok(SurfaceApi::MacOs),
+            RawWindowHandle::UiKit(_) => Ok(SurfaceApi::Metal),
+            RawWindowHandle::AppKit(_) => Ok(SurfaceApi::Metal),
             RawWindowHandle::Orbital(_) => Err(()),
             RawWindowHandle::Xlib(_) => Ok(SurfaceApi::Xlib),
             RawWindowHandle::Xcb(_) => Ok(SurfaceApi::Xcb),
@@ -2263,39 +2199,6 @@ pub(crate) struct SurfaceInfo2ExtensionsVk {
         Option<ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT<'static>>,
     pub(crate) present_mode_vk: Option<ash::vk::SurfacePresentModeEXT<'static>>,
 }
-
-#[cfg(target_os = "ios")]
-struct LayerHandle(*mut Object);
-
-#[cfg(target_os = "ios")]
-unsafe impl Send for LayerHandle {}
-
-#[cfg(target_os = "ios")]
-unsafe impl Sync for LayerHandle {}
-
-/// Represents the metal layer for IOS
-#[cfg(target_os = "ios")]
-pub struct IOSMetalLayer {
-    main_layer: LayerHandle,
-    render_layer: LayerHandle,
-}
-
-#[cfg(target_os = "ios")]
-impl IOSMetalLayer {
-    #[inline]
-    pub fn new(main_layer: *mut Object, render_layer: *mut Object) -> Self {
-        Self {
-            main_layer: LayerHandle(main_layer),
-            render_layer: LayerHandle(render_layer),
-        }
-    }
-}
-
-#[cfg(target_os = "ios")]
-unsafe impl Send for IOSMetalLayer {}
-
-#[cfg(target_os = "ios")]
-unsafe impl Sync for IOSMetalLayer {}
 
 /// The capabilities of a surface when used by a physical device.
 ///

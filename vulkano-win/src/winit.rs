@@ -22,8 +22,7 @@ pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
         khr_wayland_surface: true,
         khr_android_surface: true,
         khr_win32_surface: true,
-        mvk_ios_surface: true,
-        mvk_macos_surface: true,
+        ext_metal_surface: true,
         khr_get_physical_device_properties2: true,
         khr_get_surface_capabilities2: true,
         ..InstanceExtensions::empty()
@@ -119,12 +118,7 @@ unsafe fn winit_to_surface(
     }
 }
 
-#[cfg(all(
-    unix,
-    not(target_os = "android"),
-    not(target_os = "macos"),
-    not(target_os = "ios")
-))]
+#[cfg(all(unix, not(target_os = "android"), target_vendor = "apple",))]
 unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
@@ -157,68 +151,15 @@ unsafe fn winit_to_surface(
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-use objc::{class, msg_send, runtime::Object, sel, sel_impl};
-
-/// Get (and set) `CAMetalLayer` to ns_view.
-/// This is necessary to be able to render on Mac.
-#[cfg(target_os = "macos")]
-pub(crate) unsafe fn get_metal_layer_macos(view: *mut std::ffi::c_void) -> *mut Object {
-    use core_graphics_types::base::CGFloat;
-    use objc::runtime::YES;
-    use objc::runtime::{BOOL, NO};
-
-    let view: *mut Object = std::mem::transmute(view);
-    let main_layer: *mut Object = msg_send![view, layer];
-    let class = class!(CAMetalLayer);
-    let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
-    if is_valid_layer == NO {
-        let new_layer: *mut Object = msg_send![class, new];
-        let () = msg_send![new_layer, setEdgeAntialiasingMask: 0];
-        let () = msg_send![new_layer, setPresentsWithTransaction: false];
-        let () = msg_send![new_layer, removeAllAnimations];
-        let () = msg_send![view, setLayer: new_layer];
-        let () = msg_send![view, setWantsLayer: YES];
-        let window: *mut Object = msg_send![view, window];
-        if !window.is_null() {
-            let scale_factor: CGFloat = msg_send![window, backingScaleFactor];
-            let () = msg_send![new_layer, setContentsScale: scale_factor];
-        }
-        new_layer
-    } else {
-        main_layer
-    }
-}
-
 #[cfg(target_os = "macos")]
 unsafe fn winit_to_surface(
     instance: Arc<Instance>,
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::macos::WindowExtMacOS;
-    let metal_layer = get_metal_layer_macos(window.ns_view());
-    Surface::from_mac_os(instance, metal_layer as _, Some(window))
-}
-
-#[cfg(target_os = "ios")]
-use vulkano::swapchain::IOSMetalLayer;
-
-/// Get sublayer from iOS main view (ui_view). The sublayer is created as CAMetalLayer
-#[cfg(target_os = "ios")]
-pub(crate) unsafe fn get_metal_layer_ios(view: *mut std::ffi::c_void) -> IOSMetalLayer {
-    use core_graphics_types::{base::CGFloat, geometry::CGRect};
-
-    let view: *mut Object = std::mem::transmute(view);
-    let main_layer: *mut Object = msg_send![view, layer];
-    let class = class!(CAMetalLayer);
-    let new_layer: *mut Object = msg_send![class, new];
-    let frame: CGRect = msg_send![main_layer, bounds];
-    let () = msg_send![new_layer, setFrame: frame];
-    let () = msg_send![main_layer, addSublayer: new_layer];
-    let screen: *mut Object = msg_send![class!(UIScreen), mainScreen];
-    let scale_factor: CGFloat = msg_send![screen, nativeScale];
-    let () = msg_send![view, setContentScaleFactor: scale_factor];
-    IOSMetalLayer::new(view, new_layer)
+    let view = std::ptr::NonNull::new(window.ns_view()).unwrap();
+    let layer = raw_window_metal::Layer::from_ns_view(view);
+    Surface::from_metal(instance, layer.as_ptr(), Some(window))
 }
 
 #[cfg(target_os = "ios")]
@@ -227,8 +168,9 @@ unsafe fn winit_to_surface(
     window: Arc<Window>,
 ) -> Result<Arc<Surface>, Validated<VulkanError>> {
     use winit::platform::ios::WindowExtIOS;
-    let metal_layer = get_metal_layer_ios(window.ui_view());
-    Surface::from_ios(instance, metal_layer.render_layer.0 as _, Some(window))
+    let view = std::ptr::NonNull::new(window.ui_view()).unwrap();
+    let layer = raw_window_metal::Layer::from_ui_view(view);
+    Surface::from_metal(instance, layer.as_ptr(), Some(window))
 }
 
 #[cfg(target_os = "windows")]

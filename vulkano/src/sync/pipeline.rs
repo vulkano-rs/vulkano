@@ -512,33 +512,33 @@ vulkan_bitflags! {
 
     /// A set of memory access types that are included in a memory dependency.
     AccessFlags impl {
-        // TODO: use the Vulkano associated constants once | becomes const for custom types.
-        const WRITES: AccessFlags = AccessFlags(
-            ash::vk::AccessFlags2::SHADER_WRITE.as_raw()
-            | ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE.as_raw()
-            | ash::vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw()
-            | ash::vk::AccessFlags2::TRANSFER_WRITE.as_raw()
-            | ash::vk::AccessFlags2::HOST_WRITE.as_raw()
-            | ash::vk::AccessFlags2::MEMORY_WRITE.as_raw()
-            | ash::vk::AccessFlags2::SHADER_STORAGE_WRITE.as_raw()
-            | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR.as_raw()
-            | ash::vk::AccessFlags2::VIDEO_ENCODE_WRITE_KHR.as_raw()
-            | ash::vk::AccessFlags2::TRANSFORM_FEEDBACK_WRITE_EXT.as_raw()
-            | ash::vk::AccessFlags2::TRANSFORM_FEEDBACK_COUNTER_WRITE_EXT.as_raw()
-            | ash::vk::AccessFlags2::COMMAND_PREPROCESS_WRITE_NV.as_raw()
-            | ash::vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR.as_raw()
-        );
+        const WRITES: AccessFlags = AccessFlags::SHADER_WRITE
+            .union(AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .union(AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE)
+            .union(AccessFlags::TRANSFER_WRITE)
+            .union(AccessFlags::HOST_WRITE)
+            .union(AccessFlags::MEMORY_WRITE)
+            .union(AccessFlags::SHADER_STORAGE_WRITE)
+            .union(AccessFlags::VIDEO_DECODE_WRITE)
+            .union(AccessFlags::VIDEO_ENCODE_WRITE)
+            .union(AccessFlags::TRANSFORM_FEEDBACK_WRITE)
+            .union(AccessFlags::TRANSFORM_FEEDBACK_COUNTER_WRITE)
+            .union(AccessFlags::COMMAND_PREPROCESS_WRITE)
+            .union(AccessFlags::ACCELERATION_STRUCTURE_WRITE);
 
-        pub(crate) fn contains_reads(self) -> bool {
-            !(self - Self::WRITES).is_empty()
+        /// Returns whether `self` contains any read flags.
+        #[inline]
+        pub const fn contains_reads(self) -> bool {
+            !self.difference(Self::WRITES).is_empty()
         }
 
-        pub(crate) fn contains_writes(self) -> bool {
+        /// Returns whether `self` contains any write flags.
+        #[inline]
+        pub const fn contains_writes(self) -> bool {
             self.intersects(Self::WRITES)
         }
 
-        /// Returns whether `self` contains stages that are only available in
-        /// `VkAccessFlagBits2`.
+        /// Returns whether `self` contains flags that are only available in `VkAccessFlagBits2`.
         pub(crate) fn contains_flags2(self) -> bool {
             !(self
                 - (AccessFlags::INDIRECT_COMMAND_READ

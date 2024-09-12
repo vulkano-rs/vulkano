@@ -76,6 +76,18 @@ where
 }
 
 impl Sharing<SmallVec<[u32; 4]>> {
+    /// Returns `true` if `self` is the `Exclusive` variant.
+    #[inline]
+    pub fn is_exclusive(&self) -> bool {
+        matches!(self, Self::Exclusive)
+    }
+
+    /// Returns `true` if `self` is the `Concurrent` variant.
+    #[inline]
+    pub fn is_concurrent(&self) -> bool {
+        matches!(self, Self::Concurrent(..))
+    }
+
     pub(crate) fn to_vk(&self) -> (ash::vk::SharingMode, &[u32]) {
         match self {
             Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),

@@ -147,10 +147,8 @@ impl RecordingCommandBuffer {
     ///     `None`.
     /// - [`transform_offset`] must be a multiple of 16.
     /// - The size of [`vertex_data`] must be at least<br/> [`primitive_offset`] +
-    ///   ([`first_vertex`]
-    ///   + 3 * [`primitive_count`]) * [`vertex_stride`] <br/>if [`index_data`] is `None`, and as
-    ///     in
-    ///   [`build_acceleration_structure`] if [`index_data`] is `Some`.
+    ///   ([`first_vertex`] + 3 * [`primitive_count`]) * [`vertex_stride`] <br/>if [`index_data`]
+    ///   is `None`, and as in [`build_acceleration_structure`] if [`index_data`] is `Some`.
     /// - The size of [`index_data`] must be at least<br/> [`primitive_offset`] + 3 *
     ///   [`primitive_count`] * [`index_data.index_type().size()`].
     /// - The size of [`transform_data`] must be at least<br/> [`transform_offset`] +

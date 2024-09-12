@@ -68,13 +68,14 @@ contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkan
 | Project Name | Description |
 | ------------ | ----------- |
 | [Basalt](https://github.com/AustinJ235/basalt) | GUI framework for Desktop applications |
-| [Ferret](https://github.com/Rua/ferret) | Doom-compatible game engine |
-| [Sandbox](https://github.com/hakolao/sandbox) | 2D Pixel Physics Simulator |
 | [Egui Winit Vulkano](https://github.com/hakolao/egui_winit_vulkano) | Vulkano integration with Egui |
-| [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
+| [Ferret](https://github.com/Rua/ferret) | Doom-compatible game engine |
 | [Korangar](https://github.com/vE5li/korangar) | A Vulkan based Ragnarok Online client |
 | [Krnl](https://github.com/charles-r-earp/krnl) | Safe, portable, high performance compute (GPGPU) kernels. |
+| [Sandbox](https://github.com/hakolao/sandbox) | 2D Pixel Physics Simulator |
+| [Steel](https://github.com/SSSxCCC/steel) | The Steel Game Engine. |
 | [Vera](https://github.com/Coddeus/vera) | Animation engine scripted in Rust. |
+| [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
 
 We would love to help you keep your project in sync with the most recent changes in Vulkano
 if you give us feedback by adding your project to this list.
@@ -154,7 +155,7 @@ Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compi
 Note that in general vulkano does **not** require you to install the official Vulkan SDK. This is
 not something specific to vulkano (you don't need the SDK to write programs that use Vulkan, even
 without vulkano), but many people are unaware of that and install the SDK thinking that it is
-required. However, macOS and iOS platforms do require a little more Vulkan setup since it is not
+required. However, macOS, iOS and tvOS platforms do require a little more Vulkan setup since it is not
 natively supported. See below for more details.
 
 Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys crate, the following tools must be installed and available on `PATH`:
@@ -202,17 +203,16 @@ On arch based system
 sudo pacman -Sy base-devel git python cmake vulkan-devel --noconfirm
 ```
 
-### macOS and iOS Specific Setup
+### macOS, iOS and tvOS Specific Setup
 
-Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
-an open-source Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
-and iOS platforms.
+Vulkan is not natively supported by macOS, iOS and tvOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
+an open-source Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS, iOS and tvOS platforms.
 
 The easiest way to get vulkano up and running with MoltenVK is to install the
 [Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). There are [installation instructions](https://vulkan.lunarg.com/doc/sdk/latest/mac/getting_started.html) on the LunarG website.
 
-On iOS, vulkano links directly to the MoltenVK framework. There is nothing else to do besides
-installing it. Note that the Vulkan SDK for macOS also comes with the iOS framework.
+On iOS and tvOS, vulkano links directly to the MoltenVK framework. There is nothing else to do besides
+installing it. Note that the Vulkan SDK for macOS also comes with the framework for iOS and tvOS.
 
 ## License
 

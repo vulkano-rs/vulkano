@@ -319,7 +319,10 @@ impl ResourceMemory {
         }
     }
 
-    pub(crate) fn atom_size(&self) -> Option<DeviceAlignment> {
+    // TODO: Expose (in a better way).
+    #[doc(hidden)]
+    #[inline]
+    pub fn atom_size(&self) -> Option<DeviceAlignment> {
         let memory = self.device_memory();
 
         (!memory.is_coherent()).then_some(memory.atom_size())

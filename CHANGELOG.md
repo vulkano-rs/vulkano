@@ -13,7 +13,7 @@
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
 - [winit](https://crates.io/crates/winit) 0.29
 - [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
-- Rust version: 1.72.0
+- Rust version: 1.75.0
 
 ### Breaking changes
 
@@ -56,6 +56,8 @@ Changes to descriptor set allocation:
 Changes to `Surface`:
 - `Surface::required_extensions` now returns a result.
 - `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
+- `Surface::update_ios_sublayer_on_resize` was removed as it is no longer necessary.
+- `Surface::from_window[_ref]` was changed to use `VK_EXT_metal_surface` internally on macOS and iOS.
 
 Changes to surface creation and support functions:
 - Where handles to foreign window system objects are passed, Vulkano no longer takes a generic pointer, but takes the same pointer type that Ash does.
@@ -139,6 +141,11 @@ Other:
 - Added `GenericMemoryAllocator::pools` for introspection of memory allocations, along with `DeviceMemoryPool`, `DeviceMemoryBlocks`, `DeviceMemoryBlock` and `Suballocator::suballocations`.
 - Added `ResourceMemory::from_device_memory_unchecked`.
 - Added `DescriptorSet::invalidate()` to make vulkano forget about resources that bound to a descriptor_set, so they can be freed.
+- Added `memory::allocator::{align_down, align_up}`.
+- Added `Sharing::{is_exclusive,is_concurrent}`.
+- Added `AccessFlags::{contains_reads,contains_writes}`.
+- Added `PhysicalDevice::presentation_support` for determining presentation support to the surface of any window of a given event loop.
+- Added support for tvOS.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
@@ -159,6 +166,10 @@ Other:
 - Fix UB in debug messenger when driver reports null pointers for empty arrays.
 - `FreeListAllocator` not giving out suballocations that are free and of suitable size/alignment in a certain edge case.
 - Fixed descriptor sets with `UPDATE_AFTER_BIND` or `PARTIALLY_BOUND` being wrongly validated on bind.
+- Fixed non-default image view usage being ignored.
+- Fixed an off-by-one error in `SubpassDescription::validate`.
+- Made resizing smooth on macOS and iOS, and let it interoperate better with windowing libraries.
+- Fixed compiling on iOS.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)

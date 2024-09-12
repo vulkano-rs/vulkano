@@ -491,7 +491,7 @@ impl<T> Subbuffer<T> {
 impl<T> Subbuffer<[T]> {
     /// Returns the number of elements in the slice.
     pub fn len(&self) -> DeviceSize {
-        debug_assert!(self.size % size_of::<T>() as DeviceSize == 0);
+        debug_assert_eq!(self.size % size_of::<T>() as DeviceSize, 0);
 
         self.size / size_of::<T>() as DeviceSize
     }
@@ -850,16 +850,11 @@ unsafe impl<T> BufferContents for T
 where
     T: AnyBitPattern + Send + Sync,
 {
-    const LAYOUT: BufferContentsLayout =
-        if let Some(layout) = BufferContentsLayout::from_sized(Layout::new::<T>()) {
-            layout
-        } else {
-            panic!("zero-sized types are not valid buffer contents");
-        };
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout::from_sized(Layout::new::<T>());
 
     #[inline(always)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
-        debug_assert!(slice.len() == size_of::<T>());
+        debug_assert_eq!(slice.len(), size_of::<T>());
 
         <*mut [u8]>::cast::<T>(slice.as_ptr())
     }
@@ -869,16 +864,13 @@ unsafe impl<T> BufferContents for [T]
 where
     T: BufferContents,
 {
-    const LAYOUT: BufferContentsLayout = BufferContentsLayout(BufferContentsLayoutInner::Unsized {
-        head_layout: None,
-        element_layout: T::LAYOUT.unwrap_sized(),
-    });
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout::from_slice(Layout::new::<T>());
 
     #[inline(always)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
         let data = <*mut [u8]>::cast::<T>(slice.as_ptr());
         let len = slice.len() / size_of::<T>();
-        debug_assert!(slice.len() % size_of::<T>() == 0);
+        debug_assert_eq!(slice.len() % size_of::<T>(), 0);
 
         ptr::slice_from_raw_parts_mut(data, len)
     }
@@ -981,116 +973,112 @@ impl BufferContentsLayout {
     /// derive macro only.
     #[doc(hidden)]
     #[inline]
-    pub const fn from_sized(sized: Layout) -> Option<Self> {
+    pub const fn from_sized(sized: Layout) -> Self {
         assert!(
             sized.align() <= 64,
             "types with alignments above 64 are not valid buffer contents",
         );
 
         if let Ok(sized) = DeviceLayout::from_layout(sized) {
-            Some(Self(BufferContentsLayoutInner::Sized(sized)))
+            Self(BufferContentsLayoutInner::Sized(sized))
         } else {
-            None
+            unreachable!()
         }
     }
 
-    /// Creates a new `BufferContentsLayout` from a head and element layout. This is intended for
-    /// use by the derive macro only.
+    /// Creates a new `BufferContentsLayout` from an element layout. This is intended for use by
+    /// the derive macro only.
     #[doc(hidden)]
     #[inline]
-    pub const fn from_head_element_layout(
-        head_layout: Layout,
-        element_layout: Layout,
-    ) -> Option<Self> {
-        if head_layout.align() > 64 || element_layout.align() > 64 {
-            panic!("types with alignments above 64 are not valid buffer contents");
-        }
-
-        // The head of a `BufferContentsLayout` can be zero-sized.
-        // TODO: Replace with `Result::ok` once its constness is stabilized.
-        let head_layout = if let Ok(head_layout) = DeviceLayout::from_layout(head_layout) {
-            Some(head_layout)
-        } else {
-            None
-        };
-
-        if let Ok(element_layout) = DeviceLayout::from_layout(element_layout) {
-            Some(Self(BufferContentsLayoutInner::Unsized {
-                head_layout,
-                element_layout,
-            }))
-        } else {
-            None
-        }
-    }
-
-    /// Extends the given `previous` [`Layout`] by `self`. This is intended for use by the derive
-    /// macro only.
-    #[doc(hidden)]
-    #[inline]
-    pub const fn extend_from_layout(self, previous: &Layout) -> Option<Self> {
+    pub const fn from_slice(element_layout: Layout) -> Self {
         assert!(
-            previous.align() <= 64,
+            element_layout.align() <= 64,
             "types with alignments above 64 are not valid buffer contents",
         );
 
-        match self.0 {
-            BufferContentsLayoutInner::Sized(sized) => {
-                let (sized, _) = try_opt!(sized.extend_from_layout(previous));
-
-                Some(Self(BufferContentsLayoutInner::Sized(sized)))
-            }
-            BufferContentsLayoutInner::Unsized {
+        if let Ok(element_layout) = DeviceLayout::from_layout(element_layout) {
+            Self(BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout,
-            } => {
-                // The head of a `BufferContentsLayout` can be zero-sized.
-                // TODO: Replace with `Result::ok` once its constness is stabilized.
-                let head_layout = if let Ok(head_layout) = DeviceLayout::from_layout(*previous) {
-                    Some(head_layout)
-                } else {
-                    None
-                };
+            })
+        } else {
+            unreachable!()
+        }
+    }
 
-                Some(Self(BufferContentsLayoutInner::Unsized {
-                    head_layout,
-                    element_layout,
-                }))
-            }
-            BufferContentsLayoutInner::Unsized {
-                head_layout: Some(head_layout),
-                element_layout,
-            } => {
-                let (head_layout, _) = try_opt!(head_layout.extend_from_layout(previous));
-
-                Some(Self(BufferContentsLayoutInner::Unsized {
-                    head_layout: Some(head_layout),
-                    element_layout,
-                }))
+    /// Creates a new `BufferContentsLayout` from the given field layouts. This is intended for use
+    /// by the derive macro only.
+    #[doc(hidden)]
+    #[inline]
+    pub const fn from_field_layouts(field_layouts: &[Layout], last_field_layout: Self) -> Self {
+        const fn extend(previous: DeviceLayout, next: DeviceLayout) -> DeviceLayout {
+            match previous.extend(next) {
+                Some((layout, _)) => layout,
+                None => unreachable!(),
             }
         }
+
+        let mut head_layout = None;
+        let mut i = 0;
+
+        while i < field_layouts.len() {
+            head_layout = match DeviceLayout::from_layout(field_layouts[i]) {
+                Ok(field_layout) => Some(match head_layout {
+                    Some(layout) => extend(layout, field_layout),
+                    None => field_layout,
+                }),
+                Err(_) => unreachable!(),
+            };
+
+            i += 1;
+        }
+
+        let layout = Self(match last_field_layout.0 {
+            BufferContentsLayoutInner::Sized(field_layout) => {
+                BufferContentsLayoutInner::Sized(match head_layout {
+                    Some(layout) => extend(layout, field_layout),
+                    None => field_layout,
+                })
+            }
+            BufferContentsLayoutInner::Unsized {
+                head_layout: field_head_layout,
+                element_layout,
+            } => BufferContentsLayoutInner::Unsized {
+                head_layout: match (head_layout, field_head_layout) {
+                    (Some(layout), Some(field_layout)) => Some(extend(layout, field_layout)),
+                    (Some(layout), None) => Some(layout),
+                    (None, Some(field_layout)) => Some(field_layout),
+                    (None, None) => None,
+                },
+                element_layout,
+            },
+        });
+
+        assert!(
+            layout.alignment().as_devicesize() <= 64,
+            "types with alignments above 64 are not valid buffer contents",
+        );
+
+        layout.pad_to_alignment()
     }
 
     /// Creates a new `BufferContentsLayout` by rounding up the size of the head to the nearest
     /// multiple of its alignment if the layout is sized, or by rounding up the size of the head to
     /// the nearest multiple of the alignment of the element type and aligning the head to the
     /// alignment of the element type if there is a sized part. Doesn't do anything if there is no
-    /// sized part. Returns [`None`] if the new head size would exceed [`DeviceLayout::MAX_SIZE`].
-    /// This is intended for use by the derive macro only.
-    #[doc(hidden)]
-    #[inline]
-    pub const fn pad_to_alignment(&self) -> Option<Self> {
-        match &self.0 {
-            BufferContentsLayoutInner::Sized(sized) => Some(Self(
-                BufferContentsLayoutInner::Sized(sized.pad_to_alignment()),
-            )),
+    /// sized part.
+    const fn pad_to_alignment(&self) -> Self {
+        Self(match &self.0 {
+            BufferContentsLayoutInner::Sized(sized) => {
+                BufferContentsLayoutInner::Sized(sized.pad_to_alignment())
+            }
             BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout,
-            } => Some(Self(BufferContentsLayoutInner::Unsized {
+            } => BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout: *element_layout,
-            })),
+            },
             BufferContentsLayoutInner::Unsized {
                 head_layout: Some(head_layout),
                 element_layout,
@@ -1129,15 +1117,15 @@ impl BufferContentsLayout {
                     DeviceAlignment::max(head_layout.alignment(), element_layout.alignment());
 
                 if let Some(head_layout) = DeviceLayout::new(padded_head_size, alignment) {
-                    Some(Self(BufferContentsLayoutInner::Unsized {
+                    BufferContentsLayoutInner::Unsized {
                         head_layout: Some(head_layout),
                         element_layout: *element_layout,
-                    }))
+                    }
                 } else {
-                    None
+                    unreachable!()
                 }
             }
-        }
+        })
     }
 
     fn is_sized(&self) -> bool {
@@ -1189,7 +1177,7 @@ mod tests {
 
         #[derive(BufferContents)]
         #[repr(C)]
-        struct Composite1(Test1, [f32; 10], Test1);
+        struct Composite1(Test1, [f32; 9], Test1);
 
         assert_eq!(
             Composite1::LAYOUT.head_size() as usize,
@@ -1220,7 +1208,7 @@ mod tests {
 
         #[derive(BufferContents)]
         #[repr(C)]
-        struct Composite2(Test1, [f32; 10], Test2);
+        struct Composite2(Test1, [f32; 9], Test2);
 
         assert_eq!(
             Composite2::LAYOUT.head_size() as usize,
