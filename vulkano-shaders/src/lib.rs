@@ -1,6 +1,6 @@
 //! The procedural macro for vulkano's shader system.
-//! Manages the compile-time compilation of GLSL into SPIR-V and generation of associated Rust
-//! code.
+//! Manages the compile-time compilation of shader code into SPIR-V and generation of associated
+//! Rust code.
 //!
 //! # Basic usage
 //!
@@ -89,8 +89,8 @@
 //!
 //! ## `ty: "..."`
 //!
-//! This defines what shader type the given GLSL source will be compiled into. The type can be any
-//! of the following:
+//! This defines what shader type the shader source will be compiled into. The type can be any of
+//! the following:
 //!
 //! - `vertex`
 //! - `tess_ctrl`
@@ -111,12 +111,12 @@
 //!
 //! ## `src: "..."`
 //!
-//! Provides the raw GLSL source to be compiled in the form of a string. Cannot be used in
+//! Provides the raw shader source to be compiled in the form of a string. Cannot be used in
 //! conjunction with the `path` or `bytes` field.
 //!
 //! ## `path: "..."`
 //!
-//! Provides the path to the GLSL source to be compiled, relative to your `Cargo.toml`. Cannot be
+//! Provides the path to the shader source to be compiled, relative to your `Cargo.toml`. Cannot be
 //! used in conjunction with the `src` or `bytes` field.
 //!
 //! ## `bytes: "..."`
@@ -162,6 +162,11 @@
 //!
 //! Adds the given macro definitions to the pre-processor. This is equivalent to passing the
 //! `-DNAME=VALUE` argument on the command line.
+//!
+//! ## `lang: "..."`
+//!
+//! Provides the language of the shader source. Must be either `glsl` or `hlsl` (defaults to  
+//! `glsl`).
 //!
 //! ## `vulkan_version: "major.minor"` and `spirv_version: "major.minor"`
 //!
@@ -230,7 +235,7 @@ use crate::codegen::ShaderKind;
 use ahash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use shaderc::{EnvVersion, SpirvVersion};
+use shaderc::{EnvVersion, SourceLanguage, SpirvVersion};
 use std::{
     env, fs, mem,
     path::{Path, PathBuf},
@@ -380,6 +385,7 @@ struct MacroInput {
     include_directories: Vec<PathBuf>,
     macro_defines: Vec<(String, String)>,
     shaders: HashMap<String, (Option<ShaderKind>, SourceKind)>,
+    source_language: Option<SourceLanguage>,
     spirv_version: Option<SpirvVersion>,
     vulkan_version: Option<EnvVersion>,
     generate_structs: bool,
@@ -393,6 +399,7 @@ impl MacroInput {
     fn empty() -> Self {
         MacroInput {
             root_path_env: None,
+            source_language: None,
             include_directories: Vec::new(),
             macro_defines: Vec::new(),
             shaders: HashMap::default(),
@@ -411,6 +418,7 @@ impl Parse for MacroInput {
         let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
 
         let mut root_path_env = None;
+        let mut source_language = None;
         let mut include_directories = Vec::new();
         let mut macro_defines = Vec::new();
         let mut shaders = HashMap::default();
@@ -619,6 +627,18 @@ impl Parse for MacroInput {
                         }
                     }
                 }
+                "lang" => {
+                    let lit = input.parse::<LitStr>()?;
+                    if source_language.is_some() {
+                        bail!(lit, "field `lang` is already defined");
+                    }
+
+                    source_language = Some(match lit.value().as_str() {
+                        "glsl" => SourceLanguage::GLSL,
+                        "hlsl" => SourceLanguage::HLSL,
+                        lang => bail!(lit, "expected `glsl` or `hlsl`, found `{lang}`"),
+                    })
+                }
                 "vulkan_version" => {
                     let lit = input.parse::<LitStr>()?;
                     if vulkan_version.is_some() {
@@ -755,6 +775,7 @@ impl Parse for MacroInput {
                     (key, (shader_kind, shader_source.unwrap()))
                 })
                 .collect(),
+            source_language,
             vulkan_version,
             spirv_version,
             generate_structs: generate_structs.unwrap_or(true),
