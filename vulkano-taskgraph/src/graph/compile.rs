@@ -47,9 +47,9 @@ impl<W: ?Sized> TaskGraph<W> {
     /// [directed cycles]: https://en.wikipedia.org/wiki/Cycle_(graph_theory)#Directed_circuit_and_directed_cycle
     pub unsafe fn compile(
         mut self,
-        compile_info: CompileInfo,
+        compile_info: &CompileInfo<'_>,
     ) -> Result<ExecutableTaskGraph<W>, CompileError<W>> {
-        let CompileInfo {
+        let &CompileInfo {
             queues,
             present_queue,
             flight_id,
@@ -60,7 +60,7 @@ impl<W: ?Sized> TaskGraph<W> {
 
         let device = &self.device().clone();
 
-        for queue in &queues {
+        for queue in queues {
             assert_eq!(queue.device(), device);
             assert_eq!(
                 queues
@@ -86,14 +86,14 @@ impl<W: ?Sized> TaskGraph<W> {
         };
         unsafe { self.dependency_levels(&topological_order) };
         let queue_family_indices =
-            match unsafe { self.queue_family_indices(device, &queues, &topological_order) } {
+            match unsafe { self.queue_family_indices(device, queues, &topological_order) } {
                 Ok(queue_family_indices) => queue_family_indices,
                 Err(kind) => return Err(CompileError::new(self, kind)),
             };
         let mut queues_by_queue_family_index: SmallVec<[_; 8]> =
             smallvec![None; *queue_family_indices.iter().max().unwrap() as usize + 1];
 
-        for queue in &queues {
+        for &queue in queues {
             if let Some(x) =
                 queues_by_queue_family_index.get_mut(queue.queue_family_index() as usize)
             {
@@ -262,7 +262,7 @@ impl<W: ?Sized> TaskGraph<W> {
                 if should_submit {
                     let queue = queues_by_queue_family_index[task_node.queue_family_index as usize]
                         .unwrap();
-                    state.submit(queue.clone());
+                    state.submit(queue);
                     prev_submission_end = i + 1;
                     break;
                 }
@@ -278,7 +278,7 @@ impl<W: ?Sized> TaskGraph<W> {
             }
 
             state.flush_submit();
-            state.submit(state.present_queue.clone().unwrap());
+            state.submit(state.present_queue.unwrap());
         }
 
         let semaphores = match (0..semaphore_count)
@@ -304,7 +304,7 @@ impl<W: ?Sized> TaskGraph<W> {
             image_barriers: state.image_barriers,
             semaphores: RefCell::new(semaphores),
             swapchains,
-            present_queue: state.present_queue,
+            present_queue: state.present_queue.cloned(),
             last_accesses: prev_accesses,
         })
     }
@@ -447,7 +447,7 @@ impl<W: ?Sized> TaskGraph<W> {
     unsafe fn queue_family_indices(
         &mut self,
         device: &Device,
-        queues: &[Arc<Queue>],
+        queues: &[&Arc<Queue>],
         topological_order: &[NodeIndex],
     ) -> Result<SmallVec<[u32; 3]>, CompileErrorKind> {
         let queue_family_properties = device.physical_device().queue_family_properties();
@@ -625,7 +625,7 @@ struct CompileState<'a> {
     submissions: Vec<Submission>,
     buffer_barriers: Vec<super::BufferMemoryBarrier>,
     image_barriers: Vec<super::ImageMemoryBarrier>,
-    present_queue: Option<Arc<Queue>>,
+    present_queue: Option<&'a Arc<Queue>>,
     initial_buffer_barrier_range: Range<BarrierIndex>,
     initial_image_barrier_range: Range<BarrierIndex>,
     has_flushed_submit: bool,
@@ -636,7 +636,7 @@ struct CompileState<'a> {
 }
 
 impl<'a> CompileState<'a> {
-    fn new(prev_accesses: &'a mut [ResourceAccess], present_queue: Option<Arc<Queue>>) -> Self {
+    fn new(prev_accesses: &'a mut [ResourceAccess], present_queue: Option<&'a Arc<Queue>>) -> Self {
         CompileState {
             prev_accesses,
             instructions: Vec::new(),
@@ -932,7 +932,7 @@ impl<'a> CompileState<'a> {
         self.should_flush_submit = false;
     }
 
-    fn submit(&mut self, queue: Arc<Queue>) {
+    fn submit(&mut self, queue: &Arc<Queue>) {
         self.instructions.push(Instruction::Submit);
 
         let prev_instruction_range_end = self
@@ -941,7 +941,7 @@ impl<'a> CompileState<'a> {
             .map(|s| s.instruction_range.end)
             .unwrap_or(0);
         self.submissions.push(Submission {
-            queue,
+            queue: queue.clone(),
             initial_buffer_barrier_range: self.initial_buffer_barrier_range.clone(),
             initial_image_barrier_range: self.initial_image_barrier_range.clone(),
             instruction_range: prev_instruction_range_end..self.instructions.len(),
@@ -961,13 +961,13 @@ impl<W: ?Sized> ExecutableTaskGraph<W> {
 ///
 /// [compile]: TaskGraph::compile
 #[derive(Clone, Debug)]
-pub struct CompileInfo {
+pub struct CompileInfo<'a> {
     /// The queues to work with.
     ///
     /// You must supply at least one queue and all queues must be from unique queue families.
     ///
     /// The default value is empty, which must be overridden.
-    pub queues: Vec<Arc<Queue>>,
+    pub queues: &'a [&'a Arc<Queue>],
 
     /// The queue to use for swapchain presentation, if any.
     ///
@@ -977,21 +977,21 @@ pub struct CompileInfo {
     /// The default value is `None`.
     ///
     /// [`queues`]: Self::queues
-    pub present_queue: Option<Arc<Queue>>,
+    pub present_queue: Option<&'a Arc<Queue>>,
 
     /// The flight which will be executed.
     ///
     /// The default value is `Id::INVALID`, which must be overridden.
     pub flight_id: Id<Flight>,
 
-    pub _ne: vulkano::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for CompileInfo {
+impl Default for CompileInfo<'_> {
     #[inline]
     fn default() -> Self {
         CompileInfo {
-            queues: Vec::new(),
+            queues: &[],
             present_queue: None,
             flight_id: Id::INVALID,
             _ne: crate::NE,
@@ -1112,7 +1112,7 @@ mod tests {
     fn unconnected() {
         let (resources, queues) = test_queues!();
         let compile_info = CompileInfo {
-            queues,
+            queues: &queues.iter().collect::<Vec<_>>(),
             ..Default::default()
         };
 
@@ -1124,7 +1124,7 @@ mod tests {
             // ┌───┐
             // │ B │
             // └───┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 0);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
             graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1133,7 +1133,7 @@ mod tests {
                 .build();
 
             assert!(matches!(
-                unsafe { graph.compile(compile_info.clone()) },
+                unsafe { graph.compile(&compile_info) },
                 Err(CompileError {
                     kind: CompileErrorKind::Unconnected,
                     ..
@@ -1155,7 +1155,7 @@ mod tests {
             //      │  ┌───┐
             //      └─►│ D │
             //         └───┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 0);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1172,7 +1172,7 @@ mod tests {
             graph.add_edge(b, d).unwrap();
 
             assert!(matches!(
-                unsafe { graph.compile(compile_info.clone()) },
+                unsafe { graph.compile(&compile_info) },
                 Err(CompileError {
                     kind: CompileErrorKind::Unconnected,
                     ..
@@ -1190,7 +1190,7 @@ mod tests {
             // └───┘│ └───┘│ └───┘┌─►│ G │
             //      │      └──────┘┌►│   │
             //      └──────────────┘ └───┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 0);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1221,7 +1221,7 @@ mod tests {
             graph.add_edge(f, g).unwrap();
 
             assert!(matches!(
-                unsafe { graph.compile(compile_info) },
+                unsafe { graph.compile(&compile_info) },
                 Err(CompileError {
                     kind: CompileErrorKind::Unconnected,
                     ..
@@ -1234,7 +1234,7 @@ mod tests {
     fn cycle() {
         let (resources, queues) = test_queues!();
         let compile_info = CompileInfo {
-            queues,
+            queues: &queues.iter().collect::<Vec<_>>(),
             ..Default::default()
         };
 
@@ -1243,7 +1243,7 @@ mod tests {
             // ┌►│ A ├─►│ B ├─►│ C ├┐
             // │ └───┘  └───┘  └───┘│
             // └────────────────────┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 0);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1258,7 +1258,7 @@ mod tests {
             graph.add_edge(c, a).unwrap();
 
             assert!(matches!(
-                unsafe { graph.compile(compile_info.clone()) },
+                unsafe { graph.compile(&compile_info) },
                 Err(CompileError {
                     kind: CompileErrorKind::Cycle,
                     ..
@@ -1275,7 +1275,7 @@ mod tests {
             // │      └►│ D ├─►│ E ├┴►│ F ├┐
             // │        └───┘  └───┘  └───┘│
             // └───────────────────────────┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 0);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1303,7 +1303,7 @@ mod tests {
             graph.add_edge(f, a).unwrap();
 
             assert!(matches!(
-                unsafe { graph.compile(compile_info.clone()) },
+                unsafe { graph.compile(&compile_info) },
                 Err(CompileError {
                     kind: CompileErrorKind::Cycle,
                     ..
@@ -1322,7 +1322,7 @@ mod tests {
             // │     ┌►└───┘  └───┘  └───┘││
             // │     └────────────────────┘│
             // └───────────────────────────┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 0);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1351,7 +1351,7 @@ mod tests {
             graph.add_edge(f, b).unwrap();
 
             assert!(matches!(
-                unsafe { graph.compile(compile_info) },
+                unsafe { graph.compile(&compile_info) },
                 Err(CompileError {
                     kind: CompileErrorKind::Cycle,
                     ..
@@ -1364,12 +1364,12 @@ mod tests {
     fn initial_pipeline_barrier() {
         let (resources, queues) = test_queues!();
         let compile_info = CompileInfo {
-            queues,
+            queues: &queues.iter().collect::<Vec<_>>(),
             ..Default::default()
         };
 
         {
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let buffer = graph.add_buffer(&BufferCreateInfo::default());
             let image = graph.add_image(&ImageCreateInfo::default());
             let node = graph
@@ -1382,7 +1382,7 @@ mod tests {
                 )
                 .build();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             assert_matches_instructions!(
                 graph,
@@ -1429,7 +1429,7 @@ mod tests {
         }
 
         let compile_info = CompileInfo {
-            queues,
+            queues: &queues.iter().collect::<Vec<_>>(),
             ..Default::default()
         };
 
@@ -1444,7 +1444,7 @@ mod tests {
             //      │└►┌───┐
             //      └─►│ C │
             //         └───┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1457,7 +1457,7 @@ mod tests {
             graph.add_edge(a, c).unwrap();
             graph.add_edge(b, c).unwrap();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             assert_matches_instructions!(
                 graph,
@@ -1500,7 +1500,7 @@ mod tests {
             //      │ ┌───┐
             //      └►│ C │
             //        └───┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1513,7 +1513,7 @@ mod tests {
             graph.add_edge(a, b).unwrap();
             graph.add_edge(a, c).unwrap();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             assert_matches_instructions!(
                 graph,
@@ -1556,7 +1556,7 @@ mod tests {
             //      │ ┌───┐└►┌───┐│
             //      └►│ C ├─►│ D ├┘
             //        └───┘  └───┘
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let a = graph
                 .create_task_node("A", QueueFamilyType::Graphics, PhantomData)
                 .build();
@@ -1578,7 +1578,7 @@ mod tests {
             graph.add_edge(c, d).unwrap();
             graph.add_edge(d, e).unwrap();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             // TODO: This could be brought down to 3 submissions with task reordering.
             assert_matches_instructions!(
@@ -1645,12 +1645,12 @@ mod tests {
         }
 
         let compile_info = CompileInfo {
-            queues,
+            queues: &queues.iter().collect::<Vec<_>>(),
             ..Default::default()
         };
 
         {
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let buffer1 = graph.add_buffer(&BufferCreateInfo::default());
             let buffer2 = graph.add_buffer(&BufferCreateInfo::default());
             let image1 = graph.add_image(&ImageCreateInfo::default());
@@ -1687,7 +1687,7 @@ mod tests {
                 .build();
             graph.add_edge(compute_node, graphics_node).unwrap();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             assert_matches_instructions!(
                 graph,
@@ -1789,7 +1789,7 @@ mod tests {
         }
 
         {
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let sharing = Sharing::Concurrent(
                 compile_info
                     .queues
@@ -1845,7 +1845,7 @@ mod tests {
                 .build();
             graph.add_edge(compute_node, graphics_node).unwrap();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             assert_matches_instructions!(
                 graph,
@@ -1900,13 +1900,13 @@ mod tests {
             queue_flags.contains(QueueFlags::GRAPHICS)
         });
         let compile_info = CompileInfo {
-            queues: queues.clone(),
-            present_queue: Some(present_queue.unwrap().clone()),
+            queues: &queues.iter().collect::<Vec<_>>(),
+            present_queue: Some(present_queue.unwrap()),
             ..Default::default()
         };
 
         {
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let swapchain1 = graph.add_swapchain(&SwapchainCreateInfo::default());
             let swapchain2 = graph.add_swapchain(&SwapchainCreateInfo::default());
             let node = graph
@@ -1923,7 +1923,7 @@ mod tests {
                 )
                 .build();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             assert_matches_instructions!(
                 graph,
@@ -2006,13 +2006,13 @@ mod tests {
         }
 
         let compile_info = CompileInfo {
-            queues: queues.clone(),
-            present_queue: Some(present_queue.unwrap().clone()),
+            queues: &queues.iter().collect::<Vec<_>>(),
+            present_queue: Some(present_queue.unwrap()),
             ..Default::default()
         };
 
         {
-            let mut graph = TaskGraph::<()>::new(resources.clone(), 10, 10);
+            let mut graph = TaskGraph::<()>::new(&resources, 10, 10);
             let concurrent_sharing = Sharing::Concurrent(
                 compile_info
                     .queues
@@ -2054,7 +2054,7 @@ mod tests {
                 )
                 .build();
 
-            let graph = unsafe { graph.compile(compile_info.clone()) }.unwrap();
+            let graph = unsafe { graph.compile(&compile_info) }.unwrap();
 
             assert_matches_instructions!(
                 graph,

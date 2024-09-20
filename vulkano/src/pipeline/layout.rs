@@ -278,8 +278,9 @@ impl PipelineLayout {
     ///
     /// The ranges are guaranteed to be sorted deterministically by offset, and
     /// guaranteed to be disjoint, meaning that there is no overlap between the ranges.
+    #[doc(hidden)]
     #[inline]
-    pub(crate) fn push_constant_ranges_disjoint(&self) -> &[PushConstantRange] {
+    pub fn push_constant_ranges_disjoint(&self) -> &[PushConstantRange] {
         &self.push_constant_ranges_disjoint
     }
 

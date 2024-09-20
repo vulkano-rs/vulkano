@@ -72,7 +72,7 @@ impl<W: ?Sized> TaskGraph<W> {
     /// maximum number of virtual resources the graph can ever have.
     #[must_use]
     pub fn new(
-        physical_resources: Arc<resource::Resources>,
+        physical_resources: &Arc<resource::Resources>,
         max_nodes: u32,
         max_resources: u32,
     ) -> Self {
@@ -82,7 +82,7 @@ impl<W: ?Sized> TaskGraph<W> {
             },
             resources: Resources {
                 inner: SlotMap::new(max_resources),
-                physical_resources,
+                physical_resources: physical_resources.clone(),
                 physical_map: HashMap::default(),
                 host_reads: Vec::new(),
                 host_writes: Vec::new(),
@@ -565,7 +565,7 @@ struct ResourceAccess {
 impl<W: ?Sized> TaskNode<W> {
     fn new(queue_family_type: QueueFamilyType, task: impl Task<World = W>) -> Self {
         TaskNode {
-            accesses: ResourceAccesses { inner: Vec::new() },
+            accesses: ResourceAccesses::new(),
             queue_family_type,
             queue_family_index: 0,
             dependency_level_index: 0,
@@ -596,6 +596,10 @@ impl<W: ?Sized> TaskNode<W> {
 }
 
 impl ResourceAccesses {
+    pub(crate) const fn new() -> Self {
+        ResourceAccesses { inner: Vec::new() }
+    }
+
     fn get_mut(
         &mut self,
         resources: &mut Resources,
@@ -1022,7 +1026,7 @@ mod tests {
     #[test]
     fn basic_usage1() {
         let (resources, _) = test_queues!();
-        let mut graph = TaskGraph::<()>::new(resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
 
         let x = graph
             .create_task_node("X", QueueFamilyType::Graphics, PhantomData)
@@ -1057,7 +1061,7 @@ mod tests {
     #[test]
     fn basic_usage2() {
         let (resources, _) = test_queues!();
-        let mut graph = TaskGraph::<()>::new(resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
 
         let x = graph
             .create_task_node("X", QueueFamilyType::Graphics, PhantomData)
@@ -1094,7 +1098,7 @@ mod tests {
     #[test]
     fn self_referential_node() {
         let (resources, _) = test_queues!();
-        let mut graph = TaskGraph::<()>::new(resources, 10, 0);
+        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
 
         let x = graph
             .create_task_node("X", QueueFamilyType::Graphics, PhantomData)

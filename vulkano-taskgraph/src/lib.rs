@@ -1,10 +1,11 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 
+use command_buffer::RecordingCommandBuffer;
 use concurrent_slotmap::SlotId;
 use graph::{CompileInfo, ExecuteError, ResourceMap, TaskGraph};
 use resource::{
-    AccessType, BufferState, DeathRow, Flight, HostAccessType, ImageLayoutType, ImageState,
-    Resources, SwapchainState,
+    AccessType, BufferState, Flight, HostAccessType, ImageLayoutType, ImageState, Resources,
+    SwapchainState,
 };
 use std::{
     any::{Any, TypeId},
@@ -20,29 +21,30 @@ use std::{
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferMemory, Subbuffer},
-    command_buffer::sys::{RawCommandBuffer, RawRecordingCommandBuffer},
+    command_buffer::sys::RawCommandBuffer,
     device::Queue,
     image::Image,
     swapchain::Swapchain,
     DeviceSize, ValidationError,
 };
 
+pub mod command_buffer;
 pub mod graph;
 pub mod resource;
 
 /// Creates a [`TaskGraph`] with one task node, compiles it, and executes it.
 pub unsafe fn execute(
-    queue: Arc<Queue>,
-    resources: Arc<Resources>,
+    queue: &Arc<Queue>,
+    resources: &Arc<Resources>,
     flight_id: Id<Flight>,
-    task: impl FnOnce(&mut RawRecordingCommandBuffer, &mut TaskContext<'_>) -> TaskResult,
+    task: impl FnOnce(&mut RecordingCommandBuffer<'_>, &mut TaskContext<'_>) -> TaskResult,
     host_buffer_accesses: impl IntoIterator<Item = (Id<Buffer>, HostAccessType)>,
     buffer_accesses: impl IntoIterator<Item = (Id<Buffer>, AccessType)>,
     image_accesses: impl IntoIterator<Item = (Id<Image>, AccessType, ImageLayoutType)>,
 ) -> Result<(), ExecuteError> {
     #[repr(transparent)]
     struct OnceTask<'a>(
-        &'a dyn Fn(&mut RawRecordingCommandBuffer, &mut TaskContext<'_>) -> TaskResult,
+        &'a dyn Fn(&mut RecordingCommandBuffer<'_>, &mut TaskContext<'_>) -> TaskResult,
     );
 
     // SAFETY: The task is constructed inside this function and never leaves its scope, so there is
@@ -58,7 +60,7 @@ pub unsafe fn execute(
 
         unsafe fn execute(
             &self,
-            cbf: &mut RawRecordingCommandBuffer,
+            cbf: &mut RecordingCommandBuffer<'_>,
             tcx: &mut TaskContext<'_>,
             _: &Self::World,
         ) -> TaskResult {
@@ -67,7 +69,7 @@ pub unsafe fn execute(
     }
 
     let task = Cell::new(Some(task));
-    let trampoline = move |cbf: &mut RawRecordingCommandBuffer, tcx: &mut TaskContext<'_>| {
+    let trampoline = move |cbf: &mut RecordingCommandBuffer<'_>, tcx: &mut TaskContext<'_>| {
         // `ExecutableTaskGraph::execute` calls each task exactly once, and we only execute the
         // task graph once.
         (Cell::take(&task).unwrap())(cbf, tcx)
@@ -101,8 +103,8 @@ pub unsafe fn execute(
     // * The user must ensure that there are no accesses that are incompatible with the queue.
     // * The user must ensure that there are no accesses incompatible with the device.
     let task_graph = unsafe {
-        task_graph.compile(CompileInfo {
-            queues: vec![queue],
+        task_graph.compile(&CompileInfo {
+            queues: &[queue],
             present_queue: None,
             flight_id,
             _ne: crate::NE,
@@ -139,7 +141,7 @@ pub trait Task: Any + Send + Sync {
     /// [sharing mode]: vulkano::sync::Sharing
     unsafe fn execute(
         &self,
-        cbf: &mut RawRecordingCommandBuffer,
+        cbf: &mut RecordingCommandBuffer<'_>,
         tcx: &mut TaskContext<'_>,
         world: &Self::World,
     ) -> TaskResult;
@@ -213,7 +215,7 @@ impl<W: ?Sized + 'static> Task for PhantomData<fn() -> W> {
 
     unsafe fn execute(
         &self,
-        _cbf: &mut RawRecordingCommandBuffer,
+        _cbf: &mut RecordingCommandBuffer<'_>,
         _tcx: &mut TaskContext<'_>,
         _world: &Self::World,
     ) -> TaskResult {
@@ -223,12 +225,11 @@ impl<W: ?Sized + 'static> Task for PhantomData<fn() -> W> {
 
 /// The context of a task.
 ///
-/// This gives you access to the current command buffer, resources, as well as resource cleanup.
+/// This gives you access to the resources.
 pub struct TaskContext<'a> {
     resource_map: &'a ResourceMap<'a>,
-    death_row: Cell<Option<&'a mut DeathRow>>,
     current_frame_index: u32,
-    command_buffers: Cell<Option<&'a mut Vec<Arc<RawCommandBuffer>>>>,
+    command_buffers: &'a mut Vec<Arc<RawCommandBuffer>>,
 }
 
 impl<'a> TaskContext<'a> {
@@ -496,48 +497,6 @@ impl<'a> TaskContext<'a> {
         Ok(data)
     }
 
-    /// Queues the destruction of the buffer corresponding to `id` after the destruction of the
-    /// command buffer(s) for this task.
-    // FIXME: unsafe
-    #[inline]
-    pub unsafe fn destroy_buffer(&self, id: Id<Buffer>) -> TaskResult {
-        let state = unsafe { self.resource_map.resources().remove_buffer(id) }?;
-        let death_row = self.death_row.take().unwrap();
-        // FIXME:
-        death_row.push(state.buffer().clone());
-        self.death_row.set(Some(death_row));
-
-        Ok(())
-    }
-
-    /// Queues the destruction of the image corresponding to `id` after the destruction of the
-    /// command buffer(s) for this task.
-    // FIXME: unsafe
-    #[inline]
-    pub unsafe fn destroy_image(&self, id: Id<Image>) -> TaskResult {
-        let state = unsafe { self.resource_map.resources().remove_image(id) }?;
-        let death_row = self.death_row.take().unwrap();
-        // FIXME:
-        death_row.push(state.image().clone());
-        self.death_row.set(Some(death_row));
-
-        Ok(())
-    }
-
-    /// Queues the destruction of the swapchain corresponding to `id` after the destruction of the
-    /// command buffer(s) for this task.
-    // FIXME: unsafe
-    #[inline]
-    pub unsafe fn destroy_swapchain(&self, id: Id<Swapchain>) -> TaskResult {
-        let state = unsafe { self.resource_map.resources().remove_swapchain(id) }?;
-        let death_row = self.death_row.take().unwrap();
-        // FIXME:
-        death_row.push(state.swapchain().clone());
-        self.death_row.set(Some(death_row));
-
-        Ok(())
-    }
-
     /// Pushes a command buffer into the list of command buffers to be executed on the queue.
     ///
     /// All command buffers will be executed in the order in which they are pushed after the task
@@ -551,10 +510,8 @@ impl<'a> TaskContext<'a> {
     /// buffer must not do any accesses not accounted for in the [task's access set], or ensure
     /// that such accesses are appropriately synchronized.
     #[inline]
-    pub unsafe fn push_command_buffer(&self, command_buffer: Arc<RawCommandBuffer>) {
-        let vec = self.command_buffers.take().unwrap();
-        vec.push(command_buffer);
-        self.command_buffers.set(Some(vec));
+    pub unsafe fn push_command_buffer(&mut self, command_buffer: Arc<RawCommandBuffer>) {
+        self.command_buffers.push(command_buffer);
     }
 
     /// Extends the list of command buffers to be executed on the queue.
@@ -569,12 +526,10 @@ impl<'a> TaskContext<'a> {
     /// [`push_command_buffer`]: Self::push_command_buffer
     #[inline]
     pub unsafe fn extend_command_buffers(
-        &self,
+        &mut self,
         command_buffers: impl IntoIterator<Item = Arc<RawCommandBuffer>>,
     ) {
-        let vec = self.command_buffers.take().unwrap();
-        vec.extend(command_buffers);
-        self.command_buffers.set(Some(vec));
+        self.command_buffers.extend(command_buffers);
     }
 }
 
@@ -886,10 +841,10 @@ enum ObjectType {
     Flight = 3,
 }
 
-// SAFETY: ZSTs can always be safely produced out of thin air, barring any safety invariants they
-// might impose, which in the case of `NonExhaustive` are none.
-const NE: vulkano::NonExhaustive =
-    unsafe { ::std::mem::transmute::<(), ::vulkano::NonExhaustive>(()) };
+#[derive(Clone, Copy, Debug)]
+pub struct NonExhaustive<'a>(PhantomData<&'a ()>);
+
+const NE: NonExhaustive<'static> = NonExhaustive(PhantomData);
 
 #[cfg(test)]
 mod tests {
@@ -932,7 +887,7 @@ mod tests {
             };
 
             (
-                $crate::resource::Resources::new(device, Default::default()),
+                $crate::resource::Resources::new(&device, &Default::default()),
                 queues.collect::<Vec<_>>(),
             )
         }};

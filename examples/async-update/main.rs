@@ -41,11 +41,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        sys::RawRecordingCommandBuffer, BufferImageCopy, ClearColorImageInfo,
-        CopyBufferToImageInfo, RenderPassBeginInfo,
-    },
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    command_buffer::RenderPassBeginInfo,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
@@ -57,7 +54,7 @@ use vulkano::{
     image::{
         sampler::{Sampler, SamplerCreateInfo},
         view::ImageView,
-        Image, ImageCreateInfo, ImageType, ImageUsage,
+        Image, ImageAspects, ImageCreateInfo, ImageSubresourceLayers, ImageType, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
@@ -81,6 +78,9 @@ use vulkano::{
     DeviceSize, Validated, VulkanError, VulkanLibrary,
 };
 use vulkano_taskgraph::{
+    command_buffer::{
+        BufferImageCopy, ClearColorImageInfo, CopyBufferToImageInfo, RecordingCommandBuffer,
+    },
     graph::{CompileInfo, ExecuteError, TaskGraph},
     resource::{AccessType, Flight, HostAccessType, ImageLayoutType, Resources},
     resource_map, Id, QueueFamilyType, Task, TaskContext, TaskResult,
@@ -224,7 +224,7 @@ fn main() -> Result<(), impl Error> {
         {transfer_family_index} for transfers",
     );
 
-    let resources = Resources::new(device.clone(), Default::default());
+    let resources = Resources::new(&device, &Default::default());
 
     let graphics_flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
     let transfer_flight_id = resources.create_flight(1).unwrap();
@@ -343,16 +343,18 @@ fn main() -> Result<(), impl Error> {
     // Initialize the resources.
     unsafe {
         vulkano_taskgraph::execute(
-            graphics_queue.clone(),
-            resources.clone(),
+            &graphics_queue,
+            &resources,
             graphics_flight_id,
             |cbf, tcx| {
                 tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
                     .copy_from_slice(&vertices);
 
                 for &texture_id in &texture_ids {
-                    let texture = tcx.image(texture_id)?.image();
-                    cbf.clear_color_image(&ClearColorImageInfo::image(texture.clone()))?;
+                    cbf.clear_color_image(&ClearColorImageInfo {
+                        image: texture_id,
+                        ..Default::default()
+                    })?;
                 }
 
                 Ok(())
@@ -504,7 +506,7 @@ fn main() -> Result<(), impl Error> {
         framebuffers,
     };
 
-    let mut task_graph = TaskGraph::new(resources.clone(), 1, 4);
+    let mut task_graph = TaskGraph::new(&resources, 1, 4);
 
     let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
     let virtual_texture_id = task_graph.add_image(&texture_create_info);
@@ -543,9 +545,9 @@ fn main() -> Result<(), impl Error> {
         );
 
     let task_graph = unsafe {
-        task_graph.compile(CompileInfo {
-            queues: vec![graphics_queue.clone()],
-            present_queue: Some(graphics_queue.clone()),
+        task_graph.compile(&CompileInfo {
+            queues: &[&graphics_queue],
+            present_queue: Some(&graphics_queue),
             flight_id: graphics_flight_id,
             ..Default::default()
         })
@@ -652,7 +654,6 @@ fn main() -> Result<(), impl Error> {
             }
             Event::LoopExiting => {
                 let flight = resources.flight(graphics_flight_id).unwrap();
-                flight.destroy_object(pipeline.clone());
                 flight.destroy_objects(rcx.framebuffers.drain(..));
                 flight.destroy_objects(uniform_buffer_sets.clone());
                 flight.destroy_objects(sampler_sets.clone());
@@ -729,14 +730,13 @@ impl Task for RenderTask {
 
     unsafe fn execute(
         &self,
-        cbf: &mut RawRecordingCommandBuffer,
+        cbf: &mut RecordingCommandBuffer<'_>,
         tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
         let frame_index = tcx.current_frame_index();
         let swapchain_state = tcx.swapchain(self.swapchain_id)?;
         let image_index = swapchain_state.current_image_index().unwrap();
-        let vertex_buffer = Subbuffer::from(tcx.buffer(self.vertex_buffer_id)?.buffer().clone());
 
         // Write to the uniform buffer designated for this frame.
         *tcx.write_buffer(self.uniform_buffer_id, ..)? = vs::Data {
@@ -755,16 +755,16 @@ impl Task for RenderTask {
             },
         };
 
-        cbf.begin_render_pass(
+        cbf.as_raw().begin_render_pass(
             &RenderPassBeginInfo {
                 clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
                 ..RenderPassBeginInfo::framebuffer(rcx.framebuffers[image_index as usize].clone())
             },
             &Default::default(),
-        )?
-        .set_viewport(0, slice::from_ref(&rcx.viewport))?
-        .bind_pipeline_graphics(&self.pipeline)?
-        .bind_descriptor_sets(
+        )?;
+        cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
+        cbf.bind_pipeline_graphics(&self.pipeline)?;
+        cbf.as_raw().bind_descriptor_sets(
             PipelineBindPoint::Graphics,
             self.pipeline.layout(),
             0,
@@ -778,13 +778,12 @@ impl Task for RenderTask {
                     .clone()
                     .into(),
             ],
-        )?
-        .bind_vertex_buffers(0, slice::from_ref(&vertex_buffer))?;
+        )?;
+        cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
 
-        let vertex_count = vertex_buffer.reinterpret_ref::<[MyVertex]>().len();
-        unsafe { cbf.draw(vertex_count as u32, 1, 0, 0) }?;
+        unsafe { cbf.draw(4, 1, 0, 0) }?;
 
-        cbf.end_render_pass(&Default::default())?;
+        cbf.as_raw().end_render_pass(&Default::default())?;
 
         Ok(())
     }
@@ -831,7 +830,7 @@ fn run_worker(
             .unwrap()
     });
 
-    let mut task_graph = TaskGraph::new(resources.clone(), 1, 3);
+    let mut task_graph = TaskGraph::new(&resources, 1, 3);
 
     let virtual_front_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
     let virtual_back_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
@@ -861,8 +860,8 @@ fn run_worker(
         );
 
     let task_graph = unsafe {
-        task_graph.compile(CompileInfo {
-            queues: vec![transfer_queue],
+        task_graph.compile(&CompileInfo {
+            queues: &[&transfer_queue],
             flight_id: transfer_flight_id,
             ..Default::default()
         })
@@ -942,7 +941,7 @@ impl Task for UploadTask {
 
     unsafe fn execute(
         &self,
-        cbf: &mut RawRecordingCommandBuffer,
+        cbf: &mut RecordingCommandBuffer<'_>,
         tcx: &mut TaskContext<'_>,
         &current_corner: &Self::World,
     ) -> TaskResult {
@@ -967,41 +966,37 @@ impl Task for UploadTask {
         tcx.write_buffer::<[_]>(self.front_staging_buffer_id, ..)?
             .fill(color);
 
-        let texture = tcx.image(self.texture_id)?.image();
-
         cbf.copy_buffer_to_image(&CopyBufferToImageInfo {
-            regions: [BufferImageCopy {
-                image_subresource: texture.subresource_layers(),
+            src_buffer: self.front_staging_buffer_id,
+            dst_image: self.texture_id,
+            regions: &[BufferImageCopy {
+                image_subresource: ImageSubresourceLayers {
+                    aspects: ImageAspects::COLOR,
+                    mip_level: 0,
+                    array_layers: 0..1,
+                },
                 image_offset: CORNER_OFFSETS[current_corner % 4],
                 image_extent: [TRANSFER_GRANULARITY, TRANSFER_GRANULARITY, 1],
                 ..Default::default()
-            }]
-            .into(),
-            ..CopyBufferToImageInfo::buffer_image(
-                tcx.buffer(self.front_staging_buffer_id)?
-                    .buffer()
-                    .clone()
-                    .into(),
-                texture.clone(),
-            )
+            }],
+            ..Default::default()
         })?;
 
         if current_corner > 0 {
             cbf.copy_buffer_to_image(&CopyBufferToImageInfo {
-                regions: [BufferImageCopy {
-                    image_subresource: texture.subresource_layers(),
+                src_buffer: self.back_staging_buffer_id,
+                dst_image: self.texture_id,
+                regions: &[BufferImageCopy {
+                    image_subresource: ImageSubresourceLayers {
+                        aspects: ImageAspects::COLOR,
+                        mip_level: 0,
+                        array_layers: 0..1,
+                    },
                     image_offset: CORNER_OFFSETS[(current_corner - 1) % 4],
                     image_extent: [TRANSFER_GRANULARITY, TRANSFER_GRANULARITY, 1],
                     ..Default::default()
-                }]
-                .into(),
-                ..CopyBufferToImageInfo::buffer_image(
-                    tcx.buffer(self.back_staging_buffer_id)?
-                        .buffer()
-                        .clone()
-                        .into(),
-                    texture.clone(),
-                )
+                }],
+                ..Default::default()
             })?;
         }
 

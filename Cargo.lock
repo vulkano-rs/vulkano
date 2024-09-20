@@ -209,6 +209,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bloom"
+version = "0.0.0"
+dependencies = [
+ "vulkano",
+ "vulkano-shaders",
+ "vulkano-taskgraph",
+ "winit 0.29.15",
+]
+
+[[package]]
 name = "buffer-allocator"
 version = "0.0.0"
 dependencies = [
