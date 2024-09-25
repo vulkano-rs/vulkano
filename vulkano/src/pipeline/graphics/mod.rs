@@ -123,8 +123,7 @@ use crate::{
 use ahash::{HashMap, HashSet};
 use smallvec::SmallVec;
 use std::{
-    collections::hash_map::Entry, ffi::CString, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr,
-    sync::Arc,
+    collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc,
 };
 
 pub mod color_blend;
@@ -229,15 +228,6 @@ impl GraphicsPipeline {
             ref conservative_rasterization_state,
             _ne: _,
         } = &create_info;
-
-        struct PerPipelineShaderStageCreateInfo {
-            name_vk: CString,
-            specialization_info_vk: ash::vk::SpecializationInfo<'static>,
-            specialization_map_entries_vk: Vec<ash::vk::SpecializationMapEntry>,
-            specialization_data_vk: Vec<u8>,
-            required_subgroup_size_create_info:
-                Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo<'static>>,
-        }
 
         let owned_stages_vk: SmallVec<[_; 5]> =
             stages.iter().map(|s| s.to_owned_vulkan()).collect();

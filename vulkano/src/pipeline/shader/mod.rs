@@ -508,7 +508,7 @@ impl PipelineShaderStageCreateInfo {
         let entry_point_info = entry_point.info();
         let name = CString::new(entry_point_info.name.as_str()).unwrap();
 
-        let mut specialization_data = Vec::new();
+        let mut specialization_data: Vec<u8> = Vec::new();
         let specialization_map_entries: Vec<ash::vk::SpecializationMapEntry> = entry_point
             .module()
             .specialization_info()
@@ -526,58 +526,62 @@ impl PipelineShaderStageCreateInfo {
             })
             .collect();
 
-        OwnedVkPipelineShaderStageCreateInfo {
-            name,
-            specialization_data,
-            specialization_map_entries,
-            required_subgroup_size: *required_subgroup_size,
-            flags,
-            stage: ShaderStage::from(entry_point_info.execution_model),
-            specialized_shader_module: entry_point.module().clone(),
-        }
-    }
-}
-
-pub(crate) struct OwnedVkPipelineShaderStageCreateInfo {
-    name: CString,
-    specialization_data: Vec<u8>,
-    specialization_map_entries: Vec<ash::vk::SpecializationMapEntry>,
-    required_subgroup_size: Option<u32>,
-    flags: PipelineShaderStageCreateFlags,
-    stage: ShaderStage,
-    specialized_shader_module: Arc<SpecializedShaderModule>,
-}
-
-impl OwnedVkPipelineShaderStageCreateInfo {
-    pub(crate) fn to_vulkan(&self) -> ash::vk::PipelineShaderStageCreateInfo<'_> {
         let specialization_info = ash::vk::SpecializationInfo {
-            map_entry_count: self.specialization_map_entries.len() as u32,
-            p_map_entries: self.specialization_map_entries.as_ptr() as *const _,
-            data_size: self.specialization_data.len(),
-            p_data: self.specialization_data.as_ptr().cast(),
+            map_entry_count: specialization_map_entries.len() as u32,
+            p_map_entries: specialization_map_entries.as_ptr() as *const _,
+            data_size: specialization_data.len(),
+            p_data: specialization_data.as_ptr().cast(),
             ..Default::default()
         };
 
-        let required_subgroup_size_info = self.required_subgroup_size.map(|size| {
+        let required_subgroup_size_info = required_subgroup_size.map(|size| {
             ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo {
                 required_subgroup_size: size,
                 ..Default::default()
             }
         });
 
+        OwnedVkPipelineShaderStageCreateInfo {
+            name,
+            _specialization_data: specialization_data,
+            _specialization_map_entries: specialization_map_entries,
+            flags,
+            stage: ShaderStage::from(entry_point_info.execution_model),
+            specialized_shader_module: entry_point.module().clone(),
+            specialization_info: Some(specialization_info),
+            required_subgroup_size_info,
+        }
+    }
+}
+
+pub(crate) struct OwnedVkPipelineShaderStageCreateInfo {
+    name: CString,
+    _specialization_data: Vec<u8>,
+    _specialization_map_entries: Vec<ash::vk::SpecializationMapEntry>,
+    flags: PipelineShaderStageCreateFlags,
+    stage: ShaderStage,
+    specialized_shader_module: Arc<SpecializedShaderModule>,
+    // Includes pointers to _specialization_data and _specialization_map_entries.
+    specialization_info: Option<ash::vk::SpecializationInfo<'static>>,
+    required_subgroup_size_info:
+        Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo<'static>>,
+}
+
+impl OwnedVkPipelineShaderStageCreateInfo {
+    pub fn to_vulkan(&self) -> ash::vk::PipelineShaderStageCreateInfo<'_> {
         ash::vk::PipelineShaderStageCreateInfo {
-            p_next: required_subgroup_size_info
+            p_next: self
+                .required_subgroup_size_info
                 .as_ref()
                 .map_or(ptr::null(), |info| info as *const _ as *const _),
             flags: self.flags.into(),
             stage: self.stage.into(),
             module: self.specialized_shader_module.handle(),
             p_name: self.name.as_ptr(),
-            p_specialization_info: if specialization_info.data_size == 0 {
-                ptr::null()
-            } else {
-                &specialization_info
-            },
+            p_specialization_info: self
+                .specialization_info
+                .as_ref()
+                .map_or(ptr::null(), |info| info as *const _),
             ..Default::default()
         }
     }
