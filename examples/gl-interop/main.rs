@@ -82,7 +82,7 @@ mod linux {
     use winit::{
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
-        window::{Window, WindowBuilder},
+        window::Window,
     };
 
     pub fn main() -> Result<(), winit::error::EventLoopError> {
@@ -594,7 +594,7 @@ mod linux {
 
         let queue = queues.next().unwrap();
 
-        let window = Arc::new(WindowBuilder::new().build(event_loop).unwrap());
+        let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
         let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
         let (swapchain, images) = {

@@ -44,7 +44,7 @@ use vulkano_taskgraph::{
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::Window,
 };
 
 mod bloom;
@@ -318,7 +318,7 @@ impl RenderContext {
 
         let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
 
-        let window = Arc::new(WindowBuilder::new().build(event_loop).unwrap());
+        let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
         let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
         let swapchain_format;

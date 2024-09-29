@@ -44,7 +44,7 @@ use vulkano::{
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::Window,
 };
 
 /// A struct to contain resources related to a window.
@@ -119,7 +119,7 @@ fn main() -> Result<(), impl Error> {
     .unwrap();
     let queue = queues.next().unwrap();
 
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     // A hashmap that contains all of our created windows and their resources.
@@ -340,7 +340,7 @@ fn main() -> Result<(), impl Error> {
                     },
                 ..
             } => {
-                let window = Arc::new(WindowBuilder::new().build(elwt).unwrap());
+                let window = Arc::new(elwt.create_window(Default::default()).unwrap());
                 let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
                 let window_id = window.id();
                 let (swapchain, images) = {

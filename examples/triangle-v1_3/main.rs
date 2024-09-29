@@ -50,7 +50,6 @@ use vulkano::{
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
 };
 
 fn main() -> Result<(), impl Error> {
@@ -214,7 +213,7 @@ fn main() -> Result<(), impl Error> {
     // Before we can render to a window, we must first create a `vulkano::swapchain::Surface`
     // object from it, which represents the drawable surface of a window. For that we must wrap the
     // `winit::window::Window` in an `Arc`.
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating a

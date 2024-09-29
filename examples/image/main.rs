@@ -44,7 +44,6 @@ use vulkano::{
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
 };
 
 fn main() -> Result<(), impl Error> {
@@ -113,7 +112,7 @@ fn main() -> Result<(), impl Error> {
     .unwrap();
     let queue = queues.next().unwrap();
 
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     let (mut swapchain, images) = {

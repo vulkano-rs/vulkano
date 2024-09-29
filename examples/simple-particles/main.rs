@@ -46,7 +46,7 @@ use vulkano::{
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::WindowAttributes,
 };
 
 const WINDOW_WIDTH: u32 = 800;
@@ -120,12 +120,14 @@ fn main() -> Result<(), impl Error> {
     let queue = queues.next().unwrap();
 
     let window = Arc::new(
-        WindowBuilder::new()
-            // For simplicity, we are going to assert that the window size is static.
-            .with_resizable(false)
-            .with_title("simple particles")
-            .with_inner_size(winit::dpi::PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
-            .build(&event_loop)
+        event_loop
+            .create_window(
+                winit::window::Window::default_attributes()
+                    // For simplicity, we are going to assert that the window size is static.
+                    .with_resizable(false)
+                    .with_title("simple particles")
+                    .with_inner_size(winit::dpi::PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
+            )
             .unwrap(),
     );
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();

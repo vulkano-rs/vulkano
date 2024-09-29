@@ -312,11 +312,7 @@ impl ApplicationHandler<()> for App {
         // Before we can render to a window, we must first create a `vulkano::swapchain::Surface`
         // object from it, which represents the drawable surface of a window. For that we must wrap
         // the `winit::window::Window` in an `Arc`.
-        let window = Arc::new(
-            event_loop
-                .create_window(winit::window::Window::default_attributes())
-                .unwrap(),
-        );
+        let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
         self.window = Some(window.clone());
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
 

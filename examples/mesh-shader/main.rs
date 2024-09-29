@@ -54,7 +54,6 @@ use vulkano::{
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
 };
 
 /// The vertex type that we will be used to describe the triangle's geometry.
@@ -151,7 +150,7 @@ fn main() -> Result<(), impl Error> {
 
     let queue = queues.next().unwrap();
 
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     let (mut swapchain, images) = {

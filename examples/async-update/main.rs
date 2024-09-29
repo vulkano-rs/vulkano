@@ -89,7 +89,7 @@ use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::{Key, NamedKey},
-    window::WindowBuilder,
+    window::WindowAttributes,
 };
 
 const TRANSFER_GRANULARITY: u32 = 4096;
@@ -229,7 +229,7 @@ fn main() -> Result<(), impl Error> {
     let graphics_flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
     let transfer_flight_id = resources.create_flight(1).unwrap();
 
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let window = Arc::new(event_loop.create_window(Default::default()).unwrap());
     let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
     let swapchain_format = device
