@@ -2,7 +2,8 @@ use crate::{
     game_of_life::GameOfLifeComputePipeline, render_pass::RenderPassPlaceOverFrame, SCALING,
     WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
-use std::{collections::HashMap, sync::Arc};
+use glam::Vec2;
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use vulkano::{
     command_buffer::allocator::{
         StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
@@ -15,7 +16,7 @@ use vulkano_util::{
     renderer::VulkanoWindowRenderer,
     window::{VulkanoWindows, WindowDescriptor},
 };
-use winit::{event_loop::EventLoop, window::WindowId};
+use winit::{application::ApplicationHandler, window::WindowId};
 
 pub struct RenderPipeline {
     pub compute: GameOfLifeComputePipeline,
@@ -43,10 +44,14 @@ pub struct App {
     pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     pub pipelines: HashMap<WindowId, RenderPipeline>,
+    pub time: Instant,
+    pub cursor_pos: Vec2,
+    pub mouse_is_pressed_w1: bool,
+    pub mouse_is_pressed_w2: bool,
 }
 
-impl App {
-    pub fn open(&mut self, event_loop: &EventLoop<()>) {
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         // Create windows & pipelines.
         let id1 = self.windows.create_window(
             event_loop,
@@ -97,6 +102,33 @@ impl App {
                 self.windows.get_renderer(id2).unwrap(),
             ),
         );
+
+        event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+    }
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        if super::process_event(event, window_id, self) {
+            event_loop.exit();
+            return;
+        }
+
+        // Draw life on windows if mouse is down.
+        super::draw_life(self);
+
+        // Compute life & render 60fps.
+        if (Instant::now() - self.time).as_secs_f64() > 1.0 / 60.0 {
+            super::compute_then_render_per_window(self);
+            self.time = Instant::now();
+        }
+    }
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        for (_, renderer) in self.windows.iter() {
+            renderer.window().request_redraw();
+        }
     }
 }
 
@@ -115,12 +147,24 @@ impl Default for App {
             Default::default(),
         ));
 
+        // Time & inputs...
+        let time = Instant::now();
+        let cursor_pos = Vec2::ZERO;
+
+        // An extremely crude way to handle input state... but works for this example.
+        let mouse_is_pressed_w1 = false;
+        let mouse_is_pressed_w2 = false;
+
         App {
             context,
             windows: VulkanoWindows::default(),
             command_buffer_allocator,
             descriptor_set_allocator,
             pipelines: HashMap::new(),
+            time,
+            cursor_pos,
+            mouse_is_pressed_w1,
+            mouse_is_pressed_w2,
         }
     }
 }

@@ -14,14 +14,12 @@ mod render_pass;
 
 use crate::app::{App, RenderPipeline};
 use glam::{f32::Vec2, IVec2};
-use std::{
-    error::Error,
-    time::{Duration, Instant},
-};
+use std::{error::Error, time::Duration};
 use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{
-    event::{ElementState, Event, MouseButton, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event::{ElementState, MouseButton, WindowEvent},
+    event_loop::EventLoop,
+    window::WindowId,
 };
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
@@ -38,123 +36,68 @@ fn main() -> Result<(), impl Error> {
 
     // Create app with vulkano context.
     let mut app = App::default();
-    app.open(&event_loop);
 
-    // Time & inputs...
-    let mut time = Instant::now();
-    let mut cursor_pos = Vec2::ZERO;
-
-    // An extremely crude way to handle input state... but works for this example.
-    let mut mouse_is_pressed_w1 = false;
-    let mut mouse_is_pressed_w2 = false;
-
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
-
-        if process_event(
-            &event,
-            &mut app,
-            &mut cursor_pos,
-            &mut mouse_is_pressed_w1,
-            &mut mouse_is_pressed_w2,
-        ) {
-            elwt.exit();
-            return;
-        } else if event == Event::AboutToWait {
-            for (_, renderer) in app.windows.iter() {
-                renderer.window().request_redraw();
-            }
-        }
-
-        // Draw life on windows if mouse is down.
-        draw_life(
-            &mut app,
-            cursor_pos,
-            mouse_is_pressed_w1,
-            mouse_is_pressed_w2,
-        );
-
-        // Compute life & render 60fps.
-        if (Instant::now() - time).as_secs_f64() > 1.0 / 60.0 {
-            compute_then_render_per_window(&mut app);
-            time = Instant::now();
-        }
-    })
+    event_loop.run_app(&mut app)
 }
 
 /// Processes a single event for an event loop.
 /// Returns true only if the window is to be closed.
-pub fn process_event(
-    event: &Event<()>,
-    app: &mut App,
-    cursor_pos: &mut Vec2,
-    mouse_pressed_w1: &mut bool,
-    mouse_pressed_w2: &mut bool,
-) -> bool {
-    if let Event::WindowEvent {
-        event, window_id, ..
-    } = &event
-    {
-        match event {
-            WindowEvent::CloseRequested => {
-                if *window_id == app.windows.primary_window_id().unwrap() {
-                    return true;
-                } else {
-                    // Destroy window by removing its renderer.
-                    app.windows.remove_renderer(*window_id);
-                    app.pipelines.remove(window_id);
-                }
+pub fn process_event(event: WindowEvent, window_id: WindowId, app: &mut App) -> bool {
+    match event {
+        WindowEvent::CloseRequested => {
+            if window_id == app.windows.primary_window_id().unwrap() {
+                return true;
+            } else {
+                // Destroy window by removing its renderer.
+                app.windows.remove_renderer(window_id);
+                app.pipelines.remove(&window_id);
             }
-            // Resize window and its images.
-            WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
-                let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
-                vulkano_window.resize();
-            }
-            // Handle mouse position events.
-            WindowEvent::CursorMoved { position, .. } => {
-                *cursor_pos = Vec2::new(position.x as f32, position.y as f32)
-            }
-            // Handle mouse button events.
-            WindowEvent::MouseInput { state, button, .. } => {
-                let mut mouse_pressed = false;
-                if button == &MouseButton::Left && state == &ElementState::Pressed {
-                    mouse_pressed = true;
-                }
-                if button == &MouseButton::Left && state == &ElementState::Released {
-                    mouse_pressed = false;
-                }
-                if window_id == &app.windows.primary_window_id().unwrap() {
-                    *mouse_pressed_w1 = mouse_pressed;
-                } else {
-                    *mouse_pressed_w2 = mouse_pressed;
-                }
-            }
-            _ => (),
         }
+        // Resize window and its images.
+        WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
+            let vulkano_window = app.windows.get_renderer_mut(window_id).unwrap();
+            vulkano_window.resize();
+        }
+        // Handle mouse position events.
+        WindowEvent::CursorMoved { position, .. } => {
+            app.cursor_pos = Vec2::new(position.x as f32, position.y as f32)
+        }
+        // Handle mouse button events.
+        WindowEvent::MouseInput { state, button, .. } => {
+            let mut mouse_pressed = false;
+            if button == MouseButton::Left && state == ElementState::Pressed {
+                mouse_pressed = true;
+            }
+            if button == MouseButton::Left && state == ElementState::Released {
+                mouse_pressed = false;
+            }
+            if window_id == app.windows.primary_window_id().unwrap() {
+                app.mouse_is_pressed_w1 = mouse_pressed;
+            } else {
+                app.mouse_is_pressed_w2 = mouse_pressed;
+            }
+        }
+        _ => (),
     }
+
     false
 }
 
-fn draw_life(
-    app: &mut App,
-    cursor_pos: Vec2,
-    mouse_is_pressed_w1: bool,
-    mouse_is_pressed_w2: bool,
-) {
+fn draw_life(app: &mut App) {
     let primary_window_id = app.windows.primary_window_id().unwrap();
     for (id, window) in app.windows.iter_mut() {
-        if id == &primary_window_id && !mouse_is_pressed_w1 {
+        if id == &primary_window_id && !app.mouse_is_pressed_w1 {
             continue;
         }
-        if id != &primary_window_id && !mouse_is_pressed_w2 {
+        if id != &primary_window_id && !app.mouse_is_pressed_w2 {
             continue;
         }
 
         let window_size = window.window_size();
         let compute_pipeline = &mut app.pipelines.get_mut(id).unwrap().compute;
         let mut normalized_pos = Vec2::new(
-            (cursor_pos.x / window_size[0]).clamp(0.0, 1.0),
-            (cursor_pos.y / window_size[1]).clamp(0.0, 1.0),
+            (app.cursor_pos.x / window_size[0]).clamp(0.0, 1.0),
+            (app.cursor_pos.y / window_size[1]).clamp(0.0, 1.0),
         );
 
         // Flip y.
