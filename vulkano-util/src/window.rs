@@ -28,10 +28,8 @@ use winit::{
 /// fn test(event_loop: &ActiveEventLoop) {
 ///     let context = VulkanoContext::new(VulkanoConfig::default());
 ///     let mut vulkano_windows = VulkanoWindows::default();
-///     let _id1 =
-///         vulkano_windows.create_window(event_loop, &context, &Default::default(), |_| {});
-///     let _id2 =
-///         vulkano_windows.create_window(event_loop, &context, &Default::default(), |_| {});
+///     let _id1 = vulkano_windows.create_window(event_loop, &context, &Default::default(), |_| {});
+///     let _id2 = vulkano_windows.create_window(event_loop, &context, &Default::default(), |_| {});
 ///
 ///     // You should now have two windows.
 /// }
