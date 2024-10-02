@@ -1,5 +1,6 @@
 use super::{
-    CommandBuffer, CommandInfo, RenderPassCommand, Resource, ResourceUseRef2, SubmitState,
+    CommandBuffer, CommandInfo, PipelineEnum, RenderPassCommand, Resource, ResourceUseRef2,
+    SubmitState, UsedResources,
 };
 use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
@@ -27,7 +28,8 @@ use crate::{
             vertex_input::VertexInputState,
             viewport::{Scissor, Viewport},
         },
-        ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+        ComputePipeline, DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout,
     },
     query::{QueryControlFlags, QueryPool, QueryType},
     range_map::RangeMap,
@@ -39,12 +41,13 @@ use crate::{
     },
     DeviceSize, Validated, ValidationError, VulkanError,
 };
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry,
     fmt::Debug,
+    hash::{Hash, Hasher},
     mem::take,
     ops::{Range, RangeInclusive},
     sync::{atomic::AtomicBool, Arc},
@@ -176,20 +179,20 @@ impl RecordingCommandBuffer {
         );
 
         // Add barriers between the commands.
-        for (command_info, _) in self.commands.iter() {
-            auto_sync_state.add_command(command_info).map_err(|err| {
+        auto_sync_state
+            .add_command_resources(self.commands.iter().map(|(cmd, _)| cmd))
+            .map_err(|err| {
                 Box::new(ValidationError {
                     problem: format!(
                         "unsolvable resource conflict between:\n\
-                        command resource use: {:?}\n\
-                        previous conflicting command resource use: {:?}",
+                    command resource use: {:?}\n\
+                    previous conflicting command resource use: {:?}",
                         err.current_use_ref, err.previous_use_ref,
                     )
                     .into(),
                     ..Default::default()
                 })
             })?;
-        }
 
         let (mut barriers, resources_usage, secondary_resources_usage) = auto_sync_state.build();
         let final_barrier_index = self.commands.len();
@@ -268,6 +271,32 @@ impl RecordingCommandBuffer {
         used_resources: Vec<(ResourceUseRef2, Resource)>,
         record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
     ) {
+        self.add_command_resources(
+            name,
+            UsedResources {
+                direct: used_resources,
+                deferred: None,
+            },
+            record_func,
+        )
+    }
+
+    pub(in crate::command_buffer) fn add_command_deferred(
+        &mut self,
+        name: &'static str,
+        direct: Vec<(ResourceUseRef2, Resource)>,
+        deferred: Option<(PipelineEnum, DescriptorSetState)>,
+        record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
+    ) {
+        self.add_command_resources(name, UsedResources::deferred(direct, deferred), record_func)
+    }
+
+    fn add_command_resources(
+        &mut self,
+        name: &'static str,
+        used_resources: UsedResources,
+        record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
+    ) {
         self.commands.push((
             CommandInfo {
                 name,
@@ -287,7 +316,7 @@ impl RecordingCommandBuffer {
         self.commands.push((
             CommandInfo {
                 name,
-                used_resources,
+                used_resources: UsedResources::direct(used_resources),
                 render_pass: RenderPassCommand::Begin,
             },
             Box::new(record_func),
@@ -303,7 +332,7 @@ impl RecordingCommandBuffer {
         self.commands.push((
             CommandInfo {
                 name,
-                used_resources,
+                used_resources: UsedResources::direct(used_resources),
                 render_pass: RenderPassCommand::End,
             },
             Box::new(record_func),
@@ -484,42 +513,131 @@ impl AutoSyncState {
             self.secondary_resources_usage,
         )
     }
+}
 
-    fn add_command(
-        &mut self,
-        command_info: &CommandInfo,
-    ) -> Result<(), UnsolvableResourceConflict> {
-        self.check_resource_conflicts(command_info)?;
-        self.add_resources(command_info);
+#[derive(Debug)]
+struct MergedCommandInfo<'a> {
+    render_pass: RenderPassCommand,
+    pipeline: Option<&'a PipelineEnum>,
+    direct: SmallVec<[(&'a Vec<(ResourceUseRef2, Resource)>, &'static str); 6]>,
+    deferred: SmallVec<[(&'a DescriptorSetState, &'static str); 6]>,
+}
 
-        match command_info.render_pass {
-            RenderPassCommand::None => (),
-            RenderPassCommand::Begin => {
-                debug_assert!(self.latest_render_pass_enter.is_none());
-                self.latest_render_pass_enter = Some(self.command_index);
-            }
-            RenderPassCommand::End => {
-                debug_assert!(self.latest_render_pass_enter.is_some());
-                self.latest_render_pass_enter = None;
-            }
+impl<'a> MergedCommandInfo<'a> {
+    fn from(value: &'a CommandInfo) -> Self {
+        let (pipeline, deferred) = if let Some((pipeline, state)) = &value.used_resources.deferred {
+            (Some(pipeline), SmallVec::from_iter([(state, value.name)]))
+        } else {
+            (None, SmallVec::new())
+        };
+        let direct = if value.used_resources.direct.is_empty() {
+            SmallVec::new()
+        } else {
+            SmallVec::from_iter([(&value.used_resources.direct, value.name)])
+        };
+        Self {
+            render_pass: value.render_pass,
+            pipeline,
+            direct,
+            deferred,
+        }
+    }
+
+    fn try_merge(&mut self, b: &'a CommandInfo) -> Result<(), MergedCommandInfo<'a>> {
+        let mut b = Self::from(b);
+        match (self.render_pass, b.render_pass) {
+            (RenderPassCommand::None, RenderPassCommand::None) => (),
+            _ => return Err(b),
+        }
+        if !(self.pipeline == b.pipeline || self.pipeline.is_none() || b.pipeline.is_none()) {
+            return Err(b);
         }
 
-        self.command_index += 1;
-
+        // success
+        if self.pipeline.is_none() {
+            self.pipeline = b.pipeline;
+        }
+        self.direct.append(&mut b.direct);
+        self.deferred.append(&mut b.deferred);
         Ok(())
     }
 
-    fn check_resource_conflicts(
+    fn resolve_deferred(
         &self,
-        command_info: &CommandInfo,
-    ) -> Result<(), UnsolvableResourceConflict> {
-        let &CommandInfo {
-            name: command_name,
-            ref used_resources,
-            ..
-        } = command_info;
+        pipeline: &Arc<impl Pipeline>,
+    ) -> Vec<(ResourceUseRef2, Resource, &'static str)> {
+        let mut used_resources = Vec::new();
+        let deferred_deduplicated = HashSet::from_iter(self.deferred.iter().copied());
+        for (state, name) in &deferred_deduplicated {
+            RecordingCommandBuffer::add_descriptor_sets_resources(
+                &mut used_resources,
+                pipeline.as_ref(),
+                state,
+                name,
+            );
+        }
+        used_resources
+    }
+}
 
-        for (use_ref, resource) in used_resources {
+impl AutoSyncState {
+    fn add_command_resources<'a>(
+        &mut self,
+        command_infos: impl Iterator<Item = &'a CommandInfo>,
+    ) -> Result<(), UnsolvableResourceConflict> {
+        let merged = command_infos.fold(Vec::new(), |mut vec: Vec<MergedCommandInfo<'_>>, cmd| {
+            if let Some(last) = vec.last_mut() {
+                match last.try_merge(cmd) {
+                    Ok(_) => vec,
+                    Err(cmd) => {
+                        vec.push(cmd);
+                        vec
+                    }
+                }
+            } else {
+                vec.push(MergedCommandInfo::from(cmd));
+                vec
+            }
+        });
+
+        for cmd in &merged {
+            let deferred = match &cmd.pipeline {
+                Some(PipelineEnum::Compute(pipeline)) => cmd.resolve_deferred(pipeline),
+                Some(PipelineEnum::Graphics(pipeline)) => cmd.resolve_deferred(pipeline),
+                None => Vec::new(),
+            };
+            let used_resources = || {
+                cmd.direct
+                    .iter()
+                    .flat_map(|(vec, name)| vec.iter().map(|(a, b)| (a, b, *name)))
+                    .chain(deferred.iter().map(|(a, b, c)| (a, b, *c)))
+            };
+
+            self.check_resource_conflicts(used_resources())?;
+            self.add_resources(used_resources());
+
+            match cmd.render_pass {
+                RenderPassCommand::None => (),
+                RenderPassCommand::Begin => {
+                    debug_assert!(self.latest_render_pass_enter.is_none());
+                    self.latest_render_pass_enter = Some(self.command_index);
+                }
+                RenderPassCommand::End => {
+                    debug_assert!(self.latest_render_pass_enter.is_some());
+                    self.latest_render_pass_enter = None;
+                }
+            }
+
+            self.command_index += 1;
+        }
+        Ok(())
+    }
+
+    fn check_resource_conflicts<'a>(
+        &self,
+        used_resources: impl Iterator<Item = (&'a ResourceUseRef2, &'a Resource, &'static str)>,
+    ) -> Result<(), UnsolvableResourceConflict> {
+        for (use_ref, resource, command_name) in used_resources {
             match *resource {
                 Resource::Buffer {
                     ref buffer,
@@ -694,14 +812,11 @@ impl AutoSyncState {
     /// - `start_layout` and `end_layout` designate the image layout that the image is expected to
     ///   be in when the command starts, and the image layout that the image will be transitioned
     ///   to during the command. When it comes to buffers, you should pass `Undefined` for both.
-    fn add_resources(&mut self, command_info: &CommandInfo) {
-        let &CommandInfo {
-            name: command_name,
-            ref used_resources,
-            ..
-        } = command_info;
-
-        for (use_ref, resource) in used_resources {
+    fn add_resources<'a>(
+        &mut self,
+        used_resources: impl Iterator<Item = (&'a ResourceUseRef2, &'a Resource, &'static str)>,
+    ) {
+        for (use_ref, resource, command_name) in used_resources {
             match *resource {
                 Resource::Buffer {
                     ref buffer,
@@ -1594,12 +1709,28 @@ pub(in crate::command_buffer) struct RenderPassStateAttachmentResolveInfo {
     pub(in crate::command_buffer) _image_layout: ImageLayout,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::command_buffer) struct DescriptorSetState {
     pub(in crate::command_buffer) descriptor_sets: HashMap<u32, SetOrPush>,
     pub(in crate::command_buffer) pipeline_layout: Arc<PipelineLayout>,
 }
 
-#[derive(Clone)]
+impl Hash for DescriptorSetState {
+    /// HashMaps cannot be hashed, so we do our best job manually
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.pipeline_layout.hash(state);
+        for (id, set_or_push) in &self.descriptor_sets {
+            id.hash(state);
+            match set_or_push {
+                SetOrPush::Set(set) => set.hash(state),
+                // push descriptors are expensive to hash and compare
+                SetOrPush::Push(_) => (),
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::command_buffer) enum SetOrPush {
     Set(DescriptorSetWithOffsets),
     Push(DescriptorSetResources),
