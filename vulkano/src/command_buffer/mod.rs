@@ -117,7 +117,7 @@ use crate::{
         semaphore::{Semaphore, SemaphoreType},
         PipelineStageAccessFlags, PipelineStages,
     },
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 #[cfg(doc)]
 use crate::{
@@ -126,6 +126,7 @@ use crate::{
 };
 use ahash::HashMap;
 use bytemuck::{Pod, Zeroable};
+use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};
 
 pub mod allocator;
@@ -390,6 +391,110 @@ impl CommandBufferInheritanceInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut CommandBufferInheritanceInfoExtensionsVk<'_>,
+    ) -> ash::vk::CommandBufferInheritanceInfo<'a> {
+        let &Self {
+            ref render_pass,
+            occlusion_query,
+            pipeline_statistics,
+            _ne: _,
+        } = self;
+
+        let (render_pass_vk, subpass_vk, framebuffer_vk) = render_pass
+            .as_ref()
+            .and_then(|render_pass| match render_pass {
+                CommandBufferInheritanceRenderPassType::BeginRenderPass(render_pass_info) => {
+                    let &CommandBufferInheritanceRenderPassInfo {
+                        ref subpass,
+                        ref framebuffer,
+                    } = render_pass_info;
+
+                    Some((
+                        subpass.render_pass().handle(),
+                        subpass.index(),
+                        framebuffer
+                            .as_ref()
+                            .map(|fb| fb.handle())
+                            .unwrap_or_default(),
+                    ))
+                }
+                CommandBufferInheritanceRenderPassType::BeginRendering(_) => None,
+            })
+            .unwrap_or_default();
+
+        let (occlusion_query_enable, query_flags_vk) = occlusion_query
+            .map(|flags| (true, flags.into()))
+            .unwrap_or_default();
+
+        let mut val_vk = ash::vk::CommandBufferInheritanceInfo::default()
+            .render_pass(render_pass_vk)
+            .subpass(subpass_vk)
+            .framebuffer(framebuffer_vk)
+            .occlusion_query_enable(occlusion_query_enable)
+            .query_flags(query_flags_vk)
+            .pipeline_statistics(pipeline_statistics.into());
+
+        let CommandBufferInheritanceInfoExtensionsVk {
+            rendering_info_vk: rendering_vk,
+        } = extensions_vk;
+
+        if let Some(next) = rendering_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a CommandBufferInheritanceInfoFields1Vk,
+    ) -> CommandBufferInheritanceInfoExtensionsVk<'a> {
+        let CommandBufferInheritanceInfoFields1Vk {
+            rendering_info_fields1_vk,
+        } = fields1_vk;
+
+        let rendering_info_vk = self
+            .render_pass
+            .as_ref()
+            .zip(rendering_info_fields1_vk.as_ref())
+            .and_then(
+                |(render_pass, rendering_info_fields1_vk)| match render_pass {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(_) => None,
+                    CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
+                        Some(rendering_info.to_vk(rendering_info_fields1_vk))
+                    }
+                },
+            );
+
+        CommandBufferInheritanceInfoExtensionsVk { rendering_info_vk }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> CommandBufferInheritanceInfoFields1Vk {
+        let rendering_info_fields1_vk =
+            self.render_pass
+                .as_ref()
+                .and_then(|render_pass| match render_pass {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(_) => None,
+                    CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
+                        Some(rendering_info.to_vk_fields1())
+                    }
+                });
+
+        CommandBufferInheritanceInfoFields1Vk {
+            rendering_info_fields1_vk,
+        }
+    }
+}
+
+pub(crate) struct CommandBufferInheritanceInfoExtensionsVk<'a> {
+    pub(crate) rendering_info_vk: Option<ash::vk::CommandBufferInheritanceRenderingInfo<'a>>,
+}
+
+pub(crate) struct CommandBufferInheritanceInfoFields1Vk {
+    pub(crate) rendering_info_fields1_vk: Option<CommandBufferInheritanceRenderingInfoFields1Vk>,
 }
 
 /// Selects the type of render pass for command buffer inheritance.
@@ -737,6 +842,54 @@ impl CommandBufferInheritanceRenderingInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a CommandBufferInheritanceRenderingInfoFields1Vk,
+    ) -> ash::vk::CommandBufferInheritanceRenderingInfo<'a> {
+        let &Self {
+            view_mask,
+            color_attachment_formats: _,
+            depth_attachment_format,
+            stencil_attachment_format,
+            rasterization_samples,
+        } = self;
+        let CommandBufferInheritanceRenderingInfoFields1Vk {
+            color_attachment_formats_vk,
+        } = fields1_vk;
+
+        ash::vk::CommandBufferInheritanceRenderingInfo::default()
+            .flags(ash::vk::RenderingFlags::empty())
+            .view_mask(view_mask)
+            .color_attachment_formats(color_attachment_formats_vk)
+            .depth_attachment_format(
+                depth_attachment_format.map_or(ash::vk::Format::UNDEFINED, Into::into),
+            )
+            .stencil_attachment_format(
+                stencil_attachment_format.map_or(ash::vk::Format::UNDEFINED, Into::into),
+            )
+            .rasterization_samples(rasterization_samples.into())
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> CommandBufferInheritanceRenderingInfoFields1Vk {
+        let Self {
+            color_attachment_formats,
+            ..
+        } = self;
+
+        let color_attachment_formats_vk = color_attachment_formats
+            .iter()
+            .map(|format| format.map_or(ash::vk::Format::UNDEFINED, Into::into))
+            .collect();
+
+        CommandBufferInheritanceRenderingInfoFields1Vk {
+            color_attachment_formats_vk,
+        }
+    }
+}
+
+pub(crate) struct CommandBufferInheritanceRenderingInfoFields1Vk {
+    pub(crate) color_attachment_formats_vk: SmallVec<[ash::vk::Format; 4]>,
 }
 
 /// Usage flags to pass when creating a command buffer.
@@ -857,6 +1010,187 @@ impl SubmitInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        fields1_vk: &'a SubmitInfo2Fields1Vk,
+    ) -> ash::vk::SubmitInfo2<'a> {
+        let SubmitInfo2Fields1Vk {
+            wait_semaphore_infos_vk,
+            command_buffer_infos_vk,
+            signal_semaphore_infos_vk,
+        } = fields1_vk;
+
+        ash::vk::SubmitInfo2::default()
+            .flags(ash::vk::SubmitFlags::empty()) // TODO:
+            .wait_semaphore_infos(wait_semaphore_infos_vk)
+            .command_buffer_infos(command_buffer_infos_vk)
+            .signal_semaphore_infos(signal_semaphore_infos_vk)
+    }
+
+    pub(crate) fn to_vk2_fields1(&self) -> SubmitInfo2Fields1Vk {
+        let &Self {
+            ref wait_semaphores,
+            ref command_buffers,
+            ref signal_semaphores,
+            _ne: _,
+        } = self;
+
+        SubmitInfo2Fields1Vk {
+            wait_semaphore_infos_vk: wait_semaphores
+                .iter()
+                .map(SemaphoreSubmitInfo::to_vk2)
+                .collect(),
+            command_buffer_infos_vk: command_buffers
+                .iter()
+                .map(CommandBufferSubmitInfo::to_vk2)
+                .collect(),
+            signal_semaphore_infos_vk: signal_semaphores
+                .iter()
+                .map(SemaphoreSubmitInfo::to_vk2)
+                .collect(),
+        }
+    }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a SubmitInfoFields1Vk,
+        extensions_vk: &'a mut SubmitInfoExtensionsVk<'_>,
+    ) -> ash::vk::SubmitInfo<'a> {
+        let SubmitInfoFields1Vk {
+            wait_semaphores_vk,
+            wait_dst_stage_mask_vk,
+            wait_semaphore_values_vk: _,
+            command_buffers_vk,
+            signal_semaphores_vk,
+            signal_semaphore_values_vk: _,
+        } = fields1_vk;
+
+        let mut val_vk = ash::vk::SubmitInfo::default()
+            .wait_semaphores(wait_semaphores_vk)
+            .wait_dst_stage_mask(wait_dst_stage_mask_vk)
+            .command_buffers(command_buffers_vk)
+            .signal_semaphores(signal_semaphores_vk);
+
+        let SubmitInfoExtensionsVk {
+            timeline_semaphore_vk,
+        } = extensions_vk;
+
+        if let Some(next) = timeline_semaphore_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a SubmitInfoFields1Vk,
+    ) -> SubmitInfoExtensionsVk<'a> {
+        let Self {
+            wait_semaphores,
+            command_buffers: _,
+            signal_semaphores,
+            _ne: _,
+        } = self;
+        let SubmitInfoFields1Vk {
+            wait_semaphores_vk: _,
+            wait_dst_stage_mask_vk: _,
+            command_buffers_vk: _,
+            signal_semaphores_vk: _,
+            wait_semaphore_values_vk,
+            signal_semaphore_values_vk,
+        } = fields1_vk;
+
+        let timeline_semaphore_vk = (wait_semaphores.iter())
+            .chain(signal_semaphores.iter())
+            .any(|semaphore_submit_info| {
+                semaphore_submit_info.semaphore.semaphore_type() == SemaphoreType::Timeline
+            })
+            .then(|| {
+                ash::vk::TimelineSemaphoreSubmitInfo::default()
+                    .wait_semaphore_values(wait_semaphore_values_vk)
+                    .signal_semaphore_values(signal_semaphore_values_vk)
+            });
+
+        SubmitInfoExtensionsVk {
+            timeline_semaphore_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> SubmitInfoFields1Vk {
+        let Self {
+            wait_semaphores,
+            command_buffers,
+            signal_semaphores,
+            _ne: _,
+        } = self;
+
+        let mut wait_semaphores_vk = SmallVec::with_capacity(wait_semaphores.len());
+        let mut wait_dst_stage_mask_vk = SmallVec::with_capacity(wait_semaphores.len());
+        let mut wait_semaphore_values_vk = SmallVec::with_capacity(wait_semaphores.len());
+
+        for semaphore_submit_info in wait_semaphores {
+            let &SemaphoreSubmitInfo {
+                ref semaphore,
+                value,
+                stages,
+                _ne: _,
+            } = semaphore_submit_info;
+
+            wait_semaphores_vk.push(semaphore.handle());
+            wait_dst_stage_mask_vk.push(stages.into());
+            wait_semaphore_values_vk.push(value);
+        }
+
+        let command_buffers_vk = command_buffers
+            .iter()
+            .map(CommandBufferSubmitInfo::to_vk)
+            .collect();
+
+        let mut signal_semaphores_vk = SmallVec::with_capacity(signal_semaphores.len());
+        let mut signal_semaphore_values_vk = SmallVec::with_capacity(signal_semaphores.len());
+
+        for semaphore_submit_info in signal_semaphores {
+            let &SemaphoreSubmitInfo {
+                ref semaphore,
+                value,
+                stages: _,
+                _ne: _,
+            } = semaphore_submit_info;
+
+            signal_semaphores_vk.push(semaphore.handle());
+            signal_semaphore_values_vk.push(value);
+        }
+
+        SubmitInfoFields1Vk {
+            wait_semaphores_vk,
+            wait_dst_stage_mask_vk,
+            wait_semaphore_values_vk,
+            command_buffers_vk,
+            signal_semaphores_vk,
+            signal_semaphore_values_vk,
+        }
+    }
+}
+
+pub(crate) struct SubmitInfo2Fields1Vk {
+    pub(crate) wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo<'static>; 4]>,
+    pub(crate) command_buffer_infos_vk: SmallVec<[ash::vk::CommandBufferSubmitInfo<'static>; 4]>,
+    pub(crate) signal_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo<'static>; 4]>,
+}
+
+pub(crate) struct SubmitInfoExtensionsVk<'a> {
+    pub(crate) timeline_semaphore_vk: Option<ash::vk::TimelineSemaphoreSubmitInfo<'a>>,
+}
+
+pub(crate) struct SubmitInfoFields1Vk {
+    pub(crate) wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+    pub(crate) wait_dst_stage_mask_vk: SmallVec<[ash::vk::PipelineStageFlags; 4]>,
+    pub(crate) wait_semaphore_values_vk: SmallVec<[u64; 4]>,
+    pub(crate) command_buffers_vk: SmallVec<[ash::vk::CommandBuffer; 4]>,
+    pub(crate) signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+    pub(crate) signal_semaphore_values_vk: SmallVec<[u64; 4]>,
 }
 
 /// Parameters for a command buffer in a queue submit operation.
@@ -899,6 +1233,26 @@ impl CommandBufferSubmitInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::CommandBufferSubmitInfo<'static> {
+        let &Self {
+            ref command_buffer,
+            _ne: _,
+        } = self;
+
+        ash::vk::CommandBufferSubmitInfo::default()
+            .command_buffer(command_buffer.handle())
+            .device_mask(0) // TODO:
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::CommandBuffer {
+        let &Self {
+            ref command_buffer,
+            _ne: _,
+        } = self;
+
+        command_buffer.handle()
     }
 }
 
@@ -1144,6 +1498,21 @@ impl SemaphoreSubmitInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::SemaphoreSubmitInfo<'static> {
+        let &Self {
+            ref semaphore,
+            value,
+            stages,
+            _ne: _,
+        } = self;
+
+        ash::vk::SemaphoreSubmitInfo::default()
+            .semaphore(semaphore.handle())
+            .value(value)
+            .stage_mask(stages.into())
+            .device_index(0) // TODO:
     }
 }
 

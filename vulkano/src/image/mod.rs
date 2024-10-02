@@ -1453,26 +1453,20 @@ impl ImageSubresourceLayers {
     }
 }
 
-impl From<ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
-    #[inline]
-    fn from(val: ImageSubresourceLayers) -> Self {
-        Self {
-            aspect_mask: val.aspects.into(),
-            mip_level: val.mip_level,
-            base_array_layer: val.array_layers.start,
-            layer_count: val.array_layers.end - val.array_layers.start,
-        }
-    }
-}
+impl ImageSubresourceLayers {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ImageSubresourceLayers {
+        let &Self {
+            aspects,
+            mip_level,
+            ref array_layers,
+        } = self;
 
-impl From<&ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
-    #[inline]
-    fn from(val: &ImageSubresourceLayers) -> Self {
-        Self {
-            aspect_mask: val.aspects.into(),
-            mip_level: val.mip_level,
-            base_array_layer: val.array_layers.start,
-            layer_count: val.array_layers.end - val.array_layers.start,
+        ash::vk::ImageSubresourceLayers {
+            aspect_mask: aspects.into(),
+            mip_level,
+            base_array_layer: array_layers.start,
+            layer_count: array_layers.end - array_layers.start,
         }
     }
 }
@@ -1582,17 +1576,21 @@ impl ImageSubresourceRange {
 
         Ok(())
     }
-}
 
-impl From<ImageSubresourceRange> for ash::vk::ImageSubresourceRange {
-    #[inline]
-    fn from(val: ImageSubresourceRange) -> Self {
-        Self {
-            aspect_mask: val.aspects.into(),
-            base_mip_level: val.mip_levels.start,
-            level_count: val.mip_levels.end - val.mip_levels.start,
-            base_array_layer: val.array_layers.start,
-            layer_count: val.array_layers.end - val.array_layers.start,
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ImageSubresourceRange {
+        let &Self {
+            aspects,
+            ref mip_levels,
+            ref array_layers,
+        } = self;
+
+        ash::vk::ImageSubresourceRange {
+            aspect_mask: aspects.into(),
+            base_mip_level: mip_levels.start,
+            level_count: mip_levels.end - mip_levels.start,
+            base_array_layer: array_layers.start,
+            layer_count: array_layers.end - array_layers.start,
         }
     }
 }
@@ -1632,6 +1630,27 @@ pub struct SubresourceLayout {
     /// For 3D images, the number of bytes between two texels or two blocks in adjacent depth
     /// layers.
     pub depth_pitch: Option<DeviceSize>,
+}
+
+impl SubresourceLayout {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> ash::vk::SubresourceLayout {
+        let &Self {
+            offset,
+            size,
+            row_pitch,
+            array_pitch,
+            depth_pitch,
+        } = self;
+
+        ash::vk::SubresourceLayout {
+            offset,
+            size,
+            row_pitch,
+            array_pitch: array_pitch.unwrap_or(0),
+            depth_pitch: depth_pitch.unwrap_or(0),
+        }
+    }
 }
 
 /// The image configuration to query in
@@ -1974,6 +1993,135 @@ impl ImageFormatInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        extensions_vk: &'a mut ImageFormatInfo2ExtensionsVk<'_>,
+    ) -> ash::vk::PhysicalDeviceImageFormatInfo2<'a> {
+        let &Self {
+            flags,
+            format,
+            image_type,
+            tiling,
+            usage,
+            stencil_usage: _,
+            external_memory_handle_type: _,
+            image_view_type: _,
+            drm_format_modifier_info: _,
+            view_formats: _,
+            _ne: _,
+        } = self;
+
+        let mut val_vk = ash::vk::PhysicalDeviceImageFormatInfo2::default()
+            .format(format.into())
+            .ty(image_type.into())
+            .tiling(tiling.into())
+            .usage(usage.into())
+            .flags(flags.into());
+
+        let ImageFormatInfo2ExtensionsVk {
+            drm_format_modifier_vk,
+            external_vk,
+            format_list_vk,
+            image_view_vk,
+            stencil_usage_vk,
+        } = extensions_vk;
+
+        if let Some(next) = drm_format_modifier_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = external_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = format_list_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = image_view_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = stencil_usage_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk2_extensions<'a>(
+        &'a self,
+        fields1_vk: &'a ImageFormatInfo2Fields1Vk,
+    ) -> ImageFormatInfo2ExtensionsVk<'a> {
+        let &Self {
+            flags: _,
+            format: _,
+            image_type: _,
+            tiling: _,
+            usage: _,
+            stencil_usage,
+            external_memory_handle_type,
+            image_view_type,
+            ref drm_format_modifier_info,
+            view_formats: _,
+            _ne: _,
+        } = self;
+        let ImageFormatInfo2Fields1Vk { view_formats_vk } = fields1_vk;
+
+        let drm_format_modifier_vk = drm_format_modifier_info
+            .as_ref()
+            .map(ImageDrmFormatModifierInfo::to_vk);
+
+        let external_vk = external_memory_handle_type.map(|handle_type| {
+            ash::vk::PhysicalDeviceExternalImageFormatInfo::default()
+                .handle_type(handle_type.into())
+        });
+
+        let format_list_vk = (!view_formats_vk.is_empty())
+            .then(|| ash::vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
+
+        let image_view_vk = image_view_type.map(|image_view_type| {
+            ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT::default()
+                .image_view_type(image_view_type.into())
+        });
+
+        let stencil_usage_vk = stencil_usage.map(|stencil_usage| {
+            ash::vk::ImageStencilUsageCreateInfo::default().stencil_usage(stencil_usage.into())
+        });
+
+        ImageFormatInfo2ExtensionsVk {
+            drm_format_modifier_vk,
+            external_vk,
+            format_list_vk,
+            image_view_vk,
+            stencil_usage_vk,
+        }
+    }
+
+    pub(crate) fn to_vk2_fields1(&self) -> ImageFormatInfo2Fields1Vk {
+        let view_formats_vk = self
+            .view_formats
+            .iter()
+            .copied()
+            .map(ash::vk::Format::from)
+            .collect();
+
+        ImageFormatInfo2Fields1Vk { view_formats_vk }
+    }
+}
+
+pub(crate) struct ImageFormatInfo2ExtensionsVk<'a> {
+    pub(crate) drm_format_modifier_vk:
+        Option<ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'a>>,
+    pub(crate) external_vk: Option<ash::vk::PhysicalDeviceExternalImageFormatInfo<'static>>,
+    pub(crate) format_list_vk: Option<ash::vk::ImageFormatListCreateInfo<'a>>,
+    pub(crate) image_view_vk: Option<ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT<'static>>,
+    pub(crate) stencil_usage_vk: Option<ash::vk::ImageStencilUsageCreateInfo<'static>>,
+}
+
+pub(crate) struct ImageFormatInfo2Fields1Vk {
+    pub(crate) view_formats_vk: Vec<ash::vk::Format>,
 }
 
 /// The image's DRM format modifier configuration to query in
@@ -2062,6 +2210,27 @@ impl ImageDrmFormatModifierInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT<'_> {
+        let &Self {
+            drm_format_modifier,
+            ref sharing,
+            _ne: _,
+        } = self;
+
+        let (sharing_mode, queue_family_indices) = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => (
+                ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.as_slice(),
+            ),
+        };
+
+        ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
+            .drm_format_modifier(drm_format_modifier)
+            .sharing_mode(sharing_mode)
+            .queue_family_indices(queue_family_indices)
+    }
 }
 
 /// The properties that are supported by a physical device for images of a certain type.
@@ -2099,24 +2268,111 @@ pub struct ImageFormatProperties {
     pub filter_cubic_minmax: bool,
 }
 
-impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
-    #[inline]
-    fn from(props: ash::vk::ImageFormatProperties) -> Self {
-        Self {
-            max_extent: [
-                props.max_extent.width,
-                props.max_extent.height,
-                props.max_extent.depth,
-            ],
-            max_mip_levels: props.max_mip_levels,
-            max_array_layers: props.max_array_layers,
-            sample_counts: props.sample_counts.into(),
-            max_resource_size: props.max_resource_size,
+impl ImageFormatProperties {
+    pub(crate) fn to_mut_vk2(
+        extensions_vk: &mut ImageFormatProperties2ExtensionsVk,
+    ) -> ash::vk::ImageFormatProperties2<'_> {
+        let mut val_vk = ash::vk::ImageFormatProperties2::default();
+
+        let ImageFormatProperties2ExtensionsVk {
+            external_vk,
+            filter_cubic_image_view_vk,
+        } = extensions_vk;
+
+        if let Some(next) = external_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = filter_cubic_image_view_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_mut_vk2_extensions(
+        image_format_info: &ImageFormatInfo,
+    ) -> ImageFormatProperties2ExtensionsVk {
+        let external_vk = (image_format_info.external_memory_handle_type.is_some())
+            .then(ash::vk::ExternalImageFormatProperties::default);
+
+        let filter_cubic_image_view_vk = (image_format_info.image_view_type.is_some())
+            .then(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default);
+
+        ImageFormatProperties2ExtensionsVk {
+            external_vk,
+            filter_cubic_image_view_vk,
+        }
+    }
+
+    pub(crate) fn from_vk2(
+        val_vk: &ash::vk::ImageFormatProperties2<'_>,
+        extensions_vk: &ImageFormatProperties2ExtensionsVk,
+    ) -> Self {
+        let &ash::vk::ImageFormatProperties2 {
+            image_format_properties:
+                ash::vk::ImageFormatProperties {
+                    max_extent,
+                    max_mip_levels,
+                    max_array_layers,
+                    sample_counts,
+                    max_resource_size,
+                },
+            ..
+        } = val_vk;
+
+        let mut val = Self {
+            max_extent: [max_extent.width, max_extent.height, max_extent.depth],
+            max_mip_levels,
+            max_array_layers,
+            sample_counts: sample_counts.into(),
+            max_resource_size,
             external_memory_properties: Default::default(),
             filter_cubic: false,
             filter_cubic_minmax: false,
+        };
+
+        let ImageFormatProperties2ExtensionsVk {
+            external_vk,
+            filter_cubic_image_view_vk,
+        } = extensions_vk;
+
+        if let Some(val_vk) = external_vk {
+            let ash::vk::ExternalImageFormatProperties {
+                ref external_memory_properties,
+                ..
+            } = val_vk;
+
+            val = Self {
+                external_memory_properties: ExternalMemoryProperties::from_vk(
+                    external_memory_properties,
+                ),
+                ..val
+            };
         }
+
+        if let Some(val_vk) = filter_cubic_image_view_vk {
+            let &ash::vk::FilterCubicImageViewImageFormatPropertiesEXT {
+                filter_cubic,
+                filter_cubic_minmax,
+                ..
+            } = val_vk;
+
+            val = Self {
+                filter_cubic: filter_cubic != ash::vk::FALSE,
+                filter_cubic_minmax: filter_cubic_minmax != ash::vk::FALSE,
+                ..val
+            };
+        }
+
+        val
     }
+}
+
+pub(crate) struct ImageFormatProperties2ExtensionsVk {
+    pub(crate) external_vk: Option<ash::vk::ExternalImageFormatProperties<'static>>,
+    pub(crate) filter_cubic_image_view_vk:
+        Option<ash::vk::FilterCubicImageViewImageFormatPropertiesEXT<'static>>,
 }
 
 /// The image configuration to query in
@@ -2228,6 +2484,24 @@ impl SparseImageFormatInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PhysicalDeviceSparseImageFormatInfo2<'static> {
+        let &Self {
+            format,
+            image_type,
+            samples,
+            usage,
+            tiling,
+            _ne: _,
+        } = self;
+
+        ash::vk::PhysicalDeviceSparseImageFormatInfo2::default()
+            .format(format.into())
+            .ty(image_type.into())
+            .samples(samples.into())
+            .usage(usage.into())
+            .tiling(tiling.into())
+    }
 }
 
 /// The properties that are supported by a physical device for sparse images of a certain type.
@@ -2245,6 +2519,34 @@ pub struct SparseImageFormatProperties {
 
     /// Additional information about the sparse image.
     pub flags: SparseImageFormatFlags,
+}
+
+impl SparseImageFormatProperties {
+    pub(crate) fn to_mut_vk2() -> ash::vk::SparseImageFormatProperties2<'static> {
+        ash::vk::SparseImageFormatProperties2::default()
+    }
+
+    pub(crate) fn to_mut_vk() -> ash::vk::SparseImageFormatProperties {
+        ash::vk::SparseImageFormatProperties::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &ash::vk::SparseImageFormatProperties) -> Self {
+        let &ash::vk::SparseImageFormatProperties {
+            aspect_mask,
+            image_granularity,
+            flags,
+        } = val_vk;
+
+        SparseImageFormatProperties {
+            aspects: aspect_mask.into(),
+            image_granularity: [
+                image_granularity.width,
+                image_granularity.height,
+                image_granularity.depth,
+            ],
+            flags: flags.into(),
+        }
+    }
 }
 
 vulkan_bitflags! {
@@ -2288,6 +2590,46 @@ pub struct SparseImageMemoryRequirements {
     /// If `format_properties.flags.single_miptail` is not set, specifies the stride between
     /// the mip tail regions of each array layer.
     pub image_mip_tail_stride: Option<DeviceSize>,
+}
+
+impl SparseImageMemoryRequirements {
+    pub(crate) fn to_mut_vk2() -> ash::vk::SparseImageMemoryRequirements2<'static> {
+        ash::vk::SparseImageMemoryRequirements2::default()
+    }
+
+    pub(crate) fn to_mut_vk() -> ash::vk::SparseImageMemoryRequirements {
+        ash::vk::SparseImageMemoryRequirements::default()
+    }
+
+    pub(crate) fn from_vk2(val_vk: &ash::vk::SparseImageMemoryRequirements2<'_>) -> Self {
+        let ash::vk::SparseImageMemoryRequirements2 {
+            ref memory_requirements,
+            ..
+        } = val_vk;
+
+        SparseImageMemoryRequirements::from_vk(memory_requirements)
+    }
+
+    pub(crate) fn from_vk(val_vk: &ash::vk::SparseImageMemoryRequirements) -> Self {
+        let &ash::vk::SparseImageMemoryRequirements {
+            ref format_properties,
+            image_mip_tail_first_lod,
+            image_mip_tail_size,
+            image_mip_tail_offset,
+            image_mip_tail_stride,
+        } = val_vk;
+
+        SparseImageMemoryRequirements {
+            format_properties: SparseImageFormatProperties::from_vk(format_properties),
+            image_mip_tail_first_lod,
+            image_mip_tail_size,
+            image_mip_tail_offset,
+            image_mip_tail_stride: (!format_properties
+                .flags
+                .intersects(ash::vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
+            .then_some(image_mip_tail_stride),
+        }
+    }
 }
 
 #[cfg(test)]

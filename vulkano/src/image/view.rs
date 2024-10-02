@@ -556,65 +556,18 @@ impl ImageView {
         image: Arc<Image>,
         create_info: ImageViewCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
-        let &ImageViewCreateInfo {
-            view_type,
-            format,
-            component_mapping,
-            ref subresource_range,
-            mut usage,
-            ref sampler_ycbcr_conversion,
-            _ne: _,
-        } = &create_info;
-
-        let device = image.device();
-        let implicit_default_usage = get_implicit_default_usage(subresource_range.aspects, &image);
-
-        let has_non_default_usage = if usage.is_empty() {
-            usage = implicit_default_usage;
-            false
-        } else {
-            usage != implicit_default_usage
-        };
-
-        let mut info_vk = ash::vk::ImageViewCreateInfo {
-            flags: ash::vk::ImageViewCreateFlags::empty(),
-            image: image.handle(),
-            view_type: view_type.into(),
-            format: format.into(),
-            components: component_mapping.into(),
-            subresource_range: subresource_range.clone().into(),
-            ..Default::default()
-        };
-        let mut image_view_usage_info_vk = None;
-        let mut sampler_ycbcr_conversion_info_vk = None;
-
-        if has_non_default_usage {
-            let next = image_view_usage_info_vk.insert(ash::vk::ImageViewUsageCreateInfo {
-                usage: usage.into(),
-                ..Default::default()
-            });
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if let Some(conversion) = sampler_ycbcr_conversion {
-            let next =
-                sampler_ycbcr_conversion_info_vk.insert(ash::vk::SamplerYcbcrConversionInfo {
-                    conversion: conversion.handle(),
-                    ..Default::default()
-                });
-
-            next.p_next = info_vk.p_next;
-            info_vk.p_next = <*const _>::cast(next);
-        }
+        let implicit_default_usage =
+            get_implicit_default_usage(create_info.subresource_range.aspects, &image);
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(implicit_default_usage);
+        let create_info_vk = create_info.to_vk(image.handle(), &mut create_info_extensions_vk);
 
         let handle = {
+            let device = image.device();
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_image_view)(
                 device.handle(),
-                &info_vk,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1068,6 +1021,74 @@ impl ImageViewCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        image_vk: ash::vk::Image,
+        extensions_vk: &'a mut ImageViewCreateInfoExtensionsVk,
+    ) -> ash::vk::ImageViewCreateInfo<'a> {
+        let &Self {
+            view_type,
+            format,
+            component_mapping,
+            ref subresource_range,
+            usage: _,
+            sampler_ycbcr_conversion: _,
+            _ne: _,
+        } = self;
+
+        let mut val_vk = ash::vk::ImageViewCreateInfo::default()
+            .flags(ash::vk::ImageViewCreateFlags::empty())
+            .image(image_vk)
+            .view_type(view_type.into())
+            .format(format.into())
+            .components(component_mapping.to_vk())
+            .subresource_range(subresource_range.to_vk());
+
+        let ImageViewCreateInfoExtensionsVk {
+            sampler_ycbcr_conversion_vk,
+            usage_vk,
+        } = extensions_vk;
+
+        if let Some(next) = sampler_ycbcr_conversion_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = usage_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(
+        &self,
+        implicit_default_usage: ImageUsage,
+    ) -> ImageViewCreateInfoExtensionsVk {
+        let &Self {
+            usage,
+            ref sampler_ycbcr_conversion,
+            ..
+        } = self;
+
+        let sampler_ycbcr_conversion_vk = sampler_ycbcr_conversion.as_ref().map(|conversion| {
+            ash::vk::SamplerYcbcrConversionInfo::default().conversion(conversion.handle())
+        });
+
+        let has_non_default_usage = !(usage.is_empty() || usage == implicit_default_usage);
+        let usage_vk = has_non_default_usage
+            .then(|| ash::vk::ImageViewUsageCreateInfo::default().usage(usage.into()));
+
+        ImageViewCreateInfoExtensionsVk {
+            sampler_ycbcr_conversion_vk,
+            usage_vk,
+        }
+    }
+}
+
+pub(crate) struct ImageViewCreateInfoExtensionsVk {
+    pub(crate) sampler_ycbcr_conversion_vk: Option<ash::vk::SamplerYcbcrConversionInfo<'static>>,
+    pub(crate) usage_vk: Option<ash::vk::ImageViewUsageCreateInfo<'static>>,
 }
 
 vulkan_enum! {

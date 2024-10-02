@@ -571,7 +571,7 @@ pub(crate) unsafe fn queue_present(
 
     let PresentInfo {
         wait_semaphores: _,
-        swapchains,
+        swapchain_infos: swapchains,
         _ne: _,
     } = &present_info;
 

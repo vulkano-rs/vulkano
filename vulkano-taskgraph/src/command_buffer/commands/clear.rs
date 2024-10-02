@@ -3,7 +3,6 @@ use crate::{
     resource::{AccessType, ImageLayoutType},
     Id,
 };
-use ash::vk;
 use smallvec::SmallVec;
 use std::{ffi::c_void, mem};
 use vulkano::{
@@ -43,14 +42,14 @@ impl RecordingCommandBuffer<'_> {
         let cmd_clear_color_image = fns.v1_0.cmd_clear_color_image;
 
         if regions.is_empty() {
-            let region_vk = image.subresource_range().into();
+            let region_vk = image.subresource_range().to_vk();
 
             unsafe {
                 cmd_clear_color_image(
                     self.handle(),
                     image.handle(),
                     image_layout.into(),
-                    &clear_value.into(),
+                    &clear_value.to_vk(),
                     1,
                     &region_vk,
                 )
@@ -58,8 +57,7 @@ impl RecordingCommandBuffer<'_> {
         } else {
             let regions_vk = regions
                 .iter()
-                .cloned()
-                .map(vk::ImageSubresourceRange::from)
+                .map(ImageSubresourceRange::to_vk)
                 .collect::<SmallVec<[_; 8]>>();
 
             unsafe {
@@ -67,7 +65,7 @@ impl RecordingCommandBuffer<'_> {
                     self.handle(),
                     image.handle(),
                     image_layout.into(),
-                    &clear_value.into(),
+                    &clear_value.to_vk(),
                     regions_vk.len() as u32,
                     regions_vk.as_ptr(),
                 )
@@ -104,14 +102,14 @@ impl RecordingCommandBuffer<'_> {
         let cmd_clear_depth_stencil_image = fns.v1_0.cmd_clear_depth_stencil_image;
 
         if regions.is_empty() {
-            let region_vk = image.subresource_range().into();
+            let region_vk = image.subresource_range().to_vk();
 
             unsafe {
                 cmd_clear_depth_stencil_image(
                     self.handle(),
                     image.handle(),
                     image_layout.into(),
-                    &clear_value.into(),
+                    &clear_value.to_vk(),
                     1,
                     &region_vk,
                 )
@@ -119,8 +117,7 @@ impl RecordingCommandBuffer<'_> {
         } else {
             let regions_vk = regions
                 .iter()
-                .cloned()
-                .map(vk::ImageSubresourceRange::from)
+                .map(ImageSubresourceRange::to_vk)
                 .collect::<SmallVec<[_; 8]>>();
 
             unsafe {
@@ -128,7 +125,7 @@ impl RecordingCommandBuffer<'_> {
                     self.handle(),
                     image.handle(),
                     image_layout.into(),
-                    &clear_value.into(),
+                    &clear_value.to_vk(),
                     regions_vk.len() as u32,
                     regions_vk.as_ptr(),
                 )

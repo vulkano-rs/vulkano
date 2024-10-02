@@ -1539,30 +1539,12 @@ impl RawRecordingCommandBuffer {
         info: &AccelerationStructureBuildGeometryInfo,
         build_range_infos: &[AccelerationStructureBuildRangeInfo],
     ) -> &mut Self {
-        let (mut info_vk, geometries_vk) = info.to_vulkan();
-        info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-            geometry_count: geometries_vk.len() as u32,
-            p_geometries: geometries_vk.as_ptr(),
-            ..info_vk
-        };
+        let info_fields1_vk = info.to_vk_fields1();
+        let info_vk = info.to_vk(&info_fields1_vk);
 
         let build_range_info_elements_vk: SmallVec<[_; 8]> = build_range_infos
             .iter()
-            .map(|build_range_info| {
-                let &AccelerationStructureBuildRangeInfo {
-                    primitive_count,
-                    primitive_offset,
-                    first_vertex,
-                    transform_offset,
-                } = build_range_info;
-
-                ash::vk::AccelerationStructureBuildRangeInfoKHR {
-                    primitive_count,
-                    primitive_offset,
-                    first_vertex,
-                    transform_offset,
-                }
-            })
+            .map(AccelerationStructureBuildRangeInfo::to_vk)
             .collect();
         let build_range_info_pointers_vk: SmallVec<[_; 8]> = build_range_info_elements_vk
             .iter()
@@ -2182,12 +2164,8 @@ impl RawRecordingCommandBuffer {
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
-        let (mut info_vk, geometries_vk) = info.to_vulkan();
-        info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-            geometry_count: geometries_vk.len() as u32,
-            p_geometries: geometries_vk.as_ptr(),
-            ..info_vk
-        };
+        let info_fields1_vk = info.to_vk_fields1();
+        let info_vk = info.to_vk(&info_fields1_vk);
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure
@@ -2242,19 +2220,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         info: &CopyAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyAccelerationStructureInfoKHR {
-            src: src.handle(),
-            dst: dst.handle(),
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure
@@ -2311,21 +2277,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         info: &CopyAccelerationStructureToMemoryInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureToMemoryInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyAccelerationStructureToMemoryInfoKHR {
-            src: src.handle(),
-            dst: ash::vk::DeviceOrHostAddressKHR {
-                device_address: dst.device_address().unwrap().get(),
-            },
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure
@@ -2382,21 +2334,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         info: &CopyMemoryToAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyMemoryToAccelerationStructureInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyMemoryToAccelerationStructureInfoKHR {
-            src: ash::vk::DeviceOrHostAddressConstKHR {
-                device_address: src.device_address().unwrap().get(),
-            },
-            dst: dst.handle(),
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure

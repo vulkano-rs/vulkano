@@ -173,6 +173,26 @@ impl<T: ?Sized> Subbuffer<T> {
         // SAFETY: All `Subbuffer`s share the same layout.
         mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self)
     }
+
+    pub(crate) fn to_vk_device_or_host_address(&self) -> ash::vk::DeviceOrHostAddressKHR {
+        ash::vk::DeviceOrHostAddressKHR {
+            device_address: self
+                .device_address()
+                .expect("Can't get device address. Is the extension enabled?")
+                .into(),
+        }
+    }
+
+    pub(crate) fn to_vk_device_or_host_address_const(
+        &self,
+    ) -> ash::vk::DeviceOrHostAddressConstKHR {
+        ash::vk::DeviceOrHostAddressConstKHR {
+            device_address: self
+                .device_address()
+                .expect("Can't get device address. Is the extension enabled?")
+                .into(),
+        }
+    }
 }
 
 impl<T> Subbuffer<T>

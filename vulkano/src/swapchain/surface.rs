@@ -19,6 +19,7 @@ use std::{
     error::Error,
     ffi::c_void,
     fmt::{Debug, Display, Error as FmtError, Formatter},
+    marker::PhantomData,
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -208,17 +209,15 @@ impl Surface {
         instance: Arc<Instance>,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::HeadlessSurfaceCreateInfoEXT {
-            flags: ash::vk::HeadlessSurfaceCreateFlagsEXT::empty(),
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::HeadlessSurfaceCreateInfoEXT::default()
+            .flags(ash::vk::HeadlessSurfaceCreateFlagsEXT::empty());
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_headless_surface.create_headless_surface_ext)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -368,31 +367,7 @@ impl Surface {
         display_mode: Arc<DisplayMode>,
         create_info: DisplaySurfaceCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
-        let &DisplaySurfaceCreateInfo {
-            plane_index,
-            plane_stack_index,
-            transform,
-            alpha_mode,
-            global_alpha,
-            image_extent,
-            _ne: _,
-        } = &create_info;
-
-        let create_info_vk = ash::vk::DisplaySurfaceCreateInfoKHR {
-            flags: ash::vk::DisplaySurfaceCreateFlagsKHR::empty(),
-            display_mode: display_mode.handle(),
-            plane_index,
-            plane_stack_index,
-            transform: transform.into(),
-            alpha_mode: alpha_mode.into(),
-            global_alpha,
-            image_extent: ash::vk::Extent2D {
-                width: image_extent[0],
-                height: image_extent[1],
-            },
-            ..Default::default()
-        };
-
+        let create_info_vk = create_info.to_vk(display_mode.handle());
         let instance = display_mode.instance();
 
         let handle = {
@@ -459,18 +434,16 @@ impl Surface {
         window: *mut ash::vk::ANativeWindow,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::AndroidSurfaceCreateInfoKHR {
-            flags: ash::vk::AndroidSurfaceCreateFlagsKHR::empty(),
-            window,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::AndroidSurfaceCreateInfoKHR::default()
+            .flags(ash::vk::AndroidSurfaceCreateFlagsKHR::empty())
+            .window(window);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_android_surface.create_android_surface_khr)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -538,19 +511,17 @@ impl Surface {
         surface: *mut ash::vk::IDirectFBSurface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::DirectFBSurfaceCreateInfoEXT {
-            flags: ash::vk::DirectFBSurfaceCreateFlagsEXT::empty(),
-            dfb,
-            surface,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::DirectFBSurfaceCreateInfoEXT::default()
+            .flags(ash::vk::DirectFBSurfaceCreateFlagsEXT::empty())
+            .dfb(dfb)
+            .surface(surface);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -613,11 +584,9 @@ impl Surface {
         image_pipe_handle: ash::vk::zx_handle_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::ImagePipeSurfaceCreateInfoFUCHSIA {
-            flags: ash::vk::ImagePipeSurfaceCreateFlagsFUCHSIA::empty(),
-            image_pipe_handle,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::ImagePipeSurfaceCreateInfoFUCHSIA::default()
+            .flags(ash::vk::ImagePipeSurfaceCreateFlagsFUCHSIA::empty())
+            .image_pipe_handle(image_pipe_handle);
 
         let handle = {
             let fns = instance.fns();
@@ -625,7 +594,7 @@ impl Surface {
             (fns.fuchsia_imagepipe_surface
                 .create_image_pipe_surface_fuchsia)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -688,11 +657,9 @@ impl Surface {
         stream_descriptor: ash::vk::GgpStreamDescriptor,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::StreamDescriptorSurfaceCreateInfoGGP {
-            flags: ash::vk::StreamDescriptorSurfaceCreateFlagsGGP::empty(),
-            stream_descriptor,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::StreamDescriptorSurfaceCreateInfoGGP::default()
+            .flags(ash::vk::StreamDescriptorSurfaceCreateFlagsGGP::empty())
+            .stream_descriptor(stream_descriptor);
 
         let handle = {
             let fns = instance.fns();
@@ -700,7 +667,7 @@ impl Surface {
             (fns.ggp_stream_descriptor_surface
                 .create_stream_descriptor_surface_ggp)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -763,18 +730,16 @@ impl Surface {
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::IOSSurfaceCreateInfoMVK {
-            flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
-            p_view: view,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::IOSSurfaceCreateInfoMVK::default()
+            .flags(ash::vk::IOSSurfaceCreateFlagsMVK::empty())
+            .view(view);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.mvk_ios_surface.create_ios_surface_mvk)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -837,18 +802,16 @@ impl Surface {
         view: *const c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::MacOSSurfaceCreateInfoMVK {
-            flags: ash::vk::MacOSSurfaceCreateFlagsMVK::empty(),
-            p_view: view,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::MacOSSurfaceCreateInfoMVK::default()
+            .flags(ash::vk::MacOSSurfaceCreateFlagsMVK::empty())
+            .view(view);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.mvk_macos_surface.create_mac_os_surface_mvk)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -913,18 +876,16 @@ impl Surface {
         layer: *const ash::vk::CAMetalLayer,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::MetalSurfaceCreateInfoEXT {
-            flags: ash::vk::MetalSurfaceCreateFlagsEXT::empty(),
-            p_layer: layer,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::MetalSurfaceCreateInfoEXT::default()
+            .flags(ash::vk::MetalSurfaceCreateFlagsEXT::empty())
+            .layer(layer);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.ext_metal_surface.create_metal_surface_ext)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -992,7 +953,7 @@ impl Surface {
         window: *mut ash::vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::ScreenSurfaceCreateInfoQNX {
+        let create_info_vk = ash::vk::ScreenSurfaceCreateInfoQNX {
             flags: ash::vk::ScreenSurfaceCreateFlagsQNX::empty(),
             context,
             window,
@@ -1004,7 +965,7 @@ impl Surface {
             let mut output = MaybeUninit::uninit();
             (fns.qnx_screen_surface.create_screen_surface_qnx)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1063,18 +1024,16 @@ impl Surface {
         window: *mut c_void,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::ViSurfaceCreateInfoNN {
-            flags: ash::vk::ViSurfaceCreateFlagsNN::empty(),
-            window,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::ViSurfaceCreateInfoNN::default()
+            .flags(ash::vk::ViSurfaceCreateFlagsNN::empty())
+            .window(window);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.nn_vi_surface.create_vi_surface_nn)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1144,19 +1103,17 @@ impl Surface {
         surface: *mut ash::vk::wl_surface,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::WaylandSurfaceCreateInfoKHR {
-            flags: ash::vk::WaylandSurfaceCreateFlagsKHR::empty(),
-            display,
-            surface,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::WaylandSurfaceCreateInfoKHR::default()
+            .flags(ash::vk::WaylandSurfaceCreateFlagsKHR::empty())
+            .display(display)
+            .surface(surface);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_wayland_surface.create_wayland_surface_khr)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1226,19 +1183,17 @@ impl Surface {
         hwnd: ash::vk::HWND,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::Win32SurfaceCreateInfoKHR {
-            flags: ash::vk::Win32SurfaceCreateFlagsKHR::empty(),
-            hinstance,
-            hwnd,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::Win32SurfaceCreateInfoKHR::default()
+            .flags(ash::vk::Win32SurfaceCreateFlagsKHR::empty())
+            .hinstance(hinstance)
+            .hwnd(hwnd);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_win32_surface.create_win32_surface_khr)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1308,19 +1263,17 @@ impl Surface {
         window: ash::vk::xcb_window_t,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::XcbSurfaceCreateInfoKHR {
-            flags: ash::vk::XcbSurfaceCreateFlagsKHR::empty(),
-            connection,
-            window,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::XcbSurfaceCreateInfoKHR::default()
+            .flags(ash::vk::XcbSurfaceCreateFlagsKHR::empty())
+            .connection(connection)
+            .window(window);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_xcb_surface.create_xcb_surface_khr)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1390,19 +1343,17 @@ impl Surface {
         window: ash::vk::Window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info = ash::vk::XlibSurfaceCreateInfoKHR {
-            flags: ash::vk::XlibSurfaceCreateFlagsKHR::empty(),
-            dpy: display,
-            window,
-            ..Default::default()
-        };
+        let create_info_vk = ash::vk::XlibSurfaceCreateInfoKHR::default()
+            .flags(ash::vk::XlibSurfaceCreateFlagsKHR::empty())
+            .dpy(display)
+            .window(window);
 
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_xlib_surface.create_xlib_surface_khr)(
                 instance.handle(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -1626,6 +1577,34 @@ impl DisplaySurfaceCreateInfo {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(
+        &self,
+        display_mode_vk: ash::vk::DisplayModeKHR,
+    ) -> ash::vk::DisplaySurfaceCreateInfoKHR<'static> {
+        let &Self {
+            plane_index,
+            plane_stack_index,
+            transform,
+            alpha_mode,
+            global_alpha,
+            image_extent,
+            _ne: _,
+        } = self;
+
+        ash::vk::DisplaySurfaceCreateInfoKHR::default()
+            .flags(ash::vk::DisplaySurfaceCreateFlagsKHR::empty())
+            .display_mode(display_mode_vk)
+            .plane_index(plane_index)
+            .plane_stack_index(plane_stack_index)
+            .transform(transform.into())
+            .alpha_mode(alpha_mode.into())
+            .global_alpha(global_alpha)
+            .image_extent(ash::vk::Extent2D {
+                width: image_extent[0],
+                height: image_extent[1],
+            })
     }
 }
 
@@ -2156,6 +2135,71 @@ impl SurfaceInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        surface_vk: ash::vk::SurfaceKHR,
+        extensions_vk: &'a mut SurfaceInfo2ExtensionsVk,
+    ) -> ash::vk::PhysicalDeviceSurfaceInfo2KHR<'a> {
+        let mut val_vk = ash::vk::PhysicalDeviceSurfaceInfo2KHR::default().surface(surface_vk);
+
+        let SurfaceInfo2ExtensionsVk {
+            full_screen_exclusive_vk,
+            full_screen_exclusive_win32_vk,
+            present_mode_vk,
+        } = extensions_vk;
+
+        if let Some(next) = full_screen_exclusive_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = full_screen_exclusive_win32_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_mode_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk2_extensions(&self) -> SurfaceInfo2ExtensionsVk {
+        let &Self {
+            present_mode,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne,
+        } = self;
+
+        let full_screen_exclusive_vk = (full_screen_exclusive != FullScreenExclusive::Default)
+            .then(|| {
+                ash::vk::SurfaceFullScreenExclusiveInfoEXT::default()
+                    .full_screen_exclusive(full_screen_exclusive.into())
+            });
+
+        let full_screen_exclusive_win32_vk = win32_monitor.map(|win32_monitor| {
+            ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT::default().hmonitor(win32_monitor.0)
+        });
+
+        let present_mode_vk = present_mode.map(|present_mode| {
+            ash::vk::SurfacePresentModeEXT::default().present_mode(present_mode.into())
+        });
+
+        SurfaceInfo2ExtensionsVk {
+            full_screen_exclusive_vk,
+            full_screen_exclusive_win32_vk,
+            present_mode_vk,
+        }
+    }
+}
+
+pub(crate) struct SurfaceInfo2ExtensionsVk {
+    pub(crate) full_screen_exclusive_vk:
+        Option<ash::vk::SurfaceFullScreenExclusiveInfoEXT<'static>>,
+    pub(crate) full_screen_exclusive_win32_vk:
+        Option<ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT<'static>>,
+    pub(crate) present_mode_vk: Option<ash::vk::SurfacePresentModeEXT<'static>>,
 }
 
 /// The capabilities of a surface when used by a physical device.
@@ -2247,6 +2291,241 @@ pub struct SurfaceCapabilities {
 
     /// Whether full-screen exclusivity is supported.
     pub full_screen_exclusive_supported: bool,
+}
+
+impl SurfaceCapabilities {
+    pub(crate) fn to_mut_vk2<'a>(
+        extensions_vk: &'a mut SurfaceCapabilities2ExtensionsVk<'_>,
+    ) -> ash::vk::SurfaceCapabilities2KHR<'a> {
+        let mut val_vk = ash::vk::SurfaceCapabilities2KHR::default();
+
+        let SurfaceCapabilities2ExtensionsVk {
+            full_screen_exclusive_vk,
+            present_mode_compatibility_vk: present_modes_vk,
+            present_scaling_vk,
+            protected_vk,
+        } = extensions_vk;
+
+        if let Some(next) = full_screen_exclusive_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_modes_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_scaling_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = protected_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_mut_vk2_extensions<'a>(
+        fields1_vk: &'a mut SurfaceCapabilities2Fields1Vk,
+        physical_device: &PhysicalDevice,
+        surface_info: &SurfaceInfo,
+    ) -> SurfaceCapabilities2ExtensionsVk<'a> {
+        let SurfaceCapabilities2Fields1Vk { present_modes_vk } = fields1_vk;
+
+        let full_screen_exclusive_vk = (surface_info.full_screen_exclusive
+            != FullScreenExclusive::Default)
+            .then(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default);
+
+        let present_mode_compatibility_vk = (surface_info.present_mode.is_some()).then(|| {
+            ash::vk::SurfacePresentModeCompatibilityEXT::default().present_modes(present_modes_vk)
+        });
+
+        let present_scaling_vk = (surface_info.present_mode.is_some())
+            .then(ash::vk::SurfacePresentScalingCapabilitiesEXT::default);
+
+        let protected_vk = (physical_device
+            .instance()
+            .enabled_extensions()
+            .khr_surface_protected_capabilities)
+            .then(ash::vk::SurfaceProtectedCapabilitiesKHR::default);
+
+        SurfaceCapabilities2ExtensionsVk {
+            full_screen_exclusive_vk,
+            present_mode_compatibility_vk,
+            present_scaling_vk,
+            protected_vk,
+        }
+    }
+
+    pub(crate) fn to_mut_vk2_fields() -> SurfaceCapabilities2Fields1Vk {
+        let present_modes_vk = Default::default();
+
+        SurfaceCapabilities2Fields1Vk { present_modes_vk }
+    }
+
+    pub(crate) fn from_vk2(
+        val_vk: &ash::vk::SurfaceCapabilities2KHR<'_>,
+        fields1_vk: &SurfaceCapabilities2Fields1Vk,
+        extensions_vk: &SurfaceCapabilities2ExtensionsVk<'_>,
+    ) -> Self {
+        let &ash::vk::SurfaceCapabilities2KHR {
+            surface_capabilities:
+                ash::vk::SurfaceCapabilitiesKHR {
+                    min_image_count,
+                    max_image_count,
+                    current_extent,
+                    min_image_extent,
+                    max_image_extent,
+                    max_image_array_layers,
+                    supported_transforms,
+                    current_transform,
+                    supported_composite_alpha,
+                    supported_usage_flags,
+                },
+            ..
+        } = val_vk;
+
+        let mut val = Self {
+            min_image_count,
+            max_image_count: (max_image_count != 0).then_some(max_image_count),
+            current_extent: filter_max(current_extent),
+            min_image_extent: [min_image_extent.width, min_image_extent.height],
+            max_image_extent: [max_image_extent.width, max_image_extent.height],
+            max_image_array_layers,
+            supported_transforms: supported_transforms.into(),
+            current_transform: SurfaceTransforms::from(current_transform)
+                .into_iter()
+                .next()
+                .unwrap(), // TODO:
+            supported_composite_alpha: supported_composite_alpha.into(),
+            supported_usage_flags: ImageUsage::from(supported_usage_flags),
+
+            compatible_present_modes: Default::default(),
+            supported_present_scaling: Default::default(),
+            supported_present_gravity: Default::default(),
+            min_scaled_image_extent: Some([min_image_extent.width, min_image_extent.height]),
+            max_scaled_image_extent: Some([max_image_extent.width, max_image_extent.height]),
+            supports_protected: false,
+            full_screen_exclusive_supported: false,
+        };
+
+        let SurfaceCapabilities2ExtensionsVk {
+            full_screen_exclusive_vk,
+            present_mode_compatibility_vk,
+            present_scaling_vk,
+            protected_vk,
+        } = extensions_vk;
+        let SurfaceCapabilities2Fields1Vk { present_modes_vk } = fields1_vk;
+
+        if let Some(val_vk) = full_screen_exclusive_vk {
+            let &ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT {
+                full_screen_exclusive_supported,
+                ..
+            } = val_vk;
+
+            val = Self {
+                full_screen_exclusive_supported: full_screen_exclusive_supported != 0,
+                ..val
+            };
+        }
+
+        if let Some(val_vk) = present_mode_compatibility_vk {
+            let &ash::vk::SurfacePresentModeCompatibilityEXT {
+                present_mode_count, ..
+            } = val_vk;
+
+            val = Self {
+                compatible_present_modes: present_modes_vk[..present_mode_count as usize]
+                    .iter()
+                    .copied()
+                    .map(PresentMode::try_from)
+                    .filter_map(Result::ok)
+                    .collect(),
+                ..val
+            };
+        }
+
+        if let Some(val_vk) = present_scaling_vk {
+            let &ash::vk::SurfacePresentScalingCapabilitiesEXT {
+                supported_present_scaling,
+                supported_present_gravity_x,
+                supported_present_gravity_y,
+                min_scaled_image_extent,
+                max_scaled_image_extent,
+                ..
+            } = val_vk;
+
+            val = Self {
+                supported_present_scaling: supported_present_scaling.into(),
+                supported_present_gravity: [
+                    supported_present_gravity_x.into(),
+                    supported_present_gravity_y.into(),
+                ],
+                min_scaled_image_extent: filter_max(min_scaled_image_extent),
+                max_scaled_image_extent: filter_max(max_scaled_image_extent),
+                ..val
+            };
+        }
+
+        if let Some(val_vk) = protected_vk {
+            let &ash::vk::SurfaceProtectedCapabilitiesKHR {
+                supports_protected, ..
+            } = val_vk;
+
+            val = Self {
+                supports_protected: supports_protected != 0,
+                ..val
+            };
+        }
+
+        val
+    }
+}
+
+pub(crate) struct SurfaceCapabilities2ExtensionsVk<'a> {
+    pub(crate) full_screen_exclusive_vk:
+        Option<ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT<'static>>,
+    pub(crate) present_mode_compatibility_vk:
+        Option<ash::vk::SurfacePresentModeCompatibilityEXT<'a>>,
+    pub(crate) present_scaling_vk: Option<ash::vk::SurfacePresentScalingCapabilitiesEXT<'static>>,
+    pub(crate) protected_vk: Option<ash::vk::SurfaceProtectedCapabilitiesKHR<'static>>,
+}
+
+impl<'a> SurfaceCapabilities2ExtensionsVk<'a> {
+    pub(crate) fn unborrow(self) -> SurfaceCapabilities2ExtensionsVk<'static> {
+        let Self {
+            full_screen_exclusive_vk,
+            present_mode_compatibility_vk,
+            present_scaling_vk,
+            protected_vk,
+        } = self;
+
+        let present_mode_compatibility_vk = present_mode_compatibility_vk.map(|val_vk| {
+            ash::vk::SurfacePresentModeCompatibilityEXT {
+                _marker: PhantomData,
+                ..val_vk
+            }
+        });
+
+        SurfaceCapabilities2ExtensionsVk {
+            full_screen_exclusive_vk,
+            present_mode_compatibility_vk,
+            present_scaling_vk,
+            protected_vk,
+        }
+    }
+}
+
+pub(crate) struct SurfaceCapabilities2Fields1Vk {
+    pub(crate) present_modes_vk: [ash::vk::PresentModeKHR; PresentMode::COUNT],
+}
+
+fn filter_max(extent: ash::vk::Extent2D) -> Option<[u32; 2]> {
+    if extent.width == u32::MAX && extent.height == u32::MAX {
+        None
+    } else {
+        Some([extent.width, extent.height])
+    }
 }
 
 /// Error that can happen when creating a [`Surface`] from a window.

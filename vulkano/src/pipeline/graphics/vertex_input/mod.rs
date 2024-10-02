@@ -105,6 +105,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
 use ahash::HashMap;
+use smallvec::SmallVec;
 
 mod buffers;
 mod collection;
@@ -123,6 +124,13 @@ pub struct VertexInputState {
     pub attributes: HashMap<u32, VertexInputAttributeDescription>,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for VertexInputState {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VertexInputState {
@@ -443,13 +451,89 @@ impl VertexInputState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a VertexInputStateFields1Vk,
+        extensions_vk: &'a mut VertexInputStateExtensionsVk<'_>,
+    ) -> ash::vk::PipelineVertexInputStateCreateInfo<'a> {
+        let VertexInputStateFields1Vk {
+            bindings_vk,
+            attributes_vk,
+            binding_divisors_vk: _,
+        } = fields1_vk;
+
+        let mut val_vk = ash::vk::PipelineVertexInputStateCreateInfo::default()
+            .flags(ash::vk::PipelineVertexInputStateCreateFlags::empty())
+            .vertex_binding_descriptions(bindings_vk)
+            .vertex_attribute_descriptions(attributes_vk);
+
+        let VertexInputStateExtensionsVk { divisor_vk } = extensions_vk;
+
+        if let Some(next) = divisor_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a VertexInputStateFields1Vk,
+    ) -> VertexInputStateExtensionsVk<'a> {
+        let VertexInputStateFields1Vk {
+            bindings_vk: _,
+            attributes_vk: _,
+            binding_divisors_vk,
+        } = fields1_vk;
+
+        let divisor_vk = (!binding_divisors_vk.is_empty()).then(|| {
+            ash::vk::PipelineVertexInputDivisorStateCreateInfoEXT::default()
+                .vertex_binding_divisors(binding_divisors_vk)
+        });
+
+        VertexInputStateExtensionsVk { divisor_vk }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> VertexInputStateFields1Vk {
+        let Self {
+            bindings,
+            attributes,
+            _ne: _,
+        } = self;
+
+        let mut bindings_vk = SmallVec::with_capacity(bindings.len());
+        let mut binding_divisors_vk = SmallVec::new();
+
+        for (&binding, binding_desc) in bindings {
+            bindings_vk.push(binding_desc.to_vk(binding));
+
+            if let Some(divisor_vk) = binding_desc.to_vk_divisor(binding) {
+                binding_divisors_vk.push(divisor_vk);
+            }
+        }
+
+        let attributes_vk = attributes
+            .iter()
+            .map(|(&location, attribute_desc)| attribute_desc.to_vk(location))
+            .collect();
+
+        VertexInputStateFields1Vk {
+            bindings_vk,
+            attributes_vk,
+            binding_divisors_vk,
+        }
+    }
 }
 
-impl Default for VertexInputState {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
+pub(crate) struct VertexInputStateExtensionsVk<'a> {
+    pub(crate) divisor_vk: Option<ash::vk::PipelineVertexInputDivisorStateCreateInfoEXT<'a>>,
+}
+
+pub(crate) struct VertexInputStateFields1Vk {
+    pub(crate) bindings_vk: SmallVec<[ash::vk::VertexInputBindingDescription; 8]>,
+    pub(crate) attributes_vk: SmallVec<[ash::vk::VertexInputAttributeDescription; 8]>,
+    pub(crate) binding_divisors_vk: SmallVec<[ash::vk::VertexInputBindingDivisorDescriptionKHR; 8]>,
 }
 
 /// Describes a single vertex buffer binding.
@@ -579,10 +663,58 @@ impl VertexInputBindingDescription {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2(
+        &self,
+        binding_vk: u32,
+    ) -> ash::vk::VertexInputBindingDescription2EXT<'static> {
+        let &Self {
+            stride,
+            input_rate,
+            _ne: _,
+        } = self;
+
+        let (input_rate_vk, divisor_vk) = input_rate.to_vk();
+
+        ash::vk::VertexInputBindingDescription2EXT::default()
+            .binding(binding_vk)
+            .stride(stride)
+            .input_rate(input_rate_vk)
+            .divisor(divisor_vk)
+    }
+
+    pub(crate) fn to_vk(&self, binding_vk: u32) -> ash::vk::VertexInputBindingDescription {
+        let &Self {
+            stride,
+            input_rate,
+            _ne: _,
+        } = self;
+
+        let (input_rate_vk, _) = input_rate.to_vk();
+
+        ash::vk::VertexInputBindingDescription::default()
+            .binding(binding_vk)
+            .stride(stride)
+            .input_rate(input_rate_vk)
+    }
+
+    pub(crate) fn to_vk_divisor(
+        &self,
+        binding_vk: u32,
+    ) -> Option<ash::vk::VertexInputBindingDivisorDescriptionKHR> {
+        match self.input_rate {
+            VertexInputRate::Instance { divisor } if divisor != 1 => Some(
+                ash::vk::VertexInputBindingDivisorDescriptionKHR::default()
+                    .binding(binding_vk)
+                    .divisor(divisor),
+            ),
+            _ => None,
+        }
+    }
 }
 
 /// Describes a single vertex buffer attribute mapping.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct VertexInputAttributeDescription {
     /// The vertex buffer binding number that this attribute should take its data from.
     ///
@@ -685,6 +817,39 @@ impl VertexInputAttributeDescription {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2(
+        &self,
+        location_vk: u32,
+    ) -> ash::vk::VertexInputAttributeDescription2EXT<'static> {
+        let &Self {
+            binding,
+            format,
+            offset,
+            _ne: _,
+        } = self;
+
+        ash::vk::VertexInputAttributeDescription2EXT::default()
+            .location(location_vk)
+            .binding(binding)
+            .format(format.into())
+            .offset(offset)
+    }
+
+    pub(crate) fn to_vk(&self, location_vk: u32) -> ash::vk::VertexInputAttributeDescription {
+        let &Self {
+            binding,
+            format,
+            offset,
+            _ne: _,
+        } = self;
+
+        ash::vk::VertexInputAttributeDescription::default()
+            .location(location_vk)
+            .binding(binding)
+            .format(format.into())
+            .offset(offset)
+    }
 }
 
 /// How the vertex source should be unrolled.
@@ -707,12 +872,14 @@ pub enum VertexInputRate {
     Instance { divisor: u32 },
 }
 
-impl From<VertexInputRate> for ash::vk::VertexInputRate {
-    #[inline]
-    fn from(val: VertexInputRate) -> Self {
-        match val {
-            VertexInputRate::Vertex => ash::vk::VertexInputRate::VERTEX,
-            VertexInputRate::Instance { .. } => ash::vk::VertexInputRate::INSTANCE,
+impl VertexInputRate {
+    #[allow(clippy::trivially_copy_pass_by_ref, clippy::wrong_self_convention)]
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> (ash::vk::VertexInputRate, u32) {
+        match *self {
+            // VUID-VkVertexInputBindingDescription2EXT-divisor-06227
+            VertexInputRate::Vertex => (ash::vk::VertexInputRate::VERTEX, 1),
+            VertexInputRate::Instance { divisor } => (ash::vk::VertexInputRate::INSTANCE, divisor),
         }
     }
 }

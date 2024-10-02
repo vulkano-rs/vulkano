@@ -1246,45 +1246,11 @@ impl RawRecordingCommandBuffer {
         render_pass_begin_info: &RenderPassBeginInfo,
         subpass_begin_info: &SubpassBeginInfo,
     ) -> &mut Self {
-        let &RenderPassBeginInfo {
-            ref render_pass,
-            ref framebuffer,
-            render_area_offset,
-            render_area_extent,
-            ref clear_values,
-            _ne: _,
-        } = render_pass_begin_info;
+        let render_pass_begin_info_fields1_vk = render_pass_begin_info.to_vk_fields1();
+        let render_pass_begin_info_vk =
+            render_pass_begin_info.to_vk(&render_pass_begin_info_fields1_vk);
 
-        let clear_values_vk: SmallVec<[_; 4]> = clear_values
-            .iter()
-            .copied()
-            .map(|clear_value| clear_value.map(Into::into).unwrap_or_default())
-            .collect();
-
-        let render_pass_begin_info = ash::vk::RenderPassBeginInfo {
-            render_pass: render_pass.handle(),
-            framebuffer: framebuffer.handle(),
-            render_area: ash::vk::Rect2D {
-                offset: ash::vk::Offset2D {
-                    x: render_area_offset[0] as i32,
-                    y: render_area_offset[1] as i32,
-                },
-                extent: ash::vk::Extent2D {
-                    width: render_area_extent[0],
-                    height: render_area_extent[1],
-                },
-            },
-            clear_value_count: clear_values_vk.len() as u32,
-            p_clear_values: clear_values_vk.as_ptr(),
-            ..Default::default()
-        };
-
-        let &SubpassBeginInfo { contents, _ne: _ } = subpass_begin_info;
-
-        let subpass_begin_info = ash::vk::SubpassBeginInfo {
-            contents: contents.into(),
-            ..Default::default()
-        };
+        let subpass_begin_info_vk = subpass_begin_info.to_vk();
 
         let fns = self.device().fns();
 
@@ -1294,23 +1260,23 @@ impl RawRecordingCommandBuffer {
             if self.device().api_version() >= Version::V1_2 {
                 (fns.v1_2.cmd_begin_render_pass2)(
                     self.handle(),
-                    &render_pass_begin_info,
-                    &subpass_begin_info,
+                    &render_pass_begin_info_vk,
+                    &subpass_begin_info_vk,
                 );
             } else {
                 (fns.khr_create_renderpass2.cmd_begin_render_pass2_khr)(
                     self.handle(),
-                    &render_pass_begin_info,
-                    &subpass_begin_info,
+                    &render_pass_begin_info_vk,
+                    &subpass_begin_info_vk,
                 );
             }
         } else {
-            debug_assert!(subpass_begin_info.p_next.is_null());
+            debug_assert!(subpass_begin_info_vk.p_next.is_null());
 
             (fns.v1_0.cmd_begin_render_pass)(
                 self.handle(),
-                &render_pass_begin_info,
-                subpass_begin_info.contents,
+                &render_pass_begin_info_vk,
+                subpass_begin_info_vk.contents,
             );
         }
 
@@ -1374,16 +1340,8 @@ impl RawRecordingCommandBuffer {
     ) -> &mut Self {
         let fns = self.device().fns();
 
-        let &SubpassEndInfo { _ne: _ } = subpass_end_info;
-
-        let subpass_end_info_vk = ash::vk::SubpassEndInfo::default();
-
-        let &SubpassBeginInfo { contents, _ne: _ } = subpass_begin_info;
-
-        let subpass_begin_info_vk = ash::vk::SubpassBeginInfo {
-            contents: contents.into(),
-            ..Default::default()
-        };
+        let subpass_end_info_vk = subpass_end_info.to_vk();
+        let subpass_begin_info_vk = subpass_begin_info.to_vk();
 
         if self.device().api_version() >= Version::V1_2
             || self.device().enabled_extensions().khr_create_renderpass2
@@ -1459,11 +1417,9 @@ impl RawRecordingCommandBuffer {
         &mut self,
         subpass_end_info: &SubpassEndInfo,
     ) -> &mut Self {
+        let subpass_end_info_vk = subpass_end_info.to_vk();
+
         let fns = self.device().fns();
-
-        let &SubpassEndInfo { _ne: _ } = subpass_end_info;
-
-        let subpass_end_info_vk = ash::vk::SubpassEndInfo::default();
 
         if self.device().api_version() >= Version::V1_2
             || self.device().enabled_extensions().khr_create_renderpass2
@@ -1561,98 +1517,15 @@ impl RawRecordingCommandBuffer {
         &mut self,
         rendering_info: &RenderingInfo,
     ) -> &mut Self {
-        let &RenderingInfo {
-            render_area_offset,
-            render_area_extent,
-            layer_count,
-            view_mask,
-            ref color_attachments,
-            ref depth_attachment,
-            ref stencil_attachment,
-            contents,
-            _ne: _,
-        } = rendering_info;
-
-        let map_attachment_info = |attachment_info: &Option<_>| {
-            if let Some(attachment_info) = attachment_info {
-                let &RenderingAttachmentInfo {
-                    ref image_view,
-                    image_layout,
-                    resolve_info: ref resolve,
-                    load_op,
-                    store_op,
-                    clear_value,
-                    _ne: _,
-                } = attachment_info;
-
-                let (resolve_mode, resolve_image_view, resolve_image_layout) =
-                    if let Some(resolve) = resolve {
-                        let &RenderingAttachmentResolveInfo {
-                            mode,
-                            ref image_view,
-                            image_layout,
-                        } = resolve;
-
-                        (mode.into(), image_view.handle(), image_layout.into())
-                    } else {
-                        (
-                            ash::vk::ResolveModeFlags::NONE,
-                            Default::default(),
-                            Default::default(),
-                        )
-                    };
-
-                ash::vk::RenderingAttachmentInfo {
-                    image_view: image_view.handle(),
-                    image_layout: image_layout.into(),
-                    resolve_mode,
-                    resolve_image_view,
-                    resolve_image_layout,
-                    load_op: load_op.into(),
-                    store_op: store_op.into(),
-                    clear_value: clear_value.map_or_else(Default::default, Into::into),
-                    ..Default::default()
-                }
-            } else {
-                ash::vk::RenderingAttachmentInfo {
-                    image_view: ash::vk::ImageView::null(),
-                    ..Default::default()
-                }
-            }
-        };
-
-        let color_attachments_vk: SmallVec<[_; 2]> =
-            color_attachments.iter().map(map_attachment_info).collect();
-        let depth_attachment_vk = map_attachment_info(depth_attachment);
-        let stencil_attachment_vk = map_attachment_info(stencil_attachment);
-
-        let rendering_info = ash::vk::RenderingInfo {
-            flags: contents.into(),
-            render_area: ash::vk::Rect2D {
-                offset: ash::vk::Offset2D {
-                    x: render_area_offset[0] as i32,
-                    y: render_area_offset[1] as i32,
-                },
-                extent: ash::vk::Extent2D {
-                    width: render_area_extent[0],
-                    height: render_area_extent[1],
-                },
-            },
-            layer_count,
-            view_mask,
-            color_attachment_count: color_attachments_vk.len() as u32,
-            p_color_attachments: color_attachments_vk.as_ptr(),
-            p_depth_attachment: &depth_attachment_vk,
-            p_stencil_attachment: &stencil_attachment_vk,
-            ..Default::default()
-        };
+        let rendering_info_fields1_vk = rendering_info.to_vk_fields1();
+        let rendering_info_vk = rendering_info.to_vk(&rendering_info_fields1_vk);
 
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_begin_rendering)(self.handle(), &rendering_info);
+            (fns.v1_3.cmd_begin_rendering)(self.handle(), &rendering_info_vk);
         } else {
-            (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle(), &rendering_info);
+            (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle(), &rendering_info_vk);
         }
 
         self
@@ -1781,24 +1654,8 @@ impl RawRecordingCommandBuffer {
         }
 
         let attachments_vk: SmallVec<[_; 4]> =
-            attachments.iter().copied().map(|v| v.into()).collect();
-        let rects_vk: SmallVec<[_; 4]> = rects
-            .iter()
-            .map(|rect| ash::vk::ClearRect {
-                rect: ash::vk::Rect2D {
-                    offset: ash::vk::Offset2D {
-                        x: rect.offset[0] as i32,
-                        y: rect.offset[1] as i32,
-                    },
-                    extent: ash::vk::Extent2D {
-                        width: rect.extent[0],
-                        height: rect.extent[1],
-                    },
-                },
-                base_array_layer: rect.array_layers.start,
-                layer_count: rect.array_layers.end - rect.array_layers.start,
-            })
-            .collect();
+            attachments.iter().map(ClearAttachment::to_vk).collect();
+        let rects_vk: SmallVec<[_; 4]> = rects.iter().map(ClearRect::to_vk).collect();
 
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_attachments)(
@@ -1996,6 +1853,54 @@ impl RenderPassBeginInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a RenderPassBeginInfoFields1Vk,
+    ) -> ash::vk::RenderPassBeginInfo<'a> {
+        let &Self {
+            ref render_pass,
+            ref framebuffer,
+            render_area_offset,
+            render_area_extent,
+            clear_values: _,
+            _ne,
+        } = self;
+        let RenderPassBeginInfoFields1Vk { clear_values_vk } = fields1_vk;
+
+        ash::vk::RenderPassBeginInfo::default()
+            .render_pass(render_pass.handle())
+            .framebuffer(framebuffer.handle())
+            .render_area(ash::vk::Rect2D {
+                offset: ash::vk::Offset2D {
+                    x: render_area_offset[0] as i32,
+                    y: render_area_offset[1] as i32,
+                },
+                extent: ash::vk::Extent2D {
+                    width: render_area_extent[0],
+                    height: render_area_extent[1],
+                },
+            })
+            .clear_values(clear_values_vk)
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> RenderPassBeginInfoFields1Vk {
+        let clear_values_vk = self
+            .clear_values
+            .iter()
+            .map(|clear_value| {
+                clear_value
+                    .as_ref()
+                    .map_or_else(Default::default, ClearValue::to_vk)
+            })
+            .collect();
+
+        RenderPassBeginInfoFields1Vk { clear_values_vk }
+    }
+}
+
+pub(crate) struct RenderPassBeginInfoFields1Vk {
+    pub(crate) clear_values_vk: SmallVec<[ash::vk::ClearValue; 4]>,
 }
 
 /// Parameters to begin a new subpass within a render pass.
@@ -2030,6 +1935,12 @@ impl SubpassBeginInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::SubpassBeginInfo<'static> {
+        let &Self { contents, _ne: _ } = self;
+
+        ash::vk::SubpassBeginInfo::default().contents(contents.into())
+    }
 }
 
 /// Parameters to end the current subpass within a render pass.
@@ -2052,6 +1963,12 @@ impl SubpassEndInfo {
         let &Self { _ne: _ } = self;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::SubpassEndInfo<'static> {
+        let &Self { _ne: _ } = self;
+
+        ash::vk::SubpassEndInfo::default()
     }
 }
 
@@ -2831,6 +2748,88 @@ impl RenderingInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a RenderingInfoFields1Vk,
+    ) -> ash::vk::RenderingInfo<'a> {
+        let &Self {
+            render_area_offset,
+            render_area_extent,
+            layer_count,
+            view_mask,
+            color_attachments: _,
+            depth_attachment: _,
+            stencil_attachment: _,
+            contents,
+            _ne: _,
+        } = self;
+        let RenderingInfoFields1Vk {
+            color_attachments_vk,
+            depth_attachment_vk,
+            stencil_attachment_vk,
+        } = fields1_vk;
+
+        ash::vk::RenderingInfo::default()
+            .flags(contents.into())
+            .render_area(ash::vk::Rect2D {
+                offset: ash::vk::Offset2D {
+                    x: render_area_offset[0] as i32,
+                    y: render_area_offset[1] as i32,
+                },
+                extent: ash::vk::Extent2D {
+                    width: render_area_extent[0],
+                    height: render_area_extent[1],
+                },
+            })
+            .layer_count(layer_count)
+            .view_mask(view_mask)
+            .color_attachments(color_attachments_vk)
+            .depth_attachment(depth_attachment_vk)
+            .stencil_attachment(stencil_attachment_vk)
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> RenderingInfoFields1Vk {
+        let Self {
+            color_attachments,
+            depth_attachment,
+            stencil_attachment,
+            ..
+        } = self;
+
+        let color_attachments_vk = color_attachments
+            .iter()
+            .map(|attachment_info| {
+                attachment_info.as_ref().map_or(
+                    ash::vk::RenderingAttachmentInfo::default()
+                        .image_view(ash::vk::ImageView::null()),
+                    RenderingAttachmentInfo::to_vk,
+                )
+            })
+            .collect();
+
+        let depth_attachment_vk = depth_attachment.as_ref().map_or(
+            ash::vk::RenderingAttachmentInfo::default().image_view(ash::vk::ImageView::null()),
+            RenderingAttachmentInfo::to_vk,
+        );
+
+        let stencil_attachment_vk = stencil_attachment.as_ref().map_or(
+            ash::vk::RenderingAttachmentInfo::default().image_view(ash::vk::ImageView::null()),
+            RenderingAttachmentInfo::to_vk,
+        );
+
+        RenderingInfoFields1Vk {
+            color_attachments_vk,
+            depth_attachment_vk,
+            stencil_attachment_vk,
+        }
+    }
+}
+
+pub(crate) struct RenderingInfoFields1Vk {
+    pub(crate) color_attachments_vk: SmallVec<[ash::vk::RenderingAttachmentInfo<'static>; 2]>,
+    pub(crate) depth_attachment_vk: ash::vk::RenderingAttachmentInfo<'static>,
+    pub(crate) stencil_attachment_vk: ash::vk::RenderingAttachmentInfo<'static>,
 }
 
 /// Parameters to specify properties of an attachment.
@@ -3007,6 +3006,42 @@ impl RenderingAttachmentInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::RenderingAttachmentInfo<'static> {
+        let &Self {
+            ref image_view,
+            image_layout,
+            ref resolve_info,
+            load_op,
+            store_op,
+            ref clear_value,
+            _ne: _,
+        } = self;
+
+        let (resolve_mode, resolve_image_view, resolve_image_layout) =
+            resolve_info.as_ref().map_or(
+                (
+                    ash::vk::ResolveModeFlags::NONE,
+                    Default::default(),
+                    Default::default(),
+                ),
+                RenderingAttachmentResolveInfo::to_vk,
+            );
+
+        ash::vk::RenderingAttachmentInfo::default()
+            .image_view(image_view.handle())
+            .image_layout(image_layout.into())
+            .resolve_mode(resolve_mode)
+            .resolve_image_view(resolve_image_view)
+            .resolve_image_layout(resolve_image_layout)
+            .load_op(load_op.into())
+            .store_op(store_op.into())
+            .clear_value(
+                clear_value
+                    .as_ref()
+                    .map_or_else(Default::default, ClearValue::to_vk),
+            )
+    }
 }
 
 /// Parameters to specify the resolve behavior of an attachment.
@@ -3136,6 +3171,22 @@ impl RenderingAttachmentResolveInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(
+        &self,
+    ) -> (
+        ash::vk::ResolveModeFlags,
+        ash::vk::ImageView,
+        ash::vk::ImageLayout,
+    ) {
+        let &Self {
+            mode,
+            ref image_view,
+            image_layout,
+        } = self;
+
+        (mode.into(), image_view.handle(), image_layout.into())
+    }
 }
 
 /// Clear attachment type, used in [`clear_attachments`] command.
@@ -3180,12 +3231,10 @@ impl ClearAttachment {
 
         Ok(())
     }
-}
 
-impl From<ClearAttachment> for ash::vk::ClearAttachment {
-    #[inline]
-    fn from(v: ClearAttachment) -> Self {
-        match v {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> ash::vk::ClearAttachment {
+        match *self {
             ClearAttachment::Color {
                 color_attachment,
                 clear_value,
@@ -3193,7 +3242,7 @@ impl From<ClearAttachment> for ash::vk::ClearAttachment {
                 aspect_mask: ash::vk::ImageAspectFlags::COLOR,
                 color_attachment,
                 clear_value: ash::vk::ClearValue {
-                    color: clear_value.into(),
+                    color: clear_value.to_vk(),
                 },
             },
             ClearAttachment::Depth(depth) => ash::vk::ClearAttachment {
@@ -3237,4 +3286,29 @@ pub struct ClearRect {
 
     /// The range of array layers to be cleared.
     pub array_layers: Range<u32>,
+}
+
+impl ClearRect {
+    pub(crate) fn to_vk(&self) -> ash::vk::ClearRect {
+        let &Self {
+            offset,
+            extent,
+            ref array_layers,
+        } = self;
+
+        ash::vk::ClearRect {
+            rect: ash::vk::Rect2D {
+                offset: ash::vk::Offset2D {
+                    x: offset[0] as i32,
+                    y: offset[1] as i32,
+                },
+                extent: ash::vk::Extent2D {
+                    width: extent[0],
+                    height: extent[1],
+                },
+            },
+            base_array_layer: array_layers.start,
+            layer_count: array_layers.end - array_layers.start,
+        }
+    }
 }

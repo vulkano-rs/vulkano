@@ -625,14 +625,7 @@ impl RawRecordingCommandBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn copy_buffer_unchecked(&mut self, copy_buffer_info: &CopyBufferInfo) -> &mut Self {
-        let CopyBufferInfo {
-            src_buffer,
-            dst_buffer,
-            regions,
-            _ne: _,
-        } = copy_buffer_info;
-
-        if regions.is_empty() {
+        if copy_buffer_info.regions.is_empty() {
             return self;
         }
 
@@ -641,63 +634,27 @@ impl RawRecordingCommandBuffer {
         if self.device().api_version() >= Version::V1_3
             || self.device().enabled_extensions().khr_copy_commands2
         {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &BufferCopy {
-                        src_offset,
-                        dst_offset,
-                        size,
-                        _ne,
-                    } = region;
-
-                    ash::vk::BufferCopy2 {
-                        src_offset: src_offset + src_buffer.offset(),
-                        dst_offset: dst_offset + dst_buffer.offset(),
-                        size,
-                        ..Default::default()
-                    }
-                })
-                .collect();
-
-            let copy_buffer_info = ash::vk::CopyBufferInfo2 {
-                src_buffer: src_buffer.buffer().handle(),
-                dst_buffer: dst_buffer.buffer().handle(),
-                region_count: regions.len() as u32,
-                p_regions: regions.as_ptr(),
-                ..Default::default()
-            };
+            let regions_vk = copy_buffer_info.to_vk2_regions();
+            let copy_buffer_info_vk = copy_buffer_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_buffer2)(self.handle(), &copy_buffer_info);
+                (fns.v1_3.cmd_copy_buffer2)(self.handle(), &copy_buffer_info_vk);
             } else {
-                (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(self.handle(), &copy_buffer_info);
+                (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(self.handle(), &copy_buffer_info_vk);
             }
         } else {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &BufferCopy {
-                        src_offset,
-                        dst_offset,
-                        size,
-                        _ne,
-                    } = region;
-
-                    ash::vk::BufferCopy {
-                        src_offset: src_offset + src_buffer.offset(),
-                        dst_offset: dst_offset + dst_buffer.offset(),
-                        size,
-                    }
-                })
-                .collect();
+            let regions_vk = copy_buffer_info.to_vk_regions();
+            let CopyBufferInfoVk {
+                src_buffer_vk,
+                dst_buffer_vk,
+            } = copy_buffer_info.to_vk();
 
             (fns.v1_0.cmd_copy_buffer)(
                 self.handle(),
-                src_buffer.buffer().handle(),
-                dst_buffer.buffer().handle(),
-                regions.len() as u32,
-                regions.as_ptr(),
+                src_buffer_vk,
+                dst_buffer_vk,
+                regions_vk.len() as u32,
+                regions_vk.as_ptr(),
             );
         }
 
@@ -1011,16 +968,7 @@ impl RawRecordingCommandBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn copy_image_unchecked(&mut self, copy_image_info: &CopyImageInfo) -> &mut Self {
-        let &CopyImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = copy_image_info;
-
-        if regions.is_empty() {
+        if copy_image_info.regions.is_empty() {
             return self;
         }
 
@@ -1029,99 +977,31 @@ impl RawRecordingCommandBuffer {
         if self.device().api_version() >= Version::V1_3
             || self.device().enabled_extensions().khr_copy_commands2
         {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &ImageCopy {
-                        ref src_subresource,
-                        src_offset,
-                        ref dst_subresource,
-                        dst_offset,
-                        extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::ImageCopy2 {
-                        src_subresource: src_subresource.into(),
-                        src_offset: ash::vk::Offset3D {
-                            x: src_offset[0] as i32,
-                            y: src_offset[1] as i32,
-                            z: src_offset[2] as i32,
-                        },
-                        dst_subresource: dst_subresource.into(),
-                        dst_offset: ash::vk::Offset3D {
-                            x: dst_offset[0] as i32,
-                            y: dst_offset[1] as i32,
-                            z: dst_offset[2] as i32,
-                        },
-                        extent: ash::vk::Extent3D {
-                            width: extent[0],
-                            height: extent[1],
-                            depth: extent[2],
-                        },
-                        ..Default::default()
-                    }
-                })
-                .collect();
-
-            let copy_image_info = ash::vk::CopyImageInfo2 {
-                src_image: src_image.handle(),
-                src_image_layout: src_image_layout.into(),
-                dst_image: dst_image.handle(),
-                dst_image_layout: dst_image_layout.into(),
-                region_count: regions.len() as u32,
-                p_regions: regions.as_ptr(),
-                ..Default::default()
-            };
+            let regions_vk = copy_image_info.to_vk2_regions();
+            let copy_image_info_vk = copy_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_image2)(self.handle(), &copy_image_info);
+                (fns.v1_3.cmd_copy_image2)(self.handle(), &copy_image_info_vk);
             } else {
-                (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle(), &copy_image_info);
+                (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle(), &copy_image_info_vk);
             }
         } else {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &ImageCopy {
-                        ref src_subresource,
-                        src_offset,
-                        ref dst_subresource,
-                        dst_offset,
-                        extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::ImageCopy {
-                        src_subresource: src_subresource.into(),
-                        src_offset: ash::vk::Offset3D {
-                            x: src_offset[0] as i32,
-                            y: src_offset[1] as i32,
-                            z: src_offset[2] as i32,
-                        },
-                        dst_subresource: dst_subresource.into(),
-                        dst_offset: ash::vk::Offset3D {
-                            x: dst_offset[0] as i32,
-                            y: dst_offset[1] as i32,
-                            z: dst_offset[2] as i32,
-                        },
-                        extent: ash::vk::Extent3D {
-                            width: extent[0],
-                            height: extent[1],
-                            depth: extent[2],
-                        },
-                    }
-                })
-                .collect();
+            let regions_vk = copy_image_info.to_vk_regions();
+            let CopyImageInfoVk {
+                src_image_vk,
+                src_image_layout_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+            } = copy_image_info.to_vk();
 
             (fns.v1_0.cmd_copy_image)(
                 self.handle(),
-                src_image.handle(),
-                src_image_layout.into(),
-                dst_image.handle(),
-                dst_image_layout.into(),
-                regions.len() as u32,
-                regions.as_ptr(),
+                src_image_vk,
+                src_image_layout_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+                regions_vk.len() as u32,
+                regions_vk.as_ptr(),
             );
         }
 
@@ -1358,15 +1238,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         copy_buffer_to_image_info: &CopyBufferToImageInfo,
     ) -> &mut Self {
-        let &CopyBufferToImageInfo {
-            ref src_buffer,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = copy_buffer_to_image_info;
-
-        if regions.is_empty() {
+        if copy_buffer_to_image_info.regions.is_empty() {
             return self;
         }
 
@@ -1375,96 +1247,32 @@ impl RawRecordingCommandBuffer {
         if self.device().api_version() >= Version::V1_3
             || self.device().enabled_extensions().khr_copy_commands2
         {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &BufferImageCopy {
-                        buffer_offset,
-                        buffer_row_length,
-                        buffer_image_height,
-                        ref image_subresource,
-                        image_offset,
-                        image_extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::BufferImageCopy2 {
-                        buffer_offset: buffer_offset + src_buffer.offset(),
-                        buffer_row_length,
-                        buffer_image_height,
-                        image_subresource: image_subresource.into(),
-                        image_offset: ash::vk::Offset3D {
-                            x: image_offset[0] as i32,
-                            y: image_offset[1] as i32,
-                            z: image_offset[2] as i32,
-                        },
-                        image_extent: ash::vk::Extent3D {
-                            width: image_extent[0],
-                            height: image_extent[1],
-                            depth: image_extent[2],
-                        },
-                        ..Default::default()
-                    }
-                })
-                .collect();
-
-            let copy_buffer_to_image_info = ash::vk::CopyBufferToImageInfo2 {
-                src_buffer: src_buffer.buffer().handle(),
-                dst_image: dst_image.handle(),
-                dst_image_layout: dst_image_layout.into(),
-                region_count: regions.len() as u32,
-                p_regions: regions.as_ptr(),
-                ..Default::default()
-            };
+            let regions_vk = copy_buffer_to_image_info.to_vk2_regions();
+            let copy_buffer_to_image_info_vk = copy_buffer_to_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_buffer_to_image2)(self.handle(), &copy_buffer_to_image_info);
+                (fns.v1_3.cmd_copy_buffer_to_image2)(self.handle(), &copy_buffer_to_image_info_vk);
             } else {
                 (fns.khr_copy_commands2.cmd_copy_buffer_to_image2_khr)(
                     self.handle(),
-                    &copy_buffer_to_image_info,
+                    &copy_buffer_to_image_info_vk,
                 );
             }
         } else {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &BufferImageCopy {
-                        buffer_offset,
-                        buffer_row_length,
-                        buffer_image_height,
-                        ref image_subresource,
-                        image_offset,
-                        image_extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::BufferImageCopy {
-                        buffer_offset: buffer_offset + src_buffer.offset(),
-                        buffer_row_length,
-                        buffer_image_height,
-                        image_subresource: image_subresource.into(),
-                        image_offset: ash::vk::Offset3D {
-                            x: image_offset[0] as i32,
-                            y: image_offset[1] as i32,
-                            z: image_offset[2] as i32,
-                        },
-                        image_extent: ash::vk::Extent3D {
-                            width: image_extent[0],
-                            height: image_extent[1],
-                            depth: image_extent[2],
-                        },
-                    }
-                })
-                .collect();
+            let regions_vk = copy_buffer_to_image_info.to_vk_regions();
+            let CopyBufferToImageInfoVk {
+                src_buffer_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+            } = copy_buffer_to_image_info.to_vk();
 
             (fns.v1_0.cmd_copy_buffer_to_image)(
                 self.handle(),
-                src_buffer.buffer().handle(),
-                dst_image.handle(),
-                dst_image_layout.into(),
-                regions.len() as u32,
-                regions.as_ptr(),
+                src_buffer_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+                regions_vk.len() as u32,
+                regions_vk.as_ptr(),
             );
         }
 
@@ -1680,15 +1488,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         copy_image_to_buffer_info: &CopyImageToBufferInfo,
     ) -> &mut Self {
-        let &CopyImageToBufferInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_buffer,
-            ref regions,
-            _ne: _,
-        } = copy_image_to_buffer_info;
-
-        if regions.is_empty() {
+        if copy_image_to_buffer_info.regions.is_empty() {
             return self;
         }
 
@@ -1697,96 +1497,32 @@ impl RawRecordingCommandBuffer {
         if self.device().api_version() >= Version::V1_3
             || self.device().enabled_extensions().khr_copy_commands2
         {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &BufferImageCopy {
-                        buffer_offset,
-                        buffer_row_length,
-                        buffer_image_height,
-                        ref image_subresource,
-                        image_offset,
-                        image_extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::BufferImageCopy2 {
-                        buffer_offset: buffer_offset + dst_buffer.offset(),
-                        buffer_row_length,
-                        buffer_image_height,
-                        image_subresource: image_subresource.into(),
-                        image_offset: ash::vk::Offset3D {
-                            x: image_offset[0] as i32,
-                            y: image_offset[1] as i32,
-                            z: image_offset[2] as i32,
-                        },
-                        image_extent: ash::vk::Extent3D {
-                            width: image_extent[0],
-                            height: image_extent[1],
-                            depth: image_extent[2],
-                        },
-                        ..Default::default()
-                    }
-                })
-                .collect();
-
-            let copy_image_to_buffer_info = ash::vk::CopyImageToBufferInfo2 {
-                src_image: src_image.handle(),
-                src_image_layout: src_image_layout.into(),
-                dst_buffer: dst_buffer.buffer().handle(),
-                region_count: regions.len() as u32,
-                p_regions: regions.as_ptr(),
-                ..Default::default()
-            };
+            let regions_vk = copy_image_to_buffer_info.to_vk2_regions();
+            let copy_image_to_buffer_info_vk = copy_image_to_buffer_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_copy_image_to_buffer2)(self.handle(), &copy_image_to_buffer_info);
+                (fns.v1_3.cmd_copy_image_to_buffer2)(self.handle(), &copy_image_to_buffer_info_vk);
             } else {
                 (fns.khr_copy_commands2.cmd_copy_image_to_buffer2_khr)(
                     self.handle(),
-                    &copy_image_to_buffer_info,
+                    &copy_image_to_buffer_info_vk,
                 );
             }
         } else {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &BufferImageCopy {
-                        buffer_offset,
-                        buffer_row_length,
-                        buffer_image_height,
-                        ref image_subresource,
-                        image_offset,
-                        image_extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::BufferImageCopy {
-                        buffer_offset: buffer_offset + dst_buffer.offset(),
-                        buffer_row_length,
-                        buffer_image_height,
-                        image_subresource: image_subresource.into(),
-                        image_offset: ash::vk::Offset3D {
-                            x: image_offset[0] as i32,
-                            y: image_offset[1] as i32,
-                            z: image_offset[2] as i32,
-                        },
-                        image_extent: ash::vk::Extent3D {
-                            width: image_extent[0],
-                            height: image_extent[1],
-                            depth: image_extent[2],
-                        },
-                    }
-                })
-                .collect();
+            let regions_vk = copy_image_to_buffer_info.to_vk_regions();
+            let CopyImageToBufferInfoVk {
+                src_image_vk,
+                src_image_layout_vk,
+                dst_buffer_vk,
+            } = copy_image_to_buffer_info.to_vk();
 
             (fns.v1_0.cmd_copy_image_to_buffer)(
                 self.handle(),
-                src_image.handle(),
-                src_image_layout.into(),
-                dst_buffer.buffer().handle(),
-                regions.len() as u32,
-                regions.as_ptr(),
+                src_image_vk,
+                src_image_layout_vk,
+                dst_buffer_vk,
+                regions_vk.len() as u32,
+                regions_vk.as_ptr(),
             );
         }
 
@@ -1830,17 +1566,7 @@ impl RawRecordingCommandBuffer {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn blit_image_unchecked(&mut self, blit_image_info: &BlitImageInfo) -> &mut Self {
-        let &BlitImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            filter,
-            _ne,
-        } = blit_image_info;
-
-        if regions.is_empty() {
+        if blit_image_info.regions.is_empty() {
             return self;
         }
 
@@ -1849,117 +1575,33 @@ impl RawRecordingCommandBuffer {
         if self.device().api_version() >= Version::V1_3
             || self.device().enabled_extensions().khr_copy_commands2
         {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &ImageBlit {
-                        ref src_subresource,
-                        src_offsets,
-                        ref dst_subresource,
-                        dst_offsets,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::ImageBlit2 {
-                        src_subresource: src_subresource.into(),
-                        src_offsets: [
-                            ash::vk::Offset3D {
-                                x: src_offsets[0][0] as i32,
-                                y: src_offsets[0][1] as i32,
-                                z: src_offsets[0][2] as i32,
-                            },
-                            ash::vk::Offset3D {
-                                x: src_offsets[1][0] as i32,
-                                y: src_offsets[1][1] as i32,
-                                z: src_offsets[1][2] as i32,
-                            },
-                        ],
-                        dst_subresource: dst_subresource.into(),
-                        dst_offsets: [
-                            ash::vk::Offset3D {
-                                x: dst_offsets[0][0] as i32,
-                                y: dst_offsets[0][1] as i32,
-                                z: dst_offsets[0][2] as i32,
-                            },
-                            ash::vk::Offset3D {
-                                x: dst_offsets[1][0] as i32,
-                                y: dst_offsets[1][1] as i32,
-                                z: dst_offsets[1][2] as i32,
-                            },
-                        ],
-                        ..Default::default()
-                    }
-                })
-                .collect();
-
-            let blit_image_info = ash::vk::BlitImageInfo2 {
-                src_image: src_image.handle(),
-                src_image_layout: src_image_layout.into(),
-                dst_image: dst_image.handle(),
-                dst_image_layout: dst_image_layout.into(),
-                region_count: regions.len() as u32,
-                p_regions: regions.as_ptr(),
-                filter: filter.into(),
-                ..Default::default()
-            };
+            let regions_vk = blit_image_info.to_vk2_regions();
+            let blit_image_info_vk = blit_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_blit_image2)(self.handle(), &blit_image_info);
+                (fns.v1_3.cmd_blit_image2)(self.handle(), &blit_image_info_vk);
             } else {
-                (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle(), &blit_image_info);
+                (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle(), &blit_image_info_vk);
             }
         } else {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &ImageBlit {
-                        ref src_subresource,
-                        src_offsets,
-                        ref dst_subresource,
-                        dst_offsets,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::ImageBlit {
-                        src_subresource: src_subresource.into(),
-                        src_offsets: [
-                            ash::vk::Offset3D {
-                                x: src_offsets[0][0] as i32,
-                                y: src_offsets[0][1] as i32,
-                                z: src_offsets[0][2] as i32,
-                            },
-                            ash::vk::Offset3D {
-                                x: src_offsets[1][0] as i32,
-                                y: src_offsets[1][1] as i32,
-                                z: src_offsets[1][2] as i32,
-                            },
-                        ],
-                        dst_subresource: dst_subresource.into(),
-                        dst_offsets: [
-                            ash::vk::Offset3D {
-                                x: dst_offsets[0][0] as i32,
-                                y: dst_offsets[0][1] as i32,
-                                z: dst_offsets[0][2] as i32,
-                            },
-                            ash::vk::Offset3D {
-                                x: dst_offsets[1][0] as i32,
-                                y: dst_offsets[1][1] as i32,
-                                z: dst_offsets[1][2] as i32,
-                            },
-                        ],
-                    }
-                })
-                .collect();
+            let regions_vk = blit_image_info.to_vk_regions();
+            let BlitImageInfoVk {
+                src_image_vk,
+                src_image_layout_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+                filter_vk,
+            } = blit_image_info.to_vk();
 
             (fns.v1_0.cmd_blit_image)(
                 self.handle(),
-                src_image.handle(),
-                src_image_layout.into(),
-                dst_image.handle(),
-                dst_image_layout.into(),
-                regions.len() as u32,
-                regions.as_ptr(),
-                filter.into(),
+                src_image_vk,
+                src_image_layout_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+                regions_vk.len() as u32,
+                regions_vk.as_ptr(),
+                filter_vk,
             );
         }
 
@@ -2006,16 +1648,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         resolve_image_info: &ResolveImageInfo,
     ) -> &mut Self {
-        let &ResolveImageInfo {
-            ref src_image,
-            src_image_layout,
-            ref dst_image,
-            dst_image_layout,
-            ref regions,
-            _ne: _,
-        } = resolve_image_info;
-
-        if regions.is_empty() {
+        if resolve_image_info.regions.is_empty() {
             return self;
         }
 
@@ -2024,99 +1657,34 @@ impl RawRecordingCommandBuffer {
         if self.device().api_version() >= Version::V1_3
             || self.device().enabled_extensions().khr_copy_commands2
         {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let &ImageResolve {
-                        ref src_subresource,
-                        src_offset,
-                        ref dst_subresource,
-                        dst_offset,
-                        extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::ImageResolve2 {
-                        src_subresource: src_subresource.into(),
-                        src_offset: ash::vk::Offset3D {
-                            x: src_offset[0] as i32,
-                            y: src_offset[1] as i32,
-                            z: src_offset[2] as i32,
-                        },
-                        dst_subresource: dst_subresource.into(),
-                        dst_offset: ash::vk::Offset3D {
-                            x: dst_offset[0] as i32,
-                            y: dst_offset[1] as i32,
-                            z: dst_offset[2] as i32,
-                        },
-                        extent: ash::vk::Extent3D {
-                            width: extent[0],
-                            height: extent[1],
-                            depth: extent[2],
-                        },
-                        ..Default::default()
-                    }
-                })
-                .collect();
-
-            let resolve_image_info = ash::vk::ResolveImageInfo2 {
-                src_image: src_image.handle(),
-                src_image_layout: src_image_layout.into(),
-                dst_image: dst_image.handle(),
-                dst_image_layout: dst_image_layout.into(),
-                region_count: regions.len() as u32,
-                p_regions: regions.as_ptr(),
-                ..Default::default()
-            };
+            let regions_vk = resolve_image_info.to_vk2_regions();
+            let resolve_image_info_vk = resolve_image_info.to_vk2(&regions_vk);
 
             if self.device().api_version() >= Version::V1_3 {
-                (fns.v1_3.cmd_resolve_image2)(self.handle(), &resolve_image_info);
+                (fns.v1_3.cmd_resolve_image2)(self.handle(), &resolve_image_info_vk);
             } else {
-                (fns.khr_copy_commands2.cmd_resolve_image2_khr)(self.handle(), &resolve_image_info);
+                (fns.khr_copy_commands2.cmd_resolve_image2_khr)(
+                    self.handle(),
+                    &resolve_image_info_vk,
+                );
             }
         } else {
-            let regions: SmallVec<[_; 8]> = regions
-                .iter()
-                .map(|region| {
-                    let ImageResolve {
-                        ref src_subresource,
-                        src_offset,
-                        ref dst_subresource,
-                        dst_offset,
-                        extent,
-                        _ne: _,
-                    } = region;
-
-                    ash::vk::ImageResolve {
-                        src_subresource: src_subresource.into(),
-                        src_offset: ash::vk::Offset3D {
-                            x: src_offset[0] as i32,
-                            y: src_offset[1] as i32,
-                            z: src_offset[2] as i32,
-                        },
-                        dst_subresource: dst_subresource.into(),
-                        dst_offset: ash::vk::Offset3D {
-                            x: dst_offset[0] as i32,
-                            y: dst_offset[1] as i32,
-                            z: dst_offset[2] as i32,
-                        },
-                        extent: ash::vk::Extent3D {
-                            width: extent[0],
-                            height: extent[1],
-                            depth: extent[2],
-                        },
-                    }
-                })
-                .collect();
+            let regions_vk = resolve_image_info.to_vk_regions();
+            let ResolveImageInfoVk {
+                src_image_vk,
+                src_image_layout_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+            } = resolve_image_info.to_vk();
 
             (fns.v1_0.cmd_resolve_image)(
                 self.handle(),
-                src_image.handle(),
-                src_image_layout.into(),
-                dst_image.handle(),
-                dst_image_layout.into(),
-                regions.len() as u32,
-                regions.as_ptr(),
+                src_image_vk,
+                src_image_layout_vk,
+                dst_image_vk,
+                dst_image_layout_vk,
+                regions_vk.len() as u32,
+                regions_vk.as_ptr(),
             );
         }
 
@@ -2289,6 +1857,80 @@ impl CopyBufferInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        regions_vk: &'a [ash::vk::BufferCopy2<'static>],
+    ) -> ash::vk::CopyBufferInfo2<'a> {
+        let &Self {
+            ref src_buffer,
+            ref dst_buffer,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyBufferInfo2::default()
+            .src_buffer(src_buffer.buffer().handle())
+            .dst_buffer(dst_buffer.buffer().handle())
+            .regions(regions_vk)
+    }
+
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::BufferCopy2<'static>; 8]> {
+        let &Self {
+            ref src_buffer,
+            ref dst_buffer,
+            ref regions,
+            _ne: _,
+        } = self;
+
+        regions
+            .iter()
+            .map(|region| {
+                let mut region_vk = region.to_vk2();
+                region_vk.src_offset += src_buffer.offset();
+                region_vk.dst_offset += dst_buffer.offset();
+                region_vk
+            })
+            .collect()
+    }
+
+    pub(crate) fn to_vk(&self) -> CopyBufferInfoVk {
+        let &Self {
+            ref src_buffer,
+            ref dst_buffer,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        CopyBufferInfoVk {
+            src_buffer_vk: src_buffer.buffer().handle(),
+            dst_buffer_vk: dst_buffer.buffer().handle(),
+        }
+    }
+
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::BufferCopy; 8]> {
+        let &Self {
+            ref src_buffer,
+            ref dst_buffer,
+            ref regions,
+            _ne: _,
+        } = self;
+
+        regions
+            .iter()
+            .map(|region| {
+                let mut region_vk = region.to_vk();
+                region_vk.src_offset += src_buffer.offset();
+                region_vk.dst_offset += dst_buffer.offset();
+                region_vk
+            })
+            .collect()
+    }
+}
+
+pub(crate) struct CopyBufferInfoVk {
+    pub(crate) src_buffer_vk: ash::vk::Buffer,
+    pub(crate) dst_buffer_vk: ash::vk::Buffer,
 }
 
 /// Parameters to copy data from a buffer to another buffer, with type information.
@@ -2410,6 +2052,35 @@ impl BufferCopy {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::BufferCopy2<'static> {
+        let &Self {
+            src_offset,
+            dst_offset,
+            size,
+            _ne,
+        } = self;
+
+        ash::vk::BufferCopy2::default()
+            .src_offset(src_offset)
+            .dst_offset(dst_offset)
+            .size(size)
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::BufferCopy {
+        let &Self {
+            src_offset,
+            dst_offset,
+            size,
+            _ne,
+        } = self;
+
+        ash::vk::BufferCopy {
+            src_offset,
+            dst_offset,
+            size,
+        }
     }
 }
 
@@ -3669,6 +3340,60 @@ impl CopyImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        regions_vk: &'a [ash::vk::ImageCopy2<'static>],
+    ) -> ash::vk::CopyImageInfo2<'a> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyImageInfo2::default()
+            .src_image(src_image.handle())
+            .src_image_layout(src_image_layout.into())
+            .dst_image(dst_image.handle())
+            .dst_image_layout(dst_image_layout.into())
+            .regions(regions_vk)
+    }
+
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::ImageCopy2<'static>; 8]> {
+        self.regions.iter().map(ImageCopy::to_vk2).collect()
+    }
+
+    pub(crate) fn to_vk(&self) -> CopyImageInfoVk {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        CopyImageInfoVk {
+            src_image_vk: src_image.handle(),
+            src_image_layout_vk: src_image_layout.into(),
+            dst_image_vk: dst_image.handle(),
+            dst_image_layout_vk: dst_image_layout.into(),
+        }
+    }
+
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::ImageCopy; 8]> {
+        self.regions.iter().map(ImageCopy::to_vk).collect()
+    }
+}
+
+pub(crate) struct CopyImageInfoVk {
+    pub(crate) src_image_vk: ash::vk::Image,
+    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) dst_image_vk: ash::vk::Image,
+    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
 }
 
 /// A region of data to copy between images.
@@ -3796,6 +3521,67 @@ impl ImageCopy {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::ImageCopy2<'static> {
+        let &Self {
+            ref src_subresource,
+            src_offset,
+            ref dst_subresource,
+            dst_offset,
+            extent,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImageCopy2::default()
+            .src_subresource(src_subresource.to_vk())
+            .src_offset(ash::vk::Offset3D {
+                x: src_offset[0] as i32,
+                y: src_offset[1] as i32,
+                z: src_offset[2] as i32,
+            })
+            .dst_subresource(dst_subresource.to_vk())
+            .dst_offset(ash::vk::Offset3D {
+                x: dst_offset[0] as i32,
+                y: dst_offset[1] as i32,
+                z: dst_offset[2] as i32,
+            })
+            .extent(ash::vk::Extent3D {
+                width: extent[0],
+                height: extent[1],
+                depth: extent[2],
+            })
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::ImageCopy {
+        let &Self {
+            ref src_subresource,
+            src_offset,
+            ref dst_subresource,
+            dst_offset,
+            extent,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImageCopy {
+            src_subresource: src_subresource.to_vk(),
+            src_offset: ash::vk::Offset3D {
+                x: src_offset[0] as i32,
+                y: src_offset[1] as i32,
+                z: src_offset[2] as i32,
+            },
+            dst_subresource: dst_subresource.to_vk(),
+            dst_offset: ash::vk::Offset3D {
+                x: dst_offset[0] as i32,
+                y: dst_offset[1] as i32,
+                z: dst_offset[2] as i32,
+            },
+            extent: ash::vk::Extent3D {
+                width: extent[0],
+                height: extent[1],
+                depth: extent[2],
+            },
+        }
     }
 }
 
@@ -4406,6 +4192,81 @@ impl CopyBufferToImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        regions_vk: &'a [ash::vk::BufferImageCopy2<'static>],
+    ) -> ash::vk::CopyBufferToImageInfo2<'a> {
+        let &Self {
+            ref src_buffer,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyBufferToImageInfo2::default()
+            .src_buffer(src_buffer.buffer().handle())
+            .dst_image(dst_image.handle())
+            .dst_image_layout(dst_image_layout.into())
+            .regions(regions_vk)
+    }
+
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy2<'static>; 8]> {
+        let Self {
+            src_buffer,
+            regions,
+            ..
+        } = self;
+
+        regions
+            .iter()
+            .map(|region| {
+                let mut region_vk = region.to_vk2();
+                region_vk.buffer_offset += src_buffer.offset();
+                region_vk
+            })
+            .collect()
+    }
+
+    pub(crate) fn to_vk(&self) -> CopyBufferToImageInfoVk {
+        let &Self {
+            ref src_buffer,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        CopyBufferToImageInfoVk {
+            src_buffer_vk: src_buffer.buffer().handle(),
+            dst_image_vk: dst_image.handle(),
+            dst_image_layout_vk: dst_image_layout.into(),
+        }
+    }
+
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy; 8]> {
+        let Self {
+            src_buffer,
+            regions,
+            ..
+        } = self;
+
+        regions
+            .iter()
+            .map(|region| {
+                let mut region_vk = region.to_vk();
+                region_vk.buffer_offset += src_buffer.offset();
+                region_vk
+            })
+            .collect()
+    }
+}
+
+pub(crate) struct CopyBufferToImageInfoVk {
+    pub(crate) src_buffer_vk: ash::vk::Buffer,
+    pub(crate) dst_image_vk: ash::vk::Image,
+    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
 }
 
 /// Parameters to copy data from an image to a buffer.
@@ -5012,6 +4873,81 @@ impl CopyImageToBufferInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        regions_vk: &'a [ash::vk::BufferImageCopy2<'static>],
+    ) -> ash::vk::CopyImageToBufferInfo2<'a> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_buffer,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ash::vk::CopyImageToBufferInfo2::default()
+            .src_image(src_image.handle())
+            .src_image_layout(src_image_layout.into())
+            .dst_buffer(dst_buffer.buffer().handle())
+            .regions(regions_vk)
+    }
+
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy2<'static>; 8]> {
+        let Self {
+            dst_buffer,
+            regions,
+            ..
+        } = self;
+
+        regions
+            .iter()
+            .map(|region| {
+                let mut region_vk = region.to_vk2();
+                region_vk.buffer_offset += dst_buffer.offset();
+                region_vk
+            })
+            .collect()
+    }
+
+    pub(crate) fn to_vk(&self) -> CopyImageToBufferInfoVk {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_buffer,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        CopyImageToBufferInfoVk {
+            src_image_vk: src_image.handle(),
+            src_image_layout_vk: src_image_layout.into(),
+            dst_buffer_vk: dst_buffer.buffer().handle(),
+        }
+    }
+
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::BufferImageCopy; 8]> {
+        let Self {
+            dst_buffer,
+            regions,
+            ..
+        } = self;
+
+        regions
+            .iter()
+            .map(|region| {
+                let mut region_vk = region.to_vk();
+                region_vk.buffer_offset += dst_buffer.offset();
+                region_vk
+            })
+            .collect()
+    }
+}
+
+pub(crate) struct CopyImageToBufferInfoVk {
+    pub(crate) src_image_vk: ash::vk::Image,
+    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) dst_buffer_vk: ash::vk::Buffer,
 }
 
 /// A region of data to copy between a buffer and an image.
@@ -5192,6 +5128,63 @@ impl BufferImageCopy {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::BufferImageCopy2<'static> {
+        let &Self {
+            buffer_offset,
+            buffer_row_length,
+            buffer_image_height,
+            ref image_subresource,
+            image_offset,
+            image_extent,
+            _ne: _,
+        } = self;
+
+        ash::vk::BufferImageCopy2::default()
+            .buffer_offset(buffer_offset)
+            .buffer_row_length(buffer_row_length)
+            .buffer_image_height(buffer_image_height)
+            .image_subresource(image_subresource.to_vk())
+            .image_offset(ash::vk::Offset3D {
+                x: image_offset[0] as i32,
+                y: image_offset[1] as i32,
+                z: image_offset[2] as i32,
+            })
+            .image_extent(ash::vk::Extent3D {
+                width: image_extent[0],
+                height: image_extent[1],
+                depth: image_extent[2],
+            })
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::BufferImageCopy {
+        let &Self {
+            buffer_offset,
+            buffer_row_length,
+            buffer_image_height,
+            ref image_subresource,
+            image_offset,
+            image_extent,
+            _ne: _,
+        } = self;
+
+        ash::vk::BufferImageCopy {
+            buffer_offset,
+            buffer_row_length,
+            buffer_image_height,
+            image_subresource: image_subresource.to_vk(),
+            image_offset: ash::vk::Offset3D {
+                x: image_offset[0] as i32,
+                y: image_offset[1] as i32,
+                z: image_offset[2] as i32,
+            },
+            image_extent: ash::vk::Extent3D {
+                width: image_extent[0],
+                height: image_extent[1],
+                depth: image_extent[2],
+            },
+        }
     }
 }
 
@@ -6004,6 +5997,65 @@ impl BlitImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        regions_vk: &'a [ash::vk::ImageBlit2<'static>],
+    ) -> ash::vk::BlitImageInfo2<'a> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            filter,
+            _ne: _,
+        } = self;
+
+        ash::vk::BlitImageInfo2::default()
+            .src_image(src_image.handle())
+            .src_image_layout(src_image_layout.into())
+            .dst_image(dst_image.handle())
+            .dst_image_layout(dst_image_layout.into())
+            .regions(regions_vk)
+            .filter(filter.into())
+    }
+
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::ImageBlit2<'static>; 8]> {
+        self.regions.iter().map(ImageBlit::to_vk2).collect()
+    }
+
+    pub(crate) fn to_vk(&self) -> BlitImageInfoVk {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            filter,
+            _ne: _,
+        } = self;
+
+        BlitImageInfoVk {
+            src_image_vk: src_image.handle(),
+            src_image_layout_vk: src_image_layout.into(),
+            dst_image_vk: dst_image.handle(),
+            dst_image_layout_vk: dst_image_layout.into(),
+            filter_vk: filter.into(),
+        }
+    }
+
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::ImageBlit; 8]> {
+        self.regions.iter().map(ImageBlit::to_vk).collect()
+    }
+}
+
+pub(crate) struct BlitImageInfoVk {
+    pub(crate) src_image_vk: ash::vk::Image,
+    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) dst_image_vk: ash::vk::Image,
+    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) filter_vk: ash::vk::Filter,
 }
 
 /// A region of data to blit between images.
@@ -6097,6 +6149,83 @@ impl ImageBlit {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::ImageBlit2<'static> {
+        let &Self {
+            ref src_subresource,
+            src_offsets,
+            ref dst_subresource,
+            dst_offsets,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImageBlit2::default()
+            .src_subresource(src_subresource.to_vk())
+            .src_offsets([
+                ash::vk::Offset3D {
+                    x: src_offsets[0][0] as i32,
+                    y: src_offsets[0][1] as i32,
+                    z: src_offsets[0][2] as i32,
+                },
+                ash::vk::Offset3D {
+                    x: src_offsets[1][0] as i32,
+                    y: src_offsets[1][1] as i32,
+                    z: src_offsets[1][2] as i32,
+                },
+            ])
+            .dst_subresource(dst_subresource.to_vk())
+            .dst_offsets([
+                ash::vk::Offset3D {
+                    x: dst_offsets[0][0] as i32,
+                    y: dst_offsets[0][1] as i32,
+                    z: dst_offsets[0][2] as i32,
+                },
+                ash::vk::Offset3D {
+                    x: dst_offsets[1][0] as i32,
+                    y: dst_offsets[1][1] as i32,
+                    z: dst_offsets[1][2] as i32,
+                },
+            ])
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::ImageBlit {
+        let &Self {
+            ref src_subresource,
+            src_offsets,
+            ref dst_subresource,
+            dst_offsets,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImageBlit {
+            src_subresource: src_subresource.to_vk(),
+            src_offsets: [
+                ash::vk::Offset3D {
+                    x: src_offsets[0][0] as i32,
+                    y: src_offsets[0][1] as i32,
+                    z: src_offsets[0][2] as i32,
+                },
+                ash::vk::Offset3D {
+                    x: src_offsets[1][0] as i32,
+                    y: src_offsets[1][1] as i32,
+                    z: src_offsets[1][2] as i32,
+                },
+            ],
+            dst_subresource: dst_subresource.to_vk(),
+            dst_offsets: [
+                ash::vk::Offset3D {
+                    x: dst_offsets[0][0] as i32,
+                    y: dst_offsets[0][1] as i32,
+                    z: dst_offsets[0][2] as i32,
+                },
+                ash::vk::Offset3D {
+                    x: dst_offsets[1][0] as i32,
+                    y: dst_offsets[1][1] as i32,
+                    z: dst_offsets[1][2] as i32,
+                },
+            ],
+        }
     }
 }
 
@@ -6686,6 +6815,60 @@ impl ResolveImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        regions_vk: &'a [ash::vk::ImageResolve2<'static>],
+    ) -> ash::vk::ResolveImageInfo2<'a> {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ash::vk::ResolveImageInfo2::default()
+            .src_image(src_image.handle())
+            .src_image_layout(src_image_layout.into())
+            .dst_image(dst_image.handle())
+            .dst_image_layout(dst_image_layout.into())
+            .regions(regions_vk)
+    }
+
+    pub(crate) fn to_vk2_regions(&self) -> SmallVec<[ash::vk::ImageResolve2<'static>; 8]> {
+        self.regions.iter().map(ImageResolve::to_vk2).collect()
+    }
+
+    pub(crate) fn to_vk(&self) -> ResolveImageInfoVk {
+        let &Self {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ResolveImageInfoVk {
+            src_image_vk: src_image.handle(),
+            src_image_layout_vk: src_image_layout.into(),
+            dst_image_vk: dst_image.handle(),
+            dst_image_layout_vk: dst_image_layout.into(),
+        }
+    }
+
+    pub(crate) fn to_vk_regions(&self) -> SmallVec<[ash::vk::ImageResolve; 8]> {
+        self.regions.iter().map(ImageResolve::to_vk).collect()
+    }
+}
+
+pub(crate) struct ResolveImageInfoVk {
+    pub(crate) src_image_vk: ash::vk::Image,
+    pub(crate) src_image_layout_vk: ash::vk::ImageLayout,
+    pub(crate) dst_image_vk: ash::vk::Image,
+    pub(crate) dst_image_layout_vk: ash::vk::ImageLayout,
 }
 
 /// A region of data to resolve between images.
@@ -6787,6 +6970,67 @@ impl ImageResolve {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::ImageResolve2<'static> {
+        let &Self {
+            ref src_subresource,
+            src_offset,
+            ref dst_subresource,
+            dst_offset,
+            extent,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImageResolve2::default()
+            .src_subresource(src_subresource.to_vk())
+            .src_offset(ash::vk::Offset3D {
+                x: src_offset[0] as i32,
+                y: src_offset[1] as i32,
+                z: src_offset[2] as i32,
+            })
+            .dst_subresource(dst_subresource.to_vk())
+            .dst_offset(ash::vk::Offset3D {
+                x: dst_offset[0] as i32,
+                y: dst_offset[1] as i32,
+                z: dst_offset[2] as i32,
+            })
+            .extent(ash::vk::Extent3D {
+                width: extent[0],
+                height: extent[1],
+                depth: extent[2],
+            })
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::ImageResolve {
+        let &Self {
+            ref src_subresource,
+            src_offset,
+            ref dst_subresource,
+            dst_offset,
+            extent,
+            _ne: _,
+        } = self;
+
+        ash::vk::ImageResolve {
+            src_subresource: src_subresource.to_vk(),
+            src_offset: ash::vk::Offset3D {
+                x: src_offset[0] as i32,
+                y: src_offset[1] as i32,
+                z: src_offset[2] as i32,
+            },
+            dst_subresource: dst_subresource.to_vk(),
+            dst_offset: ash::vk::Offset3D {
+                x: dst_offset[0] as i32,
+                y: dst_offset[1] as i32,
+                z: dst_offset[2] as i32,
+            },
+            extent: ash::vk::Extent3D {
+                width: extent[0],
+                height: extent[1],
+                depth: extent[2],
+            },
+        }
     }
 }
 

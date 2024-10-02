@@ -135,78 +135,8 @@ impl Sampler {
         device: Arc<Device>,
         create_info: SamplerCreateInfo,
     ) -> Result<Arc<Sampler>, VulkanError> {
-        let &SamplerCreateInfo {
-            mag_filter,
-            min_filter,
-            mipmap_mode,
-            address_mode,
-            mip_lod_bias,
-            anisotropy,
-            compare,
-            ref lod,
-            border_color,
-            unnormalized_coordinates,
-            reduction_mode,
-            ref sampler_ycbcr_conversion,
-            _ne: _,
-        } = &create_info;
-
-        let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = anisotropy {
-            (ash::vk::TRUE, max_anisotropy)
-        } else {
-            (ash::vk::FALSE, 1.0)
-        };
-
-        let (compare_enable, compare_op) = if let Some(compare_op) = compare {
-            (ash::vk::TRUE, compare_op)
-        } else {
-            (ash::vk::FALSE, CompareOp::Never)
-        };
-
-        let mut create_info_vk = ash::vk::SamplerCreateInfo {
-            flags: ash::vk::SamplerCreateFlags::empty(),
-            mag_filter: mag_filter.into(),
-            min_filter: min_filter.into(),
-            mipmap_mode: mipmap_mode.into(),
-            address_mode_u: address_mode[0].into(),
-            address_mode_v: address_mode[1].into(),
-            address_mode_w: address_mode[2].into(),
-            mip_lod_bias,
-            anisotropy_enable,
-            max_anisotropy,
-            compare_enable,
-            compare_op: compare_op.into(),
-            min_lod: *lod.start(),
-            max_lod: *lod.end(),
-            border_color: border_color.into(),
-            unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
-            ..Default::default()
-        };
-        let mut sampler_reduction_mode_create_info_vk = None;
-        let mut sampler_ycbcr_conversion_info_vk = None;
-
-        if reduction_mode != SamplerReductionMode::WeightedAverage {
-            let next = sampler_reduction_mode_create_info_vk.insert(
-                ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if let Some(sampler_ycbcr_conversion) = sampler_ycbcr_conversion {
-            let next =
-                sampler_ycbcr_conversion_info_vk.insert(ash::vk::SamplerYcbcrConversionInfo {
-                    conversion: sampler_ycbcr_conversion.handle(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
+        let mut create_info_extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
 
         let handle = unsafe {
             let fns = device.fns();
@@ -1122,6 +1052,104 @@ impl SamplerCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        extensions_vk: &'a mut SamplerCreateInfoExtensionsVk,
+    ) -> ash::vk::SamplerCreateInfo<'a> {
+        let &Self {
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            address_mode,
+            mip_lod_bias,
+            anisotropy,
+            compare,
+            ref lod,
+            border_color,
+            unnormalized_coordinates,
+            reduction_mode: _,
+            sampler_ycbcr_conversion: _,
+            _ne: _,
+        } = self;
+
+        let (anisotropy_enable_vk, max_anisotropy_vk) = if let Some(max_anisotropy) = anisotropy {
+            (true, max_anisotropy)
+        } else {
+            (false, 1.0)
+        };
+
+        let (compare_enable_vk, compare_op_vk) = if let Some(compare_op) = compare {
+            (true, compare_op)
+        } else {
+            (false, CompareOp::Never)
+        };
+
+        let mut val_vk = ash::vk::SamplerCreateInfo::default()
+            .flags(ash::vk::SamplerCreateFlags::empty())
+            .mag_filter(mag_filter.into())
+            .min_filter(min_filter.into())
+            .mipmap_mode(mipmap_mode.into())
+            .address_mode_u(address_mode[0].into())
+            .address_mode_v(address_mode[1].into())
+            .address_mode_w(address_mode[2].into())
+            .mip_lod_bias(mip_lod_bias)
+            .anisotropy_enable(anisotropy_enable_vk)
+            .max_anisotropy(max_anisotropy_vk)
+            .compare_enable(compare_enable_vk)
+            .compare_op(compare_op_vk.into())
+            .min_lod(*lod.start())
+            .max_lod(*lod.end())
+            .border_color(border_color.into())
+            .unnormalized_coordinates(unnormalized_coordinates);
+
+        let SamplerCreateInfoExtensionsVk {
+            reduction_mode_vk,
+            ycbcr_conversion_vk,
+        } = extensions_vk;
+
+        if let Some(next) = reduction_mode_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = ycbcr_conversion_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> SamplerCreateInfoExtensionsVk {
+        let &Self {
+            reduction_mode,
+            ref sampler_ycbcr_conversion,
+            ..
+        } = self;
+
+        let reduction_mode_vk =
+            (reduction_mode != SamplerReductionMode::WeightedAverage).then(|| {
+                ash::vk::SamplerReductionModeCreateInfo::default()
+                    .reduction_mode(reduction_mode.into())
+            });
+
+        let ycbcr_conversion_vk =
+            sampler_ycbcr_conversion
+                .as_ref()
+                .map(|sampler_ycbcr_conversion| {
+                    ash::vk::SamplerYcbcrConversionInfo::default()
+                        .conversion(sampler_ycbcr_conversion.handle())
+                });
+
+        SamplerCreateInfoExtensionsVk {
+            reduction_mode_vk,
+            ycbcr_conversion_vk,
+        }
+    }
+}
+
+pub(crate) struct SamplerCreateInfoExtensionsVk {
+    pub(crate) reduction_mode_vk: Option<ash::vk::SamplerReductionModeCreateInfo<'static>>,
+    pub(crate) ycbcr_conversion_vk: Option<ash::vk::SamplerYcbcrConversionInfo<'static>>,
 }
 
 /// A special value to indicate that the maximum LOD should not be clamped.
@@ -1251,16 +1279,16 @@ impl ComponentMapping {
 
         Ok(())
     }
-}
 
-impl From<ComponentMapping> for ash::vk::ComponentMapping {
-    #[inline]
-    fn from(value: ComponentMapping) -> Self {
-        Self {
-            r: value.r.into(),
-            g: value.g.into(),
-            b: value.b.into(),
-            a: value.a.into(),
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> ash::vk::ComponentMapping {
+        let &Self { r, g, b, a } = self;
+
+        ash::vk::ComponentMapping {
+            r: r.into(),
+            g: g.into(),
+            b: b.into(),
+            a: a.into(),
         }
     }
 }

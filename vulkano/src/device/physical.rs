@@ -7,22 +7,20 @@ use crate::{
         DevicePropertiesFfi,
     },
     display::{Display, DisplayPlaneProperties, DisplayPlanePropertiesRaw, DisplayProperties},
-    format::{DrmFormatModifierProperties, Format, FormatProperties},
+    format::{Format, FormatProperties},
     image::{
-        ImageDrmFormatModifierInfo, ImageFormatInfo, ImageFormatProperties, ImageUsage,
-        SparseImageFormatInfo, SparseImageFormatProperties,
+        ImageFormatInfo, ImageFormatProperties, SparseImageFormatInfo, SparseImageFormatProperties,
     },
     instance::{Instance, InstanceOwned},
     macros::{impl_id_counter, vulkan_bitflags, vulkan_enum},
     memory::{ExternalMemoryHandleType, MemoryProperties},
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceApi, SurfaceCapabilities,
-        SurfaceInfo, SurfaceTransforms,
+        SurfaceInfo, SurfaceInfo2ExtensionsVk,
     },
     sync::{
         fence::{ExternalFenceInfo, ExternalFenceProperties},
-        semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, SemaphoreType},
-        Sharing,
+        semaphore::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
     },
     DebugWrapper, ExtensionProperties, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
@@ -32,6 +30,7 @@ use parking_lot::RwLock;
 use raw_window_handle::{HandleError, HasDisplayHandle, RawDisplayHandle};
 use std::{
     fmt::{Debug, Error as FmtError, Formatter},
+    marker::PhantomData,
     mem::MaybeUninit,
     num::NonZeroU64,
     ptr,
@@ -283,25 +282,25 @@ impl PhysicalDevice {
         let fns = instance.fns();
         (fns.v1_0.get_physical_device_memory_properties)(handle, output.as_mut_ptr());
 
-        output.assume_init().into()
+        MemoryProperties::from_vk(&output.assume_init())
     }
 
     unsafe fn get_memory_properties2(
         handle: ash::vk::PhysicalDevice,
         instance: &Instance,
     ) -> MemoryProperties {
-        let mut output = ash::vk::PhysicalDeviceMemoryProperties2KHR::default();
+        let mut properties_vk = MemoryProperties::to_mut_vk2();
 
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_memory_properties2)(handle, &mut output);
+            (fns.v1_1.get_physical_device_memory_properties2)(handle, &mut properties_vk);
         } else {
             (fns.khr_get_physical_device_properties2
-                .get_physical_device_memory_properties2_khr)(handle, &mut output);
+                .get_physical_device_memory_properties2_khr)(handle, &mut properties_vk);
         }
 
-        output.memory_properties.into()
+        MemoryProperties::from_vk2(&properties_vk)
     }
 
     unsafe fn get_queue_family_properties(
@@ -321,7 +320,7 @@ impl PhysicalDevice {
         );
         output.set_len(num as usize);
 
-        output.into_iter().map(Into::into).collect()
+        output.iter().map(QueueFamilyProperties::from_vk).collect()
     }
 
     unsafe fn get_queue_family_properties2(
@@ -346,26 +345,26 @@ impl PhysicalDevice {
             );
         }
 
-        let mut output = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
+        let mut properties_vk = vec![QueueFamilyProperties::to_mut_vk2(); num as usize];
 
         if instance.api_version() >= Version::V1_1 {
             (fns.v1_1.get_physical_device_queue_family_properties2)(
                 handle,
                 &mut num,
-                output.as_mut_ptr(),
+                properties_vk.as_mut_ptr(),
             );
         } else {
             (fns.khr_get_physical_device_properties2
                 .get_physical_device_queue_family_properties2_khr)(
                 handle,
                 &mut num,
-                output.as_mut_ptr(),
+                properties_vk.as_mut_ptr(),
             );
         }
 
-        output
-            .into_iter()
-            .map(|family| family.queue_family_properties.into())
+        properties_vk
+            .iter()
+            .map(QueueFamilyProperties::from_vk2)
             .collect()
     }
 
@@ -467,20 +466,19 @@ impl PhysicalDevice {
                     .result()
                     .map_err(VulkanError::from)?;
 
-                    let mut properties =
-                        vec![ash::vk::DisplayProperties2KHR::default(); count as usize];
+                    let mut properties_vk = vec![DisplayProperties::to_mut_vk2(); count as usize];
                     let result = (fns
                         .khr_get_display_properties2
                         .get_physical_device_display_properties2_khr)(
                         self.handle,
                         &mut count,
-                        properties.as_mut_ptr(),
+                        properties_vk.as_mut_ptr(),
                     );
 
                     match result {
                         ash::vk::Result::SUCCESS => {
-                            properties.set_len(count as usize);
-                            break properties;
+                            properties_vk.set_len(count as usize);
+                            break properties_vk;
                         }
                         ash::vk::Result::INCOMPLETE => (),
                         err => return Err(VulkanError::from(err)),
@@ -489,33 +487,16 @@ impl PhysicalDevice {
             };
 
             Ok(properties_vk
-                .into_iter()
+                .iter()
                 .map(|properties_vk| {
                     let properties_vk = &properties_vk.display_properties;
                     self.display_properties
                         .get_or_insert(properties_vk.display, |&handle| {
-                            let properties = DisplayProperties {
-                                name: properties_vk.display_name_as_c_str().map(|name| {
-                                    name.to_str()
-                                        .expect("non UTF-8 characters in display name")
-                                        .to_owned()
-                                }),
-                                physical_dimensions: [
-                                    properties_vk.physical_dimensions.width,
-                                    properties_vk.physical_dimensions.height,
-                                ],
-                                physical_resolution: [
-                                    properties_vk.physical_resolution.width,
-                                    properties_vk.physical_resolution.height,
-                                ],
-                                supported_transforms: properties_vk.supported_transforms.into(),
-                                plane_reorder_possible: properties_vk.plane_reorder_possible
-                                    != ash::vk::FALSE,
-                                persistent_content: properties_vk.persistent_content
-                                    != ash::vk::FALSE,
-                            };
-
-                            Display::from_handle(self.clone(), handle, properties)
+                            Display::from_handle(
+                                self.clone(),
+                                handle,
+                                DisplayProperties::from_vk(properties_vk),
+                            )
                         })
                 })
                 .collect())
@@ -531,17 +512,17 @@ impl PhysicalDevice {
                     .result()
                     .map_err(VulkanError::from)?;
 
-                    let mut properties = Vec::with_capacity(count as usize);
+                    let mut properties_vk = Vec::with_capacity(count as usize);
                     let result = (fns.khr_display.get_physical_device_display_properties_khr)(
                         self.handle,
                         &mut count,
-                        properties.as_mut_ptr(),
+                        properties_vk.as_mut_ptr(),
                     );
 
                     match result {
                         ash::vk::Result::SUCCESS => {
-                            properties.set_len(count as usize);
-                            break properties;
+                            properties_vk.set_len(count as usize);
+                            break properties_vk;
                         }
                         ash::vk::Result::INCOMPLETE => (),
                         err => return Err(VulkanError::from(err)),
@@ -550,32 +531,15 @@ impl PhysicalDevice {
             };
 
             Ok(properties_vk
-                .into_iter()
+                .iter()
                 .map(|properties_vk| {
                     self.display_properties
                         .get_or_insert(properties_vk.display, |&handle| {
-                            let properties = DisplayProperties {
-                                name: properties_vk.display_name_as_c_str().map(|name| {
-                                    name.to_str()
-                                        .expect("non UTF-8 characters in display name")
-                                        .to_owned()
-                                }),
-                                physical_dimensions: [
-                                    properties_vk.physical_dimensions.width,
-                                    properties_vk.physical_dimensions.height,
-                                ],
-                                physical_resolution: [
-                                    properties_vk.physical_resolution.width,
-                                    properties_vk.physical_resolution.height,
-                                ],
-                                supported_transforms: properties_vk.supported_transforms.into(),
-                                plane_reorder_possible: properties_vk.plane_reorder_possible
-                                    != ash::vk::FALSE,
-                                persistent_content: properties_vk.persistent_content
-                                    != ash::vk::FALSE,
-                            };
-
-                            Display::from_handle(self.clone(), handle, properties)
+                            Display::from_handle(
+                                self.clone(),
+                                handle,
+                                DisplayProperties::from_vk(properties_vk),
+                            )
                         })
                 })
                 .collect())
@@ -674,7 +638,7 @@ impl PhysicalDevice {
                     .map_err(VulkanError::from)?;
 
                     let mut properties =
-                        vec![ash::vk::DisplayPlaneProperties2KHR::default(); count as usize];
+                        vec![DisplayPlanePropertiesRaw::to_mut_vk2(); count as usize];
                     let result = (fns
                         .khr_get_display_properties2
                         .get_physical_device_display_plane_properties2_khr)(
@@ -695,14 +659,10 @@ impl PhysicalDevice {
             };
 
             properties_vk
-                .into_iter()
+                .iter()
                 .map(|properties_vk| {
                     let properties_vk = &properties_vk.display_plane_properties;
-                    DisplayPlanePropertiesRaw {
-                        current_display: Some(properties_vk.current_display)
-                            .filter(|&x| x != ash::vk::DisplayKHR::null()),
-                        current_stack_index: properties_vk.current_stack_index,
-                    }
+                    DisplayPlanePropertiesRaw::from_vk(properties_vk)
                 })
                 .collect()
         } else {
@@ -739,12 +699,8 @@ impl PhysicalDevice {
             };
 
             properties_vk
-                .into_iter()
-                .map(|properties_vk| DisplayPlanePropertiesRaw {
-                    current_display: Some(properties_vk.current_display)
-                        .filter(|&x| x != ash::vk::DisplayKHR::null()),
-                    current_stack_index: properties_vk.current_stack_index,
-                })
+                .iter()
+                .map(DisplayPlanePropertiesRaw::from_vk)
                 .collect()
         };
 
@@ -915,23 +871,11 @@ impl PhysicalDevice {
         self.external_buffer_properties.get_or_insert(info, |info| {
             /* Input */
 
-            let &ExternalBufferInfo {
-                flags,
-                usage,
-                handle_type,
-                _ne: _,
-            } = info;
-
-            let external_buffer_info = ash::vk::PhysicalDeviceExternalBufferInfo {
-                flags: flags.into(),
-                usage: usage.into(),
-                handle_type: handle_type.into(),
-                ..Default::default()
-            };
+            let info_vk = info.to_vk();
 
             /* Output */
 
-            let mut external_buffer_properties = ash::vk::ExternalBufferProperties::default();
+            let mut properties_vk = ExternalBufferProperties::to_mut_vk();
 
             /* Call */
 
@@ -940,23 +884,19 @@ impl PhysicalDevice {
             if self.instance.api_version() >= Version::V1_1 {
                 (fns.v1_1.get_physical_device_external_buffer_properties)(
                     self.handle,
-                    &external_buffer_info,
-                    &mut external_buffer_properties,
+                    &info_vk,
+                    &mut properties_vk,
                 )
             } else {
                 (fns.khr_external_memory_capabilities
                     .get_physical_device_external_buffer_properties_khr)(
                     self.handle,
-                    &external_buffer_info,
-                    &mut external_buffer_properties,
+                    &info_vk,
+                    &mut properties_vk,
                 );
             }
 
-            ExternalBufferProperties {
-                external_memory_properties: external_buffer_properties
-                    .external_memory_properties
-                    .into(),
-            }
+            ExternalBufferProperties::from_vk(&properties_vk)
         })
     }
 
@@ -1015,19 +955,11 @@ impl PhysicalDevice {
         self.external_fence_properties.get_or_insert(info, |info| {
             /* Input */
 
-            let &ExternalFenceInfo {
-                handle_type,
-                _ne: _,
-            } = info;
-
-            let external_fence_info = ash::vk::PhysicalDeviceExternalFenceInfo {
-                handle_type: handle_type.into(),
-                ..Default::default()
-            };
+            let info_vk = info.to_vk();
 
             /* Output */
 
-            let mut external_fence_properties = ash::vk::ExternalFenceProperties::default();
+            let mut properties_vk = ExternalFenceProperties::to_mut_vk();
 
             /* Call */
 
@@ -1036,30 +968,19 @@ impl PhysicalDevice {
             if self.instance.api_version() >= Version::V1_1 {
                 (fns.v1_1.get_physical_device_external_fence_properties)(
                     self.handle,
-                    &external_fence_info,
-                    &mut external_fence_properties,
+                    &info_vk,
+                    &mut properties_vk,
                 )
             } else {
                 (fns.khr_external_fence_capabilities
                     .get_physical_device_external_fence_properties_khr)(
                     self.handle,
-                    &external_fence_info,
-                    &mut external_fence_properties,
+                    &info_vk,
+                    &mut properties_vk,
                 );
             }
 
-            ExternalFenceProperties {
-                exportable: external_fence_properties
-                    .external_fence_features
-                    .intersects(ash::vk::ExternalFenceFeatureFlags::EXPORTABLE),
-                importable: external_fence_properties
-                    .external_fence_features
-                    .intersects(ash::vk::ExternalFenceFeatureFlags::IMPORTABLE),
-                export_from_imported_handle_types: external_fence_properties
-                    .export_from_imported_handle_types
-                    .into(),
-                compatible_handle_types: external_fence_properties.compatible_handle_types.into(),
-            }
+            ExternalFenceProperties::from_vk(&properties_vk)
         })
     }
 
@@ -1119,35 +1040,12 @@ impl PhysicalDevice {
             .get_or_insert(info, |info| {
                 /* Input */
 
-                let &ExternalSemaphoreInfo {
-                    handle_type,
-                    semaphore_type,
-                    initial_value,
-                    _ne: _,
-                } = info;
-
-                let mut external_semaphore_info_vk = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
-                    handle_type: handle_type.into(),
-                    ..Default::default()
-                };
-                let mut semaphore_type_create_info_vk = None;
-
-                if semaphore_type != SemaphoreType::Binary {
-                    let next =
-                        semaphore_type_create_info_vk.insert(ash::vk::SemaphoreTypeCreateInfo {
-                            semaphore_type: semaphore_type.into(),
-                            initial_value,
-                            ..Default::default()
-                        });
-
-                    next.p_next = external_semaphore_info_vk.p_next;
-                    external_semaphore_info_vk.p_next = <*const _>::cast(next);
-                }
+                let mut info_extensions_vk = info.to_vk_extensions();
+                let info_vk = info.to_vk(&mut info_extensions_vk);
 
                 /* Output */
 
-                let mut external_semaphore_properties =
-                    ash::vk::ExternalSemaphoreProperties::default();
+                let mut properties_vk = ExternalSemaphoreProperties::to_mut_vk();
 
                 /* Call */
 
@@ -1156,32 +1054,19 @@ impl PhysicalDevice {
                 if self.instance.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_physical_device_external_semaphore_properties)(
                         self.handle,
-                        &external_semaphore_info_vk,
-                        &mut external_semaphore_properties,
+                        &info_vk,
+                        &mut properties_vk,
                     )
                 } else {
                     (fns.khr_external_semaphore_capabilities
                         .get_physical_device_external_semaphore_properties_khr)(
                         self.handle,
-                        &external_semaphore_info_vk,
-                        &mut external_semaphore_properties,
+                        &info_vk,
+                        &mut properties_vk,
                     );
                 }
 
-                ExternalSemaphoreProperties {
-                    exportable: external_semaphore_properties
-                        .external_semaphore_features
-                        .intersects(ash::vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
-                    importable: external_semaphore_properties
-                        .external_semaphore_features
-                        .intersects(ash::vk::ExternalSemaphoreFeatureFlags::IMPORTABLE),
-                    export_from_imported_handle_types: external_semaphore_properties
-                        .export_from_imported_handle_types
-                        .into(),
-                    compatible_handle_types: external_semaphore_properties
-                        .compatible_handle_types
-                        .into(),
-                }
+                ExternalSemaphoreProperties::from_vk(&properties_vk)
             })
     }
 
@@ -1212,48 +1097,13 @@ impl PhysicalDevice {
     #[inline]
     pub unsafe fn format_properties_unchecked(&self, format: Format) -> FormatProperties {
         self.format_properties.get_or_insert(format, |&format| {
-            let mut format_properties2_vk = ash::vk::FormatProperties2::default();
-            let mut format_properties3_vk = None;
-            let mut drm_format_modifier_properties_list_vk = None;
-            let mut drm_format_modifier_properties_vk = Vec::new();
-            let mut drm_format_modifier_properties_list2_vk = None;
-            let mut drm_format_modifier_properties2_vk = Vec::new();
-
-            if self.api_version() >= Version::V1_3
-                || self.supported_extensions().khr_format_feature_flags2
-            {
-                let next = format_properties3_vk.insert(ash::vk::FormatProperties3KHR::default());
-                next.p_next = format_properties2_vk.p_next;
-                format_properties2_vk.p_next = <*mut _>::cast(next);
-            }
-
-            if self.supported_extensions().ext_image_drm_format_modifier {
-                let next = drm_format_modifier_properties_list_vk
-                    .insert(ash::vk::DrmFormatModifierPropertiesListEXT::default());
-                next.p_next = format_properties2_vk.p_next;
-                format_properties2_vk.p_next = <*mut _>::cast(next);
-
-                if self.api_version() >= Version::V1_3
-                    || self.supported_extensions().khr_format_feature_flags2
-                {
-                    let next = drm_format_modifier_properties_list2_vk
-                        .insert(ash::vk::DrmFormatModifierPropertiesList2EXT::default());
-                    next.p_next = format_properties2_vk.p_next;
-                    format_properties2_vk.p_next = <*mut _>::cast(next);
-                }
-            }
-
             let fns = self.instance.fns();
-
-            // Get the number of DRM format modifier properties first.
-            if let Some(drm_format_modifier_properties_list_vk) =
-                &mut drm_format_modifier_properties_list_vk
-            {
+            let call = |format_properties2_vk: &mut ash::vk::FormatProperties2<'_>| {
                 if self.api_version() >= Version::V1_1 {
                     (fns.v1_1.get_physical_device_format_properties2)(
                         self.handle,
                         format.into(),
-                        &mut format_properties2_vk,
+                        format_properties2_vk,
                     );
                 } else if self
                     .instance
@@ -1264,111 +1114,48 @@ impl PhysicalDevice {
                         .get_physical_device_format_properties2_khr)(
                         self.handle,
                         format.into(),
-                        &mut format_properties2_vk,
+                        format_properties2_vk,
+                    );
+                } else {
+                    (fns.v1_0.get_physical_device_format_properties)(
+                        self.handle(),
+                        format.into(),
+                        &mut format_properties2_vk.format_properties,
                     );
                 }
+            };
 
-                drm_format_modifier_properties_vk = vec![
-                        ash::vk::DrmFormatModifierPropertiesEXT::default();
-                        drm_format_modifier_properties_list_vk.drm_format_modifier_count as usize
-                    ];
-                drm_format_modifier_properties_list_vk.p_drm_format_modifier_properties =
-                    drm_format_modifier_properties_vk.as_mut_ptr();
+            let mut properties2_fields1_vk = FormatProperties::to_mut_vk2_fields1(
+                FormatProperties::to_mut_vk2_extensions_query_count(self).map(
+                    |mut properties2_extensions_query_count_vk| {
+                        // If `to_mut_vk2_extensions_query_count` returns `Some`, we must query
+                        // the element count and then pass it to `to_mut_vk2_fields1`.
+                        let mut properties2_query_count_vk = FormatProperties::to_mut_vk2(
+                            &mut properties2_extensions_query_count_vk,
+                        );
+                        call(&mut properties2_query_count_vk);
+                        properties2_extensions_query_count_vk
+                    },
+                ),
+            );
+            let mut properties2_extensions_vk =
+                FormatProperties::to_mut_vk2_extensions(&mut properties2_fields1_vk, self);
+            let mut properties2_vk = FormatProperties::to_mut_vk2(&mut properties2_extensions_vk);
 
-                if let Some(drm_format_modifier_properties_list2_vk) =
-                    &mut drm_format_modifier_properties_list2_vk
-                {
-                    drm_format_modifier_properties2_vk = vec![
-                        ash::vk::DrmFormatModifierProperties2EXT::default();
-                        drm_format_modifier_properties_list2_vk.drm_format_modifier_count as usize
-                    ];
-                    drm_format_modifier_properties_list2_vk.p_drm_format_modifier_properties =
-                        drm_format_modifier_properties2_vk.as_mut_ptr();
-                }
-            }
+            call(&mut properties2_vk);
 
-            if self.api_version() >= Version::V1_1 {
-                (fns.v1_1.get_physical_device_format_properties2)(
-                    self.handle,
-                    format.into(),
-                    &mut format_properties2_vk,
-                );
-            } else if self
-                .instance
-                .enabled_extensions()
-                .khr_get_physical_device_properties2
-            {
-                (fns.khr_get_physical_device_properties2
-                    .get_physical_device_format_properties2_khr)(
-                    self.handle,
-                    format.into(),
-                    &mut format_properties2_vk,
-                );
-            } else {
-                (fns.v1_0.get_physical_device_format_properties)(
-                    self.handle(),
-                    format.into(),
-                    &mut format_properties2_vk.format_properties,
-                );
-            }
+            // Unborrow
+            let properties2_vk = ash::vk::FormatProperties2 {
+                _marker: PhantomData,
+                ..properties2_vk
+            };
+            let properties2_extensions_vk = properties2_extensions_vk.unborrow();
 
-            match format_properties3_vk {
-                Some(format_properties3) => {
-                    FormatProperties {
-                        linear_tiling_features: format_properties3.linear_tiling_features.into(),
-                        optimal_tiling_features: format_properties3.optimal_tiling_features.into(),
-                        buffer_features: format_properties3.buffer_features.into(),
-                        drm_format_modifier_properties: drm_format_modifier_properties_list2_vk
-                            .map_or(Vec::new(), |list2_vk| {
-                                drm_format_modifier_properties2_vk
-                                    [..list2_vk.drm_format_modifier_count as usize]
-                                    .iter()
-                                    .map(|properties2_vk| DrmFormatModifierProperties {
-                                        drm_format_modifier: properties2_vk.drm_format_modifier,
-                                        drm_format_modifier_plane_count: properties2_vk
-                                            .drm_format_modifier_plane_count,
-                                        drm_format_modifier_tiling_features: properties2_vk
-                                            .drm_format_modifier_tiling_features
-                                            .into(),
-                                    })
-                                    .collect()
-                            }),
-                        _ne: crate::NonExhaustive(()),
-                    }
-                }
-                None => {
-                    FormatProperties {
-                        linear_tiling_features: format_properties2_vk
-                            .format_properties
-                            .linear_tiling_features
-                            .into(),
-                        optimal_tiling_features: format_properties2_vk
-                            .format_properties
-                            .optimal_tiling_features
-                            .into(),
-                        buffer_features: format_properties2_vk
-                            .format_properties
-                            .buffer_features
-                            .into(),
-                        drm_format_modifier_properties: drm_format_modifier_properties_list_vk
-                            .map_or(Vec::new(), |list_vk| {
-                                drm_format_modifier_properties_vk
-                                    [..list_vk.drm_format_modifier_count as usize]
-                                    .iter()
-                                    .map(|properties_vk| DrmFormatModifierProperties {
-                                        drm_format_modifier: properties_vk.drm_format_modifier,
-                                        drm_format_modifier_plane_count: properties_vk
-                                            .drm_format_modifier_plane_count,
-                                        drm_format_modifier_tiling_features: properties_vk
-                                            .drm_format_modifier_tiling_features
-                                            .into(),
-                                    })
-                                    .collect()
-                            }),
-                        _ne: crate::NonExhaustive(()),
-                    }
-                }
-            }
+            FormatProperties::from_vk2(
+                &properties2_vk,
+                &properties2_fields1_vk,
+                &properties2_extensions_vk,
+            )
         })
     }
 
@@ -1412,137 +1199,17 @@ impl PhysicalDevice {
         self.image_format_properties
             .get_or_try_insert(image_format_info, |image_format_info| {
                 /* Input */
-                let &ImageFormatInfo {
-                    flags,
-                    format,
-                    image_type,
-                    tiling,
-                    usage,
-                    stencil_usage,
-                    external_memory_handle_type,
-                    image_view_type,
-                    ref drm_format_modifier_info,
-                    ref view_formats,
-                    _ne: _,
-                } = image_format_info;
-
-                let mut info2_vk = ash::vk::PhysicalDeviceImageFormatInfo2 {
-                    format: format.into(),
-                    ty: image_type.into(),
-                    tiling: tiling.into(),
-                    usage: usage.into(),
-                    flags: flags.into(),
-                    ..Default::default()
-                };
-                let mut drm_format_modifier_info_vk = None;
-                let mut external_info_vk = None;
-                let mut format_list_info_vk = None;
-                let format_list_view_formats_vk: Vec<_>;
-                let mut image_view_info_vk = None;
-                let mut stencil_usage_info_vk = None;
-
-                if let Some(drm_format_modifier_info) = drm_format_modifier_info {
-                    let &ImageDrmFormatModifierInfo {
-                        drm_format_modifier,
-                        ref sharing,
-                        _ne: _,
-                    } = drm_format_modifier_info;
-
-                    let (sharing_mode, queue_family_index_count, p_queue_family_indices) =
-                        match sharing {
-                            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
-                            Sharing::Concurrent(queue_family_indices) => (
-                                ash::vk::SharingMode::CONCURRENT,
-                                queue_family_indices.len() as u32,
-                                queue_family_indices.as_ptr(),
-                            ),
-                        };
-
-                    let next = drm_format_modifier_info_vk.insert(
-                        ash::vk::PhysicalDeviceImageDrmFormatModifierInfoEXT {
-                            drm_format_modifier,
-                            sharing_mode,
-                            queue_family_index_count,
-                            p_queue_family_indices,
-                            ..Default::default()
-                        },
-                    );
-
-                    next.p_next = info2_vk.p_next;
-                    info2_vk.p_next = <*const _>::cast(next);
-                }
-
-                if let Some(handle_type) = external_memory_handle_type {
-                    let next =
-                        external_info_vk.insert(ash::vk::PhysicalDeviceExternalImageFormatInfo {
-                            handle_type: handle_type.into(),
-                            ..Default::default()
-                        });
-
-                    next.p_next = info2_vk.p_next;
-                    info2_vk.p_next = <*const _>::cast(next);
-                }
-
-                if !view_formats.is_empty() {
-                    format_list_view_formats_vk = view_formats
-                        .iter()
-                        .copied()
-                        .map(ash::vk::Format::from)
-                        .collect();
-
-                    let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
-                        view_format_count: format_list_view_formats_vk.len() as u32,
-                        p_view_formats: format_list_view_formats_vk.as_ptr(),
-                        ..Default::default()
-                    });
-
-                    next.p_next = info2_vk.p_next;
-                    info2_vk.p_next = <*const _>::cast(next);
-                }
-
-                if let Some(image_view_type) = image_view_type {
-                    let next = image_view_info_vk.insert(
-                        ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT {
-                            image_view_type: image_view_type.into(),
-                            ..Default::default()
-                        },
-                    );
-
-                    next.p_next = info2_vk.p_next.cast_mut();
-                    info2_vk.p_next = <*const _>::cast(next);
-                }
-
-                if let Some(stencil_usage) = stencil_usage {
-                    let next = stencil_usage_info_vk.insert(ash::vk::ImageStencilUsageCreateInfo {
-                        stencil_usage: stencil_usage.into(),
-                        ..Default::default()
-                    });
-
-                    next.p_next = info2_vk.p_next.cast_mut();
-                    info2_vk.p_next = <*const _>::cast(next);
-                }
+                let info2_fields1_vk = image_format_info.to_vk2_fields1();
+                let mut info2_extensions_vk =
+                    image_format_info.to_vk2_extensions(&info2_fields1_vk);
+                let info2_vk = image_format_info.to_vk2(&mut info2_extensions_vk);
 
                 /* Output */
 
-                let mut properties2_vk = ash::vk::ImageFormatProperties2::default();
-                let mut external_properties_vk = None;
-                let mut filter_cubic_image_view_properties_vk = None;
-
-                if external_info_vk.is_some() {
-                    let next = external_properties_vk
-                        .insert(ash::vk::ExternalImageFormatProperties::default());
-
-                    next.p_next = properties2_vk.p_next;
-                    properties2_vk.p_next = <*mut _>::cast(next);
-                }
-
-                if image_view_info_vk.is_some() {
-                    let next = filter_cubic_image_view_properties_vk
-                        .insert(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default());
-
-                    next.p_next = properties2_vk.p_next;
-                    properties2_vk.p_next = <*mut _>::cast(next);
-                }
+                let mut properties2_extensions_vk =
+                    ImageFormatProperties::to_mut_vk2_extensions(image_format_info);
+                let mut properties2_vk =
+                    ImageFormatProperties::to_mut_vk2(&mut properties2_extensions_vk);
 
                 let result = {
                     let fns = self.instance.fns();
@@ -1569,7 +1236,8 @@ impl PhysicalDevice {
                         if !info2_vk.p_next.is_null() {
                             return Ok(None);
                         }
-                        if let Some(ExternalMemoryHandleType::DmaBuf) = external_memory_handle_type
+                        if let Some(ExternalMemoryHandleType::DmaBuf) =
+                            image_format_info.external_memory_handle_type
                         {
                             // VUID-vkGetPhysicalDeviceImageFormatProperties-tiling-02248
                             // VUID-VkPhysicalDeviceImageFormatInfo2-tiling-02249
@@ -1590,24 +1258,20 @@ impl PhysicalDevice {
                     .map_err(VulkanError::from)
                 };
 
-                Ok(match result {
-                    Ok(_) => Some(ImageFormatProperties {
-                        external_memory_properties: external_properties_vk
-                            .map(|properties| properties.external_memory_properties.into())
-                            .unwrap_or_default(),
-                        filter_cubic: filter_cubic_image_view_properties_vk
-                            .map_or(false, |properties| {
-                                properties.filter_cubic != ash::vk::FALSE
-                            }),
-                        filter_cubic_minmax: filter_cubic_image_view_properties_vk
-                            .map_or(false, |properties| {
-                                properties.filter_cubic_minmax != ash::vk::FALSE
-                            }),
-                        ..properties2_vk.image_format_properties.into()
-                    }),
-                    Err(VulkanError::FormatNotSupported) => None,
-                    Err(err) => return Err(err),
-                })
+                // Unborrow
+                let properties2_vk = ash::vk::ImageFormatProperties2 {
+                    _marker: PhantomData,
+                    ..properties2_vk
+                };
+
+                match result {
+                    Ok(_) => Ok(Some(ImageFormatProperties::from_vk2(
+                        &properties2_vk,
+                        &properties2_extensions_vk,
+                    ))),
+                    Err(VulkanError::FormatNotSupported) => Ok(None),
+                    Err(err) => Err(err),
+                }
             })
     }
 
@@ -1648,23 +1312,7 @@ impl PhysicalDevice {
     ) -> Vec<SparseImageFormatProperties> {
         self.sparse_image_format_properties
             .get_or_insert(format_info, |format_info| {
-                let &SparseImageFormatInfo {
-                    format,
-                    image_type,
-                    samples,
-                    usage,
-                    tiling,
-                    _ne: _,
-                } = format_info;
-
-                let format_info2 = ash::vk::PhysicalDeviceSparseImageFormatInfo2 {
-                    format: format.into(),
-                    ty: image_type.into(),
-                    samples: samples.into(),
-                    usage: usage.into(),
-                    tiling: tiling.into(),
-                    ..Default::default()
-                };
+                let format_info2_vk = format_info.to_vk();
 
                 let fns = self.instance.fns();
 
@@ -1679,7 +1327,7 @@ impl PhysicalDevice {
                     if self.api_version() >= Version::V1_1 {
                         (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
                             self.handle,
-                            &format_info2,
+                            &format_info2_vk,
                             &mut count,
                             ptr::null_mut(),
                         );
@@ -1687,19 +1335,19 @@ impl PhysicalDevice {
                         (fns.khr_get_physical_device_properties2
                             .get_physical_device_sparse_image_format_properties2_khr)(
                             self.handle,
-                            &format_info2,
+                            &format_info2_vk,
                             &mut count,
                             ptr::null_mut(),
                         );
                     }
 
                     let mut sparse_image_format_properties2 =
-                        vec![ash::vk::SparseImageFormatProperties2::default(); count as usize];
+                        vec![SparseImageFormatProperties::to_mut_vk2(); count as usize];
 
                     if self.api_version() >= Version::V1_1 {
                         (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
                             self.handle,
-                            &format_info2,
+                            &format_info2_vk,
                             &mut count,
                             sparse_image_format_properties2.as_mut_ptr(),
                         );
@@ -1707,7 +1355,7 @@ impl PhysicalDevice {
                         (fns.khr_get_physical_device_properties2
                             .get_physical_device_sparse_image_format_properties2_khr)(
                             self.handle,
-                            &format_info2,
+                            &format_info2_vk,
                             &mut count,
                             sparse_image_format_properties2.as_mut_ptr(),
                         );
@@ -1717,54 +1365,34 @@ impl PhysicalDevice {
 
                     sparse_image_format_properties2
                         .into_iter()
-                        .map(
-                            |sparse_image_format_properties2| SparseImageFormatProperties {
-                                aspects: sparse_image_format_properties2
-                                    .properties
-                                    .aspect_mask
-                                    .into(),
-                                image_granularity: [
-                                    sparse_image_format_properties2
-                                        .properties
-                                        .image_granularity
-                                        .width,
-                                    sparse_image_format_properties2
-                                        .properties
-                                        .image_granularity
-                                        .height,
-                                    sparse_image_format_properties2
-                                        .properties
-                                        .image_granularity
-                                        .depth,
-                                ],
-                                flags: sparse_image_format_properties2.properties.flags.into(),
-                            },
-                        )
+                        .map(|properties2_vk| {
+                            SparseImageFormatProperties::from_vk(&properties2_vk.properties)
+                        })
                         .collect()
                 } else {
                     let mut count = 0;
 
                     (fns.v1_0.get_physical_device_sparse_image_format_properties)(
                         self.handle,
-                        format_info2.format,
-                        format_info2.ty,
-                        format_info2.samples,
-                        format_info2.usage,
-                        format_info2.tiling,
+                        format_info2_vk.format,
+                        format_info2_vk.ty,
+                        format_info2_vk.samples,
+                        format_info2_vk.usage,
+                        format_info2_vk.tiling,
                         &mut count,
                         ptr::null_mut(),
                     );
 
                     let mut sparse_image_format_properties =
-                        vec![ash::vk::SparseImageFormatProperties::default(); count as usize];
+                        vec![SparseImageFormatProperties::to_mut_vk(); count as usize];
 
                     (fns.v1_0.get_physical_device_sparse_image_format_properties)(
                         self.handle,
-                        format_info2.format,
-                        format_info2.ty,
-                        format_info2.samples,
-                        format_info2.usage,
-                        format_info2.tiling,
+                        format_info2_vk.format,
+                        format_info2_vk.ty,
+                        format_info2_vk.samples,
+                        format_info2_vk.usage,
+                        format_info2_vk.tiling,
                         &mut count,
                         sparse_image_format_properties.as_mut_ptr(),
                     );
@@ -1773,17 +1401,7 @@ impl PhysicalDevice {
 
                     sparse_image_format_properties
                         .into_iter()
-                        .map(
-                            |sparse_image_format_properties| SparseImageFormatProperties {
-                                aspects: sparse_image_format_properties.aspect_mask.into(),
-                                image_granularity: [
-                                    sparse_image_format_properties.image_granularity.width,
-                                    sparse_image_format_properties.image_granularity.height,
-                                    sparse_image_format_properties.image_granularity.depth,
-                                ],
-                                flags: sparse_image_format_properties.flags.into(),
-                            },
-                        )
+                        .map(|properties_vk| SparseImageFormatProperties::from_vk(&properties_vk))
                         .collect()
                 }
             })
@@ -1921,106 +1539,18 @@ impl PhysicalDevice {
     ) -> Result<SurfaceCapabilities, VulkanError> {
         /* Input */
 
-        let SurfaceInfo {
-            present_mode,
-            full_screen_exclusive,
-            win32_monitor,
-            _ne: _,
-        } = surface_info;
-
-        let mut info_vk = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-            surface: surface.handle(),
-            ..Default::default()
-        };
-        let mut present_mode_vk = None;
-        let mut full_screen_exclusive_info_vk = None;
-        let mut full_screen_exclusive_win32_info_vk = None;
-
-        if let Some(present_mode) = present_mode {
-            let next = present_mode_vk.insert(ash::vk::SurfacePresentModeEXT {
-                present_mode: present_mode.into(),
-                ..Default::default()
-            });
-
-            next.p_next = info_vk.p_next.cast_mut();
-            info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if full_screen_exclusive != FullScreenExclusive::Default {
-            let next =
-                full_screen_exclusive_info_vk.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                    full_screen_exclusive: full_screen_exclusive.into(),
-                    ..Default::default()
-                });
-
-            next.p_next = info_vk.p_next.cast_mut();
-            info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if let Some(win32_monitor) = win32_monitor {
-            let next = full_screen_exclusive_win32_info_vk.insert(
-                ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                    hmonitor: win32_monitor.0,
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = info_vk.p_next.cast_mut();
-            info_vk.p_next = <*const _>::cast(next);
-        }
+        let mut info2_extensions_vk = surface_info.to_vk2_extensions();
+        let info2_vk = surface_info.to_vk2(surface.handle(), &mut info2_extensions_vk);
 
         /* Output */
 
-        let mut capabilities_vk = ash::vk::SurfaceCapabilities2KHR::default();
-        let mut capabilities_full_screen_exclusive_vk = None;
-        let mut capabilities_present_modes_vk =
-            [ash::vk::PresentModeKHR::default(); PresentMode::COUNT];
-        let mut capabilities_present_mode_compatibility_vk = None;
-        let mut capabilities_present_scaling_vk = None;
-        let mut capabilities_protected_vk = None;
-
-        if full_screen_exclusive_info_vk.is_some() {
-            let next = capabilities_full_screen_exclusive_vk
-                .insert(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default());
-
-            next.p_next = capabilities_vk.p_next.cast();
-            capabilities_vk.p_next = <*mut _>::cast(next);
-        }
-
-        if present_mode.is_some() {
-            {
-                let next = capabilities_present_mode_compatibility_vk.insert(
-                    ash::vk::SurfacePresentModeCompatibilityEXT {
-                        present_mode_count: capabilities_present_modes_vk.len() as u32,
-                        p_present_modes: capabilities_present_modes_vk.as_mut_ptr(),
-                        ..Default::default()
-                    },
-                );
-
-                next.p_next = capabilities_vk.p_next.cast();
-                capabilities_vk.p_next = <*mut _>::cast(next);
-            }
-
-            {
-                let next = capabilities_present_scaling_vk
-                    .insert(ash::vk::SurfacePresentScalingCapabilitiesEXT::default());
-
-                next.p_next = capabilities_vk.p_next.cast();
-                capabilities_vk.p_next = <*mut _>::cast(next);
-            }
-        }
-
-        if self
-            .instance
-            .enabled_extensions()
-            .khr_surface_protected_capabilities
-        {
-            let next = capabilities_protected_vk
-                .insert(ash::vk::SurfaceProtectedCapabilitiesKHR::default());
-
-            next.p_next = capabilities_vk.p_next.cast();
-            capabilities_vk.p_next = <*mut _>::cast(next);
-        }
+        let mut capabilities_fields1_vk = SurfaceCapabilities::to_mut_vk2_fields();
+        let mut capabilities_extensions_vk = SurfaceCapabilities::to_mut_vk2_extensions(
+            &mut capabilities_fields1_vk,
+            self,
+            &surface_info,
+        );
+        let mut capabilities_vk = SurfaceCapabilities::to_mut_vk2(&mut capabilities_extensions_vk);
 
         let fns = self.instance.fns();
 
@@ -2032,7 +1562,7 @@ impl PhysicalDevice {
             (fns.khr_get_surface_capabilities2
                 .get_physical_device_surface_capabilities2_khr)(
                 self.handle(),
-                &info_vk,
+                &info2_vk,
                 &mut capabilities_vk,
             )
             .result()
@@ -2040,126 +1570,25 @@ impl PhysicalDevice {
         } else {
             (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
                 self.handle(),
-                info_vk.surface,
+                info2_vk.surface,
                 &mut capabilities_vk.surface_capabilities,
             )
             .result()
             .map_err(VulkanError::from)?;
         };
 
-        Ok(SurfaceCapabilities {
-            min_image_count: capabilities_vk.surface_capabilities.min_image_count,
-            max_image_count: (capabilities_vk.surface_capabilities.max_image_count != 0)
-                .then_some(capabilities_vk.surface_capabilities.max_image_count),
-            current_extent: (!matches!(
-                capabilities_vk.surface_capabilities.current_extent,
-                ash::vk::Extent2D {
-                    width: u32::MAX,
-                    height: u32::MAX
-                }
-            ))
-            .then_some([
-                capabilities_vk.surface_capabilities.current_extent.width,
-                capabilities_vk.surface_capabilities.current_extent.height,
-            ]),
-            min_image_extent: [
-                capabilities_vk.surface_capabilities.min_image_extent.width,
-                capabilities_vk.surface_capabilities.min_image_extent.height,
-            ],
-            max_image_extent: [
-                capabilities_vk.surface_capabilities.max_image_extent.width,
-                capabilities_vk.surface_capabilities.max_image_extent.height,
-            ],
-            max_image_array_layers: capabilities_vk.surface_capabilities.max_image_array_layers,
-            supported_transforms: capabilities_vk
-                .surface_capabilities
-                .supported_transforms
-                .into(),
+        // Unborrow
+        let capabilities_vk = ash::vk::SurfaceCapabilities2KHR {
+            _marker: PhantomData,
+            ..capabilities_vk
+        };
+        let capabilities_extensions_vk = capabilities_extensions_vk.unborrow();
 
-            current_transform: SurfaceTransforms::from(
-                capabilities_vk.surface_capabilities.current_transform,
-            )
-            .into_iter()
-            .next()
-            .unwrap(), // TODO:
-            supported_composite_alpha: capabilities_vk
-                .surface_capabilities
-                .supported_composite_alpha
-                .into(),
-            supported_usage_flags: ImageUsage::from(
-                capabilities_vk.surface_capabilities.supported_usage_flags,
-            ),
-
-            compatible_present_modes: capabilities_present_mode_compatibility_vk.map_or_else(
-                Default::default,
-                |capabilities_present_mode_compatibility_vk| {
-                    capabilities_present_modes_vk
-                        [..capabilities_present_mode_compatibility_vk.present_mode_count as usize]
-                        .iter()
-                        .copied()
-                        .map(PresentMode::try_from)
-                        .filter_map(Result::ok)
-                        .collect()
-                },
-            ),
-
-            supported_present_scaling: capabilities_present_scaling_vk
-                .as_ref()
-                .map_or_else(Default::default, |c| c.supported_present_scaling.into()),
-            supported_present_gravity: capabilities_present_scaling_vk.as_ref().map_or_else(
-                Default::default,
-                |c| {
-                    [
-                        c.supported_present_gravity_x.into(),
-                        c.supported_present_gravity_y.into(),
-                    ]
-                },
-            ),
-            min_scaled_image_extent: capabilities_present_scaling_vk.as_ref().map_or(
-                Some([
-                    capabilities_vk.surface_capabilities.min_image_extent.width,
-                    capabilities_vk.surface_capabilities.min_image_extent.height,
-                ]),
-                |c| {
-                    (!matches!(
-                        c.min_scaled_image_extent,
-                        ash::vk::Extent2D {
-                            width: u32::MAX,
-                            height: u32::MAX,
-                        }
-                    ))
-                    .then_some([
-                        c.min_scaled_image_extent.width,
-                        c.min_scaled_image_extent.height,
-                    ])
-                },
-            ),
-            max_scaled_image_extent: capabilities_present_scaling_vk.as_ref().map_or(
-                Some([
-                    capabilities_vk.surface_capabilities.max_image_extent.width,
-                    capabilities_vk.surface_capabilities.max_image_extent.height,
-                ]),
-                |c| {
-                    (!matches!(
-                        c.max_scaled_image_extent,
-                        ash::vk::Extent2D {
-                            width: u32::MAX,
-                            height: u32::MAX,
-                        }
-                    ))
-                    .then_some([
-                        c.max_scaled_image_extent.width,
-                        c.max_scaled_image_extent.height,
-                    ])
-                },
-            ),
-
-            supports_protected: capabilities_protected_vk
-                .map_or(false, |c| c.supports_protected != 0),
-
-            full_screen_exclusive_supported: capabilities_full_screen_exclusive_vk
-                .map_or(false, |c| c.full_screen_exclusive_supported != 0),
-        })
+        Ok(SurfaceCapabilities::from_vk2(
+            &capabilities_vk,
+            &capabilities_fields1_vk,
+            &capabilities_extensions_vk,
+        ))
     }
 
     /// Returns the combinations of format and color space that are supported by the physical
@@ -2324,54 +1753,8 @@ impl PhysicalDevice {
         surface.surface_formats.get_or_try_insert(
             (self.handle, surface_info),
             |(_, surface_info)| {
-                let &SurfaceInfo {
-                    present_mode,
-                    full_screen_exclusive,
-                    win32_monitor,
-                    _ne: _,
-                } = surface_info;
-
-                let mut info_vk = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-                    surface: surface.handle(),
-                    ..Default::default()
-                };
-                let mut present_mode_vk = None;
-                let mut full_screen_exclusive_info_vk = None;
-                let mut full_screen_exclusive_win32_info_vk = None;
-
-                if let Some(present_mode) = present_mode {
-                    let next = present_mode_vk.insert(ash::vk::SurfacePresentModeEXT {
-                        present_mode: present_mode.into(),
-                        ..Default::default()
-                    });
-
-                    next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = <*const _>::cast(next);
-                }
-
-                if full_screen_exclusive != FullScreenExclusive::Default {
-                    let next = full_screen_exclusive_info_vk.insert(
-                        ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                            full_screen_exclusive: full_screen_exclusive.into(),
-                            ..Default::default()
-                        },
-                    );
-
-                    next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = <*const _>::cast(next);
-                }
-
-                if let Some(win32_monitor) = win32_monitor {
-                    let next = full_screen_exclusive_win32_info_vk.insert(
-                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                            hmonitor: win32_monitor.0,
-                            ..Default::default()
-                        },
-                    );
-
-                    next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = <*const _>::cast(next);
-                }
+                let mut info2_extensions_vk = surface_info.to_vk2_extensions();
+                let info2_vk = surface_info.to_vk2(surface.handle(), &mut info2_extensions_vk);
 
                 let fns = self.instance.fns();
 
@@ -2385,7 +1768,7 @@ impl PhysicalDevice {
                         (fns.khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
                             self.handle(),
-                            &info_vk,
+                            &info2_vk,
                             &mut count,
                             ptr::null_mut(),
                         )
@@ -2398,7 +1781,7 @@ impl PhysicalDevice {
                             .khr_get_surface_capabilities2
                             .get_physical_device_surface_formats2_khr)(
                             self.handle(),
-                            &info_vk,
+                            &info2_vk,
                             &mut count,
                             surface_format2s_vk.as_mut_ptr(),
                         );
@@ -2414,14 +1797,18 @@ impl PhysicalDevice {
                     };
 
                     Ok(surface_format2s_vk
-                        .into_iter()
-                        .filter_map(|surface_format2| {
-                            surface_format2
-                                .surface_format
-                                .format
-                                .try_into()
-                                .ok()
-                                .zip(surface_format2.surface_format.color_space.try_into().ok())
+                        .iter()
+                        .filter_map(|surface_format2_vk| {
+                            let &ash::vk::SurfaceFormat2KHR {
+                                surface_format:
+                                    ash::vk::SurfaceFormatKHR {
+                                        format,
+                                        color_space,
+                                    },
+                                ..
+                            } = surface_format2_vk;
+
+                            format.try_into().ok().zip(color_space.try_into().ok())
                         })
                         .collect())
                 } else {
@@ -2455,13 +1842,14 @@ impl PhysicalDevice {
                     };
 
                     Ok(surface_formats
-                        .into_iter()
-                        .filter_map(|surface_format| {
-                            surface_format
-                                .format
-                                .try_into()
-                                .ok()
-                                .zip(surface_format.color_space.try_into().ok())
+                        .iter()
+                        .filter_map(|surface_format_vk| {
+                            let &ash::vk::SurfaceFormatKHR {
+                                format,
+                                color_space,
+                            } = surface_format_vk;
+
+                            format.try_into().ok().zip(color_space.try_into().ok())
                         })
                         .collect())
                 }
@@ -2602,43 +1990,11 @@ impl PhysicalDevice {
         surface.surface_present_modes.get_or_try_insert(
             (self.handle, surface_info),
             |(_, surface_info)| {
-                let &SurfaceInfo {
-                    present_mode: _,
-                    full_screen_exclusive,
-                    win32_monitor,
-                    _ne: _,
-                } = surface_info;
-
-                let mut info_vk = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
-                    surface: surface.handle(),
-                    ..Default::default()
+                let mut info2_extensions_vk = SurfaceInfo2ExtensionsVk {
+                    present_mode_vk: None,
+                    ..surface_info.to_vk2_extensions()
                 };
-                let mut full_screen_exclusive_info_vk = None;
-                let mut full_screen_exclusive_win32_info_vk = None;
-
-                if full_screen_exclusive != FullScreenExclusive::Default {
-                    let next = full_screen_exclusive_info_vk.insert(
-                        ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                            full_screen_exclusive: full_screen_exclusive.into(),
-                            ..Default::default()
-                        },
-                    );
-
-                    next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = <*const _>::cast(next);
-                }
-
-                if let Some(win32_monitor) = win32_monitor {
-                    let next = full_screen_exclusive_win32_info_vk.insert(
-                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                            hmonitor: win32_monitor.0,
-                            ..Default::default()
-                        },
-                    );
-
-                    next.p_next = info_vk.p_next.cast_mut();
-                    info_vk.p_next = <*const _>::cast(next);
-                }
+                let info2_vk = surface_info.to_vk2(surface.handle(), &mut info2_extensions_vk);
 
                 let fns = self.instance.fns();
 
@@ -2648,7 +2004,7 @@ impl PhysicalDevice {
                         (fns.ext_full_screen_exclusive
                             .get_physical_device_surface_present_modes2_ext)(
                             self.handle(),
-                            &info_vk,
+                            &info2_vk,
                             &mut count,
                             ptr::null_mut(),
                         )
@@ -2660,7 +2016,7 @@ impl PhysicalDevice {
                             .ext_full_screen_exclusive
                             .get_physical_device_surface_present_modes2_ext)(
                             self.handle(),
-                            &info_vk,
+                            &info2_vk,
                             &mut count,
                             modes.as_mut_ptr(),
                         );
@@ -2868,30 +2224,8 @@ impl PhysicalDevice {
                     tool_properties.set_len(count as usize);
 
                     return Ok(tool_properties
-                        .into_iter()
-                        .map(|tool_properties| ToolProperties {
-                            name: {
-                                let bytes = cast_slice(tool_properties.name.as_slice());
-                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                                String::from_utf8_lossy(&bytes[0..end]).into()
-                            },
-                            version: {
-                                let bytes = cast_slice(tool_properties.version.as_slice());
-                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                                String::from_utf8_lossy(&bytes[0..end]).into()
-                            },
-                            purposes: tool_properties.purposes.into(),
-                            description: {
-                                let bytes = cast_slice(tool_properties.description.as_slice());
-                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                                String::from_utf8_lossy(&bytes[0..end]).into()
-                            },
-                            layer: {
-                                let bytes = cast_slice(tool_properties.layer.as_slice());
-                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-                                String::from_utf8_lossy(&bytes[0..end]).into()
-                            },
-                        })
+                        .iter()
+                        .map(ToolProperties::from_vk)
                         .collect());
                 }
                 err => return Err(VulkanError::from(err)),
@@ -3671,6 +3005,43 @@ pub struct ToolProperties {
 
     /// The layer implementing the tool, or empty if it is not implemented by a layer.
     pub layer: String,
+}
+
+impl ToolProperties {
+    pub(crate) fn from_vk(val_vk: &ash::vk::PhysicalDeviceToolProperties<'_>) -> Self {
+        let &ash::vk::PhysicalDeviceToolProperties {
+            name,
+            version,
+            purposes,
+            description,
+            layer,
+            ..
+        } = val_vk;
+
+        Self {
+            name: {
+                let bytes = cast_slice(name.as_slice());
+                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                String::from_utf8_lossy(&bytes[0..end]).into()
+            },
+            version: {
+                let bytes = cast_slice(version.as_slice());
+                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                String::from_utf8_lossy(&bytes[0..end]).into()
+            },
+            purposes: purposes.into(),
+            description: {
+                let bytes = cast_slice(description.as_slice());
+                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                String::from_utf8_lossy(&bytes[0..end]).into()
+            },
+            layer: {
+                let bytes = cast_slice(layer.as_slice());
+                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                String::from_utf8_lossy(&bytes[0..end]).into()
+            },
+        }
+    }
 }
 
 vulkan_bitflags! {

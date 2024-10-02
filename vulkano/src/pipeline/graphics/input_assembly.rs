@@ -5,7 +5,7 @@ use crate::{
 };
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct InputAssemblyState {
     /// The type of primitives.
     ///
@@ -178,6 +178,19 @@ impl InputAssemblyState {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PipelineInputAssemblyStateCreateInfo<'static> {
+        let &Self {
+            topology,
+            primitive_restart_enable,
+            _ne: _,
+        } = self;
+
+        ash::vk::PipelineInputAssemblyStateCreateInfo::default()
+            .flags(ash::vk::PipelineInputAssemblyStateCreateFlags::empty())
+            .topology(topology.into())
+            .primitive_restart_enable(primitive_restart_enable)
     }
 }
 

@@ -7,7 +7,7 @@ use crate::{
     },
     macros::{vulkan_bitflags, vulkan_bitflags_enum},
     shader::ShaderStages,
-    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
+    DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
 use ahash::HashMap;
 use once_cell::sync::Lazy;
@@ -1742,6 +1742,19 @@ pub struct DependencyInfo {
     pub _ne: crate::NonExhaustive,
 }
 
+impl Default for DependencyInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            dependency_flags: DependencyFlags::empty(),
+            memory_barriers: SmallVec::new(),
+            buffer_memory_barriers: SmallVec::new(),
+            image_memory_barriers: SmallVec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 impl DependencyInfo {
     /// Returns whether `self` contains any barriers.
     #[inline]
@@ -1785,19 +1798,161 @@ impl DependencyInfo {
 
         Ok(())
     }
-}
 
-impl Default for DependencyInfo {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            dependency_flags: DependencyFlags::empty(),
-            memory_barriers: SmallVec::new(),
-            buffer_memory_barriers: SmallVec::new(),
-            image_memory_barriers: SmallVec::new(),
-            _ne: crate::NonExhaustive(()),
+    pub(crate) fn to_vk2<'a>(
+        &self,
+        memory_barriers_vk: &'a [ash::vk::MemoryBarrier2<'_>],
+        buffer_memory_barriers_vk: &'a [ash::vk::BufferMemoryBarrier2<'_>],
+        image_memory_barriers_vk: &'a [ash::vk::ImageMemoryBarrier2<'_>],
+    ) -> ash::vk::DependencyInfo<'a> {
+        let &Self {
+            dependency_flags,
+            memory_barriers: _,
+            buffer_memory_barriers: _,
+            image_memory_barriers: _,
+            _ne: _,
+        } = self;
+
+        ash::vk::DependencyInfo::default()
+            .dependency_flags(dependency_flags.into())
+            .memory_barriers(memory_barriers_vk)
+            .buffer_memory_barriers(buffer_memory_barriers_vk)
+            .image_memory_barriers(image_memory_barriers_vk)
+    }
+
+    pub(crate) fn to_vk2_fields1(&self) -> DependencyInfo2Fields1Vk {
+        let &Self {
+            dependency_flags: _,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
+            _ne: _,
+        } = self;
+
+        let memory_barriers_vk = memory_barriers.iter().map(MemoryBarrier::to_vk2).collect();
+        let buffer_memory_barriers_vk = buffer_memory_barriers
+            .iter()
+            .map(BufferMemoryBarrier::to_vk2)
+            .collect();
+        let image_memory_barriers_vk = image_memory_barriers
+            .iter()
+            .map(ImageMemoryBarrier::to_vk2)
+            .collect();
+
+        DependencyInfo2Fields1Vk {
+            memory_barriers_vk,
+            buffer_memory_barriers_vk,
+            image_memory_barriers_vk,
         }
     }
+
+    pub(crate) fn to_vk_dependency_flags(&self) -> ash::vk::DependencyFlags {
+        self.dependency_flags.into()
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> DependencyInfoFields1Vk {
+        let &Self {
+            dependency_flags: _,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
+            _ne: _,
+        } = self;
+
+        let mut src_stage_mask_vk = ash::vk::PipelineStageFlags::empty();
+        let mut dst_stage_mask_vk = ash::vk::PipelineStageFlags::empty();
+
+        let memory_barriers_vk = memory_barriers
+            .iter()
+            .inspect(|barrier| {
+                src_stage_mask_vk |= barrier.src_stages.into();
+                dst_stage_mask_vk |= barrier.dst_stages.into();
+            })
+            .map(MemoryBarrier::to_vk)
+            .collect();
+        let buffer_memory_barriers_vk = buffer_memory_barriers
+            .iter()
+            .inspect(|barrier| {
+                src_stage_mask_vk |= barrier.src_stages.into();
+                dst_stage_mask_vk |= barrier.dst_stages.into();
+            })
+            .map(BufferMemoryBarrier::to_vk)
+            .collect();
+        let image_memory_barriers_vk = image_memory_barriers
+            .iter()
+            .inspect(|barrier| {
+                src_stage_mask_vk |= barrier.src_stages.into();
+                dst_stage_mask_vk |= barrier.dst_stages.into();
+            })
+            .map(ImageMemoryBarrier::to_vk)
+            .collect();
+
+        if src_stage_mask_vk.is_empty() {
+            // "VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT is [...] equivalent to
+            // VK_PIPELINE_STAGE_2_NONE in the first scope."
+            src_stage_mask_vk |= ash::vk::PipelineStageFlags::TOP_OF_PIPE;
+        }
+
+        if dst_stage_mask_vk.is_empty() {
+            // "VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT is [...] equivalent to
+            // VK_PIPELINE_STAGE_2_NONE in the second scope."
+            dst_stage_mask_vk |= ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+        }
+
+        DependencyInfoFields1Vk {
+            memory_barriers_vk,
+            buffer_memory_barriers_vk,
+            image_memory_barriers_vk,
+            src_stage_mask_vk,
+            dst_stage_mask_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_src_stage_mask(&self) -> ash::vk::PipelineStageFlags {
+        let &Self {
+            dependency_flags: _,
+            ref memory_barriers,
+            ref buffer_memory_barriers,
+            ref image_memory_barriers,
+            _ne: _,
+        } = self;
+
+        let mut src_stage_mask_vk = ash::vk::PipelineStageFlags::empty();
+
+        for barrier in memory_barriers {
+            src_stage_mask_vk |= barrier.src_stages.into();
+        }
+
+        for barrier in buffer_memory_barriers {
+            src_stage_mask_vk |= barrier.src_stages.into();
+        }
+
+        for barrier in image_memory_barriers {
+            src_stage_mask_vk |= barrier.src_stages.into();
+        }
+
+        if src_stage_mask_vk.is_empty() {
+            // "VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT is [...] equivalent to
+            // VK_PIPELINE_STAGE_2_NONE in the first scope."
+            src_stage_mask_vk |= ash::vk::PipelineStageFlags::TOP_OF_PIPE;
+        }
+
+        src_stage_mask_vk
+    }
+}
+
+pub(crate) struct DependencyInfo2Fields1Vk {
+    pub(crate) memory_barriers_vk: SmallVec<[ash::vk::MemoryBarrier2<'static>; 2]>,
+    pub(crate) buffer_memory_barriers_vk: SmallVec<[ash::vk::BufferMemoryBarrier2<'static>; 8]>,
+    pub(crate) image_memory_barriers_vk: SmallVec<[ash::vk::ImageMemoryBarrier2<'static>; 8]>,
+}
+
+pub(crate) struct DependencyInfoFields1Vk {
+    pub(crate) memory_barriers_vk: SmallVec<[ash::vk::MemoryBarrier<'static>; 2]>,
+    pub(crate) buffer_memory_barriers_vk: SmallVec<[ash::vk::BufferMemoryBarrier<'static>; 8]>,
+    pub(crate) image_memory_barriers_vk: SmallVec<[ash::vk::ImageMemoryBarrier<'static>; 8]>,
+    pub(crate) src_stage_mask_vk: ash::vk::PipelineStageFlags,
+    pub(crate) dst_stage_mask_vk: ash::vk::PipelineStageFlags,
 }
 
 vulkan_bitflags! {
@@ -2349,6 +2504,36 @@ impl MemoryBarrier {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::MemoryBarrier2<'static> {
+        let &Self {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+            _ne: _,
+        } = self;
+
+        ash::vk::MemoryBarrier2::default()
+            .src_stage_mask(src_stages.into())
+            .src_access_mask(src_access.into())
+            .dst_stage_mask(dst_stages.into())
+            .dst_access_mask(dst_access.into())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::MemoryBarrier<'static> {
+        let &Self {
+            src_stages: _,
+            src_access,
+            dst_stages: _,
+            dst_access,
+            _ne: _,
+        } = self;
+
+        ash::vk::MemoryBarrier::default()
+            .src_access_mask(src_access.into())
+            .dst_access_mask(dst_access.into())
     }
 }
 
@@ -3010,6 +3195,64 @@ impl BufferMemoryBarrier {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::BufferMemoryBarrier2<'static> {
+        let &Self {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+            ref queue_family_ownership_transfer,
+            ref buffer,
+            ref range,
+            _ne: _,
+        } = self;
+
+        let (src_queue_family_index, dst_queue_family_index) =
+            queue_family_ownership_transfer.as_ref().map_or(
+                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                QueueFamilyOwnershipTransfer::to_vk,
+            );
+
+        ash::vk::BufferMemoryBarrier2::default()
+            .src_stage_mask(src_stages.into())
+            .src_access_mask(src_access.into())
+            .dst_stage_mask(dst_stages.into())
+            .dst_access_mask(dst_access.into())
+            .src_queue_family_index(src_queue_family_index)
+            .dst_queue_family_index(dst_queue_family_index)
+            .buffer(buffer.handle())
+            .offset(range.start)
+            .size(range.end - range.start)
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::BufferMemoryBarrier<'static> {
+        let &Self {
+            src_stages: _,
+            src_access,
+            dst_stages: _,
+            dst_access,
+            queue_family_ownership_transfer,
+            ref buffer,
+            ref range,
+            _ne: _,
+        } = self;
+
+        let (src_queue_family_index, dst_queue_family_index) =
+            queue_family_ownership_transfer.as_ref().map_or(
+                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                QueueFamilyOwnershipTransfer::to_vk,
+            );
+
+        ash::vk::BufferMemoryBarrier::default()
+            .src_access_mask(src_access.into())
+            .dst_access_mask(dst_access.into())
+            .src_queue_family_index(src_queue_family_index)
+            .dst_queue_family_index(dst_queue_family_index)
+            .buffer(buffer.handle())
+            .offset(range.start)
+            .size(range.end - range.start)
     }
 }
 
@@ -4066,6 +4309,70 @@ impl ImageMemoryBarrier {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk2(&self) -> ash::vk::ImageMemoryBarrier2<'static> {
+        let &Self {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+            old_layout,
+            new_layout,
+            ref queue_family_ownership_transfer,
+            ref image,
+            ref subresource_range,
+            _ne: _,
+        } = self;
+
+        let (src_queue_family_index, dst_queue_family_index) =
+            queue_family_ownership_transfer.as_ref().map_or(
+                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                QueueFamilyOwnershipTransfer::to_vk,
+            );
+
+        ash::vk::ImageMemoryBarrier2::default()
+            .src_stage_mask(src_stages.into())
+            .src_access_mask(src_access.into())
+            .dst_stage_mask(dst_stages.into())
+            .dst_access_mask(dst_access.into())
+            .old_layout(old_layout.into())
+            .new_layout(new_layout.into())
+            .src_queue_family_index(src_queue_family_index)
+            .dst_queue_family_index(dst_queue_family_index)
+            .image(image.handle())
+            .subresource_range(subresource_range.to_vk())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::ImageMemoryBarrier<'static> {
+        let &Self {
+            src_stages: _,
+            src_access,
+            dst_stages: _,
+            dst_access,
+            old_layout,
+            new_layout,
+            ref queue_family_ownership_transfer,
+            ref image,
+            ref subresource_range,
+            _ne: _,
+        } = self;
+
+        let (src_queue_family_index, dst_queue_family_index) =
+            queue_family_ownership_transfer.as_ref().map_or(
+                (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED),
+                QueueFamilyOwnershipTransfer::to_vk,
+            );
+
+        ash::vk::ImageMemoryBarrier::default()
+            .src_access_mask(src_access.into())
+            .dst_access_mask(dst_access.into())
+            .old_layout(old_layout.into())
+            .new_layout(new_layout.into())
+            .src_queue_family_index(src_queue_family_index)
+            .dst_queue_family_index(dst_queue_family_index)
+            .image(image.handle())
+            .subresource_range(subresource_range.to_vk())
+    }
 }
 
 /// Specifies a queue family ownership transfer for a resource.
@@ -4182,38 +4489,37 @@ pub enum QueueFamilyOwnershipTransfer {
     ConcurrentFromForeign,
 }
 
-impl From<QueueFamilyOwnershipTransfer> for (u32, u32) {
-    fn from(val: QueueFamilyOwnershipTransfer) -> Self {
-        match val {
-            QueueFamilyOwnershipTransfer::ExclusiveBetweenLocal {
+impl QueueFamilyOwnershipTransfer {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> (u32, u32) {
+        match *self {
+            Self::ExclusiveBetweenLocal {
                 src_index,
                 dst_index,
             } => (src_index, dst_index),
-            QueueFamilyOwnershipTransfer::ExclusiveToExternal { src_index } => {
-                (src_index, ash::vk::QUEUE_FAMILY_EXTERNAL)
-            }
-            QueueFamilyOwnershipTransfer::ExclusiveFromExternal { dst_index } => {
+            Self::ExclusiveToExternal { src_index } => (src_index, ash::vk::QUEUE_FAMILY_EXTERNAL),
+            Self::ExclusiveFromExternal { dst_index } => {
                 (ash::vk::QUEUE_FAMILY_EXTERNAL, dst_index)
             }
-            QueueFamilyOwnershipTransfer::ExclusiveToForeign { src_index } => {
+            Self::ExclusiveToForeign { src_index } => {
                 (src_index, ash::vk::QUEUE_FAMILY_FOREIGN_EXT)
             }
-            QueueFamilyOwnershipTransfer::ExclusiveFromForeign { dst_index } => {
+            Self::ExclusiveFromForeign { dst_index } => {
                 (ash::vk::QUEUE_FAMILY_FOREIGN_EXT, dst_index)
             }
-            QueueFamilyOwnershipTransfer::ConcurrentToExternal => (
+            Self::ConcurrentToExternal => (
                 ash::vk::QUEUE_FAMILY_IGNORED,
                 ash::vk::QUEUE_FAMILY_EXTERNAL,
             ),
-            QueueFamilyOwnershipTransfer::ConcurrentFromExternal => (
+            Self::ConcurrentFromExternal => (
                 ash::vk::QUEUE_FAMILY_EXTERNAL,
                 ash::vk::QUEUE_FAMILY_IGNORED,
             ),
-            QueueFamilyOwnershipTransfer::ConcurrentToForeign => (
+            Self::ConcurrentToForeign => (
                 ash::vk::QUEUE_FAMILY_IGNORED,
                 ash::vk::QUEUE_FAMILY_FOREIGN_EXT,
             ),
-            QueueFamilyOwnershipTransfer::ConcurrentFromForeign => (
+            Self::ConcurrentFromForeign => (
                 ash::vk::QUEUE_FAMILY_FOREIGN_EXT,
                 ash::vk::QUEUE_FAMILY_IGNORED,
             ),

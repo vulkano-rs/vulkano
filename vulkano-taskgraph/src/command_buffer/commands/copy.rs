@@ -196,7 +196,7 @@ impl RecordingCommandBuffer<'_> {
                             array_layers: 0..min_array_layers,
                             ..src_image.subresource_layers()
                         }
-                        .into(),
+                        .to_vk(),
                     )
                     .src_offset(convert_offset([0; 3]))
                     .dst_subresource(
@@ -204,7 +204,7 @@ impl RecordingCommandBuffer<'_> {
                             array_layers: 0..min_array_layers,
                             ..dst_image.subresource_layers()
                         }
-                        .into(),
+                        .to_vk(),
                     )
                     .dst_offset(convert_offset([0; 3]))
                     .extent(convert_extent([
@@ -235,9 +235,9 @@ impl RecordingCommandBuffer<'_> {
                         } = region;
 
                         vk::ImageCopy2::default()
-                            .src_subresource(src_subresource.into())
+                            .src_subresource(src_subresource.to_vk())
                             .src_offset(convert_offset(src_offset))
-                            .dst_subresource(dst_subresource.into())
+                            .dst_subresource(dst_subresource.to_vk())
                             .dst_offset(convert_offset(dst_offset))
                             .extent(convert_extent(extent))
                     })
@@ -264,13 +264,13 @@ impl RecordingCommandBuffer<'_> {
                         array_layers: 0..min_array_layers,
                         ..src_image.subresource_layers()
                     }
-                    .into(),
+                    .to_vk(),
                     src_offset: convert_offset([0; 3]),
                     dst_subresource: ImageSubresourceLayers {
                         array_layers: 0..min_array_layers,
                         ..dst_image.subresource_layers()
                     }
-                    .into(),
+                    .to_vk(),
                     dst_offset: convert_offset([0; 3]),
                     extent: convert_extent([
                         cmp::min(src_extent[0], dst_extent[0]),
@@ -304,9 +304,9 @@ impl RecordingCommandBuffer<'_> {
                         } = region;
 
                         vk::ImageCopy {
-                            src_subresource: src_subresource.into(),
+                            src_subresource: src_subresource.to_vk(),
                             src_offset: convert_offset(src_offset),
-                            dst_subresource: dst_subresource.into(),
+                            dst_subresource: dst_subresource.to_vk(),
                             dst_offset: convert_offset(dst_offset),
                             extent: convert_extent(extent),
                         }
@@ -370,7 +370,7 @@ impl RecordingCommandBuffer<'_> {
                     .buffer_offset(0)
                     .buffer_row_length(0)
                     .buffer_image_height(0)
-                    .image_subresource(dst_image.subresource_layers().into())
+                    .image_subresource(dst_image.subresource_layers().to_vk())
                     .image_offset(convert_offset([0; 3]))
                     .image_extent(convert_extent(dst_image.extent()))];
 
@@ -399,7 +399,7 @@ impl RecordingCommandBuffer<'_> {
                             .buffer_offset(buffer_offset)
                             .buffer_row_length(buffer_row_length)
                             .buffer_image_height(buffer_image_height)
-                            .image_subresource(image_subresource.into())
+                            .image_subresource(image_subresource.to_vk())
                             .image_offset(convert_offset(image_offset))
                             .image_extent(convert_extent(image_extent))
                     })
@@ -421,7 +421,7 @@ impl RecordingCommandBuffer<'_> {
                     buffer_offset: 0,
                     buffer_row_length: 0,
                     buffer_image_height: 0,
-                    image_subresource: dst_image.subresource_layers().into(),
+                    image_subresource: dst_image.subresource_layers().to_vk(),
                     image_offset: convert_offset([0; 3]),
                     image_extent: convert_extent(dst_image.extent()),
                 };
@@ -454,7 +454,7 @@ impl RecordingCommandBuffer<'_> {
                             buffer_offset,
                             buffer_row_length,
                             buffer_image_height,
-                            image_subresource: image_subresource.into(),
+                            image_subresource: image_subresource.to_vk(),
                             image_offset: convert_offset(image_offset),
                             image_extent: convert_extent(image_extent),
                         }
@@ -517,7 +517,7 @@ impl RecordingCommandBuffer<'_> {
                     .buffer_offset(0)
                     .buffer_row_length(0)
                     .buffer_image_height(0)
-                    .image_subresource(src_image.subresource_layers().into())
+                    .image_subresource(src_image.subresource_layers().to_vk())
                     .image_offset(convert_offset([0; 3]))
                     .image_extent(convert_extent(src_image.extent()))];
 
@@ -546,7 +546,7 @@ impl RecordingCommandBuffer<'_> {
                             .buffer_offset(buffer_offset)
                             .buffer_row_length(buffer_row_length)
                             .buffer_image_height(buffer_image_height)
-                            .image_subresource(image_subresource.into())
+                            .image_subresource(image_subresource.to_vk())
                             .image_offset(convert_offset(image_offset))
                             .image_extent(convert_extent(image_extent))
                     })
@@ -568,7 +568,7 @@ impl RecordingCommandBuffer<'_> {
                     buffer_offset: 0,
                     buffer_row_length: 0,
                     buffer_image_height: 0,
-                    image_subresource: src_image.subresource_layers().into(),
+                    image_subresource: src_image.subresource_layers().to_vk(),
                     image_offset: convert_offset([0; 3]),
                     image_extent: convert_extent(src_image.extent()),
                 };
@@ -601,7 +601,7 @@ impl RecordingCommandBuffer<'_> {
                             buffer_offset,
                             buffer_row_length,
                             buffer_image_height,
-                            image_subresource: image_subresource.into(),
+                            image_subresource: image_subresource.to_vk(),
                             image_offset: convert_offset(image_offset),
                             image_extent: convert_extent(image_extent),
                         }
@@ -692,7 +692,7 @@ impl RecordingCommandBuffer<'_> {
                             array_layers: 0..min_array_layers,
                             ..src_image.subresource_layers()
                         }
-                        .into(),
+                        .to_vk(),
                     )
                     .src_offsets([[0; 3], src_image.extent()].map(convert_offset))
                     .dst_subresource(
@@ -700,7 +700,7 @@ impl RecordingCommandBuffer<'_> {
                             array_layers: 0..min_array_layers,
                             ..src_image.subresource_layers()
                         }
-                        .into(),
+                        .to_vk(),
                     )
                     .dst_offsets([[0; 3], dst_image.extent()].map(convert_offset))];
 
@@ -726,9 +726,9 @@ impl RecordingCommandBuffer<'_> {
                         } = region;
 
                         vk::ImageBlit2::default()
-                            .src_subresource(src_subresource.into())
+                            .src_subresource(src_subresource.to_vk())
                             .src_offsets(src_offsets.map(convert_offset))
-                            .dst_subresource(dst_subresource.into())
+                            .dst_subresource(dst_subresource.to_vk())
                             .dst_offsets(dst_offsets.map(convert_offset))
                     })
                     .collect::<SmallVec<[_; 8]>>();
@@ -753,13 +753,13 @@ impl RecordingCommandBuffer<'_> {
                         array_layers: 0..min_array_layers,
                         ..src_image.subresource_layers()
                     }
-                    .into(),
+                    .to_vk(),
                     src_offsets: [[0; 3], src_image.extent()].map(convert_offset),
                     dst_subresource: ImageSubresourceLayers {
                         array_layers: 0..min_array_layers,
                         ..dst_image.subresource_layers()
                     }
-                    .into(),
+                    .to_vk(),
                     dst_offsets: [[0; 3], dst_image.extent()].map(convert_offset),
                 };
 
@@ -788,9 +788,9 @@ impl RecordingCommandBuffer<'_> {
                         } = region;
 
                         vk::ImageBlit {
-                            src_subresource: src_subresource.into(),
+                            src_subresource: src_subresource.to_vk(),
                             src_offsets: src_offsets.map(convert_offset),
-                            dst_subresource: dst_subresource.into(),
+                            dst_subresource: dst_subresource.to_vk(),
                             dst_offsets: dst_offsets.map(convert_offset),
                         }
                     })
@@ -861,7 +861,7 @@ impl RecordingCommandBuffer<'_> {
                             array_layers: 0..min_array_layers,
                             ..src_image.subresource_layers()
                         }
-                        .into(),
+                        .to_vk(),
                     )
                     .src_offset(convert_offset([0; 3]))
                     .dst_subresource(
@@ -869,7 +869,7 @@ impl RecordingCommandBuffer<'_> {
                             array_layers: 0..min_array_layers,
                             ..src_image.subresource_layers()
                         }
-                        .into(),
+                        .to_vk(),
                     )
                     .dst_offset(convert_offset([0; 3]))
                     .extent(convert_extent([
@@ -900,9 +900,9 @@ impl RecordingCommandBuffer<'_> {
                         } = region;
 
                         vk::ImageResolve2::default()
-                            .src_subresource(src_subresource.into())
+                            .src_subresource(src_subresource.to_vk())
                             .src_offset(convert_offset(src_offset))
-                            .dst_subresource(dst_subresource.into())
+                            .dst_subresource(dst_subresource.to_vk())
                             .dst_offset(convert_offset(dst_offset))
                             .extent(convert_extent(extent))
                     })
@@ -929,13 +929,13 @@ impl RecordingCommandBuffer<'_> {
                         array_layers: 0..min_array_layers,
                         ..src_image.subresource_layers()
                     }
-                    .into(),
+                    .to_vk(),
                     src_offset: convert_offset([0; 3]),
                     dst_subresource: ImageSubresourceLayers {
                         array_layers: 0..min_array_layers,
                         ..dst_image.subresource_layers()
                     }
-                    .into(),
+                    .to_vk(),
                     dst_offset: convert_offset([0; 3]),
                     extent: convert_extent([
                         cmp::min(src_extent[0], dst_extent[0]),
@@ -969,9 +969,9 @@ impl RecordingCommandBuffer<'_> {
                         } = region;
 
                         vk::ImageResolve {
-                            src_subresource: src_subresource.into(),
+                            src_subresource: src_subresource.to_vk(),
                             src_offset: convert_offset(src_offset),
-                            dst_subresource: dst_subresource.into(),
+                            dst_subresource: dst_subresource.to_vk(),
                             dst_offset: convert_offset(dst_offset),
                             extent: convert_extent(extent),
                         }

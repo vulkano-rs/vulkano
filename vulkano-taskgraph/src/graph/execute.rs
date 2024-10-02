@@ -776,7 +776,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                     .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                     .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                     .image(image.handle())
-                    .subresource_range(image.subresource_range().into()),
+                    .subresource_range(image.subresource_range().to_vk()),
             );
         }
     }
@@ -900,7 +900,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState2<'a, W> {
                     .src_queue_family_index(barrier.src_queue_family_index)
                     .dst_queue_family_index(barrier.dst_queue_family_index)
                     .image(image.handle())
-                    .subresource_range(image.subresource_range().into()),
+                    .subresource_range(image.subresource_range().to_vk()),
             );
         }
     }
@@ -1196,7 +1196,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                     .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                     .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                     .image(image.handle())
-                    .subresource_range(image.subresource_range().into()),
+                    .subresource_range(image.subresource_range().to_vk()),
             );
 
             self.current_src_stage_mask |= convert_stage_mask(src_stage_mask);
@@ -1324,7 +1324,7 @@ impl<'a, W: ?Sized + 'static> ExecuteState<'a, W> {
                     .src_queue_family_index(barrier.src_queue_family_index)
                     .dst_queue_family_index(barrier.dst_queue_family_index)
                     .image(image.handle())
-                    .subresource_range(image.subresource_range().into()),
+                    .subresource_range(image.subresource_range().to_vk()),
             );
 
             self.current_src_stage_mask |= convert_stage_mask(barrier.src_stage_mask);

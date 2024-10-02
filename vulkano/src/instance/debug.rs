@@ -42,7 +42,7 @@ use crate::{
     VulkanError, VulkanObject,
 };
 use std::{
-    ffi::{c_void, CStr},
+    ffi::{c_void, CStr, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     mem::MaybeUninit,
     panic::{catch_unwind, AssertUnwindSafe, RefUnwindSafe},
@@ -97,21 +97,7 @@ impl DebugUtilsMessenger {
         instance: Arc<Instance>,
         create_info: DebugUtilsMessengerCreateInfo,
     ) -> Result<Self, VulkanError> {
-        let DebugUtilsMessengerCreateInfo {
-            message_severity,
-            message_type,
-            user_callback,
-            _ne: _,
-        } = create_info;
-
-        let create_info_vk = ash::vk::DebugUtilsMessengerCreateInfoEXT {
-            flags: ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-            message_severity: message_severity.into(),
-            message_type: message_type.into(),
-            pfn_user_callback: Some(trampoline),
-            p_user_data: user_callback.as_ptr().cast_mut().cast(),
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
             let fns = instance.fns();
@@ -130,7 +116,7 @@ impl DebugUtilsMessenger {
         Ok(DebugUtilsMessenger {
             handle,
             instance: DebugWrapper(instance),
-            _user_callback: user_callback,
+            _user_callback: create_info.user_callback,
         })
     }
 }
@@ -257,6 +243,22 @@ impl DebugUtilsMessengerCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::DebugUtilsMessengerCreateInfoEXT<'static> {
+        let &Self {
+            message_type,
+            message_severity,
+            ref user_callback,
+            _ne: _,
+        } = self;
+
+        ash::vk::DebugUtilsMessengerCreateInfoEXT::default()
+            .flags(ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty())
+            .message_severity(message_severity.into())
+            .message_type(message_type.into())
+            .pfn_user_callback(Some(trampoline))
+            .user_data(user_callback.as_ptr().cast_mut().cast())
+    }
 }
 
 impl Debug for DebugUtilsMessengerCreateInfo {
@@ -319,8 +321,6 @@ pub(super) unsafe extern "system" fn trampoline(
     // bound is enforced. Therefore we enforce it manually.
     let _ = catch_unwind(AssertUnwindSafe(move || {
         let ash::vk::DebugUtilsMessengerCallbackDataEXT {
-            s_type: _,
-            p_next: _,
             flags: _,
             p_message_id_name,
             message_id_number,
@@ -331,7 +331,7 @@ pub(super) unsafe extern "system" fn trampoline(
             p_cmd_buf_labels,
             object_count,
             p_objects,
-            _marker: _,
+            ..
         } = *callback_data_vk;
 
         let callback_data = DebugUtilsMessengerCallbackData {
@@ -457,12 +457,10 @@ impl<'a> Iterator for DebugUtilsMessengerCallbackObjectNameInfoIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|info| unsafe {
             let &ash::vk::DebugUtilsObjectNameInfoEXT {
-                s_type: _,
-                p_next: _,
                 object_type,
                 object_handle,
                 p_object_name,
-                _marker: _,
+                ..
             } = info;
 
             DebugUtilsMessengerCallbackObjectNameInfo {
@@ -542,6 +540,35 @@ impl Default for DebugUtilsLabel {
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+impl DebugUtilsLabel {
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a DebugUtilsLabelFields1Vk,
+    ) -> ash::vk::DebugUtilsLabelEXT<'a> {
+        let &Self {
+            label_name: _,
+            color,
+            _ne,
+        } = self;
+
+        let DebugUtilsLabelFields1Vk { label_name_vk } = fields1_vk;
+
+        ash::vk::DebugUtilsLabelEXT::default()
+            .label_name(label_name_vk)
+            .color(color)
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> DebugUtilsLabelFields1Vk {
+        let label_name_vk = CString::new(self.label_name.as_str()).unwrap();
+
+        DebugUtilsLabelFields1Vk { label_name_vk }
+    }
+}
+
+pub(crate) struct DebugUtilsLabelFields1Vk {
+    pub(crate) label_name_vk: CString,
 }
 
 vulkan_enum! {

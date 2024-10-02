@@ -8,7 +8,7 @@
 //! knowledge if you want to avoid errors.
 
 #[allow(unused)]
-pub(crate) use self::pipeline::{PipelineStageAccess, PipelineStageAccessFlags};
+pub(crate) use self::pipeline::*;
 pub use self::{
     future::{now, GpuFuture},
     pipeline::{
@@ -17,6 +17,7 @@ pub use self::{
     },
 };
 use crate::{device::Queue, VulkanError};
+use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -74,10 +75,7 @@ where
     Concurrent(I),
 }
 
-impl<I> Sharing<I>
-where
-    I: IntoIterator<Item = u32>,
-{
+impl Sharing<SmallVec<[u32; 4]>> {
     /// Returns `true` if `self` is the `Exclusive` variant.
     #[inline]
     pub fn is_exclusive(&self) -> bool {
@@ -88,6 +86,16 @@ where
     #[inline]
     pub fn is_concurrent(&self) -> bool {
         matches!(self, Self::Concurrent(..))
+    }
+
+    pub(crate) fn to_vk(&self) -> (ash::vk::SharingMode, &[u32]) {
+        match self {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => (
+                ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.as_slice(),
+            ),
+        }
     }
 }
 
