@@ -113,7 +113,7 @@ impl RecordingCommandBuffer<'_> {
                         .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .image(image.handle())
-                        .subresource_range(subresource_range.clone().into())
+                        .subresource_range(subresource_range.clone().to_vk())
                 })
                 .collect();
 
@@ -212,7 +212,7 @@ impl RecordingCommandBuffer<'_> {
                         .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                         .image(image.handle())
-                        .subresource_range(subresource_range.clone().into())
+                        .subresource_range(subresource_range.clone().to_vk())
                 })
                 .collect();
 

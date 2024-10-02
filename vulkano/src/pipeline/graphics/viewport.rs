@@ -442,7 +442,8 @@ impl Viewport {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::Viewport {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::Viewport {
         let &Self {
             offset,
             extent,
@@ -494,7 +495,8 @@ impl Scissor {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::Rect2D {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::Rect2D {
         let &Self { offset, extent } = self;
 
         ash::vk::Rect2D {

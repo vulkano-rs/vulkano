@@ -874,7 +874,8 @@ pub enum VertexInputRate {
 
 impl VertexInputRate {
     #[allow(clippy::trivially_copy_pass_by_ref, clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> (ash::vk::VertexInputRate, u32) {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> (ash::vk::VertexInputRate, u32) {
         match *self {
             // VUID-VkVertexInputBindingDescription2EXT-divisor-06227
             VertexInputRate::Vertex => (ash::vk::VertexInputRate::VERTEX, 1),

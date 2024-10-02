@@ -641,7 +641,8 @@ impl ClearColorValue {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::ClearColorValue {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ClearColorValue {
         match *self {
             ClearColorValue::Float(float32) => ash::vk::ClearColorValue { float32 },
             ClearColorValue::Int(int32) => ash::vk::ClearColorValue { int32 },
@@ -745,7 +746,8 @@ pub struct ClearDepthStencilValue {
 
 impl ClearDepthStencilValue {
     #[allow(clippy::trivially_copy_pass_by_ref, clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::ClearDepthStencilValue {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ClearDepthStencilValue {
         let &Self { depth, stencil } = self;
 
         ash::vk::ClearDepthStencilValue { depth, stencil }

@@ -6,13 +6,11 @@ use vulkano::{
     device::DeviceOwned,
     pipeline::graphics::{
         color_blend::LogicOp,
-        conservative_rasterization::ConservativeRasterizationMode,
         depth_stencil::{CompareOp, StencilFaces, StencilOp},
         input_assembly::PrimitiveTopology,
-        rasterization::{CullMode, FrontFace},
+        rasterization::{ConservativeRasterizationMode, CullMode, FrontFace},
         vertex_input::{
-            VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
-            VertexInputState,
+            VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputState,
         },
         viewport::{Scissor, Viewport},
     },
@@ -230,7 +228,7 @@ impl RecordingCommandBuffer<'_> {
 
         let rectangles_vk = rectangles
             .iter()
-            .map(|v| v.into())
+            .map(Scissor::to_vk)
             .collect::<SmallVec<[_; 2]>>();
 
         let fns = self.device().fns();
@@ -402,7 +400,7 @@ impl RecordingCommandBuffer<'_> {
 
         let scissors_vk = scissors
             .iter()
-            .map(vk::Rect2D::from)
+            .map(Scissor::to_vk)
             .collect::<SmallVec<[_; 2]>>();
 
         let fns = self.device().fns();
@@ -430,7 +428,7 @@ impl RecordingCommandBuffer<'_> {
 
         let scissors_vk = scissors
             .iter()
-            .map(vk::Rect2D::from)
+            .map(Scissor::to_vk)
             .collect::<SmallVec<[_; 2]>>();
 
         let fns = self.device().fns();
@@ -604,16 +602,12 @@ impl RecordingCommandBuffer<'_> {
                 _ne: _,
             } = binding_desc;
 
-            let divisor = match input_rate {
-                // VUID-VkVertexInputBindingDescription2EXT-divisor-06227
-                VertexInputRate::Vertex => 1,
-                VertexInputRate::Instance { divisor } => divisor,
-            };
+            let (input_rate, divisor) = input_rate.to_vk();
 
             vk::VertexInputBindingDescription2EXT {
                 binding,
                 stride,
-                input_rate: input_rate.into(),
+                input_rate,
                 divisor,
                 ..Default::default()
             }
@@ -672,7 +666,7 @@ impl RecordingCommandBuffer<'_> {
 
         let viewports_vk = viewports
             .iter()
-            .map(|v| v.into())
+            .map(Viewport::to_vk)
             .collect::<SmallVec<[_; 2]>>();
 
         let fns = self.device().fns();
@@ -703,7 +697,7 @@ impl RecordingCommandBuffer<'_> {
 
         let viewports_vk = viewports
             .iter()
-            .map(|v| v.into())
+            .map(Viewport::to_vk)
             .collect::<SmallVec<[_; 2]>>();
 
         let fns = self.device().fns();

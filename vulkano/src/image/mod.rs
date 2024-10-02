@@ -1454,7 +1454,8 @@ impl ImageSubresourceLayers {
 }
 
 impl ImageSubresourceLayers {
-    pub(crate) fn to_vk(&self) -> ash::vk::ImageSubresourceLayers {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ImageSubresourceLayers {
         let &Self {
             aspects,
             mip_level,
