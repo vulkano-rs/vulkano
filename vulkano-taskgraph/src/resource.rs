@@ -121,9 +121,9 @@ impl Resources {
     ///
     /// - Panics if `device` already has a `Resources` collection associated with it.
     #[must_use]
-    pub fn new(device: Arc<Device>, create_info: ResourcesCreateInfo) -> Arc<Self> {
+    pub fn new(device: &Arc<Device>, create_info: &ResourcesCreateInfo<'_>) -> Arc<Self> {
         let mut registered_devices = REGISTERED_DEVICES.lock();
-        let device_addr = Arc::as_ptr(&device) as usize;
+        let device_addr = Arc::as_ptr(device) as usize;
 
         assert!(
             !registered_devices.contains(&device_addr),
@@ -141,7 +141,7 @@ impl Resources {
         let global = epoch::GlobalHandle::new();
 
         Arc::new(Resources {
-            device,
+            device: device.clone(),
             memory_allocator,
             command_buffer_allocator,
             locals: ThreadLocal::new(),
@@ -570,6 +570,11 @@ impl Resources {
 
     #[inline]
     pub(crate) unsafe fn buffer_unchecked_unprotected(&self, id: Id<Buffer>) -> &BufferState {
+        #[cfg(debug_assertions)]
+        if unsafe { self.buffers.get_unprotected(id.slot) }.is_none() {
+            std::process::abort();
+        }
+
         // SAFETY: Enforced by the caller.
         unsafe { self.buffers.index_unchecked_unprotected(id.index()) }
     }
@@ -591,6 +596,11 @@ impl Resources {
 
     #[inline]
     pub(crate) unsafe fn image_unchecked_unprotected(&self, id: Id<Image>) -> &ImageState {
+        #[cfg(debug_assertions)]
+        if unsafe { self.images.get_unprotected(id.slot) }.is_none() {
+            std::process::abort();
+        }
+
         // SAFETY: Enforced by the caller.
         unsafe { self.images.index_unchecked_unprotected(id.index()) }
     }
@@ -618,6 +628,11 @@ impl Resources {
         &self,
         id: Id<Swapchain>,
     ) -> &SwapchainState {
+        #[cfg(debug_assertions)]
+        if unsafe { self.swapchains.get_unprotected(id.slot) }.is_none() {
+            std::process::abort();
+        }
+
         // SAFETY: Enforced by the caller.
         unsafe { self.swapchains.index_unchecked_unprotected(id.index()) }
     }
@@ -1065,7 +1080,7 @@ impl Flight {
 
 /// Parameters to create a new [`Resources`] collection.
 #[derive(Debug)]
-pub struct ResourcesCreateInfo {
+pub struct ResourcesCreateInfo<'a> {
     /// The maximum number of [`Buffer`]s that the collection can hold at once.
     pub max_buffers: u32,
 
@@ -1078,10 +1093,10 @@ pub struct ResourcesCreateInfo {
     /// The maximum number of [`Flight`]s that the collection can hold at once.
     pub max_flights: u32,
 
-    pub _ne: vulkano::NonExhaustive,
+    pub _ne: crate::NonExhaustive<'a>,
 }
 
-impl Default for ResourcesCreateInfo {
+impl Default for ResourcesCreateInfo<'_> {
     #[inline]
     fn default() -> Self {
         ResourcesCreateInfo {
