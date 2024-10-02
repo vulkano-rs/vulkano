@@ -953,10 +953,12 @@ impl Surface {
         window: *mut ash::vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
-        let create_info_vk = ash::vk::ScreenSurfaceCreateInfoQNX::default()
-            .flags(ash::vk::ScreenSurfaceCreateFlagsQNX::empty())
-            .context(context.as_mut().unwrap())
-            .window(window.as_mut().unwrap());
+        let create_info_vk = ash::vk::ScreenSurfaceCreateInfoQNX {
+            flags: ash::vk::ScreenSurfaceCreateFlagsQNX::empty(),
+            context,
+            window,
+            ..Default::default()
+        };
 
         let handle = {
             let fns = instance.fns();
