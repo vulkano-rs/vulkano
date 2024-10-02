@@ -912,8 +912,8 @@ impl Surface {
     ///   parameter can be used to ensure this.
     pub unsafe fn from_qnx_screen(
         instance: Arc<Instance>,
-        context: &mut ash::vk::_screen_context,
-        window: &mut ash::vk::_screen_window,
+        context: *mut ash::vk::_screen_context,
+        window: *mut ash::vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_qnx_screen(&instance, context, window)?;
@@ -925,8 +925,8 @@ impl Surface {
 
     fn validate_from_qnx_screen(
         instance: &Instance,
-        _context: &mut ash::vk::_screen_context,
-        _window: &mut ash::vk::_screen_window,
+        _context: *mut ash::vk::_screen_context,
+        _window: *mut ash::vk::_screen_window,
     ) -> Result<(), Box<ValidationError>> {
         if !instance.enabled_extensions().qnx_screen_surface {
             return Err(Box::new(ValidationError {
@@ -949,14 +949,14 @@ impl Surface {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn from_qnx_screen_unchecked(
         instance: Arc<Instance>,
-        context: &mut ash::vk::_screen_context,
-        window: &mut ash::vk::_screen_window,
+        context: *mut ash::vk::_screen_context,
+        window: *mut ash::vk::_screen_window,
         object: Option<Arc<dyn Any + Send + Sync>>,
     ) -> Result<Arc<Self>, VulkanError> {
         let create_info_vk = ash::vk::ScreenSurfaceCreateInfoQNX::default()
             .flags(ash::vk::ScreenSurfaceCreateFlagsQNX::empty())
-            .context(context)
-            .window(window);
+            .context(context.as_mut().unwrap())
+            .window(window.as_mut().unwrap());
 
         let handle = {
             let fns = instance.fns();
