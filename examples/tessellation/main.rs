@@ -14,14 +14,14 @@
 
 use std::{error::Error, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
         CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
-        QueueCreateInfo, QueueFlags,
+        Queue, QueueCreateInfo, QueueFlags,
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
@@ -48,113 +48,43 @@ use vulkano::{
     Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::{Window, WindowId},
 };
-
-mod vs {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        src: r"
-            #version 450
-
-            layout(location = 0) in vec2 position;
-
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }
-        ",
-    }
-}
-
-mod tcs {
-    vulkano_shaders::shader! {
-        ty: "tess_ctrl",
-        src: r"
-            #version 450
-
-            // A value of 3 means a patch consists of a single triangle.
-            layout(vertices = 3) out; 
-
-            void main(void) {
-                // Save the position of the patch, so the TES can access it. We could define our 
-                // own output variables for this, but `gl_out` is handily provided.
-                gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-
-                // Many triangles are generated in the center.
-                gl_TessLevelInner[0] = 10; 
-                // No triangles are generated for this edge.
-                gl_TessLevelOuter[0] = 1;  
-                // Many triangles are generated for this edge.
-                gl_TessLevelOuter[1] = 10; 
-                // Many triangles are generated for this edge.
-                gl_TessLevelOuter[2] = 10; 
-
-                // These are only used when TES uses `layout(quads)`.
-                // gl_TessLevelInner[1] = ...;
-                // gl_TessLevelOuter[3] = ...;
-            }
-        ",
-    }
-}
-
-// There is a stage in between TCS and TES called Primitive Generation (PG). Shaders cannot be
-// defined for it. It takes `gl_TessLevelInner` and `gl_TessLevelOuter` and uses them to generate
-// positions within the patch and pass them to TES via `gl_TessCoord`.
-//
-// When TES uses `layout(triangles)` then `gl_TessCoord` is in Barycentric coordinates. If
-// `layout(quads)` is used then `gl_TessCoord` is in Cartesian coordinates. Barycentric coordinates
-// are of the form (x, y, z) where x + y + z = 1 and the values x, y and z represent the distance
-// from a vertex of the triangle.
-// https://mathworld.wolfram.com/BarycentricCoordinates.html
-
-mod tes {
-    vulkano_shaders::shader! {
-        ty: "tess_eval",
-        src: r"
-            #version 450
-
-            layout(triangles, equal_spacing, cw) in;
-
-            void main(void) {
-                // Retrieve the vertex positions set by the TCS.
-                vec4 vert_x = gl_in[0].gl_Position;
-                vec4 vert_y = gl_in[1].gl_Position;
-                vec4 vert_z = gl_in[2].gl_Position;
-
-                // Convert `gl_TessCoord` from Barycentric coordinates to Cartesian coordinates.
-                gl_Position = vec4(
-                    gl_TessCoord.x * vert_x.x + gl_TessCoord.y * vert_y.x + gl_TessCoord.z * vert_z.x,
-                    gl_TessCoord.x * vert_x.y + gl_TessCoord.y * vert_y.y + gl_TessCoord.z * vert_z.y,
-                    gl_TessCoord.x * vert_x.z + gl_TessCoord.y * vert_y.z + gl_TessCoord.z * vert_z.z,
-                    1.0
-                );
-            }
-        ",
-    }
-}
-
-mod fs {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        src: r"
-            #version 450
-
-            layout(location = 0) out vec4 f_color;
-
-            void main() {
-                f_color = vec4(1.0, 1.0, 1.0, 1.0);
-            }
-        ",
-    }
-}
 
 fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
+    let mut app = App::new(&event_loop);
 
+    event_loop.run_app(&mut app)
+}
+
+struct App {
+    instance: Arc<Instance>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    vertex_buffer: Subbuffer<[MyVertex]>,
+    rcx: Option<RenderContext>,
+}
+
+struct RenderContext {
+    window: Arc<Window>,
+    swapchain: Arc<Swapchain>,
+    render_pass: Arc<RenderPass>,
+    framebuffers: Vec<Arc<Framebuffer>>,
+    pipeline: Arc<GraphicsPipeline>,
+    viewport: Viewport,
+    recreate_swapchain: bool,
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
+}
+
+impl App {
+    fn new(event_loop: &EventLoop<()>) -> Self {
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
+    let required_extensions = Surface::required_extensions(event_loop).unwrap();
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -169,7 +99,7 @@ fn main() -> Result<(), impl Error> {
         khr_swapchain: true,
         ..DeviceExtensions::empty()
     };
-    let features = DeviceFeatures {
+    let device_features = DeviceFeatures {
         tessellation_shader: true,
         fill_mode_non_solid: true,
         ..DeviceFeatures::empty()
@@ -178,14 +108,14 @@ fn main() -> Result<(), impl Error> {
         .enumerate_physical_devices()
         .unwrap()
         .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter(|p| p.supported_features().contains(&features))
+        .filter(|p| p.supported_features().contains(&device_features))
         .filter_map(|p| {
             p.queue_family_properties()
                 .iter()
                 .enumerate()
                 .position(|(i, q)| {
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, &event_loop).unwrap()
+                        && p.presentation_support(i as u32, event_loop).unwrap()
                 })
                 .map(|i| (p, i as u32))
         })
@@ -213,81 +143,46 @@ fn main() -> Result<(), impl Error> {
                 ..Default::default()
             }],
             enabled_extensions: device_extensions,
-            enabled_features: features,
+            enabled_features: device_features,
             ..Default::default()
         },
     )
     .unwrap();
+
     let queue = queues.next().unwrap();
 
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
-
-    let (mut swapchain, images) = {
-        let surface_capabilities = device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-        let image_format = device
-            .physical_device()
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0]
-            .0;
-
-        Swapchain::new(
-            device.clone(),
-            surface,
-            SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count.max(2),
-                image_format,
-                image_extent: window.inner_size().into(),
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap(),
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    };
-
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-    #[derive(BufferContents, Vertex)]
-    #[repr(C)]
-    struct Vertex {
-        #[format(R32G32_SFLOAT)]
-        position: [f32; 2],
-    }
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     let vertices = [
-        Vertex {
+        MyVertex {
             position: [-0.5, -0.25],
         },
-        Vertex {
+        MyVertex {
             position: [0.0, 0.5],
         },
-        Vertex {
+        MyVertex {
             position: [0.25, -0.1],
         },
-        Vertex {
+        MyVertex {
             position: [0.9, 0.9],
         },
-        Vertex {
+        MyVertex {
             position: [0.9, 0.8],
         },
-        Vertex {
+        MyVertex {
             position: [0.8, 0.8],
         },
-        Vertex {
+        MyVertex {
             position: [-0.9, 0.9],
         },
-        Vertex {
+        MyVertex {
             position: [-0.7, 0.6],
         },
-        Vertex {
+        MyVertex {
             position: [-0.5, 0.9],
         },
     ];
@@ -306,8 +201,56 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
+    App {
+        instance,
+        device,
+        queue,
+        command_buffer_allocator,
+        vertex_buffer,
+        rcx: None,
+    }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
+    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+    let window_size = window.inner_size();
+
+    let (swapchain, images) = {
+        let surface_capabilities = self
+            .device
+            .physical_device()
+            .surface_capabilities(&surface, Default::default())
+            .unwrap();
+        let (image_format, _) = self
+            .device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0];
+
+        Swapchain::new(
+            self.device.clone(),
+            surface,
+            SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count.max(2),
+                image_format,
+                image_extent: window.inner_size().into(),
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
+                composite_alpha: surface_capabilities
+                    .supported_composite_alpha
+                    .into_iter()
+                    .next()
+                    .unwrap(),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
     let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
+        self.device.clone(),
         attachments: {
             color: {
                 format: swapchain.image_format(),
@@ -323,24 +266,26 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
+    let framebuffers = window_size_dependent_setup(&images, &render_pass);
+
     let pipeline = {
-        let vs = vs::load(device.clone())
+        let vs = vs::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let tcs = tcs::load(device.clone())
+        let tcs = tcs::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let tes = tes::load(device.clone())
+        let tes = tes::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let fs = fs::load(device.clone())
+        let fs = fs::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
+        let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),
             PipelineShaderStageCreateInfo::new(tcs),
@@ -348,16 +293,16 @@ fn main() -> Result<(), impl Error> {
             PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
-            device.clone(),
+            self.device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
+                .into_pipeline_layout_create_info(self.device.clone())
                 .unwrap(),
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            self.device.clone(),
             None,
             GraphicsPipelineCreateInfo {
                 stages: stages.into_iter().collect(),
@@ -391,82 +336,82 @@ fn main() -> Result<(), impl Error> {
         .unwrap()
     };
 
-    let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
-    let mut viewport = Viewport {
+    let viewport = Viewport {
         offset: [0.0, 0.0],
-        extent: [0.0, 0.0],
+        extent: window_size.into(),
         depth_range: 0.0..=1.0,
     };
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
+    let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
+    self.rcx = Some(RenderContext {
+        window,
+        swapchain,
+        render_pass,
+        framebuffers,
+        pipeline,
+        viewport,
+        recreate_swapchain: false,
+        previous_frame_end,
+    });
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let rcx = self.rcx.as_mut().unwrap();
 
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                elwt.exit();
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
             }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
+            WindowEvent::Resized(_) => {
+                rcx.recreate_swapchain = true;
             }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
-                let image_extent: [u32; 2] = window.inner_size().into();
+            WindowEvent::RedrawRequested => {
+                let window_size = rcx.window.inner_size();
 
-                if image_extent.contains(&0) {
+                if window_size.width == 0 || window_size.height == 0 {
                     return;
                 }
 
-                previous_frame_end.as_mut().unwrap().cleanup_finished();
+                rcx.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-                if recreate_swapchain {
-                    let (new_swapchain, new_images) = swapchain
+                if rcx.recreate_swapchain {
+                    let (new_swapchain, new_images) = rcx
+                        .swapchain
                         .recreate(SwapchainCreateInfo {
-                            image_extent,
-                            ..swapchain.create_info()
+                            image_extent: window_size.into(),
+                            ..rcx.swapchain.create_info()
                         })
                         .expect("failed to recreate swapchain");
 
-                    swapchain = new_swapchain;
-                    framebuffers = window_size_dependent_setup(
-                        &new_images,
-                        render_pass.clone(),
-                        &mut viewport,
-                    );
-                    recreate_swapchain = false;
+                    rcx.swapchain = new_swapchain;
+                    rcx.framebuffers = window_size_dependent_setup(&new_images, &rcx.render_pass);
+                    rcx.viewport.extent = window_size.into();
+                    rcx.recreate_swapchain = false;
                 }
 
                 let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+                    match acquire_next_image(rcx.swapchain.clone(), None).map_err(Validated::unwrap) {
                         Ok(r) => r,
                         Err(VulkanError::OutOfDate) => {
-                            recreate_swapchain = true;
+                            rcx.recreate_swapchain = true;
                             return;
                         }
                         Err(e) => panic!("failed to acquire next image: {e}"),
                     };
 
                 if suboptimal {
-                    recreate_swapchain = true;
+                    rcx.recreate_swapchain = true;
                 }
 
                 let mut builder = RecordingCommandBuffer::new(
-                    command_buffer_allocator.clone(),
-                    queue.queue_family_index(),
+                    self.command_buffer_allocator.clone(),
+                    self.queue.queue_family_index(),
                     CommandBufferLevel::Primary,
                     CommandBufferBeginInfo {
                         usage: CommandBufferUsage::OneTimeSubmit,
@@ -480,71 +425,80 @@ fn main() -> Result<(), impl Error> {
                         RenderPassBeginInfo {
                             clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
                             ..RenderPassBeginInfo::framebuffer(
-                                framebuffers[image_index as usize].clone(),
+                                rcx.framebuffers[image_index as usize].clone(),
                             )
                         },
                         Default::default(),
                     )
                     .unwrap()
-                    .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .set_viewport(0, [rcx.viewport.clone()].into_iter().collect())
                     .unwrap()
-                    .bind_pipeline_graphics(pipeline.clone())
+                    .bind_pipeline_graphics(rcx.pipeline.clone())
                     .unwrap()
-                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .bind_vertex_buffers(0, self.vertex_buffer.clone())
                     .unwrap();
 
                 unsafe {
-                    builder.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
+                    builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0).unwrap();
                 }
 
                 builder.end_render_pass(Default::default()).unwrap();
 
                 let command_buffer = builder.end().unwrap();
-                let future = previous_frame_end
+                let future = rcx
+                    .previous_frame_end
                     .take()
                     .unwrap()
                     .join(acquire_future)
-                    .then_execute(queue.clone(), command_buffer)
+                    .then_execute(self.queue.clone(), command_buffer)
                     .unwrap()
                     .then_swapchain_present(
-                        queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                        self.queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 
                 match future.map_err(Validated::unwrap) {
                     Ok(future) => {
-                        previous_frame_end = Some(future.boxed());
+                        rcx.previous_frame_end = Some(future.boxed());
                     }
                     Err(VulkanError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        rcx.recreate_swapchain = true;
+                        rcx.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
                     }
                     Err(e) => {
                         println!("failed to flush future: {e}");
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        rcx.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
                     }
                 }
             }
-            Event::AboutToWait => window.request_redraw(),
-            _ => (),
+            _ => {}
         }
-    })
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        let rcx = self.rcx.as_mut().unwrap();
+        rcx.window.request_redraw();
+    }
+}
+
+#[derive(BufferContents, Vertex)]
+#[repr(C)]
+struct MyVertex {
+    #[format(R32G32_SFLOAT)]
+    position: [f32; 2],
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<Image>],
-    render_pass: Arc<RenderPass>,
-    viewport: &mut Viewport,
+    render_pass: &Arc<RenderPass>,
 ) -> Vec<Arc<Framebuffer>> {
-    let extent = images[0].extent();
-    viewport.extent = [extent[0] as f32, extent[1] as f32];
-
     images
         .iter()
         .map(|image| {
             let view = ImageView::new_default(image.clone()).unwrap();
+
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
@@ -555,4 +509,101 @@ fn window_size_dependent_setup(
             .unwrap()
         })
         .collect::<Vec<_>>()
+}
+
+mod vs {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        src: r"
+            #version 450
+
+            layout(location = 0) in vec2 position;
+
+            void main() {
+                gl_Position = vec4(position, 0.0, 1.0);
+            }
+        ",
+    }
+}
+
+mod tcs {
+    vulkano_shaders::shader! {
+        ty: "tess_ctrl",
+        src: r"
+            #version 450
+
+            // A value of 3 means a patch consists of a single triangle.
+            layout(vertices = 3) out;
+
+            void main(void) {
+                // Save the position of the patch, so the TES can access it. We could define our
+                // own output variables for this, but `gl_out` is handily provided.
+                gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
+
+                // Many triangles are generated in the center.
+                gl_TessLevelInner[0] = 10;
+                // No triangles are generated for this edge.
+                gl_TessLevelOuter[0] = 1;
+                // Many triangles are generated for this edge.
+                gl_TessLevelOuter[1] = 10;
+                // Many triangles are generated for this edge.
+                gl_TessLevelOuter[2] = 10;
+
+                // These are only used when TES uses `layout(quads)`.
+                // gl_TessLevelInner[1] = ...;
+                // gl_TessLevelOuter[3] = ...;
+            }
+        ",
+    }
+}
+
+// There is a stage in between TCS and TES called Primitive Generation (PG). Shaders cannot be
+// defined for it. It takes `gl_TessLevelInner` and `gl_TessLevelOuter` and uses them to generate
+// positions within the patch and pass them to TES via `gl_TessCoord`.
+//
+// When TES uses `layout(triangles)` then `gl_TessCoord` is in Barycentric coordinates. If
+// `layout(quads)` is used then `gl_TessCoord` is in Cartesian coordinates. Barycentric coordinates
+// are of the form (x, y, z) where x + y + z = 1 and the values x, y and z represent the distance
+// from a vertex of the triangle.
+// https://mathworld.wolfram.com/BarycentricCoordinates.html
+
+mod tes {
+    vulkano_shaders::shader! {
+        ty: "tess_eval",
+        src: r"
+            #version 450
+
+            layout(triangles, equal_spacing, cw) in;
+
+            void main(void) {
+                // Retrieve the vertex positions set by the TCS.
+                vec4 v1 = gl_in[0].gl_Position;
+                vec4 v2 = gl_in[1].gl_Position;
+                vec4 v3 = gl_in[2].gl_Position;
+
+                // Convert `gl_TessCoord` from Barycentric coordinates to Cartesian coordinates.
+                gl_Position = vec4(
+                    gl_TessCoord.x * v1.x + gl_TessCoord.y * v2.x + gl_TessCoord.z * v3.x,
+                    gl_TessCoord.x * v1.y + gl_TessCoord.y * v2.y + gl_TessCoord.z * v3.y,
+                    gl_TessCoord.x * v1.z + gl_TessCoord.y * v2.z + gl_TessCoord.z * v3.z,
+                    1.0
+                );
+            }
+        ",
+    }
+}
+
+mod fs {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        src: r"
+            #version 450
+
+            layout(location = 0) out vec4 f_color;
+
+            void main() {
+                f_color = vec4(1.0, 1.0, 1.0, 1.0);
+            }
+        ",
+    }
 }

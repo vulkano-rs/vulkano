@@ -4,7 +4,7 @@
 pub use self::commands::{clear::*, copy::*, dynamic_state::*, pipeline::*, sync::*};
 use crate::{graph::ResourceMap, resource::DeathRow, Id};
 use ash::vk;
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 use vulkano::{
     buffer::Buffer,
     command_buffer::sys::RawRecordingCommandBuffer,
@@ -52,6 +52,22 @@ impl<'a> RecordingCommandBuffer<'a> {
     #[inline]
     pub fn as_raw(&mut self) -> &mut RawRecordingCommandBuffer {
         self.inner
+    }
+
+    /// Queues the destruction of the given `object` after the destruction of the command buffer.
+    #[inline]
+    pub fn destroy_object(&mut self, object: Arc<impl Any + Send + Sync>) {
+        self.death_row.push(object);
+    }
+
+    /// Queues the destruction of the given `objects` after the destruction of the command buffer.
+    #[inline]
+    pub fn destroy_objects(
+        &mut self,
+        objects: impl IntoIterator<Item = Arc<impl Any + Send + Sync>>,
+    ) {
+        self.death_row
+            .extend(objects.into_iter().map(|object| object as _));
     }
 }
 

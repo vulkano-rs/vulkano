@@ -81,15 +81,16 @@ use vulkano_taskgraph::{
     command_buffer::{
         BufferImageCopy, ClearColorImageInfo, CopyBufferToImageInfo, RecordingCommandBuffer,
     },
-    graph::{CompileInfo, ExecuteError, TaskGraph},
+    graph::{CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
     resource::{AccessType, Flight, HostAccessType, ImageLayoutType, Resources},
     resource_map, Id, QueueFamilyType, Task, TaskContext, TaskResult,
 };
 use winit::{
-    event::{ElementState, Event, KeyEvent, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    application::ApplicationHandler,
+    event::{ElementState, KeyEvent, WindowEvent},
+    event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, NamedKey},
-    window::WindowBuilder,
+    window::{Window, WindowId},
 };
 
 const TRANSFER_GRANULARITY: u32 = 4096;
@@ -97,9 +98,46 @@ const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
 fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
+    let mut app = App::new(&event_loop);
 
+    println!("\nPress space to update part of the texture");
+
+    event_loop.run_app(&mut app)
+}
+
+struct App {
+    instance: Arc<Instance>,
+    device: Arc<Device>,
+    graphics_family_index: u32,
+    transfer_family_index: u32,
+    graphics_queue: Arc<Queue>,
+    resources: Arc<Resources>,
+    graphics_flight_id: Id<Flight>,
+    vertex_buffer_id: Id<Buffer>,
+    uniform_buffer_ids: [Id<Buffer>; MAX_FRAMES_IN_FLIGHT as usize],
+    texture_ids: [Id<Image>; 2],
+    current_texture_index: Arc<AtomicBool>,
+    channel: mpsc::Sender<()>,
+    rcx: Option<RenderContext>,
+}
+
+struct RenderContext {
+    window: Arc<Window>,
+    swapchain_id: Id<Swapchain>,
+    render_pass: Arc<RenderPass>,
+    framebuffers: Vec<Arc<Framebuffer>>,
+    viewport: Viewport,
+    recreate_swapchain: bool,
+    task_graph: ExecutableTaskGraph<Self>,
+    virtual_swapchain_id: Id<Swapchain>,
+    virtual_texture_id: Id<Image>,
+    virtual_uniform_buffer_id: Id<Buffer>,
+}
+
+impl App {
+    fn new(event_loop: &EventLoop<()>) -> Self {
     let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
+    let required_extensions = Surface::required_extensions(event_loop).unwrap();
     let instance = Instance::new(
         library,
         InstanceCreateInfo {
@@ -124,7 +162,7 @@ fn main() -> Result<(), impl Error> {
                 .enumerate()
                 .position(|(i, q)| {
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, &event_loop).unwrap()
+                        && p.presentation_support(i as u32, event_loop).unwrap()
                 })
                 .map(|i| (p, i as u32))
         })
@@ -197,7 +235,7 @@ fn main() -> Result<(), impl Error> {
 
             // Even if we can't get an async transfer queue family, it's still better to use
             // different queues on the same queue family. This way, at least the threads on the
-            // host don't have lock the same queue when submitting.
+            // host don't have to lock the same queue when submitting.
             if queue_family_properties.queue_count > 1 {
                 queue_create_infos[0].queues.push(0.5);
             }
@@ -228,40 +266,6 @@ fn main() -> Result<(), impl Error> {
 
     let graphics_flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
     let transfer_flight_id = resources.create_flight(1).unwrap();
-
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
-
-    let swapchain_format = device
-        .physical_device()
-        .surface_formats(&surface, Default::default())
-        .unwrap()[0]
-        .0;
-    let mut swapchain_id = {
-        let surface_capabilities = device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-
-        resources
-            .create_swapchain(
-                graphics_flight_id,
-                surface,
-                SwapchainCreateInfo {
-                    min_image_count: surface_capabilities.min_image_count.max(3),
-                    image_format: swapchain_format,
-                    image_extent: window.inner_size().into(),
-                    image_usage: ImageUsage::COLOR_ATTACHMENT,
-                    composite_alpha: surface_capabilities
-                        .supported_composite_alpha
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-    };
 
     let vertices = [
         MyVertex {
@@ -311,28 +315,29 @@ fn main() -> Result<(), impl Error> {
             .unwrap()
     });
 
-    let texture_create_info = ImageCreateInfo {
-        image_type: ImageType::Dim2d,
-        format: Format::R8G8B8A8_UNORM,
-        extent: [TRANSFER_GRANULARITY * 2, TRANSFER_GRANULARITY * 2, 1],
-        usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
-        sharing: if graphics_family_index != transfer_family_index {
-            Sharing::Concurrent(
-                [graphics_family_index, transfer_family_index]
-                    .into_iter()
-                    .collect(),
-            )
-        } else {
-            Sharing::Exclusive
-        },
-        ..Default::default()
-    };
-
-    // Create two textures, where at any point in time one is used exclusively for reading and one
-    // is used exclusively for writing, swapping the two after each update.
+    // Create two textures, where at any point in time one is used exclusively for reading and
+    // one is used exclusively for writing, swapping the two after each update.
     let texture_ids = [(); 2].map(|_| {
         resources
-            .create_image(texture_create_info.clone(), AllocationCreateInfo::default())
+            .create_image(
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::R8G8B8A8_UNORM,
+                    extent: [TRANSFER_GRANULARITY * 2, TRANSFER_GRANULARITY * 2, 1],
+                    usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                    sharing: if graphics_family_index != transfer_family_index {
+                        Sharing::Concurrent(
+                            [graphics_family_index, transfer_family_index]
+                                .into_iter()
+                                .collect(),
+                        )
+                    } else {
+                        Sharing::Exclusive
+                    },
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
             .unwrap()
     });
 
@@ -381,17 +386,79 @@ fn main() -> Result<(), impl Error> {
     let (channel, receiver) = mpsc::channel();
     run_worker(
         receiver,
-        transfer_queue,
+        graphics_family_index,
+        transfer_family_index,
+        transfer_queue.clone(),
         resources.clone(),
         graphics_flight_id,
         transfer_flight_id,
-        &texture_create_info,
         texture_ids,
         current_texture_index.clone(),
     );
 
+    App {
+        instance,
+        device,
+        graphics_family_index,
+        transfer_family_index,
+        graphics_queue,
+        resources,
+        graphics_flight_id,
+        vertex_buffer_id,
+        uniform_buffer_ids,
+        texture_ids,
+        current_texture_index,
+        channel,
+        rcx: None,
+    }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    let window = Arc::new(
+        event_loop
+            .create_window(Window::default_attributes())
+            .unwrap(),
+    );
+    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+    let window_size = window.inner_size();
+
+    let swapchain_format;
+    let swapchain_id = {
+        let surface_capabilities = self
+            .device
+            .physical_device()
+            .surface_capabilities(&surface, Default::default())
+            .unwrap();
+        (swapchain_format, _) = self
+            .device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0];
+
+        self.resources
+            .create_swapchain(
+                self.graphics_flight_id,
+                surface,
+                SwapchainCreateInfo {
+                    min_image_count: surface_capabilities.min_image_count.max(3),
+                    image_format: swapchain_format,
+                    image_extent: window_size.into(),
+                    image_usage: ImageUsage::COLOR_ATTACHMENT,
+                    composite_alpha: surface_capabilities
+                        .supported_composite_alpha
+                        .into_iter()
+                        .next()
+                        .unwrap(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+    };
+
     let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
+        self.device.clone(),
         attachments: {
             color: {
                 format: swapchain_format,
@@ -407,12 +474,14 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
+    let framebuffers = window_size_dependent_setup(&self.resources, swapchain_id, &render_pass);
+
     let pipeline = {
-        let vs = vs::load(device.clone())
+        let vs = vs::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let fs = fs::load(device.clone())
+        let fs = fs::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
@@ -422,16 +491,16 @@ fn main() -> Result<(), impl Error> {
             PipelineShaderStageCreateInfo::new(fs),
         ];
         let layout = PipelineLayout::new(
-            device.clone(),
+            self.device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
+                .into_pipeline_layout_create_info(self.device.clone())
                 .unwrap(),
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
         GraphicsPipeline::new(
-            device.clone(),
+            self.device.clone(),
             None,
             GraphicsPipelineCreateInfo {
                 stages: stages.into_iter().collect(),
@@ -455,23 +524,21 @@ fn main() -> Result<(), impl Error> {
         .unwrap()
     };
 
-    let mut viewport = Viewport {
+    let viewport = Viewport {
         offset: [0.0, 0.0],
-        extent: [0.0, 0.0],
+        extent: window_size.into(),
         depth_range: 0.0..=1.0,
     };
-    let framebuffers =
-        window_size_dependent_setup(&resources, swapchain_id, &render_pass, &mut viewport);
 
     let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        device.clone(),
+        self.device.clone(),
         Default::default(),
     ));
 
     // A byproduct of always using the same set of uniform buffers is that we can also create one
     // descriptor set for each, reusing them in the same way as the buffers.
-    let uniform_buffer_sets = uniform_buffer_ids.map(|buffer_id| {
-        let buffer_state = resources.buffer(buffer_id).unwrap();
+    let uniform_buffer_sets = self.uniform_buffer_ids.map(|buffer_id| {
+        let buffer_state = self.resources.buffer(buffer_id).unwrap();
         let buffer = buffer_state.buffer();
 
         DescriptorSet::new(
@@ -484,9 +551,13 @@ fn main() -> Result<(), impl Error> {
     });
 
     // Create the descriptor sets for sampling the textures.
-    let sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear()).unwrap();
-    let sampler_sets = texture_ids.map(|texture_id| {
-        let texture_state = resources.image(texture_id).unwrap();
+    let sampler = Sampler::new(
+        self.device.clone(),
+        SamplerCreateInfo::simple_repeat_linear(),
+    )
+    .unwrap();
+    let sampler_sets = self.texture_ids.map(|texture_id| {
+        let texture_state = self.resources.image(texture_id).unwrap();
         let texture = texture_state.image();
 
         DescriptorSet::new(
@@ -501,15 +572,21 @@ fn main() -> Result<(), impl Error> {
         .unwrap()
     });
 
-    let mut rcx = RenderContext {
-        viewport,
-        framebuffers,
-    };
-
-    let mut task_graph = TaskGraph::new(&resources, 1, 4);
+    let mut task_graph = TaskGraph::new(&self.resources, 1, 4);
 
     let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
-    let virtual_texture_id = task_graph.add_image(&texture_create_info);
+    let virtual_texture_id = task_graph.add_image(&ImageCreateInfo {
+        sharing: if self.graphics_family_index != self.transfer_family_index {
+            Sharing::Concurrent(
+                [self.graphics_family_index, self.transfer_family_index]
+                    .into_iter()
+                    .collect(),
+            )
+        } else {
+            Sharing::Exclusive
+        },
+        ..Default::default()
+    });
     let virtual_uniform_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
 
     task_graph.add_host_buffer_access(virtual_uniform_buffer_id, HostAccessType::Write);
@@ -520,12 +597,12 @@ fn main() -> Result<(), impl Error> {
             QueueFamilyType::Graphics,
             RenderTask {
                 swapchain_id: virtual_swapchain_id,
-                vertex_buffer_id,
-                current_texture_index: current_texture_index.clone(),
-                pipeline: pipeline.clone(),
+                vertex_buffer_id: self.vertex_buffer_id,
+                current_texture_index: self.current_texture_index.clone(),
+                pipeline,
                 uniform_buffer_id: virtual_uniform_buffer_id,
-                uniform_buffer_sets: uniform_buffer_sets.clone(),
-                sampler_sets: sampler_sets.clone(),
+                uniform_buffer_sets,
+                sampler_sets,
             },
         )
         .image_access(
@@ -533,7 +610,7 @@ fn main() -> Result<(), impl Error> {
             AccessType::ColorAttachmentWrite,
             ImageLayoutType::Optimal,
         )
-        .buffer_access(vertex_buffer_id, AccessType::VertexAttributeRead)
+        .buffer_access(self.vertex_buffer_id, AccessType::VertexAttributeRead)
         .image_access(
             virtual_texture_id,
             AccessType::FragmentShaderSampledRead,
@@ -546,121 +623,117 @@ fn main() -> Result<(), impl Error> {
 
     let task_graph = unsafe {
         task_graph.compile(&CompileInfo {
-            queues: &[&graphics_queue],
-            present_queue: Some(&graphics_queue),
-            flight_id: graphics_flight_id,
+            queues: &[&self.graphics_queue],
+            present_queue: Some(&self.graphics_queue),
+            flight_id: self.graphics_flight_id,
             ..Default::default()
         })
     }
     .unwrap();
 
-    let mut recreate_swapchain = false;
+    self.rcx = Some(RenderContext {
+        window,
+        swapchain_id,
+        render_pass,
+        framebuffers,
+        viewport,
+        recreate_swapchain: false,
+        task_graph,
+        virtual_swapchain_id,
+        virtual_texture_id,
+        virtual_uniform_buffer_id,
+    });
+    }
 
-    println!("\nPress space to update part of the texture");
-
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let rcx = self.rcx.as_mut().unwrap();
 
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                elwt.exit();
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
             }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
+            WindowEvent::Resized(_) => {
+                rcx.recreate_swapchain = true;
             }
-            Event::WindowEvent {
+            WindowEvent::KeyboardInput {
                 event:
-                    WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                logical_key: Key::Named(NamedKey::Space),
-                                state: ElementState::Released,
-                                ..
-                            },
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Space),
+                        state: ElementState::Released,
                         ..
                     },
                 ..
             } => {
-                channel.send(()).unwrap();
+                self.channel.send(()).unwrap();
             }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
-                let image_extent: [u32; 2] = window.inner_size().into();
+            WindowEvent::RedrawRequested => {
+                let window_size = rcx.window.inner_size();
 
-                if image_extent.contains(&0) {
+                if window_size.width == 0 || window_size.height == 0 {
                     return;
                 }
 
-                let flight = resources.flight(graphics_flight_id).unwrap();
+                let flight = self.resources.flight(self.graphics_flight_id).unwrap();
 
-                if recreate_swapchain {
-                    swapchain_id = resources
-                        .recreate_swapchain(swapchain_id, |create_info| SwapchainCreateInfo {
-                            image_extent,
+                if rcx.recreate_swapchain {
+                    rcx.swapchain_id = self
+                        .resources
+                        .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
+                            image_extent: window_size.into(),
                             ..create_info
                         })
                         .expect("failed to recreate swapchain");
-
-                    flight.destroy_objects(rcx.framebuffers.drain(..));
-
                     rcx.framebuffers = window_size_dependent_setup(
-                        &resources,
-                        swapchain_id,
-                        &render_pass,
-                        &mut rcx.viewport,
+                        &self.resources,
+                        rcx.swapchain_id,
+                        &rcx.render_pass,
                     );
-
-                    recreate_swapchain = false;
+                    rcx.viewport.extent = window_size.into();
+                    rcx.recreate_swapchain = false;
                 }
 
                 let frame_index = flight.current_frame_index();
-                let texture_index = current_texture_index.load(Ordering::Relaxed);
+                let texture_index = self.current_texture_index.load(Ordering::Relaxed);
 
                 let resource_map = resource_map!(
-                    &task_graph,
-                    virtual_swapchain_id => swapchain_id,
-                    virtual_texture_id => texture_ids[texture_index as usize],
-                    virtual_uniform_buffer_id => uniform_buffer_ids[frame_index as usize],
+                    &rcx.task_graph,
+                    rcx.virtual_swapchain_id => rcx.swapchain_id,
+                    rcx.virtual_texture_id => self.texture_ids[texture_index as usize],
+                    rcx.virtual_uniform_buffer_id => self.uniform_buffer_ids[frame_index as usize],
                 )
                 .unwrap();
 
                 flight.wait(None).unwrap();
 
                 match unsafe {
-                    task_graph.execute(resource_map, &rcx, || window.pre_present_notify())
+                    rcx.task_graph
+                        .execute(resource_map, rcx, || rcx.window.pre_present_notify())
                 } {
                     Ok(()) => {}
                     Err(ExecuteError::Swapchain {
                         error: Validated::Error(VulkanError::OutOfDate),
                         ..
                     }) => {
-                        recreate_swapchain = true;
+                        rcx.recreate_swapchain = true;
                     }
                     Err(e) => {
                         panic!("failed to execute next frame: {e:?}");
                     }
                 }
             }
-            Event::AboutToWait => {
-                window.request_redraw();
-            }
-            Event::LoopExiting => {
-                let flight = resources.flight(graphics_flight_id).unwrap();
-                flight.destroy_objects(rcx.framebuffers.drain(..));
-                flight.destroy_objects(uniform_buffer_sets.clone());
-                flight.destroy_objects(sampler_sets.clone());
-            }
-            _ => (),
+            _ => {}
         }
-    })
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        let rcx = self.rcx.as_mut().unwrap();
+        rcx.window.request_redraw();
+    }
 }
 
 #[derive(Clone, Copy, BufferContents, Vertex)]
@@ -708,11 +781,6 @@ mod fs {
             }
         ",
     }
-}
-
-struct RenderContext {
-    viewport: Viewport,
-    framebuffers: Vec<Arc<Framebuffer>>,
 }
 
 struct RenderTask {
@@ -785,6 +853,10 @@ impl Task for RenderTask {
 
         cbf.as_raw().end_render_pass(&Default::default())?;
 
+        cbf.destroy_objects(rcx.framebuffers.iter().cloned());
+        cbf.destroy_objects(self.uniform_buffer_sets.iter().cloned());
+        cbf.destroy_objects(self.sampler_sets.iter().cloned());
+
         Ok(())
     }
 }
@@ -792,11 +864,12 @@ impl Task for RenderTask {
 #[allow(clippy::too_many_arguments)]
 fn run_worker(
     channel: mpsc::Receiver<()>,
+    graphics_family_index: u32,
+    transfer_family_index: u32,
     transfer_queue: Arc<Queue>,
     resources: Arc<Resources>,
     graphics_flight_id: Id<Flight>,
     transfer_flight_id: Id<Flight>,
-    texture_create_info: &ImageCreateInfo,
     texture_ids: [Id<Image>; 2],
     current_texture_index: Arc<AtomicBool>,
 ) {
@@ -834,7 +907,18 @@ fn run_worker(
 
     let virtual_front_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
     let virtual_back_staging_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
-    let virtual_texture_id = task_graph.add_image(texture_create_info);
+    let virtual_texture_id = task_graph.add_image(&ImageCreateInfo {
+        sharing: if graphics_family_index != transfer_family_index {
+            Sharing::Concurrent(
+                [graphics_family_index, transfer_family_index]
+                    .into_iter()
+                    .collect(),
+            )
+        } else {
+            Sharing::Exclusive
+        },
+        ..Default::default()
+    });
 
     task_graph.add_host_buffer_access(virtual_front_staging_buffer_id, HostAccessType::Write);
 
@@ -1009,17 +1093,15 @@ fn window_size_dependent_setup(
     resources: &Resources,
     swapchain_id: Id<Swapchain>,
     render_pass: &Arc<RenderPass>,
-    viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
     let swapchain_state = resources.swapchain(swapchain_id).unwrap();
     let images = swapchain_state.images();
-    let extent = images[0].extent();
-    viewport.extent = [extent[0] as f32, extent[1] as f32];
 
     images
         .iter()
         .map(|image| {
             let view = ImageView::new_default(image.clone()).unwrap();
+
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {

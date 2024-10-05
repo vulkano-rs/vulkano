@@ -136,11 +136,10 @@ impl FractalComputePipeline {
     ) -> Box<dyn GpuFuture> {
         // Resize image if needed.
         let image_extent = image_view.image().extent();
-        let pipeline_layout = self.pipeline.layout();
-        let desc_layout = &pipeline_layout.set_layouts()[0];
-        let set = DescriptorSet::new(
+        let layout = &self.pipeline.layout().set_layouts()[0];
+        let descriptor_set = DescriptorSet::new(
             self.descriptor_set_allocator.clone(),
-            desc_layout.clone(),
+            layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, image_view),
                 WriteDescriptorSet::buffer(1, self.palette.clone()),
@@ -172,9 +171,9 @@ impl FractalComputePipeline {
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .unwrap()
-            .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
+            .bind_descriptor_sets(PipelineBindPoint::Compute, self.pipeline.layout().clone(), 0, descriptor_set)
             .unwrap()
-            .push_constants(pipeline_layout.clone(), 0, push_constants)
+            .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap();
 
         unsafe {

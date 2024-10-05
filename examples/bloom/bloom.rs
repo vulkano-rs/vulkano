@@ -1,9 +1,9 @@
-use crate::RenderContext;
+use crate::{App, RenderContext};
 use std::{slice, sync::Arc};
 use vulkano::{
     image::{mip_level_extent, Image},
     pipeline::{
-        compute::ComputePipelineCreateInfo, ComputePipeline, PipelineBindPoint,
+        compute::ComputePipelineCreateInfo, ComputePipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
     },
     sync::{AccessFlags, PipelineStages},
@@ -24,33 +24,37 @@ pub struct BloomTask {
 }
 
 impl BloomTask {
-    pub fn new(rcx: &RenderContext, bloom_image_id: Id<Image>) -> Self {
+    pub fn new(
+        app: &App,
+        pipeline_layout: &Arc<PipelineLayout>,
+        virtual_bloom_image_id: Id<Image>,
+    ) -> Self {
         let downsample_pipeline = {
-            let cs = downsample::load(rcx.device.clone())
+            let cs = downsample::load(app.device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
             let stage = PipelineShaderStageCreateInfo::new(cs);
 
             ComputePipeline::new(
-                rcx.device.clone(),
+                app.device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, rcx.pipeline_layout.clone()),
+                ComputePipelineCreateInfo::stage_layout(stage, pipeline_layout.clone()),
             )
             .unwrap()
         };
 
         let upsample_pipeline = {
-            let cs = upsample::load(rcx.device.clone())
+            let cs = upsample::load(app.device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
             let stage = PipelineShaderStageCreateInfo::new(cs);
 
             ComputePipeline::new(
-                rcx.device.clone(),
+                app.device.clone(),
                 None,
-                ComputePipelineCreateInfo::stage_layout(stage, rcx.pipeline_layout.clone()),
+                ComputePipelineCreateInfo::stage_layout(stage, pipeline_layout.clone()),
             )
             .unwrap()
         };
@@ -58,7 +62,7 @@ impl BloomTask {
         BloomTask {
             downsample_pipeline,
             upsample_pipeline,
-            bloom_image_id,
+            bloom_image_id: virtual_bloom_image_id,
         }
     }
 }
@@ -135,6 +139,9 @@ impl Task for BloomTask {
                 cbf.pipeline_barrier(&dependency_info)?;
             }
         }
+
+        cbf.destroy_object(bloom_image.clone());
+        cbf.destroy_object(rcx.descriptor_set.as_ref().0.clone());
 
         Ok(())
     }

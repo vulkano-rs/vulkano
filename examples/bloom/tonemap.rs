@@ -1,5 +1,5 @@
-use crate::RenderContext;
-use std::{mem, slice, sync::Arc};
+use crate::{App, RenderContext};
+use std::{slice, sync::Arc};
 use vulkano::{
     command_buffer::RenderPassBeginInfo,
     image::view::ImageView,
@@ -13,13 +13,14 @@ use vulkano::{
             viewport::ViewportState,
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::Swapchain,
 };
 use vulkano_taskgraph::{
-    command_buffer::RecordingCommandBuffer, Id, Task, TaskContext, TaskResult,
+    command_buffer::RecordingCommandBuffer, resource::Resources, Id, Task, TaskContext, TaskResult,
 };
 
 const EXPOSURE: f32 = 1.0;
@@ -32,12 +33,20 @@ pub struct TonemapTask {
 }
 
 impl TonemapTask {
-    pub fn new(rcx: &RenderContext, swapchain_id: Id<Swapchain>) -> Self {
+    pub fn new(
+        app: &App,
+        pipeline_layout: &Arc<PipelineLayout>,
+        swapchain_id: Id<Swapchain>,
+        virtual_swapchain_id: Id<Swapchain>,
+    ) -> Self {
+        let swapchain_state = app.resources.swapchain(swapchain_id).unwrap();
+        let swapchain_format = swapchain_state.swapchain().image_format();
+
         let render_pass = vulkano::single_pass_renderpass!(
-            rcx.device.clone(),
+            app.device.clone(),
             attachments: {
                 color: {
-                    format: rcx.swapchain_format,
+                    format: swapchain_format,
                     samples: 1,
                     load_op: DontCare,
                     store_op: Store,
@@ -51,11 +60,11 @@ impl TonemapTask {
         .unwrap();
 
         let pipeline = {
-            let vs = vs::load(rcx.device.clone())
+            let vs = vs::load(app.device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = fs::load(rcx.device.clone())
+            let fs = fs::load(app.device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -66,7 +75,7 @@ impl TonemapTask {
             let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
             GraphicsPipeline::new(
-                rcx.device.clone(),
+                app.device.clone(),
                 None,
                 GraphicsPipelineCreateInfo {
                     stages: stages.into_iter().collect(),
@@ -81,32 +90,24 @@ impl TonemapTask {
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::layout(rcx.pipeline_layout.clone())
+                    ..GraphicsPipelineCreateInfo::layout(pipeline_layout.clone())
                 },
             )
             .unwrap()
         };
 
-        let framebuffers = window_size_dependent_setup(rcx, &render_pass);
+        let framebuffers = window_size_dependent_setup(&app.resources, swapchain_id, &render_pass);
 
         TonemapTask {
             render_pass,
             pipeline,
             framebuffers,
-            swapchain_id,
+            swapchain_id: virtual_swapchain_id,
         }
     }
 
-    pub fn handle_resize(&mut self, rcx: &RenderContext) {
-        let framebuffers = window_size_dependent_setup(rcx, &self.render_pass);
-
-        let flight = rcx.resources.flight(rcx.flight_id).unwrap();
-        flight.destroy_objects(mem::replace(&mut self.framebuffers, framebuffers));
-    }
-
-    pub fn cleanup(&mut self, rcx: &RenderContext) {
-        let flight = rcx.resources.flight(rcx.flight_id).unwrap();
-        flight.destroy_objects(self.framebuffers.drain(..));
+    pub fn handle_resize(&mut self, resources: &Resources, swapchain_id: Id<Swapchain>) {
+        self.framebuffers = window_size_dependent_setup(resources, swapchain_id, &self.render_pass);
     }
 }
 
@@ -148,8 +149,35 @@ impl Task for TonemapTask {
 
         cbf.as_raw().end_render_pass(&Default::default())?;
 
+        cbf.destroy_objects(self.framebuffers.iter().cloned());
+
         Ok(())
     }
+}
+
+fn window_size_dependent_setup(
+    resources: &Resources,
+    swapchain_id: Id<Swapchain>,
+    render_pass: &Arc<RenderPass>,
+) -> Vec<Arc<Framebuffer>> {
+    let swapchain_state = resources.swapchain(swapchain_id).unwrap();
+    let images = swapchain_state.images();
+
+    images
+        .iter()
+        .map(|image| {
+            let view = ImageView::new_default(image.clone()).unwrap();
+
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![view],
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>()
 }
 
 mod vs {
@@ -186,27 +214,4 @@ mod fs {
         path: "tonemap.glsl",
         include: ["."],
     }
-}
-
-fn window_size_dependent_setup(
-    rcx: &RenderContext,
-    render_pass: &Arc<RenderPass>,
-) -> Vec<Arc<Framebuffer>> {
-    let swapchain_state = rcx.resources.swapchain(rcx.swapchain_id).unwrap();
-    let images = swapchain_state.images();
-
-    images
-        .iter()
-        .map(|image| {
-            let view = ImageView::new_default(image.clone()).unwrap();
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        })
-        .collect::<Vec<_>>()
 }

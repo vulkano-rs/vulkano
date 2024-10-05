@@ -139,6 +139,7 @@ fn main() {
         },
     )
     .unwrap();
+
     let queue = queues.next().unwrap();
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));

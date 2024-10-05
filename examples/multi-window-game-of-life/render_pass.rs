@@ -1,4 +1,4 @@
-use crate::{app::App, pixels_draw::PixelsDrawPipeline};
+use crate::{App, pixels_draw::PixelsDrawPipeline};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
@@ -11,7 +11,7 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
-use vulkano_util::renderer::VulkanoWindowRenderer;
+use winit::window::WindowId;
 
 /// A render pass which places an incoming image over the frame, filling it.
 pub struct RenderPassPlaceOverFrame {
@@ -26,8 +26,9 @@ impl RenderPassPlaceOverFrame {
     pub fn new(
         app: &App,
         gfx_queue: Arc<Queue>,
-        window_renderer: &VulkanoWindowRenderer,
+        window_id: WindowId,
     ) -> RenderPassPlaceOverFrame {
+        let window_renderer = app.windows.get_renderer(window_id).unwrap();
         let render_pass = vulkano::single_pass_renderpass!(
             gfx_queue.device().clone(),
             attachments: {

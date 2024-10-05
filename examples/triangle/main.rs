@@ -9,15 +9,15 @@
 
 use std::{error::Error, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
         CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo,
         SubpassContents,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        QueueFlags,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
+        QueueCreateInfo, QueueFlags
     },
     image::{view::ImageView, Image, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
@@ -43,14 +43,41 @@ use vulkano::{
     Validated, VulkanError, VulkanLibrary,
 };
 use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::{Window, WindowId},
 };
 
 fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
+    let mut app = App::new(&event_loop);
 
+    event_loop.run_app(&mut app)
+}
+
+struct App {
+    instance: Arc<Instance>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    vertex_buffer: Subbuffer<[MyVertex]>,
+    rcx: Option<RenderContext>,
+}
+
+struct RenderContext {
+    window: Arc<Window>,
+    swapchain: Arc<Swapchain>,
+    render_pass: Arc<RenderPass>,
+    framebuffers: Vec<Arc<Framebuffer>>,
+    pipeline: Arc<GraphicsPipeline>,
+    viewport: Viewport,
+    recreate_swapchain: bool,
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
+}
+
+impl App {
+    fn new(event_loop: &EventLoop<()>) -> Self {
     let library = VulkanLibrary::new().unwrap();
 
     // The first step of any Vulkan program is to create an instance.
@@ -60,7 +87,7 @@ fn main() -> Result<(), impl Error> {
     // All the window-drawing functionalities are part of non-core extensions that we need to
     // enable manually. To do so, we ask `Surface` for the list of extensions required to draw to
     // a window.
-    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
+    let required_extensions = Surface::required_extensions(event_loop).unwrap();
 
     // Now creating the instance.
     let instance = Instance::new(
@@ -114,7 +141,7 @@ fn main() -> Result<(), impl Error> {
                     // a window surface, as we do in this example, we also need to check that
                     // queues in this queue family are capable of presenting images to the surface.
                     q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, &event_loop).unwrap()
+                        && p.presentation_support(i as u32, event_loop).unwrap()
                 })
                 // The code here searches for the first queue family that is suitable. If none is
                 // found, `None` is returned to `filter_map`, which disqualifies this physical
@@ -178,36 +205,90 @@ fn main() -> Result<(), impl Error> {
     // iterator.
     let queue = queues.next().unwrap();
 
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
+    // Before we can start creating and recording command buffers, we need a way of allocating
+    // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
+    // underneath and provides a safe interface for them.
+    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
+
+    // We now create a buffer that will store the shape of our triangle.
+    let vertices = [
+        MyVertex {
+            position: [-0.5, -0.25],
+        },
+        MyVertex {
+            position: [0.0, 0.5],
+        },
+        MyVertex {
+            position: [0.25, -0.1],
+        },
+    ];
+    let vertex_buffer = Buffer::from_iter(
+        memory_allocator,
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        vertices,
+    )
+    .unwrap();
+
+    let rcx = None;
+
+    App {
+        instance,
+        device,
+        queue,
+        command_buffer_allocator,
+        vertex_buffer,
+        rcx,
+    }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window. We use the `WindowBuilder` from the `winit` crate to do that here.
     //
     // Before we can render to a window, we must first create a `vulkano::swapchain::Surface`
     // object from it, which represents the drawable surface of a window. For that we must wrap the
     // `winit::window::Window` in an `Arc`.
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
+    let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
+    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+    let window_size = window.inner_size();
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating a
     // swapchain allocates the color buffers that will contain the image that will ultimately be
     // visible on the screen. These images are returned alongside the swapchain.
-    let (mut swapchain, images) = {
+    let (swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only pass
         // values that are allowed by the capabilities.
-        let surface_capabilities = device
+        let surface_capabilities = self
+            .device
             .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
 
         // Choosing the internal format that the images will have.
-        let image_format = device
+        let (image_format, _) = self
+            .device
             .physical_device()
             .surface_formats(&surface, Default::default())
-            .unwrap()[0]
-            .0;
+            .unwrap()[0];
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(
-            device.clone(),
+            self.device.clone(),
             surface,
             SwapchainCreateInfo {
                 // Some drivers report an `min_image_count` of 1, but fullscreen mode requires at
@@ -230,7 +311,7 @@ fn main() -> Result<(), impl Error> {
                 //
                 // Both of these cases need the swapchain to use the window size, so we just
                 // use that.
-                image_extent: window.inner_size().into(),
+                image_extent: window_size.into(),
 
                 image_usage: ImageUsage::COLOR_ATTACHMENT,
 
@@ -247,44 +328,6 @@ fn main() -> Result<(), impl Error> {
         )
         .unwrap()
     };
-
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-    // We now create a buffer that will store the shape of our triangle. We use `#[repr(C)]` here
-    // to force rustc to use a defined layout for our data, as the default representation has *no
-    // guarantees*.
-    #[derive(BufferContents, Vertex)]
-    #[repr(C)]
-    struct Vertex {
-        #[format(R32G32_SFLOAT)]
-        position: [f32; 2],
-    }
-
-    let vertices = [
-        Vertex {
-            position: [-0.5, -0.25],
-        },
-        Vertex {
-            position: [0.0, 0.5],
-        },
-        Vertex {
-            position: [0.25, -0.1],
-        },
-    ];
-    let vertex_buffer = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        vertices,
-    )
-    .unwrap();
 
     // The next step is to create the shaders.
     //
@@ -330,15 +373,11 @@ fn main() -> Result<(), impl Error> {
         }
     }
 
-    // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
-    // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
-    // manually.
-
     // The next step is to create a *render pass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images where the
     // colors, depth and/or stencil information will be written.
     let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
+        self.device.clone(),
         attachments: {
             // `color` is a custom name we give to the first and only attachment.
             color: {
@@ -369,6 +408,13 @@ fn main() -> Result<(), impl Error> {
     )
     .unwrap();
 
+    // The render pass we created above only describes the layout of our framebuffers. Before we
+    // can draw we also need to create the actual framebuffers.
+    //
+    // Since we need to draw to multiple images, we are going to create a different framebuffer for
+    // each image.
+    let framebuffers = window_size_dependent_setup(&images, &render_pass);
+
     // Before we draw, we have to create what is called a **pipeline**. A pipeline describes how
     // a GPU operation is to be performed. It is similar to an OpenGL program, but it also contains
     // many settings for customization, all baked into a single object. For drawing, we create
@@ -379,18 +425,18 @@ fn main() -> Result<(), impl Error> {
         //
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
         // one.
-        let vs = vs::load(device.clone())
+        let vs = vs::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let fs = fs::load(device.clone())
+        let fs = fs::load(self.device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
 
         // Automatically generate a vertex input state from the vertex shader's input interface,
         // that takes a single vertex buffer containing `Vertex` structs.
-        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
+        let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
 
         // Make a list of the shader stages that the pipeline will have.
         let stages = [
@@ -408,13 +454,13 @@ fn main() -> Result<(), impl Error> {
         // layout. Thus, it is a good idea to design shaders so that many pipelines have
         // common resource locations, which allows them to share pipeline layouts.
         let layout = PipelineLayout::new(
-            device.clone(),
+            self.device.clone(),
             // Since we only have one pipeline in this example, and thus one pipeline layout,
             // we automatically generate the creation info for it from the resources used in the
             // shaders. In a real application, you would specify this information manually so that
             // you can re-use one layout in multiple pipelines.
             PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
+                .into_pipeline_layout_create_info(self.device.clone())
                 .unwrap(),
         )
         .unwrap();
@@ -425,7 +471,7 @@ fn main() -> Result<(), impl Error> {
 
         // Finally, create the pipeline.
         GraphicsPipeline::new(
-            device.clone(),
+            self.device.clone(),
             None,
             GraphicsPipelineCreateInfo {
                 stages: stages.into_iter().collect(),
@@ -463,28 +509,11 @@ fn main() -> Result<(), impl Error> {
 
     // Dynamic viewports allow us to recreate just the viewport when the window is resized.
     // Otherwise we would have to recreate the whole pipeline.
-    let mut viewport = Viewport {
+    let viewport = Viewport {
         offset: [0.0, 0.0],
-        extent: [0.0, 0.0],
+        extent: window_size.into(),
         depth_range: 0.0..=1.0,
     };
-
-    // The render pass we created above only describes the layout of our framebuffers. Before we
-    // can draw we also need to create the actual framebuffers.
-    //
-    // Since we need to draw to multiple images, we are going to create a different framebuffer for
-    // each image.
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
-
-    // Before we can start creating and recording command buffers, we need a way of allocating
-    // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
-    // underneath and provides a safe interface for them.
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
-
-    // Initialization is finally finished!
 
     // In some situations, the swapchain will become invalid by itself. This includes for example
     // when the window is resized (as the images of the swapchain will no longer match the
@@ -495,41 +524,49 @@ fn main() -> Result<(), impl Error> {
     // Rendering to an image of that swapchain will not produce any error, but may or may not work.
     // To continue rendering, we need to recreate the swapchain by creating a new swapchain. Here,
     // we remember that we need to do this for the next loop iteration.
-    let mut recreate_swapchain = false;
+    let recreate_swapchain = false;
 
-    // In the loop below we are going to submit commands to the GPU. Submitting a command produces
+    // In the `window_event` handler below we are going to submit commands to the GPU. Submitting a command produces
     // an object that implements the `GpuFuture` trait, which holds the resources for as long as
     // they are in use by the GPU.
     //
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store the submission of the previous frame here.
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+    let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
+    self.rcx = Some(RenderContext {
+        window,
+        swapchain,
+        render_pass,
+        framebuffers,
+        pipeline,
+        viewport,
+        recreate_swapchain,
+        previous_frame_end,
+    });
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let rcx = self.rcx.as_mut().unwrap();
 
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                elwt.exit();
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
             }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
+            WindowEvent::Resized(_) => {
+                rcx.recreate_swapchain = true;
             }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
+            WindowEvent::RedrawRequested => {
+                let window_size = rcx.window.inner_size();
+
                 // Do not draw the frame when the screen size is zero. On Windows, this can
                 // occur when minimizing the application.
-                let image_extent: [u32; 2] = window.inner_size().into();
-
-                if image_extent.contains(&0) {
+                if window_size.width == 0 || window_size.height == 0 {
                     return;
                 }
 
@@ -537,32 +574,33 @@ fn main() -> Result<(), impl Error> {
                 // will keep accumulating and you will eventually reach an out of memory error.
                 // Calling this function polls various fences in order to determine what the GPU
                 // has already processed, and frees the resources that are no longer needed.
-                previous_frame_end.as_mut().unwrap().cleanup_finished();
+                rcx.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
                 // Whenever the window resizes we need to recreate everything dependent on the
                 // window size. In this example that includes the swapchain, the framebuffers and
                 // the dynamic state viewport.
-                if recreate_swapchain {
+                if rcx.recreate_swapchain {
                     // Use the new dimensions of the window.
 
-                    let (new_swapchain, new_images) = swapchain
+                    let (new_swapchain, new_images) = rcx.swapchain
                         .recreate(SwapchainCreateInfo {
-                            image_extent,
-                            ..swapchain.create_info()
+                            image_extent: window_size.into(),
+                            ..rcx.swapchain.create_info()
                         })
                         .expect("failed to recreate swapchain");
 
-                    swapchain = new_swapchain;
+                    rcx.swapchain = new_swapchain;
 
                     // Because framebuffers contains a reference to the old swapchain, we need to
                     // recreate framebuffers as well.
-                    framebuffers = window_size_dependent_setup(
+                    rcx.framebuffers = window_size_dependent_setup(
                         &new_images,
-                        render_pass.clone(),
-                        &mut viewport,
+                        &rcx.render_pass,
                     );
 
-                    recreate_swapchain = false;
+                    rcx.viewport.extent = window_size.into();
+
+                    rcx.recreate_swapchain = false;
                 }
 
                 // Before we can draw on the output, we have to *acquire* an image from the
@@ -573,10 +611,10 @@ fn main() -> Result<(), impl Error> {
                 // This function can block if no image is available. The parameter is an optional
                 // timeout after which the function call will return an error.
                 let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(swapchain.clone(), None).map_err(Validated::unwrap) {
+                    match acquire_next_image(rcx.swapchain.clone(), None).map_err(Validated::unwrap) {
                         Ok(r) => r,
                         Err(VulkanError::OutOfDate) => {
-                            recreate_swapchain = true;
+                            rcx.recreate_swapchain = true;
                             return;
                         }
                         Err(e) => panic!("failed to acquire next image: {e}"),
@@ -587,7 +625,7 @@ fn main() -> Result<(), impl Error> {
                 // drivers this can be when the window resizes, but it may not cause the swapchain
                 // to become out of date.
                 if suboptimal {
-                    recreate_swapchain = true;
+                    rcx.recreate_swapchain = true;
                 }
 
                 // In order to draw, we have to record a *command buffer*. The command buffer object
@@ -600,8 +638,8 @@ fn main() -> Result<(), impl Error> {
                 // Note that we have to pass a queue family when we create the command buffer. The
                 // command buffer will only be executable on that given queue family.
                 let mut builder = RecordingCommandBuffer::new(
-                    command_buffer_allocator.clone(),
-                    queue.queue_family_index(),
+                    self.command_buffer_allocator.clone(),
+                    self.queue.queue_family_index(),
                     CommandBufferLevel::Primary,
                     CommandBufferBeginInfo {
                         usage: CommandBufferUsage::OneTimeSubmit,
@@ -623,7 +661,7 @@ fn main() -> Result<(), impl Error> {
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
 
                             ..RenderPassBeginInfo::framebuffer(
-                                framebuffers[image_index as usize].clone(),
+                                rcx.framebuffers[image_index as usize].clone(),
                             )
                         },
                         SubpassBeginInfo {
@@ -638,17 +676,17 @@ fn main() -> Result<(), impl Error> {
                     // We are now inside the first subpass of the render pass.
                     //
                     // TODO: Document state setting and how it affects subsequent draw commands.
-                    .set_viewport(0, [viewport.clone()].into_iter().collect())
+                    .set_viewport(0, [rcx.viewport.clone()].into_iter().collect())
                     .unwrap()
-                    .bind_pipeline_graphics(pipeline.clone())
+                    .bind_pipeline_graphics(rcx.pipeline.clone())
                     .unwrap()
-                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .bind_vertex_buffers(0, self.vertex_buffer.clone())
                     .unwrap();
 
                 unsafe {
                     builder
                         // We add a draw command.
-                        .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                        .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
                         .unwrap();
                 }
 
@@ -661,11 +699,12 @@ fn main() -> Result<(), impl Error> {
                 // Finish recording the command buffer by calling `end`.
                 let command_buffer = builder.end().unwrap();
 
-                let future = previous_frame_end
+                let future = rcx
+                    .previous_frame_end
                     .take()
                     .unwrap()
                     .join(acquire_future)
-                    .then_execute(queue.clone(), command_buffer)
+                    .then_execute(self.queue.clone(), command_buffer)
                     .unwrap()
                     // The color output is now expected to contain our triangle. But in order to
                     // show it on the screen, we have to *present* the image by calling
@@ -676,18 +715,18 @@ fn main() -> Result<(), impl Error> {
                     // only be presented once the GPU has finished executing the command buffer
                     // that draws the triangle.
                     .then_swapchain_present(
-                        queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
+                        self.queue.clone(),
+                        SwapchainPresentInfo::swapchain_image_index(rcx.swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 
                 match future.map_err(Validated::unwrap) {
                     Ok(future) => {
-                        previous_frame_end = Some(future.boxed());
+                        rcx.previous_frame_end = Some(future.boxed());
                     }
                     Err(VulkanError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        rcx.recreate_swapchain = true;
+                        rcx.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
                     }
                     Err(e) => {
                         panic!("failed to flush future: {e}");
@@ -695,25 +734,35 @@ fn main() -> Result<(), impl Error> {
                     }
                 }
             }
-            Event::AboutToWait => window.request_redraw(),
-            _ => (),
+            _ => {}
         }
-    })
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        let rcx = self.rcx.as_mut().unwrap();
+        rcx.window.request_redraw();
+    }
+}
+
+// We use `#[repr(C)]` here to force rustc to use a defined layout for our data, as the default
+// representation has *no guarantees*.
+#[derive(BufferContents, Vertex)]
+#[repr(C)]
+struct MyVertex {
+    #[format(R32G32_SFLOAT)]
+    position: [f32; 2],
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
 fn window_size_dependent_setup(
     images: &[Arc<Image>],
-    render_pass: Arc<RenderPass>,
-    viewport: &mut Viewport,
+    render_pass: &Arc<RenderPass>,
 ) -> Vec<Arc<Framebuffer>> {
-    let extent = images[0].extent();
-    viewport.extent = [extent[0] as f32, extent[1] as f32];
-
     images
         .iter()
         .map(|image| {
             let view = ImageView::new_default(image.clone()).unwrap();
+
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
