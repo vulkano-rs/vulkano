@@ -196,9 +196,18 @@ impl GameOfLifeComputePipeline {
         builder
             .bind_pipeline_compute(self.compute_life_pipeline.clone())
             .unwrap()
-            .bind_descriptor_sets(PipelineBindPoint::Compute, self.compute_life_pipeline.layout().clone(), 0, descriptor_set)
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.compute_life_pipeline.layout().clone(),
+                0,
+                descriptor_set,
+            )
             .unwrap()
-            .push_constants(self.compute_life_pipeline.layout().clone(), 0, push_constants)
+            .push_constants(
+                self.compute_life_pipeline.layout().clone(),
+                0,
+                push_constants,
+            )
             .unwrap();
 
         unsafe {

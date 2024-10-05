@@ -83,277 +83,281 @@ struct RenderContext {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(event_loop).unwrap();
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: required_extensions,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-    let device_features = DeviceFeatures {
-        tessellation_shader: true,
-        fill_mode_non_solid: true,
-        ..DeviceFeatures::empty()
-    };
-    let (physical_device, queue_family_index) = instance
-        .enumerate_physical_devices()
-        .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter(|p| p.supported_features().contains(&device_features))
-        .filter_map(|p| {
-            p.queue_family_properties()
-                .iter()
-                .enumerate()
-                .position(|(i, q)| {
-                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, event_loop).unwrap()
-                })
-                .map(|i| (p, i as u32))
-        })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
-            _ => 5,
-        })
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                enabled_extensions: required_extensions,
+                ..Default::default()
+            },
+        )
         .unwrap();
 
-    println!(
-        "Using device: {} (type: {:?})",
-        physical_device.properties().device_name,
-        physical_device.properties().device_type,
-    );
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::empty()
+        };
+        let device_features = DeviceFeatures {
+            tessellation_shader: true,
+            fill_mode_non_solid: true,
+            ..DeviceFeatures::empty()
+        };
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter(|p| p.supported_features().contains(&device_features))
+            .filter_map(|p| {
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                            && p.presentation_support(i as u32, event_loop).unwrap()
+                    })
+                    .map(|i| (p, i as u32))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            })
+            .unwrap();
 
-    let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
+                enabled_extensions: device_extensions,
+                enabled_features: device_features,
                 ..Default::default()
-            }],
-            enabled_extensions: device_extensions,
-            enabled_features: device_features,
-            ..Default::default()
-        },
-    )
-    .unwrap();
+            },
+        )
+        .unwrap();
 
-    let queue = queues.next().unwrap();
+        let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
 
-    let vertices = [
-        MyVertex {
-            position: [-0.5, -0.25],
-        },
-        MyVertex {
-            position: [0.0, 0.5],
-        },
-        MyVertex {
-            position: [0.25, -0.1],
-        },
-        MyVertex {
-            position: [0.9, 0.9],
-        },
-        MyVertex {
-            position: [0.9, 0.8],
-        },
-        MyVertex {
-            position: [0.8, 0.8],
-        },
-        MyVertex {
-            position: [-0.9, 0.9],
-        },
-        MyVertex {
-            position: [-0.7, 0.6],
-        },
-        MyVertex {
-            position: [-0.5, 0.9],
-        },
-    ];
-    let vertex_buffer = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        vertices,
-    )
-    .unwrap();
+        let vertices = [
+            MyVertex {
+                position: [-0.5, -0.25],
+            },
+            MyVertex {
+                position: [0.0, 0.5],
+            },
+            MyVertex {
+                position: [0.25, -0.1],
+            },
+            MyVertex {
+                position: [0.9, 0.9],
+            },
+            MyVertex {
+                position: [0.9, 0.8],
+            },
+            MyVertex {
+                position: [0.8, 0.8],
+            },
+            MyVertex {
+                position: [-0.9, 0.9],
+            },
+            MyVertex {
+                position: [-0.7, 0.6],
+            },
+            MyVertex {
+                position: [-0.5, 0.9],
+            },
+        ];
+        let vertex_buffer = Buffer::from_iter(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertices,
+        )
+        .unwrap();
 
-    App {
-        instance,
-        device,
-        queue,
-        command_buffer_allocator,
-        vertex_buffer,
-        rcx: None,
-    }
+        App {
+            instance,
+            device,
+            queue,
+            command_buffer_allocator,
+            vertex_buffer,
+            rcx: None,
+        }
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-    let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
-    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
-    let window_size = window.inner_size();
-
-    let (swapchain, images) = {
-        let surface_capabilities = self
-            .device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-        let (image_format, _) = self
-            .device
-            .physical_device()
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0];
-
-        Swapchain::new(
-            self.device.clone(),
-            surface,
-            SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count.max(2),
-                image_format,
-                image_extent: window.inner_size().into(),
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap(),
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    };
-
-    let render_pass = vulkano::single_pass_renderpass!(
-        self.device.clone(),
-        attachments: {
-            color: {
-                format: swapchain.image_format(),
-                samples: 1,
-                load_op: Clear,
-                store_op: Store,
-            },
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {},
-        },
-    )
-    .unwrap();
-
-    let framebuffers = window_size_dependent_setup(&images, &render_pass);
-
-    let pipeline = {
-        let vs = vs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let tcs = tcs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let tes = tes::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
-        let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(tcs),
-            PipelineShaderStageCreateInfo::new(tes),
-            PipelineShaderStageCreateInfo::new(fs),
-        ];
-        let layout = PipelineLayout::new(
-            self.device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(self.device.clone())
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
                 .unwrap(),
+        );
+        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let window_size = window.inner_size();
+
+        let (swapchain, images) = {
+            let surface_capabilities = self
+                .device
+                .physical_device()
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+            let (image_format, _) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0];
+
+            Swapchain::new(
+                self.device.clone(),
+                surface,
+                SwapchainCreateInfo {
+                    min_image_count: surface_capabilities.min_image_count.max(2),
+                    image_format,
+                    image_extent: window.inner_size().into(),
+                    image_usage: ImageUsage::COLOR_ATTACHMENT,
+                    composite_alpha: surface_capabilities
+                        .supported_composite_alpha
+                        .into_iter()
+                        .next()
+                        .unwrap(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        let render_pass = vulkano::single_pass_renderpass!(
+            self.device.clone(),
+            attachments: {
+                color: {
+                    format: swapchain.image_format(),
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
+                },
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {},
+            },
         )
         .unwrap();
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
-        GraphicsPipeline::new(
-            self.device.clone(),
-            None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState {
-                    topology: PrimitiveTopology::PatchList,
-                    ..Default::default()
-                }),
-                tessellation_state: Some(TessellationState {
-                    // Use a patch_control_points of 3, because we want to convert one *triangle*
-                    // into lots of little ones.
-                    // A value of 4 would convert a *rectangle* into lots of little triangles.
-                    patch_control_points: 3,
-                    ..Default::default()
-                }),
-                viewport_state: Some(ViewportState::default()),
-                rasterization_state: Some(RasterizationState {
-                    polygon_mode: PolygonMode::Line,
-                    ..Default::default()
-                }),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
-            },
-        )
-        .unwrap()
-    };
+        let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
-    let viewport = Viewport {
-        offset: [0.0, 0.0],
-        extent: window_size.into(),
-        depth_range: 0.0..=1.0,
-    };
+        let pipeline = {
+            let vs = vs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let tcs = tcs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let tes = tes::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = fs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(tcs),
+                PipelineShaderStageCreateInfo::new(tes),
+                PipelineShaderStageCreateInfo::new(fs),
+            ];
+            let layout = PipelineLayout::new(
+                self.device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(self.device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
-    let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+            GraphicsPipeline::new(
+                self.device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState {
+                        topology: PrimitiveTopology::PatchList,
+                        ..Default::default()
+                    }),
+                    tessellation_state: Some(TessellationState {
+                        // Use a patch_control_points of 3, because we want to convert one
+                        // *triangle* into lots of little ones. A value of 4 would convert a
+                        // *rectangle* into lots of little triangles.
+                        patch_control_points: 3,
+                        ..Default::default()
+                    }),
+                    viewport_state: Some(ViewportState::default()),
+                    rasterization_state: Some(RasterizationState {
+                        polygon_mode: PolygonMode::Line,
+                        ..Default::default()
+                    }),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
+                        subpass.num_color_attachments(),
+                        ColorBlendAttachmentState::default(),
+                    )),
+                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
+        };
 
-    self.rcx = Some(RenderContext {
-        window,
-        swapchain,
-        render_pass,
-        framebuffers,
-        pipeline,
-        viewport,
-        recreate_swapchain: false,
-        previous_frame_end,
-    });
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: window_size.into(),
+            depth_range: 0.0..=1.0,
+        };
+
+        let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+
+        self.rcx = Some(RenderContext {
+            window,
+            swapchain,
+            render_pass,
+            framebuffers,
+            pipeline,
+            viewport,
+            recreate_swapchain: false,
+            previous_frame_end,
+        });
     }
 
     fn window_event(
@@ -395,15 +399,19 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = false;
                 }
 
-                let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(rcx.swapchain.clone(), None).map_err(Validated::unwrap) {
-                        Ok(r) => r,
-                        Err(VulkanError::OutOfDate) => {
-                            rcx.recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("failed to acquire next image: {e}"),
-                    };
+                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
+                    rcx.swapchain.clone(),
+                    None,
+                )
+                .map_err(Validated::unwrap)
+                {
+                    Ok(r) => r,
+                    Err(VulkanError::OutOfDate) => {
+                        rcx.recreate_swapchain = true;
+                        return;
+                    }
+                    Err(e) => panic!("failed to acquire next image: {e}"),
+                };
 
                 if suboptimal {
                     rcx.recreate_swapchain = true;
@@ -439,7 +447,9 @@ impl ApplicationHandler for App {
                     .unwrap();
 
                 unsafe {
-                    builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0).unwrap();
+                    builder
+                        .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+                        .unwrap();
                 }
 
                 builder.end_render_pass(Default::default()).unwrap();
@@ -454,7 +464,10 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(rcx.swapchain.clone(), image_index),
+                        SwapchainPresentInfo::swapchain_image_index(
+                            rcx.swapchain.clone(),
+                            image_index,
+                        ),
                     )
                     .then_signal_fence_and_flush();
 

@@ -171,7 +171,12 @@ impl FractalComputePipeline {
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .unwrap()
-            .bind_descriptor_sets(PipelineBindPoint::Compute, self.pipeline.layout().clone(), 0, descriptor_set)
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.pipeline.layout().clone(),
+                0,
+                descriptor_set,
+            )
             .unwrap()
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap();

@@ -1,4 +1,4 @@
-use crate::{App, pixels_draw::PixelsDrawPipeline};
+use crate::{pixels_draw::PixelsDrawPipeline, App};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
@@ -23,11 +23,7 @@ pub struct RenderPassPlaceOverFrame {
 }
 
 impl RenderPassPlaceOverFrame {
-    pub fn new(
-        app: &App,
-        gfx_queue: Arc<Queue>,
-        window_id: WindowId,
-    ) -> RenderPassPlaceOverFrame {
+    pub fn new(app: &App, gfx_queue: Arc<Queue>, window_id: WindowId) -> RenderPassPlaceOverFrame {
         let window_renderer = app.windows.get_renderer(window_id).unwrap();
         let render_pass = vulkano::single_pass_renderpass!(
             gfx_queue.device().clone(),

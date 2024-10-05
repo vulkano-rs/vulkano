@@ -10,14 +10,17 @@
 use game_of_life::GameOfLifeComputePipeline;
 use glam::{f32::Vec2, IVec2};
 use render_pass::RenderPassPlaceOverFrame;
+use std::{
+    collections::HashMap,
+    error::Error,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use vulkano::{
     command_buffer::allocator::{
         StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
-};
-use std::{
-    collections::HashMap, error::Error, sync::Arc, time::{Duration, Instant}
 };
 use vulkano_util::{
     context::{VulkanoConfig, VulkanoContext},
@@ -141,7 +144,7 @@ impl ApplicationHandler for App {
                 life_color: [1.0, 0.0, 0.0, 1.0],
                 dead_color: [0.0; 4],
                 mouse_is_pressed: false,
-            }
+            },
         );
         self.rcxs.insert(
             id2,
@@ -158,7 +161,7 @@ impl ApplicationHandler for App {
                 life_color: [0.0, 0.0, 0.0, 1.0],
                 dead_color: [1.0; 4],
                 mouse_is_pressed: false,
-            }
+            },
         );
     }
 
@@ -247,10 +250,7 @@ fn draw_life(
 }
 
 /// Compute game of life, then display result on target image.
-fn compute_then_render(
-    window_renderer: &mut VulkanoWindowRenderer,
-    rcx: &mut RenderContext,
-) {
+fn compute_then_render(window_renderer: &mut VulkanoWindowRenderer, rcx: &mut RenderContext) {
     // Start the frame.
     let before_pipeline_future =
         match window_renderer.acquire(Some(Duration::from_millis(1000)), |swapchain_image_views| {
@@ -265,9 +265,9 @@ fn compute_then_render(
         };
 
     // Compute.
-    let after_compute = rcx
-        .compute_pipeline
-        .compute(before_pipeline_future, rcx.life_color, rcx.dead_color);
+    let after_compute =
+        rcx.compute_pipeline
+            .compute(before_pipeline_future, rcx.life_color, rcx.dead_color);
 
     // Render.
     let color_image = rcx.compute_pipeline.color_image();

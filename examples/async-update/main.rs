@@ -136,69 +136,69 @@ struct RenderContext {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(event_loop).unwrap();
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: required_extensions,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-    let (physical_device, graphics_family_index) = instance
-        .enumerate_physical_devices()
-        .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter_map(|p| {
-            p.queue_family_properties()
-                .iter()
-                .enumerate()
-                .position(|(i, q)| {
-                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, event_loop).unwrap()
-                })
-                .map(|i| (p, i as u32))
-        })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
-            _ => 5,
-        })
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                enabled_extensions: required_extensions,
+                ..Default::default()
+            },
+        )
         .unwrap();
 
-    println!(
-        "Using device: {} (type: {:?})",
-        physical_device.properties().device_name,
-        physical_device.properties().device_type,
-    );
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::empty()
+        };
+        let (physical_device, graphics_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter_map(|p| {
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                            && p.presentation_support(i as u32, event_loop).unwrap()
+                    })
+                    .map(|i| (p, i as u32))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            })
+            .unwrap();
 
-    // Since we are going to be updating the texture on a separate thread asynchronously from the
-    // execution of graphics commands, it would make sense to also do the transfer on a dedicated
-    // transfer queue, if such a queue family exists. That way, the graphics queue is not blocked
-    // during the transfers either and the two tasks are truly asynchronous.
-    //
-    // For this, we need to find the queue family with the fewest queue flags set, since if the
-    // queue family has more flags than `TRANSFER | SPARSE_BINDING`, that means it is not dedicated
-    // to transfer operations.
-    let transfer_family_index = physical_device
-        .queue_family_properties()
-        .iter()
-        .enumerate()
-        .filter(|(_, q)| {
-            q.queue_flags.intersects(QueueFlags::TRANSFER)
-                // Queue families dedicated to transfers are not required to support partial 
-                // transfers of images, reported by a minimum granularity of [0, 0, 0]. If you need 
-                // to do partial transfers of images like we do in this example, you therefore have 
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        // Since we are going to be updating the texture on a separate thread asynchronously from
+        // the execution of graphics commands, it would make sense to also do the transfer on a
+        // dedicated transfer queue, if such a queue family exists. That way, the graphics queue is
+        // not blocked during the transfers either and the two tasks are truly asynchronous.
+        //
+        // For this, we need to find the queue family with the fewest queue flags set, since if the
+        // queue family has more flags than `TRANSFER | SPARSE_BINDING`, that means it is not
+        // dedicated to transfer operations.
+        let transfer_family_index = physical_device
+            .queue_family_properties()
+            .iter()
+            .enumerate()
+            .filter(|(_, q)| {
+                q.queue_flags.intersects(QueueFlags::TRANSFER)
+                // Queue families dedicated to transfers are not required to support partial
+                // transfers of images, reported by a minimum granularity of [0, 0, 0]. If you need
+                // to do partial transfers of images like we do in this example, you therefore have
                 // to make sure the queue family supports that.
                 && q.min_image_transfer_granularity != [0; 3]
                 // Unlike queue families for graphics and/or compute, queue families dedicated to
@@ -210,99 +210,82 @@ impl App {
                 && q.min_image_transfer_granularity[0..2]
                     .iter()
                     .all(|&g| TRANSFER_GRANULARITY % g == 0)
-        })
-        .min_by_key(|(_, q)| q.queue_flags.count())
-        .unwrap()
-        .0 as u32;
+            })
+            .min_by_key(|(_, q)| q.queue_flags.count())
+            .unwrap()
+            .0 as u32;
 
-    let (device, mut queues) = {
-        let mut queue_create_infos = vec![QueueCreateInfo {
-            queue_family_index: graphics_family_index,
-            ..Default::default()
-        }];
-
-        // It's possible that the physical device doesn't have any queue families supporting
-        // transfers other than the graphics and/or compute queue family. In that case we must make
-        // sure we don't request the same queue family twice.
-        if transfer_family_index != graphics_family_index {
-            queue_create_infos.push(QueueCreateInfo {
-                queue_family_index: transfer_family_index,
+        let (device, mut queues) = {
+            let mut queue_create_infos = vec![QueueCreateInfo {
+                queue_family_index: graphics_family_index,
                 ..Default::default()
-            });
-        } else {
-            let queue_family_properties =
-                &physical_device.queue_family_properties()[graphics_family_index as usize];
+            }];
 
-            // Even if we can't get an async transfer queue family, it's still better to use
-            // different queues on the same queue family. This way, at least the threads on the
-            // host don't have to lock the same queue when submitting.
-            if queue_family_properties.queue_count > 1 {
-                queue_create_infos[0].queues.push(0.5);
+            // It's possible that the physical device doesn't have any queue families supporting
+            // transfers other than the graphics and/or compute queue family. In that case we must
+            // make sure we don't request the same queue family twice.
+            if transfer_family_index != graphics_family_index {
+                queue_create_infos.push(QueueCreateInfo {
+                    queue_family_index: transfer_family_index,
+                    ..Default::default()
+                });
+            } else {
+                let queue_family_properties =
+                    &physical_device.queue_family_properties()[graphics_family_index as usize];
+
+                // Even if we can't get an async transfer queue family, it's still better to use
+                // different queues on the same queue family. This way, at least the threads on the
+                // host don't have to lock the same queue when submitting.
+                if queue_family_properties.queue_count > 1 {
+                    queue_create_infos[0].queues.push(0.5);
+                }
             }
-        }
 
-        Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                queue_create_infos,
-                ..Default::default()
+            Device::new(
+                physical_device,
+                DeviceCreateInfo {
+                    enabled_extensions: device_extensions,
+                    queue_create_infos,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        let graphics_queue = queues.next().unwrap();
+
+        // If we didn't get a dedicated transfer queue, fall back to the graphics queue for
+        // transfers.
+        let transfer_queue = queues.next().unwrap_or_else(|| graphics_queue.clone());
+
+        println!(
+            "Using queue family {graphics_family_index} for graphics and queue family \
+            {transfer_family_index} for transfers",
+        );
+
+        let resources = Resources::new(&device, &Default::default());
+
+        let graphics_flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
+        let transfer_flight_id = resources.create_flight(1).unwrap();
+
+        let vertices = [
+            MyVertex {
+                position: [-0.5, -0.5],
             },
-        )
-        .unwrap()
-    };
-
-    let graphics_queue = queues.next().unwrap();
-
-    // If we didn't get a dedicated transfer queue, fall back to the graphics queue for transfers.
-    let transfer_queue = queues.next().unwrap_or_else(|| graphics_queue.clone());
-
-    println!(
-        "Using queue family {graphics_family_index} for graphics and queue family \
-        {transfer_family_index} for transfers",
-    );
-
-    let resources = Resources::new(&device, &Default::default());
-
-    let graphics_flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
-    let transfer_flight_id = resources.create_flight(1).unwrap();
-
-    let vertices = [
-        MyVertex {
-            position: [-0.5, -0.5],
-        },
-        MyVertex {
-            position: [-0.5, 0.5],
-        },
-        MyVertex {
-            position: [0.5, -0.5],
-        },
-        MyVertex {
-            position: [0.5, 0.5],
-        },
-    ];
-    let vertex_buffer_id = resources
-        .create_buffer(
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
+            MyVertex {
+                position: [-0.5, 0.5],
             },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
+            MyVertex {
+                position: [0.5, -0.5],
             },
-            DeviceLayout::from_layout(Layout::for_value(&vertices)).unwrap(),
-        )
-        .unwrap();
-
-    // Create a pool of uniform buffers, one per frame in flight. This way we always have an
-    // available buffer to write during each frame while reusing them as much as possible.
-    let uniform_buffer_ids = [(); MAX_FRAMES_IN_FLIGHT as usize].map(|_| {
-        resources
+            MyVertex {
+                position: [0.5, 0.5],
+            },
+        ];
+        let vertex_buffer_id = resources
             .create_buffer(
                 BufferCreateInfo {
-                    usage: BufferUsage::UNIFORM_BUFFER,
+                    usage: BufferUsage::VERTEX_BUFFER,
                     ..Default::default()
                 },
                 AllocationCreateInfo {
@@ -310,339 +293,361 @@ impl App {
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
-                DeviceLayout::from_layout(Layout::new::<vs::Data>()).unwrap(),
+                DeviceLayout::from_layout(Layout::for_value(&vertices)).unwrap(),
             )
-            .unwrap()
-    });
+            .unwrap();
 
-    // Create two textures, where at any point in time one is used exclusively for reading and
-    // one is used exclusively for writing, swapping the two after each update.
-    let texture_ids = [(); 2].map(|_| {
-        resources
-            .create_image(
-                ImageCreateInfo {
-                    image_type: ImageType::Dim2d,
-                    format: Format::R8G8B8A8_UNORM,
-                    extent: [TRANSFER_GRANULARITY * 2, TRANSFER_GRANULARITY * 2, 1],
-                    usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
-                    sharing: if graphics_family_index != transfer_family_index {
-                        Sharing::Concurrent(
-                            [graphics_family_index, transfer_family_index]
-                                .into_iter()
-                                .collect(),
-                        )
-                    } else {
-                        Sharing::Exclusive
-                    },
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-            )
-            .unwrap()
-    });
-
-    // The index of the currently most up-to-date texture. The worker thread swaps the index after
-    // every finished write, which is always done to the, at that point in time, unused texture.
-    let current_texture_index = Arc::new(AtomicBool::new(false));
-
-    // Initialize the resources.
-    unsafe {
-        vulkano_taskgraph::execute(
-            &graphics_queue,
-            &resources,
-            graphics_flight_id,
-            |cbf, tcx| {
-                tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
-                    .copy_from_slice(&vertices);
-
-                for &texture_id in &texture_ids {
-                    cbf.clear_color_image(&ClearColorImageInfo {
-                        image: texture_id,
+        // Create a pool of uniform buffers, one per frame in flight. This way we always have an
+        // available buffer to write during each frame while reusing them as much as possible.
+        let uniform_buffer_ids = [(); MAX_FRAMES_IN_FLIGHT as usize].map(|_| {
+            resources
+                .create_buffer(
+                    BufferCreateInfo {
+                        usage: BufferUsage::UNIFORM_BUFFER,
                         ..Default::default()
-                    })?;
-                }
+                    },
+                    AllocationCreateInfo {
+                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                    DeviceLayout::from_layout(Layout::new::<vs::Data>()).unwrap(),
+                )
+                .unwrap()
+        });
 
-                Ok(())
-            },
-            [(vertex_buffer_id, HostAccessType::Write)],
-            [],
-            [
-                (
-                    texture_ids[0],
-                    AccessType::ClearTransferWrite,
-                    ImageLayoutType::Optimal,
-                ),
-                (
-                    texture_ids[1],
-                    AccessType::ClearTransferWrite,
-                    ImageLayoutType::Optimal,
-                ),
-            ],
-        )
-    }
-    .unwrap();
+        // Create two textures, where at any point in time one is used exclusively for reading and
+        // one is used exclusively for writing, swapping the two after each update.
+        let texture_ids = [(); 2].map(|_| {
+            resources
+                .create_image(
+                    ImageCreateInfo {
+                        image_type: ImageType::Dim2d,
+                        format: Format::R8G8B8A8_UNORM,
+                        extent: [TRANSFER_GRANULARITY * 2, TRANSFER_GRANULARITY * 2, 1],
+                        usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                        sharing: if graphics_family_index != transfer_family_index {
+                            Sharing::Concurrent(
+                                [graphics_family_index, transfer_family_index]
+                                    .into_iter()
+                                    .collect(),
+                            )
+                        } else {
+                            Sharing::Exclusive
+                        },
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap()
+        });
 
-    // Start the worker thread.
-    let (channel, receiver) = mpsc::channel();
-    run_worker(
-        receiver,
-        graphics_family_index,
-        transfer_family_index,
-        transfer_queue.clone(),
-        resources.clone(),
-        graphics_flight_id,
-        transfer_flight_id,
-        texture_ids,
-        current_texture_index.clone(),
-    );
+        // The index of the currently most up-to-date texture. The worker thread swaps the index
+        // after every finished write, which is always done to the, at that point in time, unused
+        // texture.
+        let current_texture_index = Arc::new(AtomicBool::new(false));
 
-    App {
-        instance,
-        device,
-        graphics_family_index,
-        transfer_family_index,
-        graphics_queue,
-        resources,
-        graphics_flight_id,
-        vertex_buffer_id,
-        uniform_buffer_ids,
-        texture_ids,
-        current_texture_index,
-        channel,
-        rcx: None,
-    }
+        // Initialize the resources.
+        unsafe {
+            vulkano_taskgraph::execute(
+                &graphics_queue,
+                &resources,
+                graphics_flight_id,
+                |cbf, tcx| {
+                    tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
+                        .copy_from_slice(&vertices);
+
+                    for &texture_id in &texture_ids {
+                        cbf.clear_color_image(&ClearColorImageInfo {
+                            image: texture_id,
+                            ..Default::default()
+                        })?;
+                    }
+
+                    Ok(())
+                },
+                [(vertex_buffer_id, HostAccessType::Write)],
+                [],
+                [
+                    (
+                        texture_ids[0],
+                        AccessType::ClearTransferWrite,
+                        ImageLayoutType::Optimal,
+                    ),
+                    (
+                        texture_ids[1],
+                        AccessType::ClearTransferWrite,
+                        ImageLayoutType::Optimal,
+                    ),
+                ],
+            )
+        }
+        .unwrap();
+
+        // Start the worker thread.
+        let (channel, receiver) = mpsc::channel();
+        run_worker(
+            receiver,
+            graphics_family_index,
+            transfer_family_index,
+            transfer_queue.clone(),
+            resources.clone(),
+            graphics_flight_id,
+            transfer_flight_id,
+            texture_ids,
+            current_texture_index.clone(),
+        );
+
+        App {
+            instance,
+            device,
+            graphics_family_index,
+            transfer_family_index,
+            graphics_queue,
+            resources,
+            graphics_flight_id,
+            vertex_buffer_id,
+            uniform_buffer_ids,
+            texture_ids,
+            current_texture_index,
+            channel,
+            rcx: None,
+        }
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-    let window = Arc::new(
-        event_loop
-            .create_window(Window::default_attributes())
-            .unwrap(),
-    );
-    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
-    let window_size = window.inner_size();
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
+                .unwrap(),
+        );
+        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let window_size = window.inner_size();
 
-    let swapchain_format;
-    let swapchain_id = {
-        let surface_capabilities = self
-            .device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
+        let swapchain_format;
+        let swapchain_id = {
+            let surface_capabilities = self
+                .device
+                .physical_device()
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+            (swapchain_format, _) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0];
+
+            self.resources
+                .create_swapchain(
+                    self.graphics_flight_id,
+                    surface,
+                    SwapchainCreateInfo {
+                        min_image_count: surface_capabilities.min_image_count.max(3),
+                        image_format: swapchain_format,
+                        image_extent: window_size.into(),
+                        image_usage: ImageUsage::COLOR_ATTACHMENT,
+                        composite_alpha: surface_capabilities
+                            .supported_composite_alpha
+                            .into_iter()
+                            .next()
+                            .unwrap(),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+        };
+
+        let render_pass = vulkano::single_pass_renderpass!(
+            self.device.clone(),
+            attachments: {
+                color: {
+                    format: swapchain_format,
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
+                },
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {},
+            },
+        )
+        .unwrap();
+
+        let framebuffers = window_size_dependent_setup(&self.resources, swapchain_id, &render_pass);
+
+        let pipeline = {
+            let vs = vs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = fs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
+            ];
+            let layout = PipelineLayout::new(
+                self.device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(self.device.clone())
+                    .unwrap(),
+            )
             .unwrap();
-        (swapchain_format, _) = self
-            .device
-            .physical_device()
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0];
+            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
-        self.resources
-            .create_swapchain(
-                self.graphics_flight_id,
-                surface,
-                SwapchainCreateInfo {
-                    min_image_count: surface_capabilities.min_image_count.max(3),
-                    image_format: swapchain_format,
-                    image_extent: window_size.into(),
-                    image_usage: ImageUsage::COLOR_ATTACHMENT,
-                    composite_alpha: surface_capabilities
-                        .supported_composite_alpha
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-                    ..Default::default()
+            GraphicsPipeline::new(
+                self.device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState {
+                        topology: PrimitiveTopology::TriangleStrip,
+                        ..Default::default()
+                    }),
+                    viewport_state: Some(ViewportState::default()),
+                    rasterization_state: Some(RasterizationState::default()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
+                        subpass.num_color_attachments(),
+                        ColorBlendAttachmentState::default(),
+                    )),
+                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
                 },
             )
             .unwrap()
-    };
+        };
 
-    let render_pass = vulkano::single_pass_renderpass!(
-        self.device.clone(),
-        attachments: {
-            color: {
-                format: swapchain_format,
-                samples: 1,
-                load_op: Clear,
-                store_op: Store,
-            },
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {},
-        },
-    )
-    .unwrap();
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: window_size.into(),
+            depth_range: 0.0..=1.0,
+        };
 
-    let framebuffers = window_size_dependent_setup(&self.resources, swapchain_id, &render_pass);
-
-    let pipeline = {
-        let vs = vs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
-        let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
-        ];
-        let layout = PipelineLayout::new(
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             self.device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(self.device.clone())
-                .unwrap(),
+            Default::default(),
+        ));
+
+        // A byproduct of always using the same set of uniform buffers is that we can also create
+        // one descriptor set for each, reusing them in the same way as the buffers.
+        let uniform_buffer_sets = self.uniform_buffer_ids.map(|buffer_id| {
+            let buffer_state = self.resources.buffer(buffer_id).unwrap();
+            let buffer = buffer_state.buffer();
+
+            DescriptorSet::new(
+                descriptor_set_allocator.clone(),
+                pipeline.layout().set_layouts()[0].clone(),
+                [WriteDescriptorSet::buffer(0, buffer.clone().into())],
+                [],
+            )
+            .unwrap()
+        });
+
+        // Create the descriptor sets for sampling the textures.
+        let sampler = Sampler::new(
+            self.device.clone(),
+            SamplerCreateInfo::simple_repeat_linear(),
         )
         .unwrap();
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        let sampler_sets = self.texture_ids.map(|texture_id| {
+            let texture_state = self.resources.image(texture_id).unwrap();
+            let texture = texture_state.image();
 
-        GraphicsPipeline::new(
-            self.device.clone(),
-            None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState {
-                    topology: PrimitiveTopology::TriangleStrip,
-                    ..Default::default()
-                }),
-                viewport_state: Some(ViewportState::default()),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
-            },
-        )
-        .unwrap()
-    };
-
-    let viewport = Viewport {
-        offset: [0.0, 0.0],
-        extent: window_size.into(),
-        depth_range: 0.0..=1.0,
-    };
-
-    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        self.device.clone(),
-        Default::default(),
-    ));
-
-    // A byproduct of always using the same set of uniform buffers is that we can also create one
-    // descriptor set for each, reusing them in the same way as the buffers.
-    let uniform_buffer_sets = self.uniform_buffer_ids.map(|buffer_id| {
-        let buffer_state = self.resources.buffer(buffer_id).unwrap();
-        let buffer = buffer_state.buffer();
-
-        DescriptorSet::new(
-            descriptor_set_allocator.clone(),
-            pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, buffer.clone().into())],
-            [],
-        )
-        .unwrap()
-    });
-
-    // Create the descriptor sets for sampling the textures.
-    let sampler = Sampler::new(
-        self.device.clone(),
-        SamplerCreateInfo::simple_repeat_linear(),
-    )
-    .unwrap();
-    let sampler_sets = self.texture_ids.map(|texture_id| {
-        let texture_state = self.resources.image(texture_id).unwrap();
-        let texture = texture_state.image();
-
-        DescriptorSet::new(
-            descriptor_set_allocator.clone(),
-            pipeline.layout().set_layouts()[1].clone(),
-            [
-                WriteDescriptorSet::sampler(0, sampler.clone()),
-                WriteDescriptorSet::image_view(1, ImageView::new_default(texture.clone()).unwrap()),
-            ],
-            [],
-        )
-        .unwrap()
-    });
-
-    let mut task_graph = TaskGraph::new(&self.resources, 1, 4);
-
-    let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
-    let virtual_texture_id = task_graph.add_image(&ImageCreateInfo {
-        sharing: if self.graphics_family_index != self.transfer_family_index {
-            Sharing::Concurrent(
-                [self.graphics_family_index, self.transfer_family_index]
-                    .into_iter()
-                    .collect(),
+            DescriptorSet::new(
+                descriptor_set_allocator.clone(),
+                pipeline.layout().set_layouts()[1].clone(),
+                [
+                    WriteDescriptorSet::sampler(0, sampler.clone()),
+                    WriteDescriptorSet::image_view(
+                        1,
+                        ImageView::new_default(texture.clone()).unwrap(),
+                    ),
+                ],
+                [],
             )
-        } else {
-            Sharing::Exclusive
-        },
-        ..Default::default()
-    });
-    let virtual_uniform_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
+            .unwrap()
+        });
 
-    task_graph.add_host_buffer_access(virtual_uniform_buffer_id, HostAccessType::Write);
+        let mut task_graph = TaskGraph::new(&self.resources, 1, 4);
 
-    task_graph
-        .create_task_node(
-            "Render",
-            QueueFamilyType::Graphics,
-            RenderTask {
-                swapchain_id: virtual_swapchain_id,
-                vertex_buffer_id: self.vertex_buffer_id,
-                current_texture_index: self.current_texture_index.clone(),
-                pipeline,
-                uniform_buffer_id: virtual_uniform_buffer_id,
-                uniform_buffer_sets,
-                sampler_sets,
+        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
+        let virtual_texture_id = task_graph.add_image(&ImageCreateInfo {
+            sharing: if self.graphics_family_index != self.transfer_family_index {
+                Sharing::Concurrent(
+                    [self.graphics_family_index, self.transfer_family_index]
+                        .into_iter()
+                        .collect(),
+                )
+            } else {
+                Sharing::Exclusive
             },
-        )
-        .image_access(
-            virtual_swapchain_id.current_image_id(),
-            AccessType::ColorAttachmentWrite,
-            ImageLayoutType::Optimal,
-        )
-        .buffer_access(self.vertex_buffer_id, AccessType::VertexAttributeRead)
-        .image_access(
-            virtual_texture_id,
-            AccessType::FragmentShaderSampledRead,
-            ImageLayoutType::Optimal,
-        )
-        .buffer_access(
-            virtual_uniform_buffer_id,
-            AccessType::VertexShaderUniformRead,
-        );
-
-    let task_graph = unsafe {
-        task_graph.compile(&CompileInfo {
-            queues: &[&self.graphics_queue],
-            present_queue: Some(&self.graphics_queue),
-            flight_id: self.graphics_flight_id,
             ..Default::default()
-        })
-    }
-    .unwrap();
+        });
+        let virtual_uniform_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
 
-    self.rcx = Some(RenderContext {
-        window,
-        swapchain_id,
-        render_pass,
-        framebuffers,
-        viewport,
-        recreate_swapchain: false,
-        task_graph,
-        virtual_swapchain_id,
-        virtual_texture_id,
-        virtual_uniform_buffer_id,
-    });
+        task_graph.add_host_buffer_access(virtual_uniform_buffer_id, HostAccessType::Write);
+
+        task_graph
+            .create_task_node(
+                "Render",
+                QueueFamilyType::Graphics,
+                RenderTask {
+                    swapchain_id: virtual_swapchain_id,
+                    vertex_buffer_id: self.vertex_buffer_id,
+                    current_texture_index: self.current_texture_index.clone(),
+                    pipeline,
+                    uniform_buffer_id: virtual_uniform_buffer_id,
+                    uniform_buffer_sets,
+                    sampler_sets,
+                },
+            )
+            .image_access(
+                virtual_swapchain_id.current_image_id(),
+                AccessType::ColorAttachmentWrite,
+                ImageLayoutType::Optimal,
+            )
+            .buffer_access(self.vertex_buffer_id, AccessType::VertexAttributeRead)
+            .image_access(
+                virtual_texture_id,
+                AccessType::FragmentShaderSampledRead,
+                ImageLayoutType::Optimal,
+            )
+            .buffer_access(
+                virtual_uniform_buffer_id,
+                AccessType::VertexShaderUniformRead,
+            );
+
+        let task_graph = unsafe {
+            task_graph.compile(&CompileInfo {
+                queues: &[&self.graphics_queue],
+                present_queue: Some(&self.graphics_queue),
+                flight_id: self.graphics_flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        self.rcx = Some(RenderContext {
+            window,
+            swapchain_id,
+            render_pass,
+            framebuffers,
+            viewport,
+            recreate_swapchain: false,
+            task_graph,
+            virtual_swapchain_id,
+            virtual_texture_id,
+            virtual_uniform_buffer_id,
+        });
     }
 
     fn window_event(

@@ -92,297 +92,301 @@ struct RenderContext {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(event_loop).unwrap();
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: required_extensions,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ext_mesh_shader: true,
-        ..DeviceExtensions::empty()
-    };
-    let (physical_device, queue_family_index) = instance
-        .enumerate_physical_devices()
-        .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter_map(|p| {
-            p.queue_family_properties()
-                .iter()
-                .enumerate()
-                .position(|(i, q)| {
-                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, event_loop).unwrap()
-                })
-                .map(|i| (p, i as u32))
-        })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
-            _ => 5,
-        })
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                enabled_extensions: required_extensions,
+                ..Default::default()
+            },
+        )
         .unwrap();
 
-    println!(
-        "Using device: {} (type: {:?})",
-        physical_device.properties().device_name,
-        physical_device.properties().device_type,
-    );
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ext_mesh_shader: true,
+            ..DeviceExtensions::empty()
+        };
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter_map(|p| {
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                            && p.presentation_support(i as u32, event_loop).unwrap()
+                    })
+                    .map(|i| (p, i as u32))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            })
+            .unwrap();
 
-    let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            enabled_features: DeviceFeatures {
-                mesh_shader: true,
-                ..DeviceFeatures::default()
-            },
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: device_extensions,
+                enabled_features: DeviceFeatures {
+                    mesh_shader: true,
+                    ..DeviceFeatures::default()
+                },
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
                 ..Default::default()
-            }],
-            ..Default::default()
-        },
-    )
-    .unwrap();
+            },
+        )
+        .unwrap();
 
-    let queue = queues.next().unwrap();
+        let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
 
-    // We now create a buffer that will store the shape of our triangle. This triangle is identical
-    // to the one in the `triangle.rs` example.
-    let vertices = [
-        TriangleVertex {
-            position: [-0.5, -0.25],
-        },
-        TriangleVertex {
-            position: [0.0, 0.5],
-        },
-        TriangleVertex {
-            position: [0.25, -0.1],
-        },
-    ];
-    let vertex_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::STORAGE_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        vertices,
-    )
-    .unwrap();
+        // We now create a buffer that will store the shape of our triangle. This triangle is
+        // identical to the one in the `triangle.rs` example.
+        let vertices = [
+            TriangleVertex {
+                position: [-0.5, -0.25],
+            },
+            TriangleVertex {
+                position: [0.0, 0.5],
+            },
+            TriangleVertex {
+                position: [0.25, -0.1],
+            },
+        ];
+        let vertex_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertices,
+        )
+        .unwrap();
 
-    // Now we create another buffer that will store the unique data per instance. For this example,
-    // we'll have the instances form a 10x10 grid that slowly gets larger.
-    let rows = 10;
-    let cols = 10;
-    let instances = {
-        let n_instances = rows * cols;
-        let mut data = Vec::new();
-        for c in 0..cols {
-            for r in 0..rows {
-                let half_cell_w = 0.5 / cols as f32;
-                let half_cell_h = 0.5 / rows as f32;
-                let x = half_cell_w + (c as f32 / cols as f32) * 2.0 - 1.0;
-                let y = half_cell_h + (r as f32 / rows as f32) * 2.0 - 1.0;
-                let position_offset = [x, y];
-                let scale = (2.0 / rows as f32) * (c * rows + r) as f32 / n_instances as f32;
-                data.push(InstanceData {
-                    position_offset,
-                    scale,
-                });
+        // Now we create another buffer that will store the unique data per instance. For this
+        // example, we'll have the instances form a 10x10 grid that slowly gets larger.
+        let rows = 10;
+        let cols = 10;
+        let instances = {
+            let n_instances = rows * cols;
+            let mut data = Vec::new();
+            for c in 0..cols {
+                for r in 0..rows {
+                    let half_cell_w = 0.5 / cols as f32;
+                    let half_cell_h = 0.5 / rows as f32;
+                    let x = half_cell_w + (c as f32 / cols as f32) * 2.0 - 1.0;
+                    let y = half_cell_h + (r as f32 / rows as f32) * 2.0 - 1.0;
+                    let position_offset = [x, y];
+                    let scale = (2.0 / rows as f32) * (c * rows + r) as f32 / n_instances as f32;
+                    data.push(InstanceData {
+                        position_offset,
+                        scale,
+                    });
+                }
+            }
+            data
+        };
+        let instance_buffer = Buffer::new_unsized::<mesh::InstanceBuffer>(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            instances.len() as DeviceSize,
+        )
+        .unwrap();
+        {
+            let mut guard = instance_buffer.write().unwrap();
+            for (i, instance) in instances.iter().enumerate() {
+                guard.instance[i] = Padded(*instance);
             }
         }
-        data
-    };
-    let instance_buffer = Buffer::new_unsized::<mesh::InstanceBuffer>(
-        memory_allocator,
-        BufferCreateInfo {
-            usage: BufferUsage::STORAGE_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        instances.len() as DeviceSize,
-    )
-    .unwrap();
-    {
-        let mut guard = instance_buffer.write().unwrap();
-        for (i, instance) in instances.iter().enumerate() {
-            guard.instance[i] = Padded(*instance);
-        }
-    }
 
-    App {
-        instance,
-        device,
-        queue,
-        vertex_buffer,
-        instance_buffer,
-        rows,
-        cols,
-        descriptor_set_allocator,
-        command_buffer_allocator,
-        rcx: None,
-    }
+        App {
+            instance,
+            device,
+            queue,
+            vertex_buffer,
+            instance_buffer,
+            rows,
+            cols,
+            descriptor_set_allocator,
+            command_buffer_allocator,
+            rcx: None,
+        }
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-    let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
-    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
-    let window_size = window.inner_size();
-
-    let (swapchain, images) = {
-        let surface_capabilities = self
-            .device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-        let (image_format, _) = self
-            .device
-            .physical_device()
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0];
-
-        Swapchain::new(
-            self.device.clone(),
-            surface,
-            SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count.max(2),
-                image_format,
-                image_extent: window_size.into(),
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap(),
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    };
-
-    let render_pass = single_pass_renderpass!(
-        self.device.clone(),
-        attachments: {
-            color: {
-                format: swapchain.image_format(),
-                samples: 1,
-                load_op: Clear,
-                store_op: Store,
-            },
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {},
-        },
-    )
-    .unwrap();
-
-    let framebuffers = window_size_dependent_setup(&images, &render_pass);
-
-    let pipeline = {
-        let mesh = mesh::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let stages = [
-            PipelineShaderStageCreateInfo::new(mesh),
-            PipelineShaderStageCreateInfo::new(fs),
-        ];
-        let layout = PipelineLayout::new(
-            self.device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(self.device.clone())
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
                 .unwrap(),
+        );
+        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let window_size = window.inner_size();
+
+        let (swapchain, images) = {
+            let surface_capabilities = self
+                .device
+                .physical_device()
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+            let (image_format, _) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0];
+
+            Swapchain::new(
+                self.device.clone(),
+                surface,
+                SwapchainCreateInfo {
+                    min_image_count: surface_capabilities.min_image_count.max(2),
+                    image_format,
+                    image_extent: window_size.into(),
+                    image_usage: ImageUsage::COLOR_ATTACHMENT,
+                    composite_alpha: surface_capabilities
+                        .supported_composite_alpha
+                        .into_iter()
+                        .next()
+                        .unwrap(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        let render_pass = single_pass_renderpass!(
+            self.device.clone(),
+            attachments: {
+                color: {
+                    format: swapchain.image_format(),
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
+                },
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {},
+            },
         )
         .unwrap();
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
-        GraphicsPipeline::new(
-            self.device.clone(),
-            None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                viewport_state: Some(ViewportState::default()),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
-            },
+        let framebuffers = window_size_dependent_setup(&images, &render_pass);
+
+        let pipeline = {
+            let mesh = mesh::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = fs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(mesh),
+                PipelineShaderStageCreateInfo::new(fs),
+            ];
+            let layout = PipelineLayout::new(
+                self.device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(self.device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
+            GraphicsPipeline::new(
+                self.device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    viewport_state: Some(ViewportState::default()),
+                    rasterization_state: Some(RasterizationState::default()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
+                        subpass.num_color_attachments(),
+                        ColorBlendAttachmentState::default(),
+                    )),
+                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
+        };
+
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: window_size.into(),
+            depth_range: 0.0..=1.0,
+        };
+
+        let descriptor_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
+            pipeline.layout().set_layouts()[0].clone(),
+            [
+                WriteDescriptorSet::buffer(0, self.vertex_buffer.clone()),
+                WriteDescriptorSet::buffer(1, self.instance_buffer.clone()),
+            ],
+            [],
         )
-        .unwrap()
-    };
+        .unwrap();
 
-    let viewport = Viewport {
-        offset: [0.0, 0.0],
-        extent: window_size.into(),
-        depth_range: 0.0..=1.0,
-    };
+        let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
-    let descriptor_set = DescriptorSet::new(
-        self.descriptor_set_allocator.clone(),
-        pipeline.layout().set_layouts()[0].clone(),
-        [
-            WriteDescriptorSet::buffer(0, self.vertex_buffer.clone()),
-            WriteDescriptorSet::buffer(1, self.instance_buffer.clone()),
-        ],
-        [],
-    )
-    .unwrap();
-
-    let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
-
-    self.rcx = Some(RenderContext {
-        window,
-        swapchain,
-        render_pass,
-        framebuffers,
-        pipeline,
-        viewport,
-        descriptor_set,
-        recreate_swapchain: false,
-        previous_frame_end,
-    });
+        self.rcx = Some(RenderContext {
+            window,
+            swapchain,
+            render_pass,
+            framebuffers,
+            pipeline,
+            viewport,
+            descriptor_set,
+            recreate_swapchain: false,
+            previous_frame_end,
+        });
     }
 
     fn window_event(
@@ -424,15 +428,19 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = false;
                 }
 
-                let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(rcx.swapchain.clone(), None).map_err(Validated::unwrap) {
-                        Ok(r) => r,
-                        Err(VulkanError::OutOfDate) => {
-                            rcx.recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("failed to acquire next image: {e}"),
-                    };
+                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
+                    rcx.swapchain.clone(),
+                    None,
+                )
+                .map_err(Validated::unwrap)
+                {
+                    Ok(r) => r,
+                    Err(VulkanError::OutOfDate) => {
+                        rcx.recreate_swapchain = true;
+                        return;
+                    }
+                    Err(e) => panic!("failed to acquire next image: {e}"),
+                };
 
                 if suboptimal {
                     rcx.recreate_swapchain = true;
@@ -489,7 +497,10 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(rcx.swapchain.clone(), image_index),
+                        SwapchainPresentInfo::swapchain_image_index(
+                            rcx.swapchain.clone(),
+                            image_index,
+                        ),
                     )
                     .then_signal_fence_and_flush();
 

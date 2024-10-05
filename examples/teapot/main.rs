@@ -96,240 +96,244 @@ struct RenderContext {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(event_loop).unwrap();
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: required_extensions,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-    let (physical_device, queue_family_index) = instance
-        .enumerate_physical_devices()
-        .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter_map(|p| {
-            p.queue_family_properties()
-                .iter()
-                .enumerate()
-                .position(|(i, q)| {
-                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, event_loop).unwrap()
-                })
-                .map(|i| (p, i as u32))
-        })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
-            _ => 5,
-        })
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                enabled_extensions: required_extensions,
+                ..Default::default()
+            },
+        )
         .unwrap();
 
-    println!(
-        "Using device: {} (type: {:?})",
-        physical_device.properties().device_name,
-        physical_device.properties().device_type,
-    );
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::empty()
+        };
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .unwrap()
+            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter_map(|p| {
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                            && p.presentation_support(i as u32, event_loop).unwrap()
+                    })
+                    .map(|i| (p, i as u32))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            })
+            .unwrap();
 
-    let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: device_extensions,
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
                 ..Default::default()
-            }],
-            ..Default::default()
-        },
-    )
-    .unwrap();
+            },
+        )
+        .unwrap();
 
-    let queue = queues.next().unwrap();
+        let queue = queues.next().unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
 
-    let vertex_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        POSITIONS,
-    )
-    .unwrap();
-    let normals_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        NORMALS,
-    )
-    .unwrap();
-    let index_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::INDEX_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-        INDICES,
-    )
-    .unwrap();
+        let vertex_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            POSITIONS,
+        )
+        .unwrap();
+        let normals_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            NORMALS,
+        )
+        .unwrap();
+        let index_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            INDICES,
+        )
+        .unwrap();
 
-    let uniform_buffer_allocator = SubbufferAllocator::new(
-        memory_allocator.clone(),
-        SubbufferAllocatorCreateInfo {
-            buffer_usage: BufferUsage::UNIFORM_BUFFER,
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-            ..Default::default()
-        },
-    );
+        let uniform_buffer_allocator = SubbufferAllocator::new(
+            memory_allocator.clone(),
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        );
 
-    App {
-        instance,
-        device,
-        queue,
-        memory_allocator,
-        descriptor_set_allocator,
-        command_buffer_allocator,
-        vertex_buffer,
-        normals_buffer,
-        index_buffer,
-        uniform_buffer_allocator,
-        rcx: None,
-    }
+        App {
+            instance,
+            device,
+            queue,
+            memory_allocator,
+            descriptor_set_allocator,
+            command_buffer_allocator,
+            vertex_buffer,
+            normals_buffer,
+            index_buffer,
+            uniform_buffer_allocator,
+            rcx: None,
+        }
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-    let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
-    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
-    let window_size = window.inner_size();
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
+                .unwrap(),
+        );
+        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let window_size = window.inner_size();
 
-    let (swapchain, images) = {
-        let surface_capabilities = self
-            .device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-        let (image_format, _) = self
-            .device
-            .physical_device()
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0];
+        let (swapchain, images) = {
+            let surface_capabilities = self
+                .device
+                .physical_device()
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+            let (image_format, _) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0];
 
-        Swapchain::new(
+            Swapchain::new(
+                self.device.clone(),
+                surface,
+                SwapchainCreateInfo {
+                    min_image_count: surface_capabilities.min_image_count.max(2),
+                    image_format,
+                    image_extent: window_size.into(),
+                    image_usage: ImageUsage::COLOR_ATTACHMENT,
+                    composite_alpha: surface_capabilities
+                        .supported_composite_alpha
+                        .into_iter()
+                        .next()
+                        .unwrap(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        let render_pass = vulkano::single_pass_renderpass!(
             self.device.clone(),
-            surface,
-            SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count.max(2),
-                image_format,
-                image_extent: window_size.into(),
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap(),
-                ..Default::default()
+            attachments: {
+                color: {
+                    format: swapchain.image_format(),
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
+                },
+                depth_stencil: {
+                    format: Format::D16_UNORM,
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {depth_stencil},
             },
         )
-        .unwrap()
-    };
-
-    let render_pass = vulkano::single_pass_renderpass!(
-        self.device.clone(),
-        attachments: {
-            color: {
-                format: swapchain.image_format(),
-                samples: 1,
-                load_op: Clear,
-                store_op: Store,
-            },
-            depth_stencil: {
-                format: Format::D16_UNORM,
-                samples: 1,
-                load_op: Clear,
-                store_op: DontCare,
-            },
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {depth_stencil},
-        },
-    )
-    .unwrap();
-
-    let vs = vs::load(self.device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
-    let fs = fs::load(self.device.clone())
-        .unwrap()
-        .entry_point("main")
         .unwrap();
 
-    let (framebuffers, pipeline) = window_size_dependent_setup(
-        window_size,
-        &images,
-        &render_pass,
-        &self.memory_allocator,
-        &vs,
-        &fs,
-    );
+        let vs = vs::load(self.device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(self.device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
 
-    let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+        let (framebuffers, pipeline) = window_size_dependent_setup(
+            window_size,
+            &images,
+            &render_pass,
+            &self.memory_allocator,
+            &vs,
+            &fs,
+        );
 
-    let rotation_start = Instant::now();
+        let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
-    self.rcx = Some(RenderContext {
-        window,
-        swapchain,
-        render_pass,
-        framebuffers,
-        vs,
-        fs,
-        pipeline,
-        recreate_swapchain: false,
-        previous_frame_end,
-        rotation_start,
-    });
+        let rotation_start = Instant::now();
+
+        self.rcx = Some(RenderContext {
+            window,
+            swapchain,
+            render_pass,
+            framebuffers,
+            vs,
+            fs,
+            pipeline,
+            recreate_swapchain: false,
+            previous_frame_end,
+            rotation_start,
+        });
     }
 
     fn window_event(
@@ -339,7 +343,7 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         let rcx = self.rcx.as_mut().unwrap();
-        
+
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -385,8 +389,8 @@ impl ApplicationHandler for App {
 
                     // NOTE: This teapot was meant for OpenGL where the origin is at the lower left
                     // instead the origin is at the upper left in Vulkan, so we reverse the Y axis.
-                    let aspect_ratio =
-                        rcx.swapchain.image_extent()[0] as f32 / rcx.swapchain.image_extent()[1] as f32;
+                    let aspect_ratio = rcx.swapchain.image_extent()[0] as f32
+                        / rcx.swapchain.image_extent()[1] as f32;
 
                     let proj = Mat4::perspective_rh_gl(
                         std::f32::consts::FRAC_PI_2,
@@ -422,15 +426,19 @@ impl ApplicationHandler for App {
                 )
                 .unwrap();
 
-                let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(rcx.swapchain.clone(), None).map_err(Validated::unwrap) {
-                        Ok(r) => r,
-                        Err(VulkanError::OutOfDate) => {
-                            rcx.recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("failed to acquire next image: {e}"),
-                    };
+                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
+                    rcx.swapchain.clone(),
+                    None,
+                )
+                .map_err(Validated::unwrap)
+                {
+                    Ok(r) => r,
+                    Err(VulkanError::OutOfDate) => {
+                        rcx.recreate_swapchain = true;
+                        return;
+                    }
+                    Err(e) => panic!("failed to acquire next image: {e}"),
+                };
 
                 if suboptimal {
                     rcx.recreate_swapchain = true;
@@ -470,7 +478,10 @@ impl ApplicationHandler for App {
                         descriptor_set,
                     )
                     .unwrap()
-                    .bind_vertex_buffers(0, (self.vertex_buffer.clone(), self.normals_buffer.clone()))
+                    .bind_vertex_buffers(
+                        0,
+                        (self.vertex_buffer.clone(), self.normals_buffer.clone()),
+                    )
                     .unwrap()
                     .bind_index_buffer(self.index_buffer.clone())
                     .unwrap();
@@ -493,7 +504,10 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(rcx.swapchain.clone(), image_index),
+                        SwapchainPresentInfo::swapchain_image_index(
+                            rcx.swapchain.clone(),
+                            image_index,
+                        ),
                     )
                     .then_signal_fence_and_flush();
 

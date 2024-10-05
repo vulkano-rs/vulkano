@@ -89,403 +89,404 @@ struct RenderContext {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(event_loop).unwrap();
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            enabled_extensions: required_extensions,
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-    let (physical_device, queue_family_index) = instance
-        .enumerate_physical_devices()
-        .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter_map(|p| {
-            p.queue_family_properties()
-                .iter()
-                .enumerate()
-                .position(|(i, q)| {
-                    q.queue_flags.intersects(QueueFlags::GRAPHICS)
-                        && p.presentation_support(i as u32, event_loop).unwrap()
-                })
-                .map(|i| (p, i as u32))
-        })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
-            _ => 5,
-        })
-        .unwrap();
-
-    println!(
-        "Using device: {} (type: {:?})",
-        physical_device.properties().device_name,
-        physical_device.properties().device_type,
-    );
-
-    let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
-                ..Default::default()
-            }],
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let queue = queues.next().unwrap();
-
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
-    let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-        device.clone(),
-        Default::default(),
-    ));
-
-    // Apply scoped logic to create `DeviceLocalBuffer` initialized with vertex data.
-    let vertex_buffer = {
-        // Initialize vertex data as an iterator.
-        let vertices = (0..PARTICLE_COUNT).map(|i| {
-            let f = i as f32 / (PARTICLE_COUNT / 10) as f32;
-            MyVertex {
-                pos: [2. * f.fract() - 1., 0.2 * f.floor() - 1.],
-                vel: [0.; 2],
-            }
-        });
-
-        // Create a CPU-accessible buffer initialized with the vertex data.
-        let temporary_accessible_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                // Specify this buffer will be used as a transfer source.
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                // Specify this buffer will be used for uploading to the GPU.
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        )
-        .unwrap();
-
-        // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT` number of
-        // `Vertex`.
-        let device_local_buffer = Buffer::new_slice::<MyVertex>(
-            memory_allocator,
-            BufferCreateInfo {
-                // Specify use as a storage buffer, vertex buffer, and transfer destination.
-                usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::TRANSFER_DST
-                    | BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                // Specify this buffer will only be used by the device.
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            PARTICLE_COUNT as DeviceSize,
-        )
-        .unwrap();
-
-        // Create one-time command to copy between the buffers.
-        let mut cbb = RecordingCommandBuffer::new(
-            command_buffer_allocator.clone(),
-            queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: required_extensions,
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 ..Default::default()
             },
         )
         .unwrap();
-        cbb.copy_buffer(CopyBufferInfo::buffers(
-            temporary_accessible_buffer,
-            device_local_buffer.clone(),
-        ))
-        .unwrap();
-        let cb = cbb.end().unwrap();
 
-        // Execute copy and wait for copy to complete before proceeding.
-        cb.execute(queue.clone())
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::empty()
+        };
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
             .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None /* timeout */)
+            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter_map(|p| {
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                            && p.presentation_support(i as u32, event_loop).unwrap()
+                    })
+                    .map(|i| (p, i as u32))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+                _ => 5,
+            })
             .unwrap();
 
-        device_local_buffer
-    };
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
 
-    // Create a compute-pipeline for applying the compute shader to vertices.
-    let compute_pipeline = {
-        let cs = cs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let stage = PipelineShaderStageCreateInfo::new(cs);
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: device_extensions,
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
         )
         .unwrap();
 
-        ComputePipeline::new(
+        let queue = queues.next().unwrap();
+
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             device.clone(),
-            None,
-            ComputePipelineCreateInfo::stage_layout(stage, layout),
+            Default::default(),
+        ));
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+
+        // Apply scoped logic to create `DeviceLocalBuffer` initialized with vertex data.
+        let vertex_buffer = {
+            // Initialize vertex data as an iterator.
+            let vertices = (0..PARTICLE_COUNT).map(|i| {
+                let f = i as f32 / (PARTICLE_COUNT / 10) as f32;
+                MyVertex {
+                    pos: [2. * f.fract() - 1., 0.2 * f.floor() - 1.],
+                    vel: [0.; 2],
+                }
+            });
+
+            // Create a CPU-accessible buffer initialized with the vertex data.
+            let temporary_accessible_buffer = Buffer::from_iter(
+                memory_allocator.clone(),
+                BufferCreateInfo {
+                    // Specify this buffer will be used as a transfer source.
+                    usage: BufferUsage::TRANSFER_SRC,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    // Specify this buffer will be used for uploading to the GPU.
+                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                vertices,
+            )
+            .unwrap();
+
+            // Create a buffer in device-local memory with enough space for `PARTICLE_COUNT`
+            // number of `Vertex`.
+            let device_local_buffer = Buffer::new_slice::<MyVertex>(
+                memory_allocator,
+                BufferCreateInfo {
+                    // Specify use as a storage buffer, vertex buffer, and transfer destination.
+                    usage: BufferUsage::STORAGE_BUFFER
+                        | BufferUsage::TRANSFER_DST
+                        | BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    // Specify this buffer will only be used by the device.
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+                    ..Default::default()
+                },
+                PARTICLE_COUNT as DeviceSize,
+            )
+            .unwrap();
+
+            // Create one-time command to copy between the buffers.
+            let mut cbb = RecordingCommandBuffer::new(
+                command_buffer_allocator.clone(),
+                queue.queue_family_index(),
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::OneTimeSubmit,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            cbb.copy_buffer(CopyBufferInfo::buffers(
+                temporary_accessible_buffer,
+                device_local_buffer.clone(),
+            ))
+            .unwrap();
+            let cb = cbb.end().unwrap();
+
+            // Execute copy and wait for copy to complete before proceeding.
+            cb.execute(queue.clone())
+                .unwrap()
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None /* timeout */)
+                .unwrap();
+
+            device_local_buffer
+        };
+
+        // Create a compute-pipeline for applying the compute shader to vertices.
+        let compute_pipeline = {
+            let cs = cs::load(device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+
+            ComputePipeline::new(
+                device.clone(),
+                None,
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
+        };
+
+        // Create a new descriptor set for binding vertices as a storage buffer.
+        let descriptor_set = DescriptorSet::new(
+            descriptor_set_allocator.clone(),
+            // 0 is the index of the descriptor set.
+            compute_pipeline.layout().set_layouts()[0].clone(),
+            [
+                // 0 is the binding of the data in this set. We bind the `Buffer` of vertices here.
+                WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
+            ],
+            [],
         )
-        .unwrap()
-    };
+        .unwrap();
 
-    // Create a new descriptor set for binding vertices as a storage buffer.
-    let descriptor_set = DescriptorSet::new(
-        descriptor_set_allocator.clone(),
-        // 0 is the index of the descriptor set.
-        compute_pipeline.layout().set_layouts()[0].clone(),
-        [
-            // 0 is the binding of the data in this set. We bind the `Buffer` of vertices here.
-            WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
-        ],
-        [],
-    )
-    .unwrap();
-
-    App {
-        instance,
-        device,
-        queue,
-        command_buffer_allocator,
-        vertex_buffer,
-        compute_pipeline,
-        descriptor_set,
-        rcx: None,
-    }
+        App {
+            instance,
+            device,
+            queue,
+            command_buffer_allocator,
+            vertex_buffer,
+            compute_pipeline,
+            descriptor_set,
+            rcx: None,
+        }
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-    let window = Arc::new(
-        event_loop.create_window(
-            Window::default_attributes()
-                // For simplicity, we are going to assert that the window size is static.
-                .with_resizable(false)
-                .with_title("simple particles")
-                .with_inner_size(PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
-        )
-        .unwrap(),
-    );
-    let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        // For simplicity, we are going to assert that the window size is static.
+                        .with_resizable(false)
+                        .with_title("simple particles")
+                        .with_inner_size(PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
+                )
+                .unwrap(),
+        );
+        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
 
-    let (swapchain, images) = {
-        let surface_capabilities = self
-            .device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-        let (image_format, _) = self
-            .device
-            .physical_device()
-            .surface_formats(&surface, Default::default())
-            .unwrap()[0];
+        let (swapchain, images) = {
+            let surface_capabilities = self
+                .device
+                .physical_device()
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+            let (image_format, _) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0];
 
-        Swapchain::new(
-            self.device.clone(),
-            surface,
-            SwapchainCreateInfo {
-                min_image_count: surface_capabilities.min_image_count.max(2),
-                image_format,
-                image_extent: [WINDOW_WIDTH, WINDOW_HEIGHT],
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
-                composite_alpha: surface_capabilities
-                    .supported_composite_alpha
-                    .into_iter()
-                    .next()
-                    .unwrap(),
-                present_mode: PresentMode::Fifo,
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    };
-
-    let render_pass = vulkano::single_pass_renderpass!(
-        self.device.clone(),
-        attachments: {
-            color: {
-                format: swapchain.image_format(),
-                samples: 1,
-                load_op: Clear,
-                store_op: Store,
-            },
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {},
-        },
-    )
-    .unwrap();
-
-    let framebuffers = images
-        .into_iter()
-        .map(|img| {
-            let view = ImageView::new_default(img).unwrap();
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
+            Swapchain::new(
+                self.device.clone(),
+                surface,
+                SwapchainCreateInfo {
+                    min_image_count: surface_capabilities.min_image_count.max(2),
+                    image_format,
+                    image_extent: [WINDOW_WIDTH, WINDOW_HEIGHT],
+                    image_usage: ImageUsage::COLOR_ATTACHMENT,
+                    composite_alpha: surface_capabilities
+                        .supported_composite_alpha
+                        .into_iter()
+                        .next()
+                        .unwrap(),
+                    present_mode: PresentMode::Fifo,
                     ..Default::default()
                 },
             )
             .unwrap()
-        })
-        .collect();
+        };
 
-    // The vertex shader determines color and is run once per particle. The vertices will be
-    // updated by the compute shader each frame.
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            src: r"
-                #version 450
-
-                layout(location = 0) in vec2 pos;
-                layout(location = 1) in vec2 vel;
-
-                layout(location = 0) out vec4 outColor;
-
-                // Keep this value in sync with the `maxSpeed` const in the compute shader.
-                const float maxSpeed = 10.0;
-
-                void main() {
-                    gl_Position = vec4(pos, 0.0, 1.0);
-                    gl_PointSize = 1.0;
-
-                    // Mix colors based on position and velocity.
-                    outColor = mix(
-                        0.2 * vec4(pos, abs(vel.x) + abs(vel.y), 1.0),
-                        vec4(1.0, 0.5, 0.8, 1.0),
-                        sqrt(length(vel) / maxSpeed)
-                    );
-                }
-            ",
-        }
-    }
-
-    // The fragment shader will only need to apply the color forwarded by the vertex shader,
-    // because the color of a particle should be identical over all pixels.
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            src: r"
-                #version 450
-
-                layout(location = 0) in vec4 outColor;
-
-                layout(location = 0) out vec4 fragColor;
-
-                void main() {
-                    fragColor = outColor;
-                }
-            ",
-        }
-    }
-
-    // Create a basic graphics pipeline for rendering particles.
-    let pipeline = {
-        let vs = vs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(self.device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
-        let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
-        ];
-        let layout = PipelineLayout::new(
+        let render_pass = vulkano::single_pass_renderpass!(
             self.device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(self.device.clone())
-                .unwrap(),
-        )
-        .unwrap();
-        let subpass = Subpass::from(render_pass, 0).unwrap();
-
-        GraphicsPipeline::new(
-            self.device.clone(),
-            None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                // Vertices will be rendered as a list of points.
-                input_assembly_state: Some(InputAssemblyState {
-                    topology: PrimitiveTopology::PointList,
-                    ..Default::default()
-                }),
-                viewport_state: Some(ViewportState {
-                    viewports: [Viewport {
-                        offset: [0.0, 0.0],
-                        extent: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],
-                        depth_range: 0.0..=1.0,
-                    }]
-                    .into_iter()
-                    .collect(),
-                    ..Default::default()
-                }),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
+            attachments: {
+                color: {
+                    format: swapchain.image_format(),
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
+                },
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {},
             },
         )
-        .unwrap()
-    };
+        .unwrap();
 
-    let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+        let framebuffers = images
+            .into_iter()
+            .map(|img| {
+                let view = ImageView::new_default(img).unwrap();
+                Framebuffer::new(
+                    render_pass.clone(),
+                    FramebufferCreateInfo {
+                        attachments: vec![view],
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .collect();
 
-    let start_time = SystemTime::now();
+        // The vertex shader determines color and is run once per particle. The vertices will be
+        // updated by the compute shader each frame.
+        mod vs {
+            vulkano_shaders::shader! {
+                ty: "vertex",
+                src: r"
+                    #version 450
 
-    self.rcx = Some(RenderContext {
-        window,
-        swapchain,
-        framebuffers,
-        pipeline,
-        previous_frame_end,
-        start_time,
-        last_frame_time: start_time,
-    });
+                    layout(location = 0) in vec2 pos;
+                    layout(location = 1) in vec2 vel;
+
+                    layout(location = 0) out vec4 outColor;
+
+                    // Keep this value in sync with the `maxSpeed` const in the compute shader.
+                    const float maxSpeed = 10.0;
+
+                    void main() {
+                        gl_Position = vec4(pos, 0.0, 1.0);
+                        gl_PointSize = 1.0;
+
+                        // Mix colors based on position and velocity.
+                        outColor = mix(
+                            0.2 * vec4(pos, abs(vel.x) + abs(vel.y), 1.0),
+                            vec4(1.0, 0.5, 0.8, 1.0),
+                            sqrt(length(vel) / maxSpeed)
+                        );
+                    }
+                ",
+            }
+        }
+
+        // The fragment shader will only need to apply the color forwarded by the vertex shader,
+        // because the color of a particle should be identical over all pixels.
+        mod fs {
+            vulkano_shaders::shader! {
+                ty: "fragment",
+                src: r"
+                    #version 450
+
+                    layout(location = 0) in vec4 outColor;
+
+                    layout(location = 0) out vec4 fragColor;
+
+                    void main() {
+                        fragColor = outColor;
+                    }
+                ",
+            }
+        }
+
+        // Create a basic graphics pipeline for rendering particles.
+        let pipeline = {
+            let vs = vs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let fs = fs::load(self.device.clone())
+                .unwrap()
+                .entry_point("main")
+                .unwrap();
+            let vertex_input_state = MyVertex::per_vertex().definition(&vs).unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
+            ];
+            let layout = PipelineLayout::new(
+                self.device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(self.device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            let subpass = Subpass::from(render_pass, 0).unwrap();
+
+            GraphicsPipeline::new(
+                self.device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    // Vertices will be rendered as a list of points.
+                    input_assembly_state: Some(InputAssemblyState {
+                        topology: PrimitiveTopology::PointList,
+                        ..Default::default()
+                    }),
+                    viewport_state: Some(ViewportState {
+                        viewports: [Viewport {
+                            offset: [0.0, 0.0],
+                            extent: [WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32],
+                            depth_range: 0.0..=1.0,
+                        }]
+                        .into_iter()
+                        .collect(),
+                        ..Default::default()
+                    }),
+                    rasterization_state: Some(RasterizationState::default()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
+                        subpass.num_color_attachments(),
+                        ColorBlendAttachmentState::default(),
+                    )),
+                    subpass: Some(subpass.into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
+        };
+
+        let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+
+        let start_time = SystemTime::now();
+
+        self.rcx = Some(RenderContext {
+            window,
+            swapchain,
+            framebuffers,
+            pipeline,
+            previous_frame_end,
+            start_time,
+            last_frame_time: start_time,
+        });
     }
 
     fn window_event(
@@ -512,7 +513,10 @@ impl ApplicationHandler for App {
                 // Update per-frame variables.
                 let now = SystemTime::now();
                 let time = now.duration_since(rcx.start_time).unwrap().as_secs_f32();
-                let delta_time = now.duration_since(rcx.last_frame_time).unwrap().as_secs_f32();
+                let delta_time = now
+                    .duration_since(rcx.last_frame_time)
+                    .unwrap()
+                    .as_secs_f32();
                 rcx.last_frame_time = now;
 
                 // Create push constants to be passed to compute shader.
@@ -531,8 +535,8 @@ impl ApplicationHandler for App {
                     Err(e) => panic!("failed to acquire next image: {e}"),
                 };
 
-                // Since we disallow resizing, assert that the swapchain and surface are optimally
-                // configured.
+                // Since we disallow resizing, assert that the swapchain and surface are
+                // optimally configured.
                 assert!(
                     !suboptimal,
                     "not handling sub-optimal swapchains in this sample code",
@@ -603,7 +607,10 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .then_swapchain_present(
                         self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(rcx.swapchain.clone(), image_index),
+                        SwapchainPresentInfo::swapchain_image_index(
+                            rcx.swapchain.clone(),
+                            image_index,
+                        ),
                     )
                     .then_signal_fence_and_flush();
 
