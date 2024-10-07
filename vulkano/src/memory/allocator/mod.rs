@@ -206,10 +206,7 @@
 //! [`Rc`]: std::rc::Rc
 //! [region]: Suballocator#regions
 
-mod layout;
-pub mod suballocator;
-
-use self::{array_vec::ArrayVec, suballocator::Region};
+use self::{aliasable_box::AliasableBox, array_vec::ArrayVec, suballocator::Region};
 pub use self::{
     layout::DeviceLayout,
     suballocator::{
@@ -238,6 +235,9 @@ use std::{
     ptr, slice,
     sync::Arc,
 };
+
+mod layout;
+pub mod suballocator;
 
 /// General-purpose memory allocators which allocate from any memory type dynamically as needed.
 ///
@@ -1457,7 +1457,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             let pool = self.pools[memory_type_index as usize].blocks.lock();
             let block_ptr = allocation
                 .allocation_handle
-                .0
+                .as_ptr()
                 .cast::<DeviceMemoryBlock<S>>();
 
             // TODO: Maybe do a similar check for dedicated blocks.
@@ -1546,7 +1546,7 @@ unsafe impl<S> DeviceOwned for GenericMemoryAllocator<S> {
 /// A pool of [`DeviceMemory`] blocks within [`GenericMemoryAllocator`], specific to a memory type.
 #[derive(Debug)]
 pub struct DeviceMemoryPool<S> {
-    blocks: Mutex<Vec<Box<DeviceMemoryBlock<S>>>>,
+    blocks: Mutex<Vec<AliasableBox<DeviceMemoryBlock<S>>>>,
     // This is cached here for faster access, so we don't need to hop through 3 pointers.
     property_flags: MemoryPropertyFlags,
     atom_size: DeviceAlignment,
@@ -1571,6 +1571,14 @@ impl<S> DeviceMemoryPool<S> {
     }
 }
 
+impl<S> Drop for DeviceMemoryPool<S> {
+    fn drop(&mut self) {
+        for block in self.blocks.get_mut() {
+            unsafe { AliasableBox::drop(block) };
+        }
+    }
+}
+
 /// A [`DeviceMemory`] block within a [`DeviceMemoryPool`].
 #[derive(Debug)]
 pub struct DeviceMemoryBlock<S> {
@@ -1580,35 +1588,16 @@ pub struct DeviceMemoryBlock<S> {
 }
 
 impl<S: Suballocator> DeviceMemoryBlock<S> {
-    fn new(device_memory: Arc<DeviceMemory>) -> Box<Self> {
+    fn new(device_memory: Arc<DeviceMemory>) -> AliasableBox<Self> {
         let suballocator = S::new(
             Region::new(0, device_memory.allocation_size())
                 .expect("we somehow managed to allocate more than `DeviceLayout::MAX_SIZE` bytes"),
         );
 
-        Box::new(DeviceMemoryBlock {
+        AliasableBox::new(DeviceMemoryBlock {
             device_memory,
             suballocator,
             allocation_count: 0,
-        })
-    }
-
-    fn allocate(
-        &mut self,
-        layout: DeviceLayout,
-        allocation_type: AllocationType,
-        buffer_image_granularity: DeviceAlignment,
-    ) -> Result<MemoryAlloc, SuballocatorError> {
-        let suballocation =
-            self.suballocator
-                .allocate(layout, allocation_type, buffer_image_granularity)?;
-
-        self.allocation_count += 1;
-
-        Ok(MemoryAlloc {
-            device_memory: self.device_memory.clone(),
-            suballocation: Some(suballocation),
-            allocation_handle: AllocationHandle::from_ptr(<*mut _>::cast(self)),
         })
     }
 
@@ -1646,9 +1635,34 @@ impl<S: Suballocator> DeviceMemoryBlock<S> {
     }
 }
 
+impl<S: Suballocator> AliasableBox<DeviceMemoryBlock<S>> {
+    fn allocate(
+        &mut self,
+        layout: DeviceLayout,
+        allocation_type: AllocationType,
+        buffer_image_granularity: DeviceAlignment,
+    ) -> Result<MemoryAlloc, SuballocatorError> {
+        let suballocation =
+            self.suballocator
+                .allocate(layout, allocation_type, buffer_image_granularity)?;
+
+        self.allocation_count += 1;
+
+        // It is paramount to soundness that the pointer we give out doesn't go through `DerefMut`,
+        // as such a pointer would become invalidated when another allocation is made.
+        let ptr = AliasableBox::as_mut_ptr(self);
+
+        Ok(MemoryAlloc {
+            device_memory: self.device_memory.clone(),
+            suballocation: Some(suballocation),
+            allocation_handle: AllocationHandle::from_ptr(<*mut _>::cast(ptr)),
+        })
+    }
+}
+
 /// An iterator over the [`DeviceMemoryBlock`]s within a [`DeviceMemoryPool`].
 pub struct DeviceMemoryBlocks<'a, S> {
-    inner: slice::Iter<'a, Box<DeviceMemoryBlock<S>>>,
+    inner: slice::Iter<'a, AliasableBox<DeviceMemoryBlock<S>>>,
     _guard: DeviceMemoryPoolGuard<'a, S>,
 }
 
@@ -1884,6 +1898,68 @@ mod array_vec {
         fn deref_mut(&mut self) -> &mut Self::Target {
             // SAFETY: `self.len <= N`.
             unsafe { self.data.get_unchecked_mut(0..self.len) }
+        }
+    }
+}
+
+mod aliasable_box {
+    use std::{
+        fmt,
+        marker::PhantomData,
+        ops::{Deref, DerefMut},
+        panic::{RefUnwindSafe, UnwindSafe},
+        ptr::NonNull,
+    };
+
+    pub struct AliasableBox<T> {
+        ptr: NonNull<T>,
+        marker: PhantomData<T>,
+    }
+
+    unsafe impl<T: Send> Send for AliasableBox<T> {}
+    unsafe impl<T: Sync> Sync for AliasableBox<T> {}
+
+    impl<T: UnwindSafe> UnwindSafe for AliasableBox<T> {}
+    impl<T: RefUnwindSafe> RefUnwindSafe for AliasableBox<T> {}
+
+    impl<T> Unpin for AliasableBox<T> {}
+
+    impl<T> AliasableBox<T> {
+        pub fn new(value: T) -> Self {
+            AliasableBox {
+                ptr: Box::leak(value.into()).into(),
+                marker: PhantomData,
+            }
+        }
+
+        pub fn as_mut_ptr(this: &mut Self) -> *mut T {
+            this.ptr.as_ptr()
+        }
+
+        pub unsafe fn drop(this: &mut Self) {
+            let _ = unsafe { Box::from_raw(this.ptr.as_ptr()) };
+        }
+    }
+
+    impl<T: fmt::Debug> fmt::Debug for AliasableBox<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fmt::Debug::fmt(&**self, f)
+        }
+    }
+
+    impl<T> Deref for AliasableBox<T> {
+        type Target = T;
+
+        #[inline]
+        fn deref(&self) -> &Self::Target {
+            unsafe { self.ptr.as_ref() }
+        }
+    }
+
+    impl<T> DerefMut for AliasableBox<T> {
+        #[inline]
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            unsafe { self.ptr.as_mut() }
         }
     }
 }
