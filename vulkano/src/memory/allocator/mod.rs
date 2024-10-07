@@ -226,6 +226,7 @@ use crate::{
 };
 use ash::vk::MAX_MEMORY_TYPES;
 use parking_lot::{Mutex, MutexGuard};
+use slabbin::SlabAllocator;
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
@@ -952,7 +953,7 @@ impl<S> GenericMemoryAllocator<S> {
     // This is a false-positive, we only use this const for static initialization.
     #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY_POOL: DeviceMemoryPool<S> = DeviceMemoryPool {
-        blocks: Mutex::new(Vec::new()),
+        blocks: Mutex::new(DeviceMemoryBlockVec::new()),
         property_flags: MemoryPropertyFlags::empty(),
         atom_size: DeviceAlignment::MIN,
         block_size: 0,
@@ -1179,13 +1180,14 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
 
         layout = layout.align_to(pool.atom_size).unwrap();
 
-        let mut blocks = pool.blocks.lock();
+        let blocks = &mut *pool.blocks.lock();
+        let vec = &mut blocks.vec;
 
         // TODO: Incremental sorting
-        blocks.sort_by_key(|block| block.free_size());
-        let (Ok(idx) | Err(idx)) = blocks.binary_search_by_key(&size, |block| block.free_size());
+        vec.sort_by_key(|block| block.free_size());
+        let (Ok(idx) | Err(idx)) = vec.binary_search_by_key(&size, |block| block.free_size());
 
-        for block in &mut blocks[idx..] {
+        for block in &mut vec[idx..] {
             if let Ok(allocation) =
                 block.allocate(layout, allocation_type, self.buffer_image_granularity)
             {
@@ -1216,7 +1218,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
                     export_handle_types,
                 ) {
                     Ok(device_memory) => {
-                        break DeviceMemoryBlock::new(device_memory);
+                        break DeviceMemoryBlock::new(device_memory, &blocks.block_allocator);
                     }
                     // Retry up to 3 times, halving the allocation size each time so long as the
                     // resulting size is still large enough.
@@ -1230,8 +1232,8 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             }
         };
 
-        blocks.push(block);
-        let block = blocks.last_mut().unwrap();
+        vec.push(block);
+        let block = vec.last_mut().unwrap();
 
         match block.allocate(layout, allocation_type, self.buffer_image_granularity) {
             Ok(allocation) => Ok(allocation),
@@ -1454,7 +1456,8 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
     unsafe fn deallocate(&self, allocation: MemoryAlloc) {
         if let Some(suballocation) = allocation.suballocation {
             let memory_type_index = allocation.device_memory.memory_type_index();
-            let pool = self.pools[memory_type_index as usize].blocks.lock();
+            let blocks = self.pools[memory_type_index as usize].blocks.lock();
+            let vec = &blocks.vec;
             let block_ptr = allocation
                 .allocation_handle
                 .as_ptr()
@@ -1462,7 +1465,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
 
             // TODO: Maybe do a similar check for dedicated blocks.
             debug_assert!(
-                pool.iter().any(|block| ptr::addr_of!(**block) == block_ptr),
+                vec.iter().any(|block| ptr::addr_of!(**block) == block_ptr),
                 "attempted to deallocate a memory block that does not belong to this allocator",
             );
 
@@ -1477,8 +1480,6 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
             // SAFETY: The caller must guarantee that `allocation` refers to a currently allocated
             // allocation of `self`.
             block.deallocate(suballocation);
-
-            drop(pool);
         }
     }
 }
@@ -1546,7 +1547,7 @@ unsafe impl<S> DeviceOwned for GenericMemoryAllocator<S> {
 /// A pool of [`DeviceMemory`] blocks within [`GenericMemoryAllocator`], specific to a memory type.
 #[derive(Debug)]
 pub struct DeviceMemoryPool<S> {
-    blocks: Mutex<Vec<AliasableBox<DeviceMemoryBlock<S>>>>,
+    blocks: Mutex<DeviceMemoryBlockVec<S>>,
     // This is cached here for faster access, so we don't need to hop through 3 pointers.
     property_flags: MemoryPropertyFlags,
     atom_size: DeviceAlignment,
@@ -1564,7 +1565,7 @@ impl<S> DeviceMemoryPool<S> {
     #[inline]
     pub fn blocks(&self) -> DeviceMemoryBlocks<'_, S> {
         DeviceMemoryBlocks {
-            inner: MutexGuard::leak(self.blocks.lock()).iter(),
+            inner: MutexGuard::leak(self.blocks.lock()).vec.iter(),
             // SAFETY: We have just locked the pool above.
             _guard: unsafe { DeviceMemoryPoolGuard::new(self) },
         }
@@ -1573,8 +1574,25 @@ impl<S> DeviceMemoryPool<S> {
 
 impl<S> Drop for DeviceMemoryPool<S> {
     fn drop(&mut self) {
-        for block in self.blocks.get_mut() {
-            unsafe { AliasableBox::drop(block) };
+        let blocks = self.blocks.get_mut();
+
+        for block in &mut blocks.vec {
+            unsafe { AliasableBox::drop(block, &blocks.block_allocator) };
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DeviceMemoryBlockVec<S> {
+    vec: Vec<AliasableBox<DeviceMemoryBlock<S>>>,
+    block_allocator: SlabAllocator<DeviceMemoryBlock<S>>,
+}
+
+impl<S> DeviceMemoryBlockVec<S> {
+    const fn new() -> Self {
+        DeviceMemoryBlockVec {
+            vec: Vec::new(),
+            block_allocator: SlabAllocator::new(32),
         }
     }
 }
@@ -1588,17 +1606,23 @@ pub struct DeviceMemoryBlock<S> {
 }
 
 impl<S: Suballocator> DeviceMemoryBlock<S> {
-    fn new(device_memory: Arc<DeviceMemory>) -> AliasableBox<Self> {
+    fn new(
+        device_memory: Arc<DeviceMemory>,
+        block_allocator: &SlabAllocator<Self>,
+    ) -> AliasableBox<Self> {
         let suballocator = S::new(
             Region::new(0, device_memory.allocation_size())
                 .expect("we somehow managed to allocate more than `DeviceLayout::MAX_SIZE` bytes"),
         );
 
-        AliasableBox::new(DeviceMemoryBlock {
-            device_memory,
-            suballocator,
-            allocation_count: 0,
-        })
+        AliasableBox::new(
+            DeviceMemoryBlock {
+                device_memory,
+                suballocator,
+                allocation_count: 0,
+            },
+            block_allocator,
+        )
     }
 
     unsafe fn deallocate(&mut self, suballocation: Suballocation) {
@@ -1903,6 +1927,7 @@ mod array_vec {
 }
 
 mod aliasable_box {
+    use slabbin::SlabAllocator;
     use std::{
         fmt,
         marker::PhantomData,
@@ -1925,9 +1950,13 @@ mod aliasable_box {
     impl<T> Unpin for AliasableBox<T> {}
 
     impl<T> AliasableBox<T> {
-        pub fn new(value: T) -> Self {
+        pub fn new(value: T, allocator: &SlabAllocator<T>) -> Self {
+            let ptr = allocator.allocate();
+
+            unsafe { ptr.as_ptr().write(value) };
+
             AliasableBox {
-                ptr: Box::leak(value.into()).into(),
+                ptr,
                 marker: PhantomData,
             }
         }
@@ -1936,8 +1965,9 @@ mod aliasable_box {
             this.ptr.as_ptr()
         }
 
-        pub unsafe fn drop(this: &mut Self) {
-            let _ = unsafe { Box::from_raw(this.ptr.as_ptr()) };
+        pub unsafe fn drop(this: &mut Self, allocator: &SlabAllocator<T>) {
+            unsafe { this.ptr.as_ptr().drop_in_place() };
+            unsafe { allocator.deallocate(this.ptr) };
         }
     }
 
