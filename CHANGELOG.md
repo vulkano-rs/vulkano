@@ -11,7 +11,7 @@
 
 - [ash](https://crates.io/crates/ash) 0.38.0 (Vulkan 1.3.281)
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
-- [winit](https://crates.io/crates/winit) 0.29
+- [winit](https://crates.io/crates/winit) 0.30
 - [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
 - Rust version: 1.75.0
 
@@ -108,6 +108,7 @@ Changes to vulkano-shaders:
 Changes to vulkano-util:
 - `VulkanoWindowRenderer::acquire` now takes in an `FnOnce(&[Arc<ImageView>])`. This means that a closure can be called when the swapchain gets recreated.
 - `VulkanoWindowRenderer::acquire` now also takes in `Option<Duration>` for the swapchain acquire timeout.
+- `VulkanoWindows::create_window` now takes `&ActiveEventLoop` as argument.
 
 ### Additions
 
