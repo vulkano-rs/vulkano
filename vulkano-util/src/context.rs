@@ -93,9 +93,7 @@ pub struct VulkanoContext {
     instance: Arc<Instance>,
     _debug_utils_messenger: Option<DebugUtilsMessenger>,
     device: Arc<Device>,
-    graphics_queue: Arc<Queue>,
-    compute_queue: Arc<Queue>,
-    transfer_queue: Option<Arc<Queue>>,
+    queues: Queues,
     memory_allocator: Arc<StandardMemoryAllocator>,
 }
 
@@ -172,21 +170,13 @@ impl VulkanoContext {
             config.device_extensions,
             config.device_features,
         );
-
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-        let Queues {
-            graphics_queue,
-            compute_queue,
-            transfer_queue,
-        } = queues;
 
         Self {
             instance,
             _debug_utils_messenger,
             device,
-            graphics_queue,
-            compute_queue,
-            transfer_queue,
+            queues,
             memory_allocator,
         }
     }
@@ -316,7 +306,7 @@ impl VulkanoContext {
     /// Returns the graphics queue.
     #[inline]
     pub fn graphics_queue(&self) -> &Arc<Queue> {
-        &self.graphics_queue
+        &self.queues.graphics_queue
     }
 
     /// Returns the compute queue.
@@ -324,14 +314,14 @@ impl VulkanoContext {
     /// Depending on your device, this might be the same as the graphics queue.
     #[inline]
     pub fn compute_queue(&self) -> &Arc<Queue> {
-        &self.compute_queue
+        &self.queues.compute_queue
     }
 
     /// Returns the transfer queue, if the device has a queue family that is dedicated for
     /// transfers (does not support graphics or compute).
     #[inline]
     pub fn transfer_queue(&self) -> Option<&Arc<Queue>> {
-        self.transfer_queue.as_ref()
+        self.queues.transfer_queue.as_ref()
     }
 
     /// Returns the memory allocator.
