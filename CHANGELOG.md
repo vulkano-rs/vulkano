@@ -12,7 +12,6 @@
 - [ash](https://crates.io/crates/ash) 0.38.0 (Vulkan 1.3.281)
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
 - [winit](https://crates.io/crates/winit) 0.30
-- [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
 - Rust version: 1.75.0
 
 ### Breaking changes
