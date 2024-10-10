@@ -37,14 +37,15 @@ use vulkano::{
     Validated, Version, VulkanError, VulkanLibrary,
 };
 use vulkano_taskgraph::{
-    graph::{CompileInfo, ExecuteError, TaskGraph},
+    graph::{CompileInfo, ExecutableTaskGraph, ExecuteError, NodeId, TaskGraph},
     resource::{AccessType, Flight, ImageLayoutType, Resources},
     resource_map, Id, QueueFamilyType,
 };
 use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::{Window, WindowId},
 };
 
 mod bloom;
@@ -56,201 +57,51 @@ const MAX_BLOOM_MIP_LEVELS: u32 = 6;
 
 fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
+    let mut app = App::new(&event_loop);
 
-    let library = VulkanLibrary::new().unwrap();
-    let required_extensions = Surface::required_extensions(&event_loop).unwrap();
-    let instance = Instance::new(
-        library,
-        InstanceCreateInfo {
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: required_extensions,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    let mut rcx = RenderContext::new(&event_loop, &instance);
-
-    let mut task_graph = TaskGraph::new(&rcx.resources, 3, 2);
-
-    let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
-    let virtual_bloom_image_id = task_graph.add_image(&ImageCreateInfo::default());
-
-    let scene_node_id = task_graph
-        .create_task_node("Scene", QueueFamilyType::Graphics, SceneTask::new(&rcx))
-        .image_access(
-            virtual_bloom_image_id,
-            AccessType::ColorAttachmentWrite,
-            ImageLayoutType::Optimal,
-        )
-        .build();
-    let bloom_node_id = task_graph
-        .create_task_node(
-            "Bloom",
-            QueueFamilyType::Compute,
-            BloomTask::new(&rcx, virtual_bloom_image_id),
-        )
-        .image_access(
-            virtual_bloom_image_id,
-            AccessType::ComputeShaderSampledRead,
-            ImageLayoutType::General,
-        )
-        .image_access(
-            virtual_bloom_image_id,
-            AccessType::ComputeShaderStorageWrite,
-            ImageLayoutType::General,
-        )
-        .build();
-    let tonemap_node_id = task_graph
-        .create_task_node(
-            "Tonemap",
-            QueueFamilyType::Graphics,
-            TonemapTask::new(&rcx, virtual_swapchain_id),
-        )
-        .image_access(
-            virtual_swapchain_id.current_image_id(),
-            AccessType::ColorAttachmentWrite,
-            ImageLayoutType::Optimal,
-        )
-        .image_access(
-            virtual_bloom_image_id,
-            AccessType::FragmentShaderSampledRead,
-            ImageLayoutType::General,
-        )
-        .build();
-
-    task_graph.add_edge(scene_node_id, bloom_node_id).unwrap();
-    task_graph.add_edge(bloom_node_id, tonemap_node_id).unwrap();
-
-    let mut task_graph = unsafe {
-        task_graph.compile(&CompileInfo {
-            queues: &[&rcx.queue],
-            present_queue: Some(&rcx.queue),
-            flight_id: rcx.flight_id,
-            ..Default::default()
-        })
-    }
-    .unwrap();
-
-    let mut recreate_swapchain = false;
-
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
-
-        match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                elwt.exit();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
-            }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
-                let image_extent: [u32; 2] = rcx.window.inner_size().into();
-
-                if image_extent.contains(&0) {
-                    return;
-                }
-
-                if recreate_swapchain {
-                    rcx.handle_resize();
-
-                    task_graph
-                        .task_node_mut(scene_node_id)
-                        .unwrap()
-                        .task_mut()
-                        .downcast_mut::<SceneTask>()
-                        .unwrap()
-                        .handle_resize(&rcx);
-                    task_graph
-                        .task_node_mut(tonemap_node_id)
-                        .unwrap()
-                        .task_mut()
-                        .downcast_mut::<TonemapTask>()
-                        .unwrap()
-                        .handle_resize(&rcx);
-
-                    recreate_swapchain = false;
-                }
-
-                let flight = rcx.resources.flight(rcx.flight_id).unwrap();
-
-                flight.wait(None).unwrap();
-
-                let resource_map = resource_map!(
-                    &task_graph,
-                    virtual_swapchain_id => rcx.swapchain_id,
-                    virtual_bloom_image_id => rcx.bloom_image_id,
-                )
-                .unwrap();
-
-                match unsafe {
-                    task_graph.execute(resource_map, &rcx, || rcx.window.pre_present_notify())
-                } {
-                    Ok(()) => {}
-                    Err(ExecuteError::Swapchain {
-                        error: Validated::Error(VulkanError::OutOfDate),
-                        ..
-                    }) => {
-                        recreate_swapchain = true;
-                    }
-                    Err(e) => {
-                        panic!("failed to execute next frame: {e:?}");
-                    }
-                }
-            }
-            Event::AboutToWait => {
-                rcx.window.request_redraw();
-            }
-            Event::LoopExiting => {
-                rcx.cleanup();
-
-                task_graph
-                    .task_node_mut(scene_node_id)
-                    .unwrap()
-                    .task_mut()
-                    .downcast_mut::<SceneTask>()
-                    .unwrap()
-                    .cleanup(&rcx);
-                task_graph
-                    .task_node_mut(tonemap_node_id)
-                    .unwrap()
-                    .task_mut()
-                    .downcast_mut::<TonemapTask>()
-                    .unwrap()
-                    .cleanup(&rcx);
-            }
-            _ => (),
-        }
-    })
+    event_loop.run_app(&mut app)
 }
 
-pub struct RenderContext {
+struct App {
+    instance: Arc<Instance>,
     device: Arc<Device>,
     queue: Arc<Queue>,
     resources: Arc<Resources>,
     flight_id: Id<Flight>,
+    rcx: Option<RenderContext>,
+}
+
+pub struct RenderContext {
     window: Arc<Window>,
     swapchain_id: Id<Swapchain>,
-    swapchain_format: Format,
     bloom_image_id: Id<Image>,
     viewport: Viewport,
     pipeline_layout: Arc<PipelineLayout>,
+    recreate_swapchain: bool,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     sampler: Arc<Sampler>,
     descriptor_set: DescriptorSetWithOffsets,
+    task_graph: ExecutableTaskGraph<Self>,
+    scene_node_id: NodeId,
+    tonemap_node_id: NodeId,
+    virtual_swapchain_id: Id<Swapchain>,
+    virtual_bloom_image_id: Id<Image>,
 }
 
-impl RenderContext {
-    fn new(event_loop: &EventLoop<()>, instance: &Arc<Instance>) -> Self {
+impl App {
+    fn new(event_loop: &EventLoop<()>) -> Self {
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = Surface::required_extensions(event_loop).unwrap();
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+                enabled_extensions: required_extensions,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
         let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
@@ -318,16 +169,36 @@ impl RenderContext {
 
         let flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
 
-        let window = Arc::new(WindowBuilder::new().build(event_loop).unwrap());
-        let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
+        App {
+            instance,
+            device,
+            queue,
+            resources,
+            flight_id,
+            rcx: None,
+        }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
+                .unwrap(),
+        );
+        let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+        let window_size = window.inner_size();
 
         let swapchain_format;
         let swapchain_id = {
-            let surface_capabilities = device
+            let surface_capabilities = self
+                .device
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
-            (swapchain_format, _) = device
+            (swapchain_format, _) = self
+                .device
                 .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()
@@ -338,9 +209,9 @@ impl RenderContext {
                 })
                 .unwrap();
 
-            resources
+            self.resources
                 .create_swapchain(
-                    flight_id,
+                    self.flight_id,
                     surface,
                     SwapchainCreateInfo {
                         min_image_count: surface_capabilities.min_image_count.max(3),
@@ -360,15 +231,15 @@ impl RenderContext {
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
-            extent: window.inner_size().into(),
+            extent: window_size.into(),
             depth_range: 0.0..=1.0,
         };
 
         let pipeline_layout = PipelineLayout::new(
-            device.clone(),
+            self.device.clone(),
             PipelineLayoutCreateInfo {
                 set_layouts: vec![DescriptorSetLayout::new(
-                    device.clone(),
+                    self.device.clone(),
                     DescriptorSetLayoutCreateInfo {
                         bindings: [
                             (
@@ -417,12 +288,12 @@ impl RenderContext {
         .unwrap();
 
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
+            self.device.clone(),
             Default::default(),
         ));
 
         let sampler = Sampler::new(
-            device.clone(),
+            self.device.clone(),
             SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
@@ -434,61 +305,191 @@ impl RenderContext {
         .unwrap();
 
         let (bloom_image_id, descriptor_set) = window_size_dependent_setup(
-            &resources,
+            &self.resources,
             swapchain_id,
             &pipeline_layout,
             &sampler,
             &descriptor_set_allocator,
         );
 
-        RenderContext {
-            device,
-            queue,
+        let mut task_graph = TaskGraph::new(&self.resources, 3, 2);
+
+        let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo::default());
+        let virtual_bloom_image_id = task_graph.add_image(&ImageCreateInfo::default());
+
+        let scene_node_id = task_graph
+            .create_task_node(
+                "Scene",
+                QueueFamilyType::Graphics,
+                SceneTask::new(self, &pipeline_layout, bloom_image_id),
+            )
+            .image_access(
+                virtual_bloom_image_id,
+                AccessType::ColorAttachmentWrite,
+                ImageLayoutType::Optimal,
+            )
+            .build();
+        let bloom_node_id = task_graph
+            .create_task_node(
+                "Bloom",
+                QueueFamilyType::Compute,
+                BloomTask::new(self, &pipeline_layout, virtual_bloom_image_id),
+            )
+            .image_access(
+                virtual_bloom_image_id,
+                AccessType::ComputeShaderSampledRead,
+                ImageLayoutType::General,
+            )
+            .image_access(
+                virtual_bloom_image_id,
+                AccessType::ComputeShaderStorageWrite,
+                ImageLayoutType::General,
+            )
+            .build();
+        let tonemap_node_id = task_graph
+            .create_task_node(
+                "Tonemap",
+                QueueFamilyType::Graphics,
+                TonemapTask::new(self, &pipeline_layout, swapchain_id, virtual_swapchain_id),
+            )
+            .image_access(
+                virtual_swapchain_id.current_image_id(),
+                AccessType::ColorAttachmentWrite,
+                ImageLayoutType::Optimal,
+            )
+            .image_access(
+                virtual_bloom_image_id,
+                AccessType::FragmentShaderSampledRead,
+                ImageLayoutType::General,
+            )
+            .build();
+
+        task_graph.add_edge(scene_node_id, bloom_node_id).unwrap();
+        task_graph.add_edge(bloom_node_id, tonemap_node_id).unwrap();
+
+        let task_graph = unsafe {
+            task_graph.compile(&CompileInfo {
+                queues: &[&self.queue],
+                present_queue: Some(&self.queue),
+                flight_id: self.flight_id,
+                ..Default::default()
+            })
+        }
+        .unwrap();
+
+        self.rcx = Some(RenderContext {
             window,
-            resources,
-            flight_id,
             swapchain_id,
-            swapchain_format,
             bloom_image_id,
             viewport,
             pipeline_layout,
+            recreate_swapchain: false,
             sampler,
             descriptor_set_allocator,
             descriptor_set,
+            task_graph,
+            scene_node_id,
+            tonemap_node_id,
+            virtual_swapchain_id,
+            virtual_bloom_image_id,
+        });
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let rcx = self.rcx.as_mut().unwrap();
+
+        match event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
+            WindowEvent::Resized(_) => {
+                rcx.recreate_swapchain = true;
+            }
+            WindowEvent::RedrawRequested => {
+                let window_size = rcx.window.inner_size();
+
+                if window_size.width == 0 || window_size.height == 0 {
+                    return;
+                }
+
+                let flight = self.resources.flight(self.flight_id).unwrap();
+
+                if rcx.recreate_swapchain {
+                    rcx.swapchain_id = self
+                        .resources
+                        .recreate_swapchain(rcx.swapchain_id, |create_info| SwapchainCreateInfo {
+                            image_extent: window_size.into(),
+                            ..create_info
+                        })
+                        .expect("failed to recreate swapchain");
+
+                    rcx.viewport.extent = window_size.into();
+
+                    unsafe { self.resources.remove_image(rcx.bloom_image_id) }.unwrap();
+
+                    (rcx.bloom_image_id, rcx.descriptor_set) = window_size_dependent_setup(
+                        &self.resources,
+                        rcx.swapchain_id,
+                        &rcx.pipeline_layout,
+                        &rcx.sampler,
+                        &rcx.descriptor_set_allocator,
+                    );
+
+                    rcx.task_graph
+                        .task_node_mut(rcx.scene_node_id)
+                        .unwrap()
+                        .task_mut()
+                        .downcast_mut::<SceneTask>()
+                        .unwrap()
+                        .handle_resize(&self.resources, rcx.bloom_image_id);
+                    rcx.task_graph
+                        .task_node_mut(rcx.tonemap_node_id)
+                        .unwrap()
+                        .task_mut()
+                        .downcast_mut::<TonemapTask>()
+                        .unwrap()
+                        .handle_resize(&self.resources, rcx.swapchain_id);
+
+                    rcx.recreate_swapchain = false;
+                }
+
+                flight.wait(None).unwrap();
+
+                let resource_map = resource_map!(
+                    &rcx.task_graph,
+                    rcx.virtual_swapchain_id => rcx.swapchain_id,
+                    rcx.virtual_bloom_image_id => rcx.bloom_image_id,
+                )
+                .unwrap();
+
+                match unsafe {
+                    rcx.task_graph
+                        .execute(resource_map, rcx, || rcx.window.pre_present_notify())
+                } {
+                    Ok(()) => {}
+                    Err(ExecuteError::Swapchain {
+                        error: Validated::Error(VulkanError::OutOfDate),
+                        ..
+                    }) => {
+                        rcx.recreate_swapchain = true;
+                    }
+                    Err(e) => {
+                        panic!("failed to execute next frame: {e:?}");
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
-    fn handle_resize(&mut self) {
-        let window_size = self.window.inner_size();
-
-        self.swapchain_id = self
-            .resources
-            .recreate_swapchain(self.swapchain_id, |create_info| SwapchainCreateInfo {
-                image_extent: window_size.into(),
-                ..create_info
-            })
-            .expect("failed to recreate swapchain");
-
-        let flight = self.resources.flight(self.flight_id).unwrap();
-        let bloom_image_state =
-            unsafe { self.resources.remove_image(self.bloom_image_id) }.unwrap();
-        flight.destroy_object(bloom_image_state.image().clone());
-        flight.destroy_object(self.descriptor_set.as_ref().0.clone());
-
-        (self.bloom_image_id, self.descriptor_set) = window_size_dependent_setup(
-            &self.resources,
-            self.swapchain_id,
-            &self.pipeline_layout,
-            &self.sampler,
-            &self.descriptor_set_allocator,
-        );
-
-        self.viewport.extent = window_size.into();
-    }
-
-    fn cleanup(&mut self) {
-        let flight = self.resources.flight(self.flight_id).unwrap();
-        flight.destroy_object(self.descriptor_set.as_ref().0.clone());
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        let rcx = self.rcx.as_mut().unwrap();
+        rcx.window.request_redraw();
     }
 }
 

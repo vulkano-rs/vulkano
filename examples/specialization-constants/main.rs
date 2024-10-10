@@ -78,6 +78,7 @@ fn main() {
         },
     )
     .unwrap();
+
     let queue = queues.next().unwrap();
 
     mod cs {
@@ -126,6 +127,7 @@ fn main() {
                 .unwrap(),
         )
         .unwrap();
+
         ComputePipeline::new(
             device.clone(),
             None,
@@ -160,7 +162,7 @@ fn main() {
     .unwrap();
 
     let layout = &pipeline.layout().set_layouts()[0];
-    let set = DescriptorSet::new(
+    let descriptor_set = DescriptorSet::new(
         descriptor_set_allocator,
         layout.clone(),
         [WriteDescriptorSet::buffer(0, data_buffer.clone())],
@@ -186,7 +188,7 @@ fn main() {
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
-            set,
+            descriptor_set,
         )
         .unwrap();
 

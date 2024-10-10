@@ -1,12 +1,12 @@
-use crate::RenderContext;
-use std::{alloc::Layout, mem, slice, sync::Arc};
+use crate::{App, RenderContext};
+use std::{alloc::Layout, slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::RenderPassBeginInfo,
     format::Format,
     image::{
         view::{ImageView, ImageViewCreateInfo},
-        ImageAspects, ImageSubresourceRange, ImageUsage,
+        Image, ImageAspects, ImageSubresourceRange, ImageUsage,
     },
     memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
     pipeline::{
@@ -19,13 +19,14 @@ use vulkano::{
             viewport::ViewportState,
             GraphicsPipelineCreateInfo,
         },
-        DynamicState, GraphicsPipeline, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
 };
 use vulkano_taskgraph::{
-    command_buffer::RecordingCommandBuffer, resource::HostAccessType, Id, Task, TaskContext,
-    TaskResult,
+    command_buffer::RecordingCommandBuffer,
+    resource::{HostAccessType, Resources},
+    Id, Task, TaskContext, TaskResult,
 };
 
 pub struct SceneTask {
@@ -36,9 +37,13 @@ pub struct SceneTask {
 }
 
 impl SceneTask {
-    pub fn new(rcx: &RenderContext) -> Self {
+    pub fn new(
+        app: &App,
+        pipeline_layout: &Arc<PipelineLayout>,
+        bloom_image_id: Id<Image>,
+    ) -> Self {
         let render_pass = vulkano::single_pass_renderpass!(
-            rcx.device.clone(),
+            app.device.clone(),
             attachments: {
                 color: {
                     format: Format::R32_UINT,
@@ -55,11 +60,11 @@ impl SceneTask {
         .unwrap();
 
         let pipeline = {
-            let vs = vs::load(rcx.device.clone())
+            let vs = vs::load(app.device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-            let fs = fs::load(rcx.device.clone())
+            let fs = fs::load(app.device.clone())
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
@@ -71,7 +76,7 @@ impl SceneTask {
             let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
             GraphicsPipeline::new(
-                rcx.device.clone(),
+                app.device.clone(),
                 None,
                 GraphicsPipelineCreateInfo {
                     stages: stages.into_iter().collect(),
@@ -86,13 +91,13 @@ impl SceneTask {
                     )),
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(subpass.into()),
-                    ..GraphicsPipelineCreateInfo::layout(rcx.pipeline_layout.clone())
+                    ..GraphicsPipelineCreateInfo::layout(pipeline_layout.clone())
                 },
             )
             .unwrap()
         };
 
-        let framebuffer = window_size_dependent_setup(rcx, &render_pass);
+        let framebuffer = window_size_dependent_setup(&app.resources, bloom_image_id, &render_pass);
 
         let vertices = [
             MyVertex {
@@ -105,7 +110,7 @@ impl SceneTask {
                 position: [0.0, -0.5],
             },
         ];
-        let vertex_buffer_id = rcx
+        let vertex_buffer_id = app
             .resources
             .create_buffer(
                 BufferCreateInfo {
@@ -123,9 +128,9 @@ impl SceneTask {
 
         unsafe {
             vulkano_taskgraph::execute(
-                &rcx.queue,
-                &rcx.resources,
-                rcx.flight_id,
+                &app.queue,
+                &app.resources,
+                app.flight_id,
                 |_cbf, tcx| {
                     tcx.write_buffer::<[MyVertex]>(vertex_buffer_id, ..)?
                         .copy_from_slice(&vertices);
@@ -147,16 +152,9 @@ impl SceneTask {
         }
     }
 
-    pub fn handle_resize(&mut self, rcx: &RenderContext) {
-        let framebuffer = window_size_dependent_setup(rcx, &self.render_pass);
-
-        let flight = rcx.resources.flight(rcx.flight_id).unwrap();
-        flight.destroy_object(mem::replace(&mut self.framebuffer, framebuffer));
-    }
-
-    pub fn cleanup(&mut self, rcx: &RenderContext) {
-        let flight = rcx.resources.flight(rcx.flight_id).unwrap();
-        flight.destroy_object(self.framebuffer.clone());
+    pub fn handle_resize(&mut self, resources: &Resources, bloom_image_id: Id<Image>) {
+        self.framebuffer =
+            window_size_dependent_setup(resources, bloom_image_id, &self.render_pass);
     }
 }
 
@@ -184,6 +182,8 @@ impl Task for SceneTask {
 
         cbf.as_raw().end_render_pass(&Default::default())?;
 
+        cbf.destroy_object(self.framebuffer.clone());
+
         Ok(())
     }
 }
@@ -193,6 +193,38 @@ impl Task for SceneTask {
 struct MyVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],
+}
+
+fn window_size_dependent_setup(
+    resources: &Resources,
+    bloom_image_id: Id<Image>,
+    render_pass: &Arc<RenderPass>,
+) -> Arc<Framebuffer> {
+    let image_state = resources.image(bloom_image_id).unwrap();
+    let image = image_state.image();
+    let view = ImageView::new(
+        image.clone(),
+        ImageViewCreateInfo {
+            format: Format::R32_UINT,
+            subresource_range: ImageSubresourceRange {
+                aspects: ImageAspects::COLOR,
+                mip_levels: 0..1,
+                array_layers: 0..1,
+            },
+            usage: ImageUsage::COLOR_ATTACHMENT,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    Framebuffer::new(
+        render_pass.clone(),
+        FramebufferCreateInfo {
+            attachments: vec![view],
+            ..Default::default()
+        },
+    )
+    .unwrap()
 }
 
 mod vs {
@@ -225,35 +257,4 @@ mod fs {
         ",
         include: ["."],
     }
-}
-
-fn window_size_dependent_setup(
-    rcx: &RenderContext,
-    render_pass: &Arc<RenderPass>,
-) -> Arc<Framebuffer> {
-    let image_state = rcx.resources.image(rcx.bloom_image_id).unwrap();
-    let image = image_state.image();
-    let view = ImageView::new(
-        image.clone(),
-        ImageViewCreateInfo {
-            format: Format::R32_UINT,
-            subresource_range: ImageSubresourceRange {
-                aspects: ImageAspects::COLOR,
-                mip_levels: 0..1,
-                array_layers: 0..1,
-            },
-            usage: ImageUsage::COLOR_ATTACHMENT,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    Framebuffer::new(
-        render_pass.clone(),
-        FramebufferCreateInfo {
-            attachments: vec![view],
-            ..Default::default()
-        },
-    )
-    .unwrap()
 }

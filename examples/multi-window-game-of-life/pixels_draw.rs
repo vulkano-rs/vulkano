@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::App;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
