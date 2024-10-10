@@ -171,6 +171,7 @@ Other:
 - Fixed an off-by-one error in `SubpassDescription::validate`.
 - Made resizing smooth on macOS and iOS, and let it interoperate better with windowing libraries.
 - Fixed compiling on iOS.
+- Fixed UB in `GenericMemoryAllocator::deallocate` arising due to invalid pointer provenance given out on allocation.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
