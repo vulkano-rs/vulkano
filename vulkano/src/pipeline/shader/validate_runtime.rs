@@ -2471,7 +2471,7 @@ impl<'a> RuntimeValidator<'a> {
                         .and_then(|offset| get_constant_maybe_composite(self.spirv, offset))
                     {
                         for offset in components {
-                            if offset < properties.min_texel_gather_offset as u64 {
+                            if offset < properties.min_texel_gather_offset as i64 {
                                 return Err(Box::new(ValidationError {
                                     problem: "an `OpImage*Gather` instruction is performed, but \
                                         its `Offset`, `ConstOffset` or `ConstOffsets` \
@@ -2483,7 +2483,7 @@ impl<'a> RuntimeValidator<'a> {
                                 }));
                             }
 
-                            if offset > properties.max_texel_gather_offset as u64 {
+                            if offset > properties.max_texel_gather_offset as i64 {
                                 return Err(Box::new(ValidationError {
                                     problem: "an `OpImage*Gather` instruction is performed, but \
                                         its `Offset`, `ConstOffset` or `ConstOffsets` \
@@ -2501,7 +2501,7 @@ impl<'a> RuntimeValidator<'a> {
                     {
                         for components in elements {
                             for offset in components {
-                                if offset < properties.min_texel_gather_offset as u64 {
+                                if offset < properties.min_texel_gather_offset as i64 {
                                     return Err(Box::new(ValidationError {
                                         problem: "an `OpImage*Gather` instruction is performed, \
                                             but its `Offset`, `ConstOffset` or `ConstOffsets` \
@@ -2513,7 +2513,7 @@ impl<'a> RuntimeValidator<'a> {
                                     }));
                                 }
 
-                                if offset > properties.max_texel_gather_offset as u64 {
+                                if offset > properties.max_texel_gather_offset as i64 {
                                     return Err(Box::new(ValidationError {
                                         problem: "an `OpImage*Gather` instruction is performed, \
                                             but its `Offset`, `ConstOffset` or `ConstOffsets` \
@@ -2537,7 +2537,7 @@ impl<'a> RuntimeValidator<'a> {
                         .and_then(|offset| get_constant_maybe_composite(self.spirv, offset))
                     {
                         for offset in components {
-                            if offset < properties.min_texel_offset as u64 {
+                            if offset < properties.min_texel_offset as i64 {
                                 return Err(Box::new(ValidationError {
                                     problem: "an `OpImageSample*` or `OpImageFetch*` instruction \
                                         is performed, but its `ConstOffset` image operand \
@@ -2549,7 +2549,7 @@ impl<'a> RuntimeValidator<'a> {
                                 }));
                             }
 
-                            if offset > properties.max_texel_offset as u64 {
+                            if offset > properties.max_texel_offset as i64 {
                                 return Err(Box::new(ValidationError {
                                     problem: "an `OpImageSample*` or `OpImageFetch*` instruction \
                                         is performed, but its `ConstOffset` image operand \
