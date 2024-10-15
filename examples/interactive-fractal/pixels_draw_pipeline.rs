@@ -1,9 +1,8 @@
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
-        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
-        RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBufferInheritanceInfo,
+        CommandBufferUsage, RecordingCommandBuffer, SecondaryAutoCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -126,17 +125,17 @@ impl PixelsDrawPipeline {
     }
 
     /// Draws input `image` over a quad of size -1.0 to 1.0.
-    pub fn draw(&self, viewport_dimensions: [u32; 2], image: Arc<ImageView>) -> Arc<CommandBuffer> {
-        let mut builder = RecordingCommandBuffer::new(
+    pub fn draw(
+        &self,
+        viewport_dimensions: [u32; 2],
+        image: Arc<ImageView>,
+    ) -> Arc<SecondaryAutoCommandBuffer> {
+        let mut builder = RecordingCommandBuffer::secondary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferLevel::Secondary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::MultipleSubmit,
-                inheritance_info: Some(CommandBufferInheritanceInfo {
-                    render_pass: Some(self.subpass.clone().into()),
-                    ..Default::default()
-                }),
+            CommandBufferUsage::MultipleSubmit,
+            CommandBufferInheritanceInfo {
+                render_pass: Some(self.subpass.clone().into()),
                 ..Default::default()
             },
         )

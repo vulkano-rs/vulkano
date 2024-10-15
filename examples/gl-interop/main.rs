@@ -20,9 +20,8 @@ mod linux {
     use vulkano::{
         buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-            CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo, SemaphoreSubmitInfo,
-            SubmitInfo,
+            allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
+            RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -703,14 +702,10 @@ mod linux {
                         rcx.recreate_swapchain = true;
                     }
 
-                    let mut builder = RecordingCommandBuffer::new(
+                    let mut builder = RecordingCommandBuffer::primary(
                         self.command_buffer_allocator.clone(),
                         self.queue.queue_family_index(),
-                        CommandBufferLevel::Primary,
-                        CommandBufferBeginInfo {
-                            usage: CommandBufferUsage::OneTimeSubmit,
-                            ..Default::default()
-                        },
+                        CommandBufferUsage::OneTimeSubmit,
                     )
                     .unwrap();
 
