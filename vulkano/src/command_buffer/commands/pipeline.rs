@@ -2633,7 +2633,25 @@ impl RecordingCommandBuffer {
                     }
                 }
                 // DynamicState::ExclusiveScissor => todo!(),
-                // DynamicState::FragmentShadingRate => todo!(),
+                DynamicState::FragmentShadingRate => {
+                    if self.builder_state.fragment_shading_rate.is_none() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            )
+                            .into(),
+                            vuids: vuids!(
+                                vuid_type,
+                                "VUID-vkCmdDrawIndexed-pipelineFragmentShadingRate-09238"
+                            ),
+                            ..Default::default()
+                        }));
+                    }
+                }
                 DynamicState::FrontFace => {
                     if self.builder_state.front_face.is_none() {
                         return Err(Box::new(ValidationError {
