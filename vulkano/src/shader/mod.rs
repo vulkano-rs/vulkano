@@ -224,7 +224,7 @@
 //! ## Mesh shading
 //!
 //! - If the shader declares the `OutputPoints` execution mode with a value greater than 0, and the
-//!   [`maintenance5`](Features::maintenance5) feature is not enabled on the device, then the
+//!   [`maintenance5`](DeviceFeatures::maintenance5) feature is not enabled on the device, then the
 //!   shader must write to a variable decorated with `PointSize` for each output point.
 //!   <sup>[\[09218\]]</sup>
 //!

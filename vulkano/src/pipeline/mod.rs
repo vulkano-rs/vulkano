@@ -731,7 +731,7 @@ vulkan_enum! {
     ]), */
 
     /// The value of
-    /// [`ConservativeRasterizationState::mode`](crate::pipeline::graphics::conservative_rasterization::ConservativeRasterizationState::mode)
+    /// [`ConservativeRasterizationState::mode`](crate::pipeline::graphics::rasterization::RasterizationConservativeState::mode)
     ///
     /// Set with
     /// [`set_conservative_rasterization_mode`](crate::command_buffer::RecordingCommandBuffer::set_conservative_rasterization_mode).
@@ -741,7 +741,7 @@ vulkan_enum! {
     ]),
 
     /// The value of
-    /// [`ConservativeRasterizationState::overestimation_size`](crate::pipeline::graphics::conservative_rasterization::ConservativeRasterizationState::overestimation_size)
+    /// [`ConservativeRasterizationState::overestimation_size`](crate::pipeline::graphics::rasterization::RasterizationConservativeState::overestimation_size)
     ///
     /// Set with
     /// [`set_extra_primitive_overestimation_size`](crate::command_buffer::RecordingCommandBuffer::set_extra_primitive_overestimation_size).

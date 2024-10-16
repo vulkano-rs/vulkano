@@ -55,8 +55,10 @@ use std::cmp;
 /// [suballocator]: Suballocator
 /// [internal fragmentation]: super#internal-fragmentation
 /// [external fragmentation]: super#external-fragmentation
+/// [`FreeListAllocator`]: super::FreeListAllocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BuddyAllocator>
 /// [region]: Suballocator#regions
+/// [`BumpAllocator`]: super::BumpAllocator
 #[derive(Debug)]
 pub struct BuddyAllocator {
     region_offset: DeviceSize,
