@@ -5,8 +5,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, PrimaryAutoCommandBuffer,
+        RecordingCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -130,14 +130,10 @@ impl GameOfLifeComputePipeline {
         life_color: [f32; 4],
         dead_color: [f32; 4],
     ) -> Box<dyn GpuFuture> {
-        let mut builder = RecordingCommandBuffer::new(
+        let mut builder = RecordingCommandBuffer::primary(
             self.command_buffer_allocator.clone(),
             self.compute_queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
@@ -167,7 +163,7 @@ impl GameOfLifeComputePipeline {
     /// Builds the command for a dispatch.
     fn dispatch(
         &self,
-        builder: &mut RecordingCommandBuffer,
+        builder: &mut RecordingCommandBuffer<PrimaryAutoCommandBuffer>,
         life_color: [f32; 4],
         dead_color: [f32; 4],
         // Step determines whether we color or compute life (see branch in the shader)s.

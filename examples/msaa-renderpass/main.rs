@@ -57,8 +57,8 @@ use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, CopyImageToBufferInfo, RecordingCommandBuffer, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyImageToBufferInfo,
+        RecordingCommandBuffer, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -379,14 +379,10 @@ fn main() {
     )
     .unwrap();
 
-    let mut builder = RecordingCommandBuffer::new(
+    let mut builder = RecordingCommandBuffer::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
-        CommandBufferLevel::Primary,
-        CommandBufferBeginInfo {
-            usage: CommandBufferUsage::OneTimeSubmit,
-            ..Default::default()
-        },
+        CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
 

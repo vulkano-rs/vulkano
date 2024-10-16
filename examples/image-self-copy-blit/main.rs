@@ -3,9 +3,8 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, BlitImageInfo, BufferImageCopy,
-        ClearColorImageInfo, CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage,
-        CopyBufferToImageInfo, CopyImageInfo, ImageBlit, ImageCopy, RecordingCommandBuffer,
-        RenderPassBeginInfo,
+        ClearColorImageInfo, CommandBufferUsage, CopyBufferToImageInfo, CopyImageInfo, ImageBlit,
+        ImageCopy, RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -186,14 +185,10 @@ impl App {
         )
         .unwrap();
 
-        let mut uploads = RecordingCommandBuffer::new(
+        let mut uploads = RecordingCommandBuffer::primary(
             command_buffer_allocator.clone(),
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
@@ -528,14 +523,10 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = true;
                 }
 
-                let mut builder = RecordingCommandBuffer::new(
+                let mut builder = RecordingCommandBuffer::primary(
                     self.command_buffer_allocator.clone(),
                     self.queue.queue_family_index(),
-                    CommandBufferLevel::Primary,
-                    CommandBufferBeginInfo {
-                        usage: CommandBufferUsage::OneTimeSubmit,
-                        ..Default::default()
-                    },
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
 

@@ -21,8 +21,8 @@ use std::{
 use vulkano::{
     buffer::{Buffer, BufferMemory},
     command_buffer::{
-        sys::{RawCommandBuffer, RawRecordingCommandBuffer},
-        CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage,
+        sys::{CommandBufferBeginInfo, RawCommandBuffer, RawRecordingCommandBuffer},
+        CommandBufferLevel, CommandBufferUsage,
     },
     device::{Device, DeviceOwned, Queue},
     image::Image,

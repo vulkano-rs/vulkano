@@ -2,9 +2,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBuffer, CommandBufferBeginInfo,
-        CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
-        RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, CommandBufferInheritanceInfo,
+        CommandBufferUsage, RecordingCommandBuffer, SecondaryAutoCommandBuffer,
     },
     device::Queue,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
@@ -126,17 +125,13 @@ impl TriangleDrawSystem {
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
-    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> Arc<CommandBuffer> {
-        let mut builder = RecordingCommandBuffer::new(
+    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> Arc<SecondaryAutoCommandBuffer> {
+        let mut builder = RecordingCommandBuffer::secondary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferLevel::Secondary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::MultipleSubmit,
-                inheritance_info: Some(CommandBufferInheritanceInfo {
-                    render_pass: Some(self.subpass.clone().into()),
-                    ..Default::default()
-                }),
+            CommandBufferUsage::MultipleSubmit,
+            CommandBufferInheritanceInfo {
+                render_pass: Some(self.subpass.clone().into()),
                 ..Default::default()
             },
         )

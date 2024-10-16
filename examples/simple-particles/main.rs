@@ -7,8 +7,8 @@ use std::{error::Error, sync::Arc, time::SystemTime};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, CopyBufferInfo, RecordingCommandBuffer, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyBufferInfo,
+        RecordingCommandBuffer, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -210,14 +210,10 @@ impl App {
             .unwrap();
 
             // Create one-time command to copy between the buffers.
-            let mut cbb = RecordingCommandBuffer::new(
+            let mut cbb = RecordingCommandBuffer::primary(
                 command_buffer_allocator.clone(),
                 queue.queue_family_index(),
-                CommandBufferLevel::Primary,
-                CommandBufferBeginInfo {
-                    usage: CommandBufferUsage::OneTimeSubmit,
-                    ..Default::default()
-                },
+                CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
             cbb.copy_buffer(CopyBufferInfo::buffers(
@@ -542,14 +538,10 @@ impl ApplicationHandler for App {
                     "not handling sub-optimal swapchains in this sample code",
                 );
 
-                let mut builder = RecordingCommandBuffer::new(
+                let mut builder = RecordingCommandBuffer::primary(
                     self.command_buffer_allocator.clone(),
                     self.queue.queue_family_index(),
-                    CommandBufferLevel::Primary,
-                    CommandBufferBeginInfo {
-                        usage: CommandBufferUsage::OneTimeSubmit,
-                        ..Default::default()
-                    },
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
 

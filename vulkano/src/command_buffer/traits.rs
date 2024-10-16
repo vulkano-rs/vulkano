@@ -1,4 +1,4 @@
-use super::{CommandBuffer, CommandBufferSubmitInfo, SemaphoreSubmitInfo, SubmitInfo};
+use super::{CommandBufferSubmitInfo, PrimaryAutoCommandBuffer, SemaphoreSubmitInfo, SubmitInfo};
 use crate::{
     buffer::Buffer,
     device::{Device, DeviceOwned, Queue},
@@ -26,7 +26,7 @@ use std::{
     thread,
 };
 
-impl CommandBuffer {
+impl PrimaryAutoCommandBuffer {
     /// Executes this command buffer on a queue.
     ///
     /// This function returns an object that implements the [`GpuFuture`] trait. See the
@@ -121,7 +121,7 @@ where
     F: GpuFuture,
 {
     previous: F,
-    command_buffer: Arc<CommandBuffer>,
+    command_buffer: Arc<PrimaryAutoCommandBuffer>,
     queue: Arc<Queue>,
     // True if the command buffer has already been submitted.
     // If flush is called multiple times, we want to block so that only one flushing is executed.
