@@ -45,6 +45,7 @@ use std::iter::FusedIterator;
 /// Allocation is *O*(1), and so is resetting the allocator (freeing all allocations).
 ///
 /// [suballocator]: Suballocator
+/// [`FreeListAllocator`]: super::FreeListAllocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
 /// [region]: Suballocator#regions
 /// [free-list]: Suballocator#free-lists

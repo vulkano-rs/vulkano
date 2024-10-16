@@ -153,6 +153,8 @@ impl ResourceMemory {
     ///
     /// - Two resources must not alias each other, and if they do, you must ensure correct
     ///   synchronization yourself.
+    ///
+    /// [`new_dedicated`]: Self::new_dedicated
     pub unsafe fn new_dedicated_unchecked(device_memory: Arc<DeviceMemory>) -> Self {
         let size = device_memory.allocation_size();
 
@@ -166,9 +168,9 @@ impl ResourceMemory {
     ///
     /// # Safety
     ///
-    /// - Two resources must not alias each other (as returned by [`Buffer::memory_requirements`]
-    ///   or [`Image::memory_requirements`]), and if they do, you must ensure correct
-    ///   synchronization yourself.
+    /// - Two resources must not alias each other (as returned by
+    ///   [`RawBuffer::memory_requirements`] or [`RawImage::memory_requirements`]), and if they do,
+    ///   you must ensure correct synchronization yourself.
     ///
     /// # Panics
     ///

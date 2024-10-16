@@ -296,7 +296,7 @@ impl QueryPool {
     /// - There must be no calls to `reset*` or `get_results*` executing concurrently on another
     ///   thread.
     ///
-    /// [`host_query_reset`]: Features::host_query_reset
+    /// [`host_query_reset`]: crate::device::DeviceFeatures::host_query_reset
     #[inline]
     pub unsafe fn reset(&self, range: Range<u32>) -> Result<(), Box<ValidationError>> {
         self.validate_reset(range.clone())?;

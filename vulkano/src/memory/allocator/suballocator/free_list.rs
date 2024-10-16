@@ -55,6 +55,8 @@ use std::{cmp, iter::FusedIterator, marker::PhantomData, ptr::NonNull};
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
 /// [external fragmentation]: super#external-fragmentation
+/// [`BuddyAllocator`]: super::BuddyAllocator
+/// [`BumpAllocator`]: super::BumpAllocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<FreeListAllocator>
 /// [internal fragmentation]: super#internal-fragmentation
 /// [alignment requirements]: super#alignment
