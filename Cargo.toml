@@ -8,6 +8,9 @@ members = [
     "vulkano-util",
     # "vulkano-win",
 ]
+# NOTE(Marc): Linux CI is failing because of a transitive dependency of the old winit that this
+# example depends on. I don't know how to update glium to the new version.
+exclude = ["examples/gl-interop"]
 resolver = "2"
 
 [workspace.package]
