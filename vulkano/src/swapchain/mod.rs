@@ -491,7 +491,7 @@ impl Swapchain {
             Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))?
         };
 
-        let (mut swapchain, swapchain_images) = Self::from_handle(
+        let (swapchain, swapchain_images) = Self::from_handle(
             self.device.clone(),
             handle,
             image_handles,
@@ -500,10 +500,10 @@ impl Swapchain {
         )?;
 
         if self.full_screen_exclusive == FullScreenExclusive::ApplicationControlled {
-            Arc::get_mut(&mut swapchain)
-                .unwrap()
-                .full_screen_exclusive_held =
-                AtomicBool::new(self.full_screen_exclusive_held.load(Ordering::Relaxed))
+            swapchain.full_screen_exclusive_held.store(
+                self.full_screen_exclusive_held.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
         };
 
         Ok((swapchain, swapchain_images))
