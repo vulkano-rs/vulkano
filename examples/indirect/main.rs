@@ -21,8 +21,8 @@ use vulkano::{
         BufferContents, BufferUsage,
     },
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, DrawIndirectCommand,
-        RecordingCommandBuffer, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        DrawIndirectCommand, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -522,7 +522,7 @@ impl ApplicationHandler for App {
                 )
                 .unwrap();
 
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     self.command_buffer_allocator.clone(),
                     self.queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
@@ -572,7 +572,7 @@ impl ApplicationHandler for App {
 
                 builder.end_render_pass(Default::default()).unwrap();
 
-                let command_buffer = builder.end().unwrap();
+                let command_buffer = builder.build().unwrap();
 
                 let future = rcx
                     .previous_frame_end

@@ -5,9 +5,9 @@ use crate::{
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
-        sys::RawRecordingCommandBuffer,
-        DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
-        DrawMeshTasksIndirectCommand, RecordingCommandBuffer, ResourceInCommand, SubpassContents,
+        sys::RecordingCommandBuffer,
+        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
+        DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents,
     },
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorType},
@@ -52,7 +52,7 @@ macro_rules! vuids {
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using
@@ -117,7 +117,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.dispatch_unchecked(group_counts);
             },
         );
@@ -199,7 +199,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.dispatch_indirect_unchecked(&indirect_buffer);
             },
         );
@@ -386,7 +386,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
             },
         );
@@ -493,7 +493,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_indirect",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -623,7 +623,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_indirect_count",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indirect_count_unchecked(
                     &indirect_buffer,
                     &count_buffer,
@@ -860,7 +860,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_indexed",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indexed_unchecked(
                     index_count,
                     instance_count,
@@ -989,7 +989,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_indexed_indirect",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -1134,7 +1134,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_indexed_indirect_count",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indexed_indirect_count_unchecked(
                     &indirect_buffer,
                     &count_buffer,
@@ -1326,7 +1326,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_mesh_tasks",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_mesh_tasks_unchecked(group_counts);
             },
         );
@@ -1441,7 +1441,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_mesh_tasks_indirect",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_mesh_tasks_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -1579,7 +1579,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "draw_mesh_tasks_indirect_count",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_mesh_tasks_indirect_count_unchecked(
                     &indirect_buffer,
                     &count_buffer,
@@ -3698,7 +3698,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn dispatch(
         &mut self,

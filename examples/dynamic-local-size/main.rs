@@ -8,8 +8,8 @@ use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyImageToBufferInfo,
-        RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        CopyImageToBufferInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -249,7 +249,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut builder = RecordingCommandBuffer::primary(
+    let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
@@ -278,7 +278,7 @@ fn main() {
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();
 
-    let command_buffer = builder.end().unwrap();
+    let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

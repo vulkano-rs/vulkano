@@ -7,9 +7,9 @@ use glam::f32::{Mat4, Vec3};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        RecordingCommandBuffer, RenderPassBeginInfo, SecondaryAutoCommandBuffer, SubpassBeginInfo,
-        SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryAutoCommandBuffer,
+        SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
@@ -338,7 +338,7 @@ impl FrameSystem {
         .unwrap();
 
         // Start the command buffer builder that will be filled throughout the frame handling.
-        let mut command_buffer_builder = RecordingCommandBuffer::primary(
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -394,7 +394,7 @@ pub struct Frame<'a> {
     // Framebuffer that was used when starting the render pass.
     framebuffer: Arc<Framebuffer>,
     // The command buffer builder that will be built during the lifetime of this object.
-    command_buffer_builder: Option<RecordingCommandBuffer<PrimaryAutoCommandBuffer>>,
+    command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     // Matrix that was passed to `frame()`.
     world_to_framebuffer: Mat4,
 }
@@ -444,7 +444,7 @@ impl<'a> Frame<'a> {
                     .unwrap()
                     .end_render_pass(Default::default())
                     .unwrap();
-                let command_buffer = self.command_buffer_builder.take().unwrap().end().unwrap();
+                let command_buffer = self.command_buffer_builder.take().unwrap().build().unwrap();
 
                 // Extract `before_main_cb_future` and append the command buffer execution to it.
                 let after_main_cb = self

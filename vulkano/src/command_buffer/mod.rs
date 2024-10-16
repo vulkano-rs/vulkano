@@ -39,8 +39,8 @@
 //! # Recording a command buffer
 //!
 //! To record a new command buffer, the most direct way is to create a new
-//! [`RecordingCommandBuffer`]. You can then call methods on this object to record new commands to
-//! the command buffer. When you are done recording, you call [`end`] to finalise the command
+//! [`AutoCommandBufferBuilder`]. You can then call methods on this object to record new commands
+//! to the command buffer. When you are done recording, you call [`build`] to finalise the command
 //! buffer and turn it into either a [`PrimaryAutoCommandBuffer`] or a
 //! [`SecondaryAutoCommandBuffer`].
 //!
@@ -52,7 +52,7 @@
 //! on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::{CommandBufferUsage, RecordingCommandBuffer, SubpassContents};
+//! use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
@@ -61,7 +61,7 @@
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! #
-//! let mut cb = RecordingCommandBuffer::primary(
+//! let mut cb = AutoCommandBufferBuilder::primary(
 //!     command_buffer_allocator.clone(),
 //!     queue.queue_family_index(),
 //!     CommandBufferUsage::OneTimeSubmit,
@@ -81,7 +81,7 @@
 //!
 //! cb.end_render_pass(Default::default()).unwrap();
 //!
-//! let cb = cb.end().unwrap();
+//! let cb = cb.build().unwrap();
 //!
 //! let future = cb.execute(queue.clone());
 //! ```
@@ -89,7 +89,7 @@
 //! [`StandardCommandBufferAllocator`]: allocator::StandardCommandBufferAllocator
 //! [`CommandBufferAllocator`]: allocator::CommandBufferAllocator
 //! [inherit]: CommandBufferInheritanceInfo
-//! [`end`]: RecordingCommandBuffer::end
+//! [`build`]: AutoCommandBufferBuilder::build
 //! [`GpuFuture`]: crate::sync::GpuFuture
 
 #[allow(unused_imports)] // everything is exported for future-proofing
@@ -98,7 +98,8 @@ pub use self::commands::{
     query::*, render_pass::*, secondary::*, sync::*,
 };
 pub use self::{
-    auto::{PrimaryAutoCommandBuffer, RecordingCommandBuffer, SecondaryAutoCommandBuffer},
+    auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
+    sys::{CommandBuffer, CommandBufferBeginInfo, RecordingCommandBuffer},
     traits::{CommandBufferExecError, CommandBufferExecFuture},
 };
 use crate::{
@@ -130,11 +131,11 @@ pub mod allocator;
 pub mod auto;
 mod commands;
 pub mod pool;
-pub mod sys;
+mod sys;
 mod traits;
 
 /// Used as buffer contents to provide input for the
-/// [`RecordingCommandBuffer::dispatch_indirect`] command.
+/// [`AutoCommandBufferBuilder::dispatch_indirect`] command.
 ///
 /// # Safety
 ///
@@ -150,7 +151,7 @@ pub struct DispatchIndirectCommand {
 }
 
 /// Used as buffer contents to provide input for the
-/// [`RecordingCommandBuffer::draw_indirect`] command.
+/// [`AutoCommandBufferBuilder::draw_indirect`] command.
 ///
 /// # Safety
 ///
@@ -173,7 +174,7 @@ pub struct DrawIndirectCommand {
 }
 
 /// Used as buffer contents to provide input for the
-/// [`RecordingCommandBuffer::draw_mesh_tasks_indirect`] command.
+/// [`AutoCommandBufferBuilder::draw_mesh_tasks_indirect`] command.
 ///
 /// # Safety
 ///
@@ -198,7 +199,7 @@ pub struct DrawMeshTasksIndirectCommand {
 }
 
 /// Used as buffer contents to provide input for the
-/// [`RecordingCommandBuffer::draw_indexed_indirect`] command.
+/// [`AutoCommandBufferBuilder::draw_indexed_indirect`] command.
 ///
 /// # Safety
 ///

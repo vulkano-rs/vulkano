@@ -8,7 +8,7 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -195,7 +195,7 @@ fn main() {
     .unwrap();
 
     // In order to execute our operation, we have to build a command buffer.
-    let mut builder = RecordingCommandBuffer::primary(
+    let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
@@ -224,7 +224,7 @@ fn main() {
     }
 
     // Finish building the command buffer by calling `build`.
-    let command_buffer = builder.end().unwrap();
+    let command_buffer = builder.build().unwrap();
 
     // Let's execute this command buffer now.
     let future = sync::now(device)

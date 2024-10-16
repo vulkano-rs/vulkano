@@ -45,7 +45,7 @@
 //!   compatible definitions, including the push constants, then descriptor sets above *N* remain
 //!   valid.
 //!
-//! [`RecordingCommandBuffer`] keeps track of this state and will automatically remove descriptor
+//! [`AutoCommandBufferBuilder`] keeps track of this state and will automatically remove descriptor
 //! sets that have been invalidated by incompatible layouts in subsequent binding commands.
 //!
 //! # Creating pipeline layouts
@@ -53,7 +53,7 @@
 //! A pipeline layout is a Vulkan object type, represented in Vulkano with the `PipelineLayout`
 //! type. Each pipeline that you create holds a pipeline layout object.
 //!
-//! [`RecordingCommandBuffer`]: crate::command_buffer::auto::RecordingCommandBuffer
+//! [`AutoCommandBufferBuilder`]: crate::command_buffer::AutoCommandBufferBuilder
 
 use super::PipelineShaderStageCreateInfo;
 use crate::{

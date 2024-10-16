@@ -6,7 +6,7 @@ use crate::{
     buffer::{Buffer, IndexBuffer, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator,
-        sys::{CommandBufferBeginInfo, RawCommandBuffer, RawRecordingCommandBuffer},
+        sys::{CommandBuffer, CommandBufferBeginInfo, RecordingCommandBuffer},
         CommandBufferBufferRangeUsage, CommandBufferBufferUsage, CommandBufferImageRangeUsage,
         CommandBufferImageUsage, CommandBufferInheritanceInfo,
         CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferResourcesUsage,
@@ -54,29 +54,29 @@ use std::{
 
 /// A command buffer in the recording state.
 ///
-/// Unlike [`RawRecordingCommandBuffer`], this type does resource tracking and inserts pipeline
+/// Unlike [`RecordingCommandBuffer`], this type does resource tracking and inserts pipeline
 /// barriers automatically.
 ///
 /// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
 /// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
-pub struct RecordingCommandBuffer<L> {
-    pub(in crate::command_buffer) inner: RawRecordingCommandBuffer,
+pub struct AutoCommandBufferBuilder<L> {
+    pub(in crate::command_buffer) inner: RecordingCommandBuffer,
     commands: Vec<(
         CommandInfo,
-        Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>,
+        Box<dyn Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static>,
     )>,
     pub(in crate::command_buffer) builder_state: CommandBufferBuilderState,
     marker: PhantomData<fn() -> L>,
 }
 
-impl RecordingCommandBuffer<PrimaryAutoCommandBuffer> {
+impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
     /// Allocates and begins recording a new primary command buffer.
     #[inline]
     pub fn primary(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<RecordingCommandBuffer<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
             Self::new(
                 allocator,
@@ -97,7 +97,7 @@ impl RecordingCommandBuffer<PrimaryAutoCommandBuffer> {
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
         usage: CommandBufferUsage,
-    ) -> Result<RecordingCommandBuffer<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+    ) -> Result<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
             Self::new_unchecked(
                 allocator,
@@ -113,7 +113,7 @@ impl RecordingCommandBuffer<PrimaryAutoCommandBuffer> {
     }
 
     /// Ends the recording, returning a command buffer which can be submitted.
-    pub fn end(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
+    pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         self.validate_end()?;
 
         let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked()? };
@@ -127,7 +127,7 @@ impl RecordingCommandBuffer<PrimaryAutoCommandBuffer> {
     }
 }
 
-impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
+impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
     /// Allocates and begins recording a new secondary command buffer.
     #[inline]
     pub fn secondary(
@@ -135,7 +135,7 @@ impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<RecordingCommandBuffer<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
             Self::new(
                 allocator,
@@ -157,7 +157,7 @@ impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
         queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
-    ) -> Result<RecordingCommandBuffer<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+    ) -> Result<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         unsafe {
             Self::new_unchecked(
                 allocator,
@@ -173,7 +173,7 @@ impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
     }
 
     /// Ends the recording, returning a command buffer which can be submitted.
-    pub fn end(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
+    pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         self.validate_end()?;
 
         let (inner, keep_alive_objects, _, resources_usage) = unsafe { self.end_unchecked()? };
@@ -197,7 +197,7 @@ impl RecordingCommandBuffer<SecondaryAutoCommandBuffer> {
     }
 }
 
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     unsafe fn new(
         allocator: Arc<dyn CommandBufferAllocator>,
         queue_family_index: u32,
@@ -215,7 +215,7 @@ impl<L> RecordingCommandBuffer<L> {
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), Box<ValidationError>> {
-        RawRecordingCommandBuffer::validate_new(device, queue_family_index, level, begin_info)?;
+        RecordingCommandBuffer::validate_new(device, queue_family_index, level, begin_info)?;
 
         Ok(())
     }
@@ -247,14 +247,14 @@ impl<L> RecordingCommandBuffer<L> {
             }
         }
 
-        let inner = RawRecordingCommandBuffer::new_unchecked(
+        let inner = RecordingCommandBuffer::new_unchecked(
             allocator,
             queue_family_index,
             level,
             begin_info,
         )?;
 
-        Ok(RecordingCommandBuffer {
+        Ok(AutoCommandBufferBuilder {
             inner,
             commands: Vec::new(),
             builder_state,
@@ -291,8 +291,8 @@ impl<L> RecordingCommandBuffer<L> {
         mut self,
     ) -> Result<
         (
-            RawCommandBuffer,
-            Vec<Box<dyn Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static>>,
+            CommandBuffer,
+            Vec<Box<dyn Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static>>,
             CommandBufferResourcesUsage,
             SecondaryCommandBufferResourcesUsage,
         ),
@@ -380,12 +380,12 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     pub(in crate::command_buffer) fn add_command(
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -401,7 +401,7 @@ impl<L> RecordingCommandBuffer<L> {
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -417,7 +417,7 @@ impl<L> RecordingCommandBuffer<L> {
         &mut self,
         name: &'static str,
         used_resources: Vec<(ResourceUseRef2, Resource)>,
-        record_func: impl Fn(&mut RawRecordingCommandBuffer) + Send + Sync + 'static,
+        record_func: impl Fn(&mut RecordingCommandBuffer) + Send + Sync + 'static,
     ) {
         self.commands.push((
             CommandInfo {
@@ -430,7 +430,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-unsafe impl<L> DeviceOwned for RecordingCommandBuffer<L> {
+unsafe impl<L> DeviceOwned for AutoCommandBufferBuilder<L> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()

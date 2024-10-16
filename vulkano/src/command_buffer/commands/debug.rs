@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::{sys::RawRecordingCommandBuffer, RecordingCommandBuffer},
+    command_buffer::{sys::RecordingCommandBuffer, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
@@ -10,7 +10,7 @@ use crate::{
 /// These commands all require the [`ext_debug_utils`] extension to be enabled on the instance.
 ///
 /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Opens a command buffer debug label region.
     pub fn begin_debug_utils_label(
         &mut self,
@@ -38,7 +38,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "begin_debug_utils_label",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.begin_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -74,7 +74,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "end_debug_utils_label",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.end_debug_utils_label_unchecked();
             },
         );
@@ -109,7 +109,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "insert_debug_utils_label",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.insert_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -118,7 +118,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn begin_debug_utils_label(
         &mut self,

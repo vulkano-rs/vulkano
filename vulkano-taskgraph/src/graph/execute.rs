@@ -20,10 +20,7 @@ use std::{
 };
 use vulkano::{
     buffer::{Buffer, BufferMemory},
-    command_buffer::{
-        sys::{CommandBufferBeginInfo, RawCommandBuffer, RawRecordingCommandBuffer},
-        CommandBufferLevel, CommandBufferUsage,
-    },
+    command_buffer as raw,
     device::{Device, DeviceOwned, Queue},
     image::Image,
     swapchain::{AcquireNextImageInfo, AcquiredImage, Swapchain},
@@ -619,8 +616,8 @@ struct ExecuteState2<'a, W: ?Sized + 'static> {
     queue_submit2: vk::PFN_vkQueueSubmit2,
     per_submits: SmallVec<[PerSubmitInfo2; 4]>,
     current_per_submit: PerSubmitInfo2,
-    current_command_buffer: Option<RawRecordingCommandBuffer>,
-    command_buffers: Vec<Arc<RawCommandBuffer>>,
+    current_command_buffer: Option<raw::RecordingCommandBuffer>,
+    command_buffers: Vec<Arc<raw::CommandBuffer>>,
     current_buffer_barriers: Vec<vk::BufferMemoryBarrier2<'static>>,
     current_image_barriers: Vec<vk::ImageMemoryBarrier2<'static>>,
 }
@@ -1042,8 +1039,8 @@ struct ExecuteState<'a, W: ?Sized + 'static> {
     queue_submit: vk::PFN_vkQueueSubmit,
     per_submits: SmallVec<[PerSubmitInfo; 4]>,
     current_per_submit: PerSubmitInfo,
-    current_command_buffer: Option<RawRecordingCommandBuffer>,
-    command_buffers: Vec<Arc<RawCommandBuffer>>,
+    current_command_buffer: Option<raw::RecordingCommandBuffer>,
+    command_buffers: Vec<Arc<raw::CommandBuffer>>,
     current_buffer_barriers: Vec<vk::BufferMemoryBarrier<'static>>,
     current_image_barriers: Vec<vk::ImageMemoryBarrier<'static>>,
     current_src_stage_mask: vk::PipelineStageFlags,
@@ -1493,17 +1490,17 @@ use current_command_buffer;
 fn create_command_buffer(
     resource_map: &ResourceMap<'_>,
     queue: &Queue,
-) -> Result<RawRecordingCommandBuffer, VulkanError> {
+) -> Result<raw::RecordingCommandBuffer, VulkanError> {
     let allocator = resource_map.physical_resources.command_buffer_allocator();
 
     // SAFETY: The parameters are valid.
     unsafe {
-        RawRecordingCommandBuffer::new_unchecked(
+        raw::RecordingCommandBuffer::new_unchecked(
             allocator.clone(),
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
+            raw::CommandBufferLevel::Primary,
+            raw::CommandBufferBeginInfo {
+                usage: raw::CommandBufferUsage::OneTimeSubmit,
                 inheritance_info: None,
                 ..Default::default()
             },

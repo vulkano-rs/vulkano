@@ -1,7 +1,7 @@
 use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
-        auto::Resource, sys::RawRecordingCommandBuffer, RecordingCommandBuffer, ResourceInCommand,
+        auto::Resource, sys::RecordingCommandBuffer, AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{Format, FormatFeatures},
@@ -20,7 +20,7 @@ use std::{
 };
 
 /// # Commands to transfer data between resources.
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Copies data from a buffer to another buffer.
     ///
     /// # Panics
@@ -98,7 +98,7 @@ impl<L> RecordingCommandBuffer<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_buffer_unchecked(&copy_buffer_info);
             },
         );
@@ -200,7 +200,7 @@ impl<L> RecordingCommandBuffer<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_image_unchecked(&copy_image_info);
             },
         );
@@ -287,7 +287,7 @@ impl<L> RecordingCommandBuffer<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_buffer_to_image_unchecked(&copy_buffer_to_image_info);
             },
         );
@@ -374,7 +374,7 @@ impl<L> RecordingCommandBuffer<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_image_to_buffer_unchecked(&copy_image_to_buffer_info);
             },
         );
@@ -487,7 +487,7 @@ impl<L> RecordingCommandBuffer<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.blit_image_unchecked(&blit_image_info);
             },
         );
@@ -578,7 +578,7 @@ impl<L> RecordingCommandBuffer<L> {
                     ]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.resolve_image_unchecked(&resolve_image_info);
             },
         );
@@ -587,7 +587,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn copy_buffer(
         &mut self,

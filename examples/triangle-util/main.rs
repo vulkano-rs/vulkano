@@ -11,7 +11,7 @@ use std::{error::Error, sync::Arc, time::Duration};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     image::view::ImageView,
@@ -381,7 +381,7 @@ impl ApplicationHandler for App {
                 //
                 // Note that we have to pass a queue family when we create the command buffer. The
                 // command buffer will only be executable on that given queue family.
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     self.command_buffer_allocator.clone(),
                     self.context.graphics_queue().queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
@@ -437,7 +437,7 @@ impl ApplicationHandler for App {
                     .unwrap();
 
                 // Finish recording the command buffer by calling `end`.
-                let command_buffer = builder.end().unwrap();
+                let command_buffer = builder.build().unwrap();
 
                 let future = previous_frame_end
                     .then_execute(self.context.graphics_queue().clone(), command_buffer)

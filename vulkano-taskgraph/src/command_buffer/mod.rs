@@ -7,7 +7,7 @@ use ash::vk;
 use std::{any::Any, sync::Arc};
 use vulkano::{
     buffer::Buffer,
-    command_buffer::sys::RawRecordingCommandBuffer,
+    command_buffer as raw,
     device::{Device, DeviceOwned},
     image::Image,
     VulkanObject,
@@ -17,10 +17,12 @@ mod commands;
 
 /// A command buffer in the recording state.
 ///
-/// Unlike [`RawRecordingCommandBuffer`], this type has knowledge of the current task context and
-/// can therefore validate resource accesses. (TODO)
+/// Unlike [the raw `RecordingCommandBuffer`], this type has knowledge of the current task context
+/// and can therefore validate resource accesses. (TODO)
+///
+/// [the raw `RecordingCommandBuffer`]: raw::RecordingCommandBuffer
 pub struct RecordingCommandBuffer<'a> {
-    inner: &'a mut RawRecordingCommandBuffer,
+    inner: &'a mut raw::RecordingCommandBuffer,
     accesses: ResourceAccesses<'a>,
     death_row: &'a mut DeathRow,
 }
@@ -31,7 +33,7 @@ struct ResourceAccesses<'a> {
 
 impl<'a> RecordingCommandBuffer<'a> {
     pub(crate) unsafe fn new(
-        inner: &'a mut RawRecordingCommandBuffer,
+        inner: &'a mut raw::RecordingCommandBuffer,
         resource_map: &'a ResourceMap<'a>,
         death_row: &'a mut DeathRow,
     ) -> Self {
@@ -50,7 +52,7 @@ impl<'a> RecordingCommandBuffer<'a> {
     /// transitions and queue family ownership transfers), or that no other task is accessing the
     /// subresources at the same time without appropriate synchronization.
     #[inline]
-    pub fn as_raw(&mut self) -> &mut RawRecordingCommandBuffer {
+    pub fn as_raw(&mut self) -> &mut raw::RecordingCommandBuffer {
         self.inner
     }
 

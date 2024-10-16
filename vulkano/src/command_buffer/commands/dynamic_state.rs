@@ -1,5 +1,5 @@
 use crate::{
-    command_buffer::{sys::RawRecordingCommandBuffer, RecordingCommandBuffer},
+    command_buffer::{sys::RecordingCommandBuffer, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     pipeline::{
         graphics::{
@@ -22,7 +22,7 @@ use std::ops::RangeInclusive;
 /// # Commands to set dynamic state for pipelines.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     // Helper function for dynamic state setting.
     fn validate_graphics_pipeline_fixed_state(
         &self,
@@ -73,7 +73,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_blend_constants",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_blend_constants_unchecked(constants);
             },
         );
@@ -130,7 +130,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_color_write_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_color_write_enable_unchecked(&enables);
             },
         );
@@ -162,7 +162,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_cull_mode",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_cull_mode_unchecked(cull_mode);
             },
         );
@@ -211,7 +211,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_depth_bias",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_depth_bias_unchecked(constant_factor, clamp, slope_factor);
             },
         );
@@ -243,7 +243,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_depth_bias_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_depth_bias_enable_unchecked(enable);
             },
         );
@@ -278,7 +278,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_depth_bounds",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_depth_bounds_unchecked(bounds.clone());
             },
         );
@@ -313,7 +313,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_depth_bounds_test_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_depth_bounds_test_enable_unchecked(enable);
             },
         );
@@ -348,7 +348,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_depth_compare_op",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_depth_compare_op_unchecked(compare_op);
             },
         );
@@ -380,7 +380,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_depth_test_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_depth_test_enable_unchecked(enable);
             },
         );
@@ -412,7 +412,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_depth_write_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_depth_write_enable_unchecked(enable);
             },
         );
@@ -458,7 +458,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_discard_rectangle",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_discard_rectangle_unchecked(first_rectangle, &rectangles);
             },
         );
@@ -487,7 +487,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_front_face",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_front_face_unchecked(face);
             },
         );
@@ -524,7 +524,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_line_stipple",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_line_stipple_unchecked(factor, pattern);
             },
         );
@@ -553,7 +553,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_line_width",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_line_width_unchecked(line_width);
             },
         );
@@ -582,7 +582,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_logic_op",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_logic_op_unchecked(logic_op);
             },
         );
@@ -614,7 +614,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_patch_control_points",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_patch_control_points_unchecked(num);
             },
         );
@@ -649,7 +649,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_primitive_restart_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_primitive_restart_enable_unchecked(enable);
             },
         );
@@ -687,7 +687,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_primitive_topology",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_primitive_topology_unchecked(topology);
             },
         );
@@ -722,7 +722,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_rasterizer_discard_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_rasterizer_discard_enable_unchecked(enable);
             },
         );
@@ -769,7 +769,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_scissor",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_scissor_unchecked(first_scissor, &scissors);
             },
         );
@@ -807,7 +807,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_scissor_with_count",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_scissor_with_count_unchecked(&scissors);
             },
         );
@@ -858,7 +858,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_stencil_compare_mask",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_stencil_compare_mask_unchecked(faces, compare_mask);
             },
         );
@@ -930,7 +930,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_stencil_op",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op);
             },
         );
@@ -981,7 +981,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_stencil_reference",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_stencil_reference_unchecked(faces, reference);
             },
         );
@@ -1013,7 +1013,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_stencil_test_enable",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_stencil_test_enable_unchecked(enable);
             },
         );
@@ -1064,7 +1064,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_stencil_write_mask",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_stencil_write_mask_unchecked(faces, write_mask);
             },
         );
@@ -1104,7 +1104,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_vertex_input",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_vertex_input_unchecked(&vertex_input_state);
             },
         );
@@ -1150,7 +1150,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_viewport",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_viewport_unchecked(first_viewport, &viewports);
             },
         );
@@ -1188,7 +1188,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_viewport",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_viewport_with_count_unchecked(&viewports);
             },
         );
@@ -1227,7 +1227,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_conservative_rasterization_mode",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode);
             },
         );
@@ -1271,7 +1271,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "set_extra_primitive_overestimation_size",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_extra_primitive_overestimation_size_unchecked(
                     extra_primitive_overestimation_size,
                 );
@@ -1282,7 +1282,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn set_blend_constants(
         &mut self,

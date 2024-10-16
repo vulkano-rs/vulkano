@@ -120,7 +120,7 @@ pub mod view;
 /// ```
 /// use vulkano::{
 ///     buffer::{BufferUsage, Buffer, BufferCreateInfo},
-///     command_buffer::{CommandBufferUsage, CopyBufferInfo, RecordingCommandBuffer},
+///     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo},
 ///     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
 ///     sync::GpuFuture,
 ///     DeviceSize,
@@ -170,18 +170,18 @@ pub mod view;
 /// .unwrap();
 ///
 /// // Create a one-time command to copy between the buffers.
-/// let mut cbb = RecordingCommandBuffer::primary(
+/// let mut cbb = AutoCommandBufferBuilder::primary(
 ///     command_buffer_allocator.clone(),
 ///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )
 /// .unwrap();
 /// cbb.copy_buffer(CopyBufferInfo::buffers(
-///         temporary_accessible_buffer,
-///         device_local_buffer.clone(),
-///     ))
-///     .unwrap();
-/// let cb = cbb.end().unwrap();
+///     temporary_accessible_buffer,
+///     device_local_buffer.clone(),
+/// ))
+/// .unwrap();
+/// let cb = cbb.build().unwrap();
 ///
 /// // Execute the copy command and wait for completion before proceeding.
 /// cb.execute(queue.clone())

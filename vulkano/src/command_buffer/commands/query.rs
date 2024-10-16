@@ -2,8 +2,8 @@ use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         auto::{QueryState, Resource},
-        sys::RawRecordingCommandBuffer,
-        RecordingCommandBuffer, ResourceInCommand,
+        sys::RecordingCommandBuffer,
+        AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags, QueryType},
@@ -13,7 +13,7 @@ use crate::{
 use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
@@ -97,7 +97,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "begin_query",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.begin_query_unchecked(&query_pool, query, flags);
             },
         );
@@ -168,7 +168,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "end_query",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.end_query_unchecked(&query_pool, query);
             },
         );
@@ -235,7 +235,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "write_timestamp",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.write_timestamp_unchecked(&query_pool, query, stage);
             },
         );
@@ -317,7 +317,7 @@ impl<L> RecordingCommandBuffer<L> {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_query_pool_results_unchecked(
                     &query_pool,
                     queries.clone(),
@@ -389,7 +389,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "reset_query_pool",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.reset_query_pool_unchecked(&query_pool, queries.clone());
             },
         );
@@ -398,7 +398,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn begin_query(
         &mut self,
