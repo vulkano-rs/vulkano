@@ -1840,7 +1840,6 @@ name = "vulkano-shaders"
 version = "0.34.0"
 dependencies = [
  "ahash",
- "heck",
  "proc-macro2",
  "quote",
  "shaderc",
