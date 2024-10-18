@@ -24,7 +24,7 @@ use smallvec::SmallVec;
 use std::{mem::size_of, sync::Arc};
 
 /// # Commands to do operations on acceleration structures.
-impl RecordingCommandBuffer {
+impl<L> RecordingCommandBuffer<L> {
     /// Builds or updates an acceleration structure.
     ///
     /// # Safety

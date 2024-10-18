@@ -2,9 +2,8 @@ use crate::pixels_draw_pipeline::PixelsDrawPipeline;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo,
-        SubpassContents,
+        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
+        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
@@ -80,14 +79,10 @@ impl RenderPassPlaceOverFrame {
         let img_dims: [u32; 2] = target.image().extent()[0..2].try_into().unwrap();
 
         // Create primary command buffer builder.
-        let mut command_buffer_builder = RecordingCommandBuffer::new(
+        let mut command_buffer_builder = RecordingCommandBuffer::primary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 

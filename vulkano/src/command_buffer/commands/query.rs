@@ -13,7 +13,7 @@ use crate::{
 use std::{ops::Range, sync::Arc};
 
 /// # Commands related to queries.
-impl RecordingCommandBuffer {
+impl<L> RecordingCommandBuffer<L> {
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.

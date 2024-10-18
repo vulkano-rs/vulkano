@@ -20,7 +20,7 @@ use std::{
 };
 
 /// # Commands to transfer data between resources.
-impl RecordingCommandBuffer {
+impl<L> RecordingCommandBuffer<L> {
     /// Copies data from a buffer to another buffer.
     ///
     /// # Panics

@@ -22,7 +22,7 @@ use std::ops::RangeInclusive;
 /// # Commands to set dynamic state for pipelines.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl RecordingCommandBuffer {
+impl<L> RecordingCommandBuffer<L> {
     // Helper function for dynamic state setting.
     fn validate_graphics_pipeline_fixed_state(
         &self,

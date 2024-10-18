@@ -41,19 +41,18 @@
 //! To record a new command buffer, the most direct way is to create a new
 //! [`RecordingCommandBuffer`]. You can then call methods on this object to record new commands to
 //! the command buffer. When you are done recording, you call [`end`] to finalise the command
-//! buffer and turn it into a [`CommandBuffer`].
+//! buffer and turn it into either a [`PrimaryAutoCommandBuffer`] or a
+//! [`SecondaryAutoCommandBuffer`].
 //!
 //! # Submitting a primary command buffer
 //!
-//! Once a primary command buffer has finished recording, you can submit the [`CommandBuffer`] to a
-//! queue. Submitting a command buffer returns an object that implements the [`GpuFuture`] trait
-//! and that represents the moment when the execution will end on the GPU.
+//! Once a primary command buffer is recorded and built, you can submit the
+//! [`PrimaryAutoCommandBuffer`] to a queue. Submitting a command buffer returns an object that
+//! implements the [`GpuFuture`] trait and that represents the moment when the execution will end
+//! on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::{
-//!     CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage, RecordingCommandBuffer,
-//!     SubpassContents,
-//! };
+//! use vulkano::command_buffer::{CommandBufferUsage, RecordingCommandBuffer, SubpassContents};
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
@@ -62,11 +61,10 @@
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! # let command_buffer_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! #
-//! let mut cb = RecordingCommandBuffer::new(
+//! let mut cb = RecordingCommandBuffer::primary(
 //!     command_buffer_allocator.clone(),
 //!     queue.queue_family_index(),
-//!     CommandBufferLevel::Primary,
-//!     CommandBufferBeginInfo::default(),
+//!     CommandBufferUsage::OneTimeSubmit,
 //! )
 //! .unwrap();
 //!
@@ -100,8 +98,7 @@ pub use self::commands::{
     query::*, render_pass::*, secondary::*, sync::*,
 };
 pub use self::{
-    auto::{CommandBuffer, RecordingCommandBuffer},
-    sys::CommandBufferBeginInfo,
+    auto::{PrimaryAutoCommandBuffer, RecordingCommandBuffer, SecondaryAutoCommandBuffer},
     traits::{CommandBufferExecError, CommandBufferExecFuture},
 };
 use crate::{
@@ -1199,7 +1196,7 @@ pub struct CommandBufferSubmitInfo {
     /// The command buffer to execute.
     ///
     /// There is no default value.
-    pub command_buffer: Arc<CommandBuffer>,
+    pub command_buffer: Arc<PrimaryAutoCommandBuffer>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1207,7 +1204,7 @@ pub struct CommandBufferSubmitInfo {
 impl CommandBufferSubmitInfo {
     /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<CommandBuffer>) -> Self {
+    pub fn new(command_buffer: Arc<PrimaryAutoCommandBuffer>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),
@@ -1222,15 +1219,6 @@ impl CommandBufferSubmitInfo {
 
         // VUID?
         assert_eq!(device, command_buffer.device().as_ref());
-
-        if self.command_buffer.level() != CommandBufferLevel::Primary {
-            return Err(Box::new(ValidationError {
-                context: "command_buffer".into(),
-                problem: "is not a primary command buffer".into(),
-                vuids: &["VUID-VkCommandBufferSubmitInfo-commandBuffer-03890"],
-                ..Default::default()
-            }));
-        }
 
         Ok(())
     }

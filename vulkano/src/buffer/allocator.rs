@@ -78,9 +78,7 @@ const MAX_ARENAS: usize = 32;
 ///         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
 ///         BufferUsage,
 ///     },
-///     command_buffer::{
-///         CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage, RecordingCommandBuffer,
-///     },
+///     command_buffer::{CommandBufferUsage, RecordingCommandBuffer},
 ///     memory::allocator::MemoryTypeFilter,
 ///     sync::GpuFuture,
 /// };
@@ -107,14 +105,10 @@ const MAX_ARENAS: usize = 32;
 ///     *subbuffer.write().unwrap() = data;
 ///
 ///     // You can then use `subbuffer` as if it was an entirely separate buffer.
-///     RecordingCommandBuffer::new(
+///     RecordingCommandBuffer::primary(
 ///         command_buffer_allocator.clone(),
 ///         queue.queue_family_index(),
-///         CommandBufferLevel::Primary,
-///         CommandBufferBeginInfo {
-///             usage: CommandBufferUsage::OneTimeSubmit,
-///             ..Default::default()
-///         },
+///         CommandBufferUsage::OneTimeSubmit,
 ///     )
 ///     .unwrap()
 ///     // For the sake of the example we just call `update_buffer` on the buffer, even though

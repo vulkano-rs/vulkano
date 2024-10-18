@@ -1,9 +1,8 @@
 use std::{error::Error, sync::Arc};
 use vulkano::{
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, ClearAttachment, ClearRect,
-        CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage, RecordingCommandBuffer,
-        RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, ClearAttachment, ClearRect, CommandBufferUsage,
+        RecordingCommandBuffer, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
@@ -265,14 +264,10 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = true;
                 }
 
-                let mut builder = RecordingCommandBuffer::new(
+                let mut builder = RecordingCommandBuffer::primary(
                     self.command_buffer_allocator.clone(),
                     self.queue.queue_family_index(),
-                    CommandBufferLevel::Primary,
-                    CommandBufferBeginInfo {
-                        usage: CommandBufferUsage::OneTimeSubmit,
-                        ..Default::default()
-                    },
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
                 builder
