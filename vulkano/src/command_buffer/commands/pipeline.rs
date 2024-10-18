@@ -4738,7 +4738,7 @@ impl RawRecordingCommandBuffer {
                 }));
             }
         } else {
-            if size_of::<DrawIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+            if size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize > indirect_buffer.size() {
                 return Err(Box::new(ValidationError {
                     problem: "`draw_count` is 1, but `size_of::<DrawMeshTasksIndirectCommand>()` \
                         is greater than `indirect_buffer.size()`"
