@@ -588,12 +588,15 @@ vulkan_enum! {
         RequiresAllOf([DeviceExtension(nv_scissor_exclusive)]),
     ]), */
 
-    /* TODO: enable
-    // TODO: document
+    /// The value of
+    /// [`FragmentShadingRateState`](crate::pipeline::graphics::fragment_shading_rate::FragmentShadingRateState).
+    ///
+    /// Set with
+    /// [`set_fragment_shading_rate`](crate::command_buffer::RecordingCommandBuffer::set_fragment_shading_rate).
     FragmentShadingRate = FRAGMENT_SHADING_RATE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
-    ]), */
+    ]),
 
     /// The value of
     /// [`RasterizationState::line_stipple`](crate::pipeline::graphics::rasterization::RasterizationState::line_stipple).

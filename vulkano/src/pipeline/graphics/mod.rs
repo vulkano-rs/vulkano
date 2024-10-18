@@ -114,6 +114,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use ahash::{HashMap, HashSet};
+use fragment_shading_rate::FragmentShadingRateState;
 use smallvec::SmallVec;
 use std::{
     collections::hash_map::Entry, fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc,
@@ -122,6 +123,7 @@ use std::{
 pub mod color_blend;
 pub mod depth_stencil;
 pub mod discard_rectangle;
+pub mod fragment_shading_rate;
 pub mod input_assembly;
 pub mod multisample;
 pub mod rasterization;
@@ -157,6 +159,7 @@ pub struct GraphicsPipeline {
     subpass: PipelineSubpassType,
 
     discard_rectangle_state: Option<DiscardRectangleState>,
+    fragment_shading_rate_state: Option<FragmentShadingRateState>,
 
     descriptor_binding_requirements: HashMap<(u32, u32), DescriptorBindingRequirements>,
     num_used_descriptor_sets: u32,
@@ -271,6 +274,8 @@ impl GraphicsPipeline {
             base_pipeline: _,
 
             discard_rectangle_state,
+
+            fragment_shading_rate_state,
 
             _ne: _,
         } = create_info;
@@ -409,6 +414,10 @@ impl GraphicsPipeline {
             fixed_state.extend([DynamicState::DiscardRectangle]);
         }
 
+        if fragment_shading_rate_state.is_some() {
+            fixed_state.extend([DynamicState::FragmentShadingRate]);
+        }
+
         fixed_state.retain(|state| !dynamic_state.contains(state));
 
         Arc::new(Self {
@@ -432,6 +441,7 @@ impl GraphicsPipeline {
             subpass: subpass.unwrap(),
 
             discard_rectangle_state,
+            fragment_shading_rate_state,
 
             descriptor_binding_requirements,
             num_used_descriptor_sets,
@@ -529,6 +539,12 @@ impl GraphicsPipeline {
     #[inline]
     pub fn discard_rectangle_state(&self) -> Option<&DiscardRectangleState> {
         self.discard_rectangle_state.as_ref()
+    }
+
+    /// Returns the fragment shading rate state used to create this pipeline.
+    #[inline]
+    pub fn fragment_shading_rate_state(&self) -> Option<&FragmentShadingRateState> {
+        self.fragment_shading_rate_state.as_ref()
     }
 
     /// If the pipeline has a fragment shader, returns the fragment tests stages used.
@@ -723,6 +739,11 @@ pub struct GraphicsPipelineCreateInfo {
     /// The default value is `None`.
     pub discard_rectangle_state: Option<DiscardRectangleState>,
 
+    /// The fragment shading rate state.
+    ///
+    /// The default value is `None`.
+    pub fragment_shading_rate_state: Option<FragmentShadingRateState>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -749,6 +770,8 @@ impl GraphicsPipelineCreateInfo {
             base_pipeline: None,
 
             discard_rectangle_state: None,
+            fragment_shading_rate_state: None,
+
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -775,6 +798,8 @@ impl GraphicsPipelineCreateInfo {
             ref base_pipeline,
 
             ref discard_rectangle_state,
+            ref fragment_shading_rate_state,
+
             _ne: _,
         } = self;
 
@@ -1205,6 +1230,37 @@ impl GraphicsPipelineCreateInfo {
             _ => (),
         }
 
+        match (
+            fragment_shading_rate_state.is_some(),
+            need_pre_rasterization_shader_state,
+        ) {
+            (true, false) => {
+                return Err(Box::new(ValidationError {
+                    problem: "the pipeline is not being created with \
+                        pre-rasterization state, but \
+                        `fragment_shading_rate_state` is `Some`"
+                        .into(),
+                    vuids: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04494",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04495",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04496",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04497",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04498",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04499",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04500",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06567",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06568",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04501",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04502",
+                        "VUID-VkGraphicsPipelineCreateInfo-fragmentShadingRateNonTrivialCombinerOps-04506",
+                    ],
+                    ..Default::default()
+                }));
+            }
+            (false, true) => (),
+            _ => (),
+        }
+
         /*
             Validate shader stages individually
         */
@@ -1483,6 +1539,23 @@ impl GraphicsPipelineCreateInfo {
             discard_rectangle_state
                 .validate(device)
                 .map_err(|err| err.add_context("discard_rectangle_state"))?;
+        }
+
+        if let Some(fragment_shading_rate_state) = fragment_shading_rate_state {
+            if !device.enabled_extensions().khr_fragment_shading_rate {
+                return Err(Box::new(ValidationError {
+                    context: "fragment_shading_rate_state".into(),
+                    problem: "is `Some`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceExtension(
+                        "khr_fragment_shading_rate",
+                    )])]),
+                    ..Default::default()
+                }));
+            }
+
+            fragment_shading_rate_state
+                .validate(device)
+                .map_err(|err| err.add_context("fragment_shading_rate_state"))?;
         }
 
         for dynamic_state in dynamic_state.iter().copied() {
@@ -2287,6 +2360,8 @@ impl GraphicsPipelineCreateInfo {
             ref base_pipeline,
 
             discard_rectangle_state: _,
+            fragment_shading_rate_state: _,
+
             _ne: _,
         } = self;
         let (render_pass_vk, subpass_vk) = match subpass {
@@ -2360,9 +2435,14 @@ impl GraphicsPipelineCreateInfo {
         let GraphicsPipelineCreateInfoExtensionsVk {
             discard_rectangle_state_vk,
             rendering_vk,
+            fragment_shading_rate_vk,
         } = extensions_vk;
 
         if let Some(next) = discard_rectangle_state_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = fragment_shading_rate_vk {
             val_vk = val_vk.push_next(next);
         }
 
@@ -2392,10 +2472,15 @@ impl GraphicsPipelineCreateInfo {
             .as_ref()
             .zip(rendering_fields1_vk.as_ref())
             .map(|(subpass, fields1_vk)| subpass.to_vk_rendering(fields1_vk));
+        let fragment_shading_rate_vk = self
+            .fragment_shading_rate_state
+            .as_ref()
+            .map(|fragment_shading_rate_state| fragment_shading_rate_state.to_vk());
 
         GraphicsPipelineCreateInfoExtensionsVk {
             discard_rectangle_state_vk,
             rendering_vk,
+            fragment_shading_rate_vk,
         }
     }
 
@@ -2608,6 +2693,8 @@ pub(crate) struct GraphicsPipelineCreateInfoExtensionsVk<'a> {
     pub(crate) discard_rectangle_state_vk:
         Option<ash::vk::PipelineDiscardRectangleStateCreateInfoEXT<'a>>,
     pub(crate) rendering_vk: Option<ash::vk::PipelineRenderingCreateInfo<'a>>,
+    pub(crate) fragment_shading_rate_vk:
+        Option<ash::vk::PipelineFragmentShadingRateStateCreateInfoKHR<'a>>,
 }
 
 pub(crate) struct GraphicsPipelineCreateInfoFields1Vk<'a> {
