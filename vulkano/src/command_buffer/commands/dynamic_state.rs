@@ -1289,13 +1289,18 @@ impl RecordingCommandBuffer {
         fragment_size: [u32; 2],
         combiner_ops: [FragmentShadingRateCombinerOp; 2],
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_set_fragment_shading_rate()?;
+        self.validate_set_fragment_shading_rate(fragment_size, combiner_ops)?;
 
         unsafe { Ok(self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops)) }
     }
 
-    fn validate_set_fragment_shading_rate(&self) -> Result<(), Box<ValidationError>> {
-        // self.inner.validate_set_conservative_rasterization_mode()?;
+    fn validate_set_fragment_shading_rate(
+        &self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_fragment_shading_rate(fragment_size, combiner_ops)?;
 
         self.validate_graphics_pipeline_fixed_state(DynamicState::FragmentShadingRate)?;
 
@@ -3424,6 +3429,116 @@ impl RawRecordingCommandBuffer {
         );
 
         self
+    }
+
+    fn validate_set_fragment_shading_rate(
+        &self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<(), Box<ValidationError>> {
+        let device = self.device();
+        let properties = device.physical_device().properties();
+        let features = device.enabled_features();
+
+        match fragment_size[0] {
+            1 | 2 | 4 => {}
+            _ => {
+                return Err(Box::new(ValidationError {
+                    context: "fragment_size[0]".into(),
+                    problem: "fragment_size[0] must be 1, 2, or 4".into(),
+                    vuids: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04494",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04496",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04498",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        match fragment_size[1] {
+            1 | 2 | 4 => {}
+            _ => {
+                return Err(Box::new(ValidationError {
+                    context: "fragment_size[1]".into(),
+                    problem: "fragment_size[1] must be 1, 2, or 4".into(),
+                    vuids: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04495",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04497",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04499",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !(features.pipeline_fragment_shading_rate) {
+            return Err(Box::new(ValidationError {
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "pipeline_fragment_shading_rate",
+                )])]),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04500"],
+                ..Default::default()
+            }));
+        }
+
+        combiner_ops[0].validate_device(device).map_err(|err| {
+            err.add_context("combiner_ops[0]")
+                .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06567"])
+        })?;
+
+        combiner_ops[1].validate_device(device).map_err(|err| {
+            err.add_context("combiner_ops[1]")
+                .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06568"])
+        })?;
+
+        if !features.primitive_fragment_shading_rate
+            && combiner_ops[0] != FragmentShadingRateCombinerOp::Keep
+        {
+            return Err(Box::new(ValidationError {
+                context: "combiner_ops[0]".into(),
+                problem: "the primitive_fragment_shading_rate feature must be enabled if combiner_ops[0] is not Keep".into(),
+                vuids: &[
+                    "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04501",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if !features.attachment_fragment_shading_rate
+            && combiner_ops[1] != FragmentShadingRateCombinerOp::Keep
+        {
+            return Err(Box::new(ValidationError {
+                context: "combiner_ops[1]".into(),
+                problem: "the attachment_fragment_shading_rate feature must be enabled if combiner_ops[1] is not Keep".into(),
+                vuids: &[
+                    "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04502",
+                ],
+                ..Default::default()
+            }));
+        }
+
+        if let Some(fragment_shading_rate_non_trivial_combiner_ops) =
+            properties.fragment_shading_rate_non_trivial_combiner_ops
+        {
+            if !fragment_shading_rate_non_trivial_combiner_ops
+                && (!(combiner_ops[0] == FragmentShadingRateCombinerOp::Keep
+                    || combiner_ops[0] == FragmentShadingRateCombinerOp::Replace)
+                    || !(combiner_ops[1] == FragmentShadingRateCombinerOp::Keep
+                        || combiner_ops[1] == FragmentShadingRateCombinerOp::Replace))
+            {
+                return Err(Box::new(ValidationError {
+                    context: "combiner_ops[0]".into(),
+                    problem: "the fragment_shading_rate_non_trivial_combiner_ops feature must be enabled if combiner_ops[0] or combiner_ops[1] is not Keep or Replace".into(),
+                    vuids: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-fragmentShadingRateNonTrivialCombinerOps-04506",
+                    ],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
