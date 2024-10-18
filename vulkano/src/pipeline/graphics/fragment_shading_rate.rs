@@ -40,58 +40,36 @@ impl FragmentShadingRateState {
         let properties = device.physical_device().properties();
         let features = device.enabled_features();
 
-        if fragment_size[0] == 0 {
-            return Err(Box::new(ValidationError {
-                context: "fragment_size[0]".into(),
-                problem: "fragment_size[0] must be greater than or equal to 1".into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04494"],
-                ..Default::default()
-            }));
+        match fragment_size[0] {
+            1 | 2 | 4 => {}
+            _ => {
+                return Err(Box::new(ValidationError {
+                    context: "fragment_size[0]".into(),
+                    problem: "fragment_size[0] must be 1, 2, or 4".into(),
+                    vuids: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04494",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04496",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04498",
+                    ],
+                    ..Default::default()
+                }));
+            }
         }
 
-        if fragment_size[1] == 0 {
-            return Err(Box::new(ValidationError {
-                context: "fragment_size[1]".into(),
-                problem: "fragment_size[1] must be greater than or equal to 1".into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04495"],
-                ..Default::default()
-            }));
-        }
-
-        if !fragment_size[0].is_power_of_two() {
-            return Err(Box::new(ValidationError {
-                context: "fragment_size[0]".into(),
-                problem: "fragment_size[0] must be a power of two".into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04496"],
-                ..Default::default()
-            }));
-        }
-
-        if !fragment_size[1].is_power_of_two() {
-            return Err(Box::new(ValidationError {
-                context: "fragment_size[1]".into(),
-                problem: "fragment_size[1] must be a power of two".into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04497"],
-                ..Default::default()
-            }));
-        }
-
-        if fragment_size[0] > 4 {
-            return Err(Box::new(ValidationError {
-                context: "fragment_size[0]".into(),
-                problem: "fragment_size[0] must be less than or equal to 4".into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04498"],
-                ..Default::default()
-            }));
-        }
-
-        if fragment_size[1] > 4 {
-            return Err(Box::new(ValidationError {
-                context: "fragment_size[1]".into(),
-                problem: "fragment_size[1] must be less than or equal to 4".into(),
-                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04499"],
-                ..Default::default()
-            }));
+        match fragment_size[1] {
+            1 | 2 | 4 => {}
+            _ => {
+                return Err(Box::new(ValidationError {
+                    context: "fragment_size[1]".into(),
+                    problem: "fragment_size[1] must be 1, 2, or 4".into(),
+                    vuids: &[
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04495",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04497",
+                        "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04499",
+                    ],
+                    ..Default::default()
+                }));
+            }
         }
 
         if !features.pipeline_fragment_shading_rate {
@@ -107,6 +85,7 @@ impl FragmentShadingRateState {
             err.add_context("combiner_ops[0]")
                 .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06567"])
         })?;
+
         combiner_ops[1].validate_device(device).map_err(|err| {
             err.add_context("combiner_ops[1]")
                 .set_vuids(&["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-06568"])
@@ -138,12 +117,16 @@ impl FragmentShadingRateState {
             }));
         }
 
-        if !properties.fragment_shading_rate_non_trivial_combiner_ops.unwrap() && // TODO: Is this unwrap OK?
-        (
-            !(combiner_ops[0] == FragmentShadingRateCombinerOp::Keep || combiner_ops[0] == FragmentShadingRateCombinerOp::Replace) ||
-            !(combiner_ops[1] == FragmentShadingRateCombinerOp::Keep || combiner_ops[1] == FragmentShadingRateCombinerOp::Replace)
-        ) {
-            return Err(Box::new(ValidationError {
+        if let Some(fragment_shading_rate_non_trivial_combiner_ops) =
+            properties.fragment_shading_rate_non_trivial_combiner_ops
+        {
+            if !fragment_shading_rate_non_trivial_combiner_ops
+                && (!(combiner_ops[0] == FragmentShadingRateCombinerOp::Keep
+                    || combiner_ops[0] == FragmentShadingRateCombinerOp::Replace)
+                    || !(combiner_ops[1] == FragmentShadingRateCombinerOp::Keep
+                        || combiner_ops[1] == FragmentShadingRateCombinerOp::Replace))
+            {
+                return Err(Box::new(ValidationError {
                 context: "combiner_ops[0]".into(),
                 problem: "the fragment_shading_rate_non_trivial_combiner_ops feature must be enabled if combiner_ops[0] or combiner_ops[1] is not Keep or Replace".into(),
                 vuids: &[
@@ -151,6 +134,7 @@ impl FragmentShadingRateState {
                 ],
                 ..Default::default()
             }));
+            }
         }
 
         Ok(())
