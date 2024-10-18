@@ -27,12 +27,10 @@ Changes to memory allocation:
 
 Changes to command buffers:
 - Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
-- Merged `{Primary,Secondary}AutoCommandBuffer` into `CommandBuffer` and the corresponding `RecordingCommandBuffer::{primary,secondary}` into `new`.
-- `RecordingCommandBuffer` no longer has a type parameter for the command buffer level.
 - Renamed `UnsafeCommandBufferBuilder` to `RawRecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
 - Renamed `UnsafeCommandBuffer` to `RawCommandBuffer`.
 - `RecordingCommandBuffer` and `RawRecordingCommandBuffer` now take an `Arc<dyn CommandBufferAllocator>` on construction.
-- `RecordingCommandBuffer`, `CommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
+- `RecordingCommandBuffer`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
 - `RawRecordingCommandBuffer::execute_commands` now takes `&RawCommandBuffer`s as argument.
 
