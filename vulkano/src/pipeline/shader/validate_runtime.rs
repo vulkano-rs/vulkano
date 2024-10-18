@@ -6,8 +6,9 @@ use crate::{
     },
     shader::{
         reflect::{
-            get_constant, get_constant_composite, get_constant_composite_composite,
-            get_constant_float_composite, get_constant_maybe_composite, size_of_type,
+            get_constant, get_constant_composite, get_constant_float_composite,
+            get_constant_signed_composite_composite, get_constant_signed_maybe_composite,
+            size_of_type,
         },
         spirv::{
             Capability, Decoration, Dim, ExecutionMode, ExecutionModel, FunctionInfo, Id,
@@ -2468,7 +2469,7 @@ impl<'a> RuntimeValidator<'a> {
                     if let Some(components) = image_operands
                         .const_offset
                         .or(image_operands.offset)
-                        .and_then(|offset| get_constant_maybe_composite(self.spirv, offset))
+                        .and_then(|offset| get_constant_signed_maybe_composite(self.spirv, offset))
                     {
                         for offset in components {
                             if offset < properties.min_texel_gather_offset as i64 {
@@ -2497,7 +2498,7 @@ impl<'a> RuntimeValidator<'a> {
                         }
                     } else if let Some(elements) = image_operands
                         .const_offsets
-                        .and_then(|id| get_constant_composite_composite(self.spirv, id))
+                        .and_then(|id| get_constant_signed_composite_composite(self.spirv, id))
                     {
                         for components in elements {
                             for offset in components {
@@ -2534,7 +2535,7 @@ impl<'a> RuntimeValidator<'a> {
                 if let Some(image_operands) = instruction.image_operands() {
                     if let Some(components) = image_operands
                         .const_offset
-                        .and_then(|offset| get_constant_maybe_composite(self.spirv, offset))
+                        .and_then(|offset| get_constant_signed_maybe_composite(self.spirv, offset))
                     {
                         for offset in components {
                             if offset < properties.min_texel_offset as i64 {

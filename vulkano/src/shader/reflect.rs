@@ -1242,7 +1242,10 @@ fn integer_constant_to_i64(spirv: &Spirv, value: &[u32], result_type_id: Id) -> 
     }
 }
 
-pub(crate) fn get_constant_maybe_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[i64; 4]>> {
+pub(crate) fn get_constant_signed_maybe_composite(
+    spirv: &Spirv,
+    id: Id,
+) -> Option<SmallVec<[i64; 4]>> {
     match spirv.id(id).instruction() {
         Instruction::Constant {
             value,
@@ -1270,7 +1273,7 @@ pub(crate) fn get_constant_maybe_composite(spirv: &Spirv, id: Id) -> Option<Smal
     }
 }
 
-pub(crate) fn get_constant_composite_composite(
+pub(crate) fn get_constant_signed_composite_composite(
     spirv: &Spirv,
     id: Id,
 ) -> Option<SmallVec<[SmallVec<[i64; 4]>; 4]>> {
