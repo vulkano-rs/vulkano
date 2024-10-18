@@ -2111,7 +2111,7 @@ mod tests {
             .buffer_access(buffer, AccessTypes::RAY_TRACING_SHADER_STORAGE_READ)
             .image_access(
                 image,
-                AccessTypes::RAY_TRACING_SHADER_COLOR_INPUT_ATTACHMENT_READ,
+                AccessTypes::RAY_TRACING_SHADER_SAMPLED_READ,
                 ImageLayoutType::General,
             )
             .build();
@@ -2144,7 +2144,7 @@ mod tests {
                         src_stage_mask: FRAGMENT_SHADER,
                         src_access_mask: SHADER_STORAGE_WRITE,
                         dst_stage_mask: FRAGMENT_SHADER | RAY_TRACING_SHADER,
-                        dst_access_mask: INPUT_ATTACHMENT_READ,
+                        dst_access_mask: INPUT_ATTACHMENT_READ | SHADER_SAMPLED_READ,
                         old_layout: General,
                         new_layout: General,
                         resource: image,

@@ -34,6 +34,7 @@ use vulkano::{
 };
 
 pub mod command_buffer;
+pub mod descriptor_set;
 pub mod graph;
 mod linear_map;
 pub mod resource;
@@ -958,7 +959,7 @@ mod tests {
             };
 
             (
-                $crate::resource::Resources::new(&device, &Default::default()),
+                $crate::resource::Resources::new(&device, &Default::default()).unwrap(),
                 queues.collect::<Vec<_>>(),
             )
         }};

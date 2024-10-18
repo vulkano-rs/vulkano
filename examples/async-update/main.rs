@@ -1,27 +1,13 @@
 // This example showcases how you can most effectively update a resource asynchronously, such that
-// your rendering or any other tasks can use the resource without any latency at the same time as
-// it's being updated.
+// it's being updated. The resource being updated asynchronously here is a large texture, which
+// needs to be updated partially at the request of the user.
 //
-// There are two kinds of resources that are updated asynchronously here:
-//
-// - A uniform buffer, which needs to be updated every frame.
-// - A large texture, which needs to be updated partially at the request of the user.
-//
-// For the first, since the data needs to be updated every frame, we have to use one buffer per
-// frame in flight. The swapchain most commonly has multiple images that are all processed at the
-// same time, therefore writing the same buffer during each frame in flight would result in one of
-// two things: either you would have to synchronize the writes from the host and reads from the
-// device such that only one of the images in the swapchain is actually processed at any point in
-// time (bad), or a race condition (bad). Therefore we are left with no choice but to use a
-// different buffer for each frame in flight. This is best suited to very small pieces of data that
-// change rapidly, and where the data of one frame doesn't depend on data from a previous one.
-//
-// For the second, since this texture is rather large, we can't afford to overwrite the entire
-// texture every time a part of it needs to be updated. Also, we don't need as many textures as
-// there are frames in flight since the texture doesn't need to be updated every frame, but we
-// still need at least two textures. That way we can write one of the textures at the same time as
-// reading the other, swapping them after the write is done such that the newly updated one is read
-// and the now out-of-date one can be written to next time, known as *eventual consistency*.
+// Since this texture is rather large, we can't afford to overwrite the entire texture every time a
+// part of it needs to be updated. Also, we don't need as many textures as there are frames in
+// flight since the texture doesn't need to be updated every frame, but we still need at least two
+// textures. That way we can write one of the textures at the same time as reading the other,
+// swapping them after the write is done such that the newly updated one is read and the now
+// out-of-date one can be written to next time, known as *eventual consistency*.
 //
 // In an eventually consistent system, a number of *replicas* are used, all of which represent the
 // same data but their consistency is not strict. A replica might be out-of-date for some time
@@ -41,18 +27,14 @@ use std::{
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
-    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
         QueueCreateInfo, QueueFlags,
     },
     format::Format,
     image::{
-        sampler::{Sampler, SamplerCreateInfo},
-        view::ImageView,
-        Image, ImageAspects, ImageCreateInfo, ImageSubresourceLayers, ImageType, ImageUsage,
+        sampler::SamplerCreateInfo, view::ImageViewCreateInfo, Image, ImageAspects,
+        ImageCreateInfo, ImageLayout, ImageSubresourceLayers, ImageType, ImageUsage,
     },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
@@ -66,9 +48,7 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
         },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo,
     },
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     sync::Sharing,
@@ -78,8 +58,11 @@ use vulkano_taskgraph::{
     command_buffer::{
         BufferImageCopy, ClearColorImageInfo, CopyBufferToImageInfo, RecordingCommandBuffer,
     },
+    descriptor_set::{BindlessContext, SampledImageId, SamplerId},
     graph::{AttachmentInfo, CompileInfo, ExecutableTaskGraph, ExecuteError, TaskGraph},
-    resource::{AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources},
+    resource::{
+        AccessTypes, Flight, HostAccessType, ImageLayoutType, Resources, ResourcesCreateInfo,
+    },
     resource_map, ClearValues, Id, QueueFamilyType, Task, TaskContext, TaskResult,
 };
 use winit::{
@@ -111,7 +94,6 @@ struct App {
     resources: Arc<Resources>,
     graphics_flight_id: Id<Flight>,
     vertex_buffer_id: Id<Buffer>,
-    uniform_buffer_ids: [Id<Buffer>; MAX_FRAMES_IN_FLIGHT as usize],
     texture_ids: [Id<Image>; 2],
     current_texture_index: Arc<AtomicBool>,
     channel: mpsc::Sender<()>,
@@ -126,7 +108,6 @@ struct RenderContext {
     task_graph: ExecutableTaskGraph<Self>,
     virtual_swapchain_id: Id<Swapchain>,
     virtual_texture_id: Id<Image>,
-    virtual_uniform_buffer_id: Id<Buffer>,
 }
 
 impl App {
@@ -145,12 +126,16 @@ impl App {
 
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
-            ..DeviceExtensions::empty()
+            ..BindlessContext::required_extensions(&instance)
         };
+        let device_features = BindlessContext::required_features(&instance);
         let (physical_device, graphics_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
-            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter(|p| {
+                p.supported_extensions().contains(&device_extensions)
+                    && p.supported_features().contains(&device_features)
+            })
             .filter_map(|p| {
                 p.queue_family_properties()
                     .iter()
@@ -240,6 +225,7 @@ impl App {
                 physical_device,
                 DeviceCreateInfo {
                     enabled_extensions: device_extensions,
+                    enabled_features: device_features,
                     queue_create_infos,
                     ..Default::default()
                 },
@@ -258,7 +244,14 @@ impl App {
             {transfer_family_index} for transfers",
         );
 
-        let resources = Resources::new(&device, &Default::default());
+        let resources = Resources::new(
+            &device,
+            &ResourcesCreateInfo {
+                bindless_context: Some(&Default::default()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         let graphics_flight_id = resources.create_flight(MAX_FRAMES_IN_FLIGHT).unwrap();
         let transfer_flight_id = resources.create_flight(1).unwrap();
@@ -291,25 +284,6 @@ impl App {
                 DeviceLayout::for_value(vertices.as_slice()).unwrap(),
             )
             .unwrap();
-
-        // Create a pool of uniform buffers, one per frame in flight. This way we always have an
-        // available buffer to write during each frame while reusing them as much as possible.
-        let uniform_buffer_ids = [(); MAX_FRAMES_IN_FLIGHT as usize].map(|_| {
-            resources
-                .create_buffer(
-                    BufferCreateInfo {
-                        usage: BufferUsage::UNIFORM_BUFFER,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo {
-                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                        ..Default::default()
-                    },
-                    DeviceLayout::new_sized::<vs::Data>(),
-                )
-                .unwrap()
-        });
 
         // Create two textures, where at any point in time one is used exclusively for reading and
         // one is used exclusively for writing, swapping the two after each update.
@@ -402,7 +376,6 @@ impl App {
             resources,
             graphics_flight_id,
             vertex_buffer_id,
-            uniform_buffer_ids,
             texture_ids,
             current_texture_index,
             channel,
@@ -413,6 +386,8 @@ impl App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let bcx = self.resources.bindless_context().unwrap();
+
         let window = Arc::new(
             event_loop
                 .create_window(Window::default_attributes())
@@ -467,13 +442,7 @@ impl ApplicationHandler for App {
             PipelineShaderStageCreateInfo::new(vs),
             PipelineShaderStageCreateInfo::new(fs),
         ];
-        let layout = PipelineLayout::new(
-            self.device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(self.device.clone())
-                .unwrap(),
-        )
-        .unwrap();
+        let layout = bcx.pipeline_layout_from_stages(&stages).unwrap();
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
@@ -481,52 +450,24 @@ impl ApplicationHandler for App {
             depth_range: 0.0..=1.0,
         };
 
-        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            self.device.clone(),
-            Default::default(),
-        ));
-
-        // A byproduct of always using the same set of uniform buffers is that we can also create
-        // one descriptor set for each, reusing them in the same way as the buffers.
-        let uniform_buffer_sets = self.uniform_buffer_ids.map(|buffer_id| {
-            let buffer_state = self.resources.buffer(buffer_id).unwrap();
-            let buffer = buffer_state.buffer();
-
-            DescriptorSet::new(
-                descriptor_set_allocator.clone(),
-                layout.set_layouts()[0].clone(),
-                [WriteDescriptorSet::buffer(0, buffer.clone().into())],
-                [],
-            )
-            .unwrap()
-        });
-
-        // Create the descriptor sets for sampling the textures.
-        let sampler = Sampler::new(
-            self.device.clone(),
-            SamplerCreateInfo::simple_repeat_linear(),
-        )
-        .unwrap();
-        let sampler_sets = self.texture_ids.map(|texture_id| {
+        let sampler_id = bcx
+            .global_set()
+            .create_sampler(SamplerCreateInfo::simple_repeat_linear())
+            .unwrap();
+        let sampled_image_ids = self.texture_ids.map(|texture_id| {
             let texture_state = self.resources.image(texture_id).unwrap();
             let texture = texture_state.image();
 
-            DescriptorSet::new(
-                descriptor_set_allocator.clone(),
-                layout.set_layouts()[1].clone(),
-                [
-                    WriteDescriptorSet::sampler(0, sampler.clone()),
-                    WriteDescriptorSet::image_view(
-                        1,
-                        ImageView::new_default(texture.clone()).unwrap(),
-                    ),
-                ],
-                [],
-            )
-            .unwrap()
+            bcx.global_set()
+                .create_sampled_image(
+                    texture_id,
+                    ImageViewCreateInfo::from_image(texture),
+                    ImageLayout::ShaderReadOnlyOptimal,
+                )
+                .unwrap()
         });
 
-        let mut task_graph = TaskGraph::new(&self.resources, 1, 4);
+        let mut task_graph = TaskGraph::new(&self.resources, 1, 3);
 
         let virtual_swapchain_id = task_graph.add_swapchain(&SwapchainCreateInfo {
             image_format: swapchain_format,
@@ -544,10 +485,7 @@ impl ApplicationHandler for App {
             },
             ..Default::default()
         });
-        let virtual_uniform_buffer_id = task_graph.add_buffer(&BufferCreateInfo::default());
         let virtual_framebuffer_id = task_graph.add_framebuffer();
-
-        task_graph.add_host_buffer_access(virtual_uniform_buffer_id, HostAccessType::Write);
 
         let render_node_id = task_graph
             .create_task_node(
@@ -558,9 +496,8 @@ impl ApplicationHandler for App {
                     vertex_buffer_id: self.vertex_buffer_id,
                     current_texture_index: self.current_texture_index.clone(),
                     pipeline: None,
-                    uniform_buffer_id: virtual_uniform_buffer_id,
-                    uniform_buffer_sets,
-                    sampler_sets,
+                    sampler_id,
+                    sampled_image_ids,
                 },
             )
             .framebuffer(virtual_framebuffer_id)
@@ -578,10 +515,6 @@ impl ApplicationHandler for App {
                 virtual_texture_id,
                 AccessTypes::FRAGMENT_SHADER_SAMPLED_READ,
                 ImageLayoutType::Optimal,
-            )
-            .buffer_access(
-                virtual_uniform_buffer_id,
-                AccessTypes::VERTEX_SHADER_UNIFORM_READ,
             )
             .build();
 
@@ -638,7 +571,6 @@ impl ApplicationHandler for App {
             task_graph,
             virtual_swapchain_id,
             virtual_texture_id,
-            virtual_uniform_buffer_id,
         });
     }
 
@@ -689,14 +621,12 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = false;
                 }
 
-                let frame_index = flight.current_frame_index();
                 let texture_index = self.current_texture_index.load(Ordering::Relaxed);
 
                 let resource_map = resource_map!(
                     &rcx.task_graph,
                     rcx.virtual_swapchain_id => rcx.swapchain_id,
                     rcx.virtual_texture_id => self.texture_ids[texture_index as usize],
-                    rcx.virtual_uniform_buffer_id => self.uniform_buffer_ids[frame_index as usize],
                 )
                 .unwrap();
 
@@ -740,12 +670,15 @@ mod vs {
         ty: "vertex",
         src: r"
             #version 450
+            #include <vulkano.glsl>
 
             layout(location = 0) in vec2 position;
             layout(location = 0) out vec2 tex_coords;
 
-            layout(set = 0, binding = 0) uniform Data {
+            layout(push_constant) uniform PushConstants {
                 mat4 transform;
+                SamplerId sampler_id;
+                SampledImageId texture_id;
             };
 
             void main() {
@@ -761,15 +694,19 @@ mod fs {
         ty: "fragment",
         src: r"
             #version 450
+            #include <vulkano.glsl>
 
             layout(location = 0) in vec2 tex_coords;
             layout(location = 0) out vec4 f_color;
 
-            layout(set = 1, binding = 0) uniform sampler s;
-            layout(set = 1, binding = 1) uniform texture2D tex;
+            layout(push_constant) uniform PushConstants {
+                mat4 transform;
+                SamplerId sampler_id;
+                SampledImageId texture_id;
+            };
 
             void main() {
-                f_color = texture(sampler2D(tex, s), tex_coords);
+                f_color = texture(vko_sampler2D(texture_id, sampler_id), tex_coords);
             }
         ",
     }
@@ -780,9 +717,8 @@ struct RenderTask {
     vertex_buffer_id: Id<Buffer>,
     current_texture_index: Arc<AtomicBool>,
     pipeline: Option<Arc<GraphicsPipeline>>,
-    uniform_buffer_id: Id<Buffer>,
-    uniform_buffer_sets: [Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT as usize],
-    sampler_sets: [Arc<DescriptorSet>; 2],
+    sampler_id: SamplerId,
+    sampled_image_ids: [SampledImageId; 2],
 }
 
 impl Task for RenderTask {
@@ -795,51 +731,41 @@ impl Task for RenderTask {
     unsafe fn execute(
         &self,
         cbf: &mut RecordingCommandBuffer<'_>,
-        tcx: &mut TaskContext<'_>,
+        _tcx: &mut TaskContext<'_>,
         rcx: &Self::World,
     ) -> TaskResult {
-        let frame_index = tcx.current_frame_index();
+        let transform = {
+            const DURATION: f64 = 5.0;
 
-        // Write to the uniform buffer designated for this frame.
-        *tcx.write_buffer(self.uniform_buffer_id, ..)? = vs::Data {
-            transform: {
-                const DURATION: f64 = 5.0;
+            let elapsed = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            let remainder = elapsed.rem_euclid(DURATION);
+            let delta = (remainder / DURATION) as f32;
+            let angle = delta * std::f32::consts::PI * 2.0;
 
-                let elapsed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs_f64();
-                let remainder = elapsed.rem_euclid(DURATION);
-                let delta = (remainder / DURATION) as f32;
-                let angle = delta * std::f32::consts::PI * 2.0;
-
-                Mat4::from_rotation_z(angle).to_cols_array_2d()
-            },
+            Mat4::from_rotation_z(angle).to_cols_array_2d()
         };
 
         let pipeline = self.pipeline.as_ref().unwrap();
 
         cbf.set_viewport(0, slice::from_ref(&rcx.viewport))?;
         cbf.bind_pipeline_graphics(pipeline)?;
-        cbf.as_raw().bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
+        cbf.push_constants(
             pipeline.layout(),
             0,
-            &[
-                // Bind the uniform buffer designated for this frame.
-                self.uniform_buffer_sets[frame_index as usize].as_raw(),
+            &fs::PushConstants {
+                transform,
+                sampler_id: self.sampler_id,
                 // Bind the currently most up-to-date texture.
-                self.sampler_sets[self.current_texture_index.load(Ordering::Relaxed) as usize]
-                    .as_raw(),
-            ],
-            &[],
+                texture_id: self.sampled_image_ids
+                    [self.current_texture_index.load(Ordering::Relaxed) as usize],
+            },
         )?;
         cbf.bind_vertex_buffers(0, &[self.vertex_buffer_id], &[0], &[], &[])?;
 
         unsafe { cbf.draw(4, 1, 0, 0) }?;
-
-        cbf.destroy_objects(self.uniform_buffer_sets.iter().cloned());
-        cbf.destroy_objects(self.sampler_sets.iter().cloned());
 
         Ok(())
     }
