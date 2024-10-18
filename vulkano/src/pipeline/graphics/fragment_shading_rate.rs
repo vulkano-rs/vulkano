@@ -1,3 +1,17 @@
+//! Fragment shading rate introduces the ability to change the rate at which fragments are shaded.
+//!
+//! This feature is part of the `khr_fragment_shading_rate` extension (see [VK_KHR_fragment_shading_rate](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)).
+//!
+//! The fragment shading rate can be controlled per-draw, per-primitive, and per-region:
+//! - Per-draw shading rate requires the `pipeline_fragment_shading_rate` feature, and the rate can
+//!   be set in a graphics pipeline or dynamically via `set_fragment_shading_rate`.
+//! - Per-primitive shading rate requires the `primitive_fragment_shading_rate` feature, and is set
+//!   in the last active pre-rasterization shader stage.
+//! - Per-region shading rate requires the `attachment_fragment_shading_rate` feature and an
+//!   additional specialised fragment shading rate image attachment.
+//!
+//! `vulkano` does not currently support per-region shading state.
+
 use crate::{device::Device, macros::vulkan_enum, ValidationError};
 use ash::vk;
 
