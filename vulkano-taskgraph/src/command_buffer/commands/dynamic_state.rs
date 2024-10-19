@@ -775,8 +775,7 @@ impl RecordingCommandBuffer<'_> {
     }
 
     /// Sets the dynamic fragment shading rate for future draw calls.
-    #[inline]
-    pub fn set_fragment_shading_rate(
+    pub unsafe fn set_fragment_shading_rate(
         &mut self,
         fragment_size: [u32; 2],
         combiner_ops: [FragmentShadingRateCombinerOp; 2],
