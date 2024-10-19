@@ -1,6 +1,7 @@
 //! Fragment shading rate introduces the ability to change the rate at which fragments are shaded.
 //!
-//! This feature is part of the `khr_fragment_shading_rate` extension (see [VK_KHR_fragment_shading_rate](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)).
+//! This feature is part of the `khr_fragment_shading_rate` extension.
+//! See [VK_KHR_fragment_shading_rate](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)).
 //!
 //! The fragment shading rate can be controlled per-draw, per-primitive, and per-region:
 //! - Per-draw shading rate requires the `pipeline_fragment_shading_rate` feature, and the rate can
@@ -57,7 +58,7 @@ impl FragmentShadingRateState {
         if !matches!(fragment_size[0], 1 | 2 | 4) {
             return Err(Box::new(ValidationError {
                 context: "fragment_size[0]".into(),
-                problem: "fragment_size[0] must be 1, 2, or 4".into(),
+                problem: "`fragment_size[0]` must be 1, 2, or 4".into(),
                 vuids: &[
                     "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04494",
                     "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04496",
@@ -70,7 +71,7 @@ impl FragmentShadingRateState {
         if !matches!(fragment_size[1], 1 | 2 | 4) {
             return Err(Box::new(ValidationError {
                 context: "fragment_size[1]".into(),
-                problem: "fragment_size[1] must be 1, 2, or 4".into(),
+                problem: "`fragment_size[1]` must be 1, 2, or 4".into(),
                 vuids: &[
                     "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04495",
                     "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04497",
@@ -83,7 +84,7 @@ impl FragmentShadingRateState {
         if !features.pipeline_fragment_shading_rate {
             return Err(Box::new(ValidationError {
                 context: "features.pipeline_fragment_shading_rate".into(),
-                problem: "the pipeline_fragment_shading_rate feature must be enabled".into(),
+                problem: "the `pipeline_fragment_shading_rate` feature must be enabled".into(),
                 vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04500"],
                 ..Default::default()
             }));
@@ -104,10 +105,10 @@ impl FragmentShadingRateState {
         {
             return Err(Box::new(ValidationError {
                 context: "combiner_ops[0]".into(),
-                problem: "the primitive_fragment_shading_rate feature must be enabled if combiner_ops[0] is not Keep".into(),
-                vuids: &[
-                    "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04501",
-                ],
+                problem: "the `primitive_fragment_shading_rate` feature must be enabled if \
+                    `combiner_ops[0]` is not `FragmentShadingRateCombinerOp::Keep`"
+                    .into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04501"],
                 ..Default::default()
             }));
         }
@@ -117,10 +118,10 @@ impl FragmentShadingRateState {
         {
             return Err(Box::new(ValidationError {
                 context: "combiner_ops[1]".into(),
-                problem: "the attachment_fragment_shading_rate feature must be enabled if combiner_ops[1] is not Keep".into(),
-                vuids: &[
-                    "VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04502",
-                ],
+                problem: "the `attachment_fragment_shading_rate` feature must be enabled if \
+                    `combiner_ops[1]` is not `FragmentShadingRateCombinerOp::Keep`"
+                    .into(),
+                vuids: &["VUID-VkGraphicsPipelineCreateInfo-pDynamicState-04502"],
                 ..Default::default()
             }));
         }
@@ -139,7 +140,11 @@ impl FragmentShadingRateState {
             {
                 return Err(Box::new(ValidationError {
                 context: "combiner_ops[0]".into(),
-                problem: "the fragment_shading_rate_non_trivial_combiner_ops feature must be enabled if combiner_ops[0] or combiner_ops[1] is not Keep or Replace".into(),
+                problem: "the `fragment_shading_rate_non_trivial_combiner_ops` feature must be \
+                    enabled if `combiner_ops[0]` or `combiner_ops[1]` is not \
+                    `FragmentShadingRateCombinerOp::Keep` or \
+                    `FragmentShadingRateCombinerOp::Replace`"
+                    .into(),
                 vuids: &[
                     "VUID-VkGraphicsPipelineCreateInfo-fragmentShadingRateNonTrivialCombinerOps-04506",
                 ],
