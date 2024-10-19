@@ -111,6 +111,7 @@ Changes to vulkano-util:
 
 Extensions:
 - `khr_draw_indirect_count`
+- `khr_fragment_shading_rate` (partially)
 - `khr_timeline_semaphore`
 - `ext_conservative_rasterization`
 - `ext_host_query_reset`
