@@ -1,8 +1,8 @@
 use crate::{
     command_buffer::{
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
-        sys::{RawCommandBuffer, RawRecordingCommandBuffer},
-        CommandBufferInheritanceRenderPassType, CommandBufferLevel, RecordingCommandBuffer,
+        sys::{CommandBuffer, RecordingCommandBuffer},
+        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
         ResourceInCommand, SecondaryAutoCommandBuffer, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
@@ -17,7 +17,7 @@ use std::{cmp::min, iter, sync::Arc};
 ///
 /// These commands can be called on any queue that can execute the commands recorded in the
 /// secondary command buffer.
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Executes a secondary command buffer.
     ///
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of
@@ -537,7 +537,7 @@ impl<L> RecordingCommandBuffer<L> {
                     }))
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.execute_commands_locked(&command_buffers);
             },
         );
@@ -546,11 +546,11 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn execute_commands(
         &mut self,
-        command_buffers: &[&RawCommandBuffer],
+        command_buffers: &[&CommandBuffer],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_execute_commands(command_buffers.iter().copied())?;
 
@@ -559,7 +559,7 @@ impl RawRecordingCommandBuffer {
 
     fn validate_execute_commands<'a>(
         &self,
-        command_buffers: impl Iterator<Item = &'a RawCommandBuffer>,
+        command_buffers: impl Iterator<Item = &'a CommandBuffer>,
     ) -> Result<(), Box<ValidationError>> {
         if self.level() != CommandBufferLevel::Primary {
             return Err(Box::new(ValidationError {
@@ -615,7 +615,7 @@ impl RawRecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn execute_commands_unchecked(
         &mut self,
-        command_buffers: &[&RawCommandBuffer],
+        command_buffers: &[&CommandBuffer],
     ) -> &mut Self {
         if command_buffers.is_empty() {
             return self;

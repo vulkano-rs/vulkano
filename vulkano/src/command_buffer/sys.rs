@@ -9,7 +9,7 @@ use crate::{
 };
 use std::{fmt::Debug, mem::ManuallyDrop, sync::Arc};
 
-/// A raw command buffer in the recording state.
+/// A command buffer in the recording state.
 ///
 /// This type corresponds directly to a `VkCommandBuffer` after it has been allocated and started
 /// recording. It doesn't keep track of synchronization or resource lifetimes. As such, all
@@ -19,7 +19,7 @@ use std::{fmt::Debug, mem::ManuallyDrop, sync::Arc};
 ///
 /// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
 /// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
-pub struct RawRecordingCommandBuffer {
+pub struct RecordingCommandBuffer {
     allocation: ManuallyDrop<CommandBufferAlloc>,
     allocator: Arc<dyn CommandBufferAllocator>,
     queue_family_index: u32,
@@ -28,7 +28,7 @@ pub struct RawRecordingCommandBuffer {
     pub(super) usage: CommandBufferUsage,
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     /// Allocates and begins recording a new command buffer.
     #[inline]
     pub fn new(
@@ -97,7 +97,7 @@ impl RawRecordingCommandBuffer {
             _ne: _,
         } = begin_info;
 
-        Ok(RawRecordingCommandBuffer {
+        Ok(RecordingCommandBuffer {
             allocation: ManuallyDrop::new(allocation),
             allocator,
             inheritance_info,
@@ -108,13 +108,13 @@ impl RawRecordingCommandBuffer {
 
     /// Ends the recording, returning a command buffer which can be submitted.
     #[inline]
-    pub unsafe fn end(self) -> Result<RawCommandBuffer, VulkanError> {
+    pub unsafe fn end(self) -> Result<CommandBuffer, VulkanError> {
         let fns = self.device().fns();
         (fns.v1_0.end_command_buffer)(self.handle())
             .result()
             .map_err(VulkanError::from)?;
 
-        Ok(RawCommandBuffer { inner: self })
+        Ok(CommandBuffer { inner: self })
     }
 
     /// Returns the queue family index that this command buffer was created for.
@@ -146,7 +146,7 @@ impl RawRecordingCommandBuffer {
     }
 }
 
-impl Drop for RawRecordingCommandBuffer {
+impl Drop for RecordingCommandBuffer {
     #[inline]
     fn drop(&mut self) {
         let allocation = unsafe { ManuallyDrop::take(&mut self.allocation) };
@@ -154,7 +154,7 @@ impl Drop for RawRecordingCommandBuffer {
     }
 }
 
-unsafe impl VulkanObject for RawRecordingCommandBuffer {
+unsafe impl VulkanObject for RecordingCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -163,16 +163,16 @@ unsafe impl VulkanObject for RawRecordingCommandBuffer {
     }
 }
 
-unsafe impl DeviceOwned for RawRecordingCommandBuffer {
+unsafe impl DeviceOwned for RecordingCommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.allocation.inner.device()
     }
 }
 
-impl Debug for RawRecordingCommandBuffer {
+impl Debug for RecordingCommandBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RawRecordingCommandBuffer")
+        f.debug_struct("RecordingCommandBuffer")
             .field("handle", &self.level())
             .field("level", &self.level())
             .field("usage", &self.usage)
@@ -328,22 +328,22 @@ pub(crate) struct BeginInfoFields2Vk {
     pub(crate) inheritance_info_fields1_vk: Option<CommandBufferInheritanceInfoFields1Vk>,
 }
 
-/// A raw command buffer that has finished recording.
+/// A command buffer that has finished recording.
 #[derive(Debug)]
-pub struct RawCommandBuffer {
-    inner: RawRecordingCommandBuffer,
+pub struct CommandBuffer {
+    inner: RecordingCommandBuffer,
 }
 
-// `RawRecordingCommandBuffer` is `!Send + !Sync` so that the implementation of
+// `RecordingCommandBuffer` is `!Send + !Sync` so that the implementation of
 // `CommandBufferAllocator::allocate` can assume that a command buffer in the recording state
 // doesn't leave the thread it was allocated on. However, as the safety contract states,
 // `CommandBufferAllocator::deallocate` must account for the possibility that a command buffer is
 // moved between threads after the recording is finished, and thus deallocated from another thread.
 // That's why this is sound.
-unsafe impl Send for RawCommandBuffer {}
-unsafe impl Sync for RawCommandBuffer {}
+unsafe impl Send for CommandBuffer {}
+unsafe impl Sync for CommandBuffer {}
 
-impl RawCommandBuffer {
+impl CommandBuffer {
     /// Returns the queue family index that this command buffer was created for.
     #[inline]
     pub fn queue_family_index(&self) -> u32 {
@@ -369,7 +369,7 @@ impl RawCommandBuffer {
     }
 }
 
-unsafe impl VulkanObject for RawCommandBuffer {
+unsafe impl VulkanObject for CommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -378,7 +378,7 @@ unsafe impl VulkanObject for RawCommandBuffer {
     }
 }
 
-unsafe impl DeviceOwned for RawCommandBuffer {
+unsafe impl DeviceOwned for CommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.allocation.inner.device()

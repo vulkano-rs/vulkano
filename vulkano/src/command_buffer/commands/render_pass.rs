@@ -4,8 +4,8 @@ use crate::{
             BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateAttachments,
             RenderPassStateType, Resource,
         },
-        sys::RawRecordingCommandBuffer,
-        CommandBufferLevel, RecordingCommandBuffer, ResourceInCommand, SubpassContents,
+        sys::RecordingCommandBuffer,
+        AutoCommandBufferBuilder, CommandBufferLevel, ResourceInCommand, SubpassContents,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearValue, NumericType},
@@ -24,7 +24,7 @@ use std::{cmp::min, ops::Range, sync::Arc};
 /// # Commands for render passes.
 ///
 /// These commands require a graphics queue.
-impl<L> RecordingCommandBuffer<L> {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
     /// You must call this or `begin_rendering` before you can record draw commands.
@@ -138,7 +138,7 @@ impl<L> RecordingCommandBuffer<L> {
                     )
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.begin_render_pass_unchecked(&render_pass_begin_info, &subpass_begin_info);
             },
         );
@@ -240,7 +240,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "next_subpass",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.next_subpass_unchecked(&subpass_end_info, &subpass_begin_info);
             },
         );
@@ -321,7 +321,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_render_pass_end(
             "end_render_pass",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.end_render_pass_unchecked(&subpass_end_info);
             },
         );
@@ -561,7 +561,7 @@ impl<L> RecordingCommandBuffer<L> {
                 .flatten()
             }))
             .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.begin_rendering_unchecked(&rendering_info);
             },
         );
@@ -628,7 +628,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_render_pass_end(
             "end_rendering",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.end_rendering_unchecked();
             },
         );
@@ -880,7 +880,7 @@ impl<L> RecordingCommandBuffer<L> {
         self.add_command(
             "clear_attachments",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.clear_attachments_unchecked(&attachments, &rects);
             },
         );
@@ -889,7 +889,7 @@ impl<L> RecordingCommandBuffer<L> {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,
@@ -3189,7 +3189,7 @@ impl RenderingAttachmentResolveInfo {
 
 /// Clear attachment type, used in [`clear_attachments`] command.
 ///
-/// [`clear_attachments`]: RecordingCommandBuffer::clear_attachments
+/// [`clear_attachments`]: AutoCommandBufferBuilder::clear_attachments
 #[derive(Clone, Copy, Debug)]
 pub enum ClearAttachment {
     /// Clear the color attachment at the specified index, with the specified clear value.
@@ -3273,7 +3273,7 @@ impl ClearAttachment {
 
 /// Specifies the clear region for the [`clear_attachments`] command.
 ///
-/// [`clear_attachments`]: RecordingCommandBuffer::clear_attachments
+/// [`clear_attachments`]: AutoCommandBufferBuilder::clear_attachments
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClearRect {
     /// The rectangle offset.

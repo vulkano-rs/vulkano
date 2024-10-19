@@ -2,8 +2,8 @@ use std::{error::Error, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, CopyBufferToImageInfo,
-        RecordingCommandBuffer, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        CopyBufferToImageInfo, RenderPassBeginInfo,
     },
     descriptor_set::{layout::DescriptorSetLayoutCreateFlags, WriteDescriptorSet},
     device::{
@@ -173,7 +173,7 @@ impl App {
         )
         .unwrap();
 
-        let mut uploads = RecordingCommandBuffer::primary(
+        let mut uploads = AutoCommandBufferBuilder::primary(
             command_buffer_allocator.clone(),
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -240,7 +240,7 @@ impl App {
         )
         .unwrap();
 
-        let _ = uploads.end().unwrap().execute(queue.clone()).unwrap();
+        let _ = uploads.build().unwrap().execute(queue.clone()).unwrap();
 
         App {
             instance,
@@ -452,7 +452,7 @@ impl ApplicationHandler for App {
                     rcx.recreate_swapchain = true;
                 }
 
-                let mut builder = RecordingCommandBuffer::primary(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     self.command_buffer_allocator.clone(),
                     self.queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
@@ -499,7 +499,7 @@ impl ApplicationHandler for App {
 
                 builder.end_render_pass(Default::default()).unwrap();
 
-                let command_buffer = builder.end().unwrap();
+                let command_buffer = builder.build().unwrap();
                 let future = rcx
                     .previous_frame_end
                     .take()

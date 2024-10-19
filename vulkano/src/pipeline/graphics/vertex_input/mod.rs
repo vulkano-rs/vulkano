@@ -87,7 +87,7 @@
 //! different input rates, and it's also possible to have multiple bindings with the same input
 //! rate.
 //!
-//! [`bind_vertex_buffers`]: crate::command_buffer::RecordingCommandBuffer::bind_vertex_buffers
+//! [`bind_vertex_buffers`]: crate::command_buffer::AutoCommandBufferBuilder::bind_vertex_buffers
 
 #[allow(deprecated)]
 pub use self::{

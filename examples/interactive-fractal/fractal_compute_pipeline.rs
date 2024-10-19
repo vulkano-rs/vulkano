@@ -4,7 +4,7 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -146,7 +146,7 @@ impl FractalComputePipeline {
             [],
         )
         .unwrap();
-        let mut builder = RecordingCommandBuffer::primary(
+        let mut builder = AutoCommandBufferBuilder::primary(
             self.command_buffer_allocator.clone(),
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
@@ -182,7 +182,7 @@ impl FractalComputePipeline {
                 .unwrap();
         }
 
-        let command_buffer = builder.end().unwrap();
+        let command_buffer = builder.build().unwrap();
         let finished = command_buffer.execute(self.queue.clone()).unwrap();
         finished.then_signal_fence_and_flush().unwrap().boxed()
     }

@@ -156,7 +156,7 @@ impl QueryPool {
     ///
     /// [`self.ty().result_len()`]: QueryPool::result_len
     /// [`WITH_AVAILABILITY`]: QueryResultFlags::WITH_AVAILABILITY
-    /// [`copy_query_pool_results`]: crate::command_buffer::RecordingCommandBuffer::copy_query_pool_results
+    /// [`copy_query_pool_results`]: crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results
     #[inline]
     pub fn get_results<T>(
         &self,
@@ -538,23 +538,23 @@ vulkan_enum! {
     ///
     /// Used with the [`begin_query`] and [`end_query`] commands.
     ///
-    /// [`begin_query`]: crate::command_buffer::RecordingCommandBuffer::begin_query
-    /// [`end_query`]: crate::command_buffer::RecordingCommandBuffer::end_query
+    /// [`begin_query`]: crate::command_buffer::AutoCommandBufferBuilder::begin_query
+    /// [`end_query`]: crate::command_buffer::AutoCommandBufferBuilder::end_query
     Occlusion = OCCLUSION,
 
     /// Tracks statistics on pipeline invocations and their input data.
     ///
     /// Used with the [`begin_query`] and [`end_query`] commands.
     ///
-    /// [`begin_query`]: crate::command_buffer::RecordingCommandBuffer::begin_query
-    /// [`end_query`]: crate::command_buffer::RecordingCommandBuffer::end_query
+    /// [`begin_query`]: crate::command_buffer::AutoCommandBufferBuilder::begin_query
+    /// [`end_query`]: crate::command_buffer::AutoCommandBufferBuilder::end_query
     PipelineStatistics = PIPELINE_STATISTICS,
 
     /// Writes timestamps at chosen points in a command buffer.
     ///
     /// Used with the [`write_timestamp`] command.
     ///
-    /// [`write_timestamp`]: crate::command_buffer::RecordingCommandBuffer::write_timestamp
+    /// [`write_timestamp`]: crate::command_buffer::AutoCommandBufferBuilder::write_timestamp
     Timestamp = TIMESTAMP,
 
     /// Queries the size of data resulting from a
@@ -563,7 +563,7 @@ vulkan_enum! {
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
     /// [`CopyAccelerationStructureMode::Compact`]: crate::acceleration_structure::CopyAccelerationStructureMode::Compact
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::RecordingCommandBuffer::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
     AccelerationStructureCompactedSize = ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
@@ -575,7 +575,7 @@ vulkan_enum! {
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
     /// [`CopyAccelerationStructureMode::Serialize`]: crate::acceleration_structure::CopyAccelerationStructureMode::Serialize
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::RecordingCommandBuffer::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
     AccelerationStructureSerializationSize = ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
@@ -588,7 +588,7 @@ vulkan_enum! {
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
     /// [`CopyAccelerationStructureMode::Serialize`]: crate::acceleration_structure::CopyAccelerationStructureMode::Serialize
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::RecordingCommandBuffer::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
     AccelerationStructureSerializationBottomLevelPointers = ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_ray_tracing_maintenance1)]),
@@ -598,7 +598,7 @@ vulkan_enum! {
     ///
     /// Used with the [`write_acceleration_structures_properties`] command.
     ///
-    /// [`write_acceleration_structures_properties`]: crate::command_buffer::RecordingCommandBuffer::write_acceleration_structures_properties
+    /// [`write_acceleration_structures_properties`]: crate::command_buffer::AutoCommandBufferBuilder::write_acceleration_structures_properties
     AccelerationStructureSize = ACCELERATION_STRUCTURE_SIZE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_ray_tracing_maintenance1)]),
@@ -609,8 +609,8 @@ vulkan_enum! {
     /// Used with the [`begin_query`] and [`end_query`] commands.
     ///
 
-    /// [`begin_query`]: crate::command_buffer::RecordingCommandBuffer::begin_query
-    /// [`end_query`]: crate::command_buffer::RecordingCommandBuffer::end_query
+    /// [`begin_query`]: crate::command_buffer::AutoCommandBufferBuilder::begin_query
+    /// [`end_query`]: crate::command_buffer::AutoCommandBufferBuilder::end_query
     MeshPrimitivesGenerated = MESH_PRIMITIVES_GENERATED_EXT
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(ext_mesh_shader)]),

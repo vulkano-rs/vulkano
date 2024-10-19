@@ -21,7 +21,7 @@ use std::{
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferMemory, Subbuffer},
-    command_buffer::sys::RawCommandBuffer,
+    command_buffer as raw,
     device::Queue,
     image::Image,
     swapchain::Swapchain,
@@ -229,7 +229,7 @@ impl<W: ?Sized + 'static> Task for PhantomData<fn() -> W> {
 pub struct TaskContext<'a> {
     resource_map: &'a ResourceMap<'a>,
     current_frame_index: u32,
-    command_buffers: &'a mut Vec<Arc<RawCommandBuffer>>,
+    command_buffers: &'a mut Vec<Arc<raw::CommandBuffer>>,
 }
 
 impl<'a> TaskContext<'a> {
@@ -510,7 +510,7 @@ impl<'a> TaskContext<'a> {
     /// buffer must not do any accesses not accounted for in the [task's access set], or ensure
     /// that such accesses are appropriately synchronized.
     #[inline]
-    pub unsafe fn push_command_buffer(&mut self, command_buffer: Arc<RawCommandBuffer>) {
+    pub unsafe fn push_command_buffer(&mut self, command_buffer: Arc<raw::CommandBuffer>) {
         self.command_buffers.push(command_buffer);
     }
 
@@ -527,7 +527,7 @@ impl<'a> TaskContext<'a> {
     #[inline]
     pub unsafe fn extend_command_buffers(
         &mut self,
-        command_buffers: impl IntoIterator<Item = Arc<RawCommandBuffer>>,
+        command_buffers: impl IntoIterator<Item = Arc<raw::CommandBuffer>>,
     ) {
         self.command_buffers.extend(command_buffers);
     }

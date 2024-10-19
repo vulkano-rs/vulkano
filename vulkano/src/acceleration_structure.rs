@@ -79,8 +79,8 @@
 //! acceleration structure to a descriptor set using
 //! [`WriteDescriptorSet::acceleration_structure`].
 //!
-//! [`build_acceleration_structure`]: crate::command_buffer::RecordingCommandBuffer::build_acceleration_structure
-//! [`build_acceleration_structure_indirect`]: crate::command_buffer::RecordingCommandBuffer::build_acceleration_structure_indirect
+//! [`build_acceleration_structure`]: crate::command_buffer::AutoCommandBufferBuilder::build_acceleration_structure
+//! [`build_acceleration_structure_indirect`]: crate::command_buffer::AutoCommandBufferBuilder::build_acceleration_structure_indirect
 //! [`DescriptorType::AccelerationStructure`]: crate::descriptor_set::layout::DescriptorType::AccelerationStructure
 //! [`WriteDescriptorSet::acceleration_structure`]: crate::descriptor_set::WriteDescriptorSet::acceleration_structure
 

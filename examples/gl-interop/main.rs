@@ -20,8 +20,8 @@ mod linux {
     use vulkano::{
         buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, CommandBufferUsage, RecordingCommandBuffer,
-            RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
+            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+            CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo, SubmitInfo,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -702,7 +702,7 @@ mod linux {
                         rcx.recreate_swapchain = true;
                     }
 
-                    let mut builder = RecordingCommandBuffer::primary(
+                    let mut builder = AutoCommandBufferBuilder::primary(
                         self.command_buffer_allocator.clone(),
                         self.queue.queue_family_index(),
                         CommandBufferUsage::OneTimeSubmit,
@@ -742,7 +742,7 @@ mod linux {
 
                     builder.end_render_pass(Default::default()).unwrap();
 
-                    let command_buffer = builder.end().unwrap();
+                    let command_buffer = builder.build().unwrap();
 
                     let future = rcx
                         .previous_frame_end
