@@ -196,6 +196,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 	- `VkExportMemoryWin32HandleInfoKHR`
 - [`VK_KHR_external_semaphore_win32`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_win32.html)
 	- `VkD3D12FenceSubmitInfoKHR`
+- [`VK_KHR_fragment_shading_rate`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)
 - [`VK_KHR_portability_subset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_portability_subset.html) (provisional)
 	- Check for `tessellationIsolines`
 	- Check for `tessellationPointMode`
@@ -218,7 +219,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_cooperative_matrix`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_cooperative_matrix.html)
 - [`VK_KHR_display_swapchain`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_display_swapchain.html)
 - [`VK_KHR_fragment_shader_barycentric`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shader_barycentric.html)
-- [`VK_KHR_fragment_shading_rate`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_fragment_shading_rate.html)
 - [`VK_KHR_global_priority`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_global_priority.html)
 - [`VK_KHR_maintenance5`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance5.html)
 - [`VK_KHR_performance_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_performance_query.html)
