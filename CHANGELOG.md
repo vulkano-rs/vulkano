@@ -26,13 +26,12 @@ Changes to memory allocation:
 - `Suballocator` has new required items `Suballocations` and `suballocations` for iterating over suballocations.
 
 Changes to command buffers:
-- Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
-- Renamed `UnsafeCommandBufferBuilder` to `RawRecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
-- Renamed `UnsafeCommandBuffer` to `RawCommandBuffer`.
-- `RecordingCommandBuffer` and `RawRecordingCommandBuffer` now take an `Arc<dyn CommandBufferAllocator>` on construction.
-- `RecordingCommandBuffer`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
+- Renamed `UnsafeCommandBufferBuilder` to `RecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
+- Renamed `UnsafeCommandBuffer` to `CommandBuffer`.
+- `RecordingCommandBuffer` and `CommandBuffer` were moved to the `command_buffer` module; the `command_buffer::sys` module was removed.
+- `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RecordingCommandBuffer` and `CommandBuffer` no longer have a type parameter for the type of allocator.
+- `RecordingCommandBuffer::execute_commands` now takes `&CommandBuffer`s as argument.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
-- `RawRecordingCommandBuffer::execute_commands` now takes `&RawCommandBuffer`s as argument.
 
 Changes to command buffer allocation:
 - `CommandBufferAllocator` no longer has any associated types in order to make the trait object-safe.
