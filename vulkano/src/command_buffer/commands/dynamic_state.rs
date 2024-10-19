@@ -5,6 +5,7 @@ use crate::{
         graphics::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilFaces, StencilOp, StencilOps},
+            fragment_shading_rate::{FragmentShadingRateCombinerOp, FragmentShadingRateState},
             input_assembly::PrimitiveTopology,
             rasterization::{
                 ConservativeRasterizationMode, CullMode, DepthBiasState, FrontFace, LineStipple,
@@ -1275,6 +1276,54 @@ impl<L> RecordingCommandBuffer<L> {
                 out.set_extra_primitive_overestimation_size_unchecked(
                     extra_primitive_overestimation_size,
                 );
+            },
+        );
+
+        self
+    }
+
+    /// Sets the dynamic fragment shading rate for future draw calls.
+    #[inline]
+    pub fn set_fragment_shading_rate(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_set_fragment_shading_rate(fragment_size, combiner_ops)?;
+
+        unsafe { Ok(self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops)) }
+    }
+
+    fn validate_set_fragment_shading_rate(
+        &self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<(), Box<ValidationError>> {
+        self.inner
+            .validate_set_fragment_shading_rate(fragment_size, combiner_ops)?;
+
+        self.validate_graphics_pipeline_fixed_state(DynamicState::FragmentShadingRate)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_fragment_shading_rate_unchecked(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> &mut Self {
+        self.builder_state.fragment_shading_rate = Some(FragmentShadingRateState {
+            fragment_size,
+            combiner_ops,
+            ..FragmentShadingRateState::default()
+        });
+
+        self.add_command(
+            "set_fragment_shading_rate",
+            Default::default(),
+            move |out: &mut RawRecordingCommandBuffer| {
+                out.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops);
             },
         );
 
@@ -3377,6 +3426,46 @@ impl RawRecordingCommandBuffer {
             .cmd_set_extra_primitive_overestimation_size_ext)(
             self.handle(),
             extra_primitive_overestimation_size,
+        );
+
+        self
+    }
+
+    fn validate_set_fragment_shading_rate(
+        &self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<(), Box<ValidationError>> {
+        FragmentShadingRateState {
+            fragment_size,
+            combiner_ops,
+            ..FragmentShadingRateState::default()
+        }
+        .validate(self.device())?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn set_fragment_shading_rate_unchecked(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> &mut Self {
+        let fns = self.device().fns();
+
+        let fragment_size = ash::vk::Extent2D {
+            width: fragment_size[0],
+            height: fragment_size[1],
+        };
+        let combiner_ops: [ash::vk::FragmentShadingRateCombinerOpKHR; 2] =
+            [combiner_ops[0].into(), combiner_ops[1].into()];
+
+        (fns.khr_fragment_shading_rate
+            .cmd_set_fragment_shading_rate_khr)(
+            self.handle(),
+            &fragment_size,
+            combiner_ops.as_ptr().cast(),
         );
 
         self

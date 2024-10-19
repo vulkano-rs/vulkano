@@ -7,6 +7,7 @@ use vulkano::{
     pipeline::graphics::{
         color_blend::LogicOp,
         depth_stencil::{CompareOp, StencilFaces, StencilOp},
+        fragment_shading_rate::FragmentShadingRateCombinerOp,
         input_assembly::PrimitiveTopology,
         rasterization::{ConservativeRasterizationMode, CullMode, FrontFace},
         vertex_input::{
@@ -769,6 +770,36 @@ impl RecordingCommandBuffer<'_> {
                 extra_primitive_overestimation_size,
             )
         };
+
+        self
+    }
+
+    /// Sets the dynamic fragment shading rate for future draw calls.
+    pub unsafe fn set_fragment_shading_rate(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> Result<&mut Self> {
+        unsafe { Ok(self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops)) }
+    }
+
+    pub unsafe fn set_fragment_shading_rate_unchecked(
+        &mut self,
+        fragment_size: [u32; 2],
+        combiner_ops: [FragmentShadingRateCombinerOp; 2],
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        let fragment_size = vk::Extent2D {
+            width: fragment_size[0],
+            height: fragment_size[1],
+        };
+        let combiner_ops = [combiner_ops[0].into(), combiner_ops[1].into()];
+        unsafe {
+            (fns.khr_fragment_shading_rate
+                .cmd_set_fragment_shading_rate_khr)(
+                self.handle(), &fragment_size, &combiner_ops
+            )
+        }
 
         self
     }

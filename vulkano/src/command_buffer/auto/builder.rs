@@ -20,6 +20,7 @@ use crate::{
         graphics::{
             color_blend::LogicOp,
             depth_stencil::{CompareOp, StencilOps},
+            fragment_shading_rate::FragmentShadingRateState,
             input_assembly::PrimitiveTopology,
             rasterization::{
                 ConservativeRasterizationMode, CullMode, DepthBiasState, FrontFace, LineStipple,
@@ -1331,6 +1332,7 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) conservative_rasterization_mode:
         Option<ConservativeRasterizationMode>,
     pub(in crate::command_buffer) extra_primitive_overestimation_size: Option<f32>,
+    pub(in crate::command_buffer) fragment_shading_rate: Option<FragmentShadingRateState>,
 
     // Active queries
     pub(in crate::command_buffer) queries: HashMap<QueryType, QueryState>,
@@ -1362,7 +1364,7 @@ impl CommandBufferBuilderState {
                 DynamicState::DepthWriteEnable => self.depth_write_enable = None,
                 DynamicState::DiscardRectangle => self.discard_rectangle.clear(),
                 // DynamicState::ExclusiveScissor => todo!(),
-                // DynamicState::FragmentShadingRate => todo!(),
+                DynamicState::FragmentShadingRate => self.fragment_shading_rate = None,
                 DynamicState::FrontFace => self.front_face = None,
                 DynamicState::LineStipple => self.line_stipple = None,
                 DynamicState::LineWidth => self.line_width = None,
