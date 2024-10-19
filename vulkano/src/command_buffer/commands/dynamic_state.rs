@@ -1322,7 +1322,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_command(
             "set_fragment_shading_rate",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops);
             },
         );
