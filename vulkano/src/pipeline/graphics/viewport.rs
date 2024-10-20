@@ -281,7 +281,8 @@ pub struct Viewport {
 
     /// Dimensions in pixels of the viewport.
     ///
-    /// The default value is `[1.0; 2]`, which you probably want to override.
+    /// The default value is `[1.0; 2]`, which you probably want to override if you are not
+    /// using dynamic state.
     pub extent: [f32; 2],
 
     /// Minimum and maximum values of the depth.
