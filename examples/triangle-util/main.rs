@@ -369,6 +369,7 @@ impl ApplicationHandler for App {
                         // and the dynamic state viewport.
                         rcx.framebuffers =
                             window_size_dependent_setup(swapchain_images, &rcx.render_pass);
+                        rcx.viewport.extent = window_size.into();
                     })
                     .unwrap();
 
