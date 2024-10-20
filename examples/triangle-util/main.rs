@@ -352,8 +352,9 @@ impl ApplicationHandler for App {
                 // Begin rendering by acquiring the gpu future from the window renderer.
                 let previous_frame_end = window_renderer
                     .acquire(Some(Duration::from_millis(1000)), |swapchain_images| {
-                        // Whenever the swapchain gets recreated, we need to recreate everything dependent upon it.
-                        // In this example, that is only the framebuffers.
+                        // Whenever the swapchain gets recreated, we need to recreate everything
+                        // dependent upon it. In this example, that is only
+                        // the framebuffers.
                         rcx.framebuffers =
                             window_size_dependent_setup(swapchain_images, &rcx.render_pass);
                     })
@@ -403,10 +404,15 @@ impl ApplicationHandler for App {
                     // We are now inside the first subpass of the render pass.
                     //
                     // TODO: Document state setting and how it affects subsequent draw commands.
-                    .set_viewport(0, [Viewport {
-                        extent: window_size.into(),
-                        ..Default::default()
-                    }].into_iter().collect())
+                    .set_viewport(
+                        0,
+                        [Viewport {
+                            extent: window_size.into(),
+                            ..Default::default()
+                        }]
+                        .into_iter()
+                        .collect(),
+                    )
                     .unwrap()
                     .bind_pipeline_graphics(rcx.pipeline.clone())
                     .unwrap()
