@@ -12,6 +12,7 @@ use crate::{image::ImageTiling, DeviceSize};
 use std::{
     error::Error,
     fmt::{self, Debug, Display},
+    ops::Range,
 };
 
 mod buddy;
@@ -287,6 +288,24 @@ pub struct Suballocation {
     pub handle: AllocationHandle,
 }
 
+impl Suballocation {
+    /// Returns the suballocation as a `DeviceSize` range.
+    ///
+    /// This is identical to `self.offset..self.offset + self.size`.
+    #[inline]
+    pub fn as_range(&self) -> Range<DeviceSize> {
+        self.offset..self.offset + self.size
+    }
+
+    /// Returns the suballocation as a `usize` range.
+    ///
+    /// This is identical to `self.offset as usize..(self.offset + self.size) as usize`.
+    #[inline]
+    pub fn as_usize_range(&self) -> Range<usize> {
+        self.offset as usize..(self.offset + self.size) as usize
+    }
+}
+
 /// Error that can be returned when creating an [allocation] using a [suballocator].
 ///
 /// [allocation]: Suballocation
@@ -329,6 +348,24 @@ pub struct SuballocationNode {
 
     /// Tells us if the allocation is free, and if not, what type of resources can be bound to it.
     pub allocation_type: SuballocationType,
+}
+
+impl SuballocationNode {
+    /// Returns the suballocation as a `DeviceSize` range.
+    ///
+    /// This is identical to `self.offset..self.offset + self.size`.
+    #[inline]
+    pub fn as_range(&self) -> Range<DeviceSize> {
+        self.offset..self.offset + self.size
+    }
+
+    /// Returns the suballocation as a `usize` range.
+    ///
+    /// This is identical to `self.offset as usize..(self.offset + self.size) as usize`.
+    #[inline]
+    pub fn as_usize_range(&self) -> Range<usize> {
+        self.offset as usize..(self.offset + self.size) as usize
+    }
 }
 
 /// Tells us if an allocation within a [suballocator]'s list/tree of suballocations is free, and if
