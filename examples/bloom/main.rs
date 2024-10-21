@@ -11,7 +11,8 @@ use vulkano::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
             DescriptorType,
         },
-        DescriptorImageViewInfo, DescriptorSet, DescriptorSetWithOffsets, WriteDescriptorSet,
+        sys::RawDescriptorSet,
+        DescriptorImageViewInfo, WriteDescriptorSet,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned,
@@ -80,7 +81,7 @@ pub struct RenderContext {
     recreate_swapchain: bool,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     sampler: Arc<Sampler>,
-    descriptor_set: DescriptorSetWithOffsets,
+    descriptor_set: Arc<RawDescriptorSet>,
     task_graph: ExecutableTaskGraph<Self>,
     scene_node_id: NodeId,
     tonemap_node_id: NodeId,
@@ -500,7 +501,7 @@ fn window_size_dependent_setup(
     pipeline_layout: &Arc<PipelineLayout>,
     sampler: &Arc<Sampler>,
     descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
-) -> (Id<Image>, DescriptorSetWithOffsets) {
+) -> (Id<Image>, Arc<RawDescriptorSet>) {
     let device = resources.device();
     let swapchain_state = resources.swapchain(swapchain_id).unwrap();
     let images = swapchain_state.images();
@@ -570,30 +571,31 @@ fn window_size_dependent_setup(
         .unwrap()
     });
 
-    let descriptor_set = DescriptorSet::new(
+    let descriptor_set = RawDescriptorSet::new(
         descriptor_set_allocator.clone(),
-        pipeline_layout.set_layouts()[0].clone(),
-        [
-            WriteDescriptorSet::sampler(0, sampler.clone()),
-            WriteDescriptorSet::image_view_with_layout(
-                1,
-                DescriptorImageViewInfo {
-                    image_view: bloom_texture_view,
-                    image_layout: ImageLayout::General,
-                },
-            ),
-            WriteDescriptorSet::image_view_with_layout_array(
-                2,
-                0,
-                bloom_mip_chain_views.map(|image_view| DescriptorImageViewInfo {
-                    image_view,
-                    image_layout: ImageLayout::General,
-                }),
-            ),
-        ],
-        [],
+        &pipeline_layout.set_layouts()[0],
+        0,
     )
     .unwrap();
+    let writes = &[
+        WriteDescriptorSet::sampler(0, sampler.clone()),
+        WriteDescriptorSet::image_view_with_layout(
+            1,
+            DescriptorImageViewInfo {
+                image_view: bloom_texture_view,
+                image_layout: ImageLayout::General,
+            },
+        ),
+        WriteDescriptorSet::image_view_with_layout_array(
+            2,
+            0,
+            bloom_mip_chain_views.map(|image_view| DescriptorImageViewInfo {
+                image_view,
+                image_layout: ImageLayout::General,
+            }),
+        ),
+    ];
+    unsafe { descriptor_set.update(writes, &[]) }.unwrap();
 
-    (bloom_image_id, descriptor_set.into())
+    (bloom_image_id, Arc::new(descriptor_set))
 }

@@ -144,6 +144,12 @@ impl DescriptorSet {
         Ok(Arc::new(set))
     }
 
+    /// Returns the inner raw descriptor set.
+    #[inline]
+    pub fn as_raw(&self) -> &RawDescriptorSet {
+        &self.inner
+    }
+
     /// Returns the allocation of the descriptor set.
     #[inline]
     pub fn alloc(&self) -> &DescriptorPoolAlloc {

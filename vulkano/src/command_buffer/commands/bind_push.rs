@@ -3,6 +3,7 @@ use crate::{
     command_buffer::{auto::SetOrPush, sys::RecordingCommandBuffer, AutoCommandBufferBuilder},
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorSetLayoutCreateFlags, DescriptorType},
+        sys::RawDescriptorSet,
         DescriptorBindingResources, DescriptorBufferInfo, DescriptorSetResources,
         DescriptorSetWithOffsets, DescriptorSetsCollection, WriteDescriptorSet,
     },
@@ -47,6 +48,8 @@ impl<L> AutoCommandBufferBuilder<L> {
         }
     }
 
+    // TODO: The validation here is somewhat duplicated because of how different the parameters are
+    // here compared to the raw command buffer.
     fn validate_bind_descriptor_sets(
         &self,
         pipeline_bind_point: PipelineBindPoint,
@@ -54,12 +57,154 @@ impl<L> AutoCommandBufferBuilder<L> {
         first_set: u32,
         descriptor_sets: &[DescriptorSetWithOffsets],
     ) -> Result<(), Box<ValidationError>> {
-        self.inner.validate_bind_descriptor_sets(
+        self.inner.validate_bind_descriptor_sets_inner(
             pipeline_bind_point,
             pipeline_layout,
             first_set,
-            descriptor_sets,
+            descriptor_sets.len(),
         )?;
+
+        let properties = self.device().physical_device().properties();
+
+        for (descriptor_sets_index, set) in descriptor_sets.iter().enumerate() {
+            let set_num = first_set + descriptor_sets_index as u32;
+            let (set, dynamic_offsets) = set.as_ref();
+
+            // VUID-vkCmdBindDescriptorSets-commonparent
+            assert_eq!(self.device(), set.device());
+
+            let set_layout = set.layout();
+            let pipeline_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+
+            if !pipeline_set_layout.is_compatible_with(set_layout) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`descriptor_sets[{0}]` (for set number {1}) is not compatible with \
+                        `pipeline_layout.set_layouts()[{1}]`",
+                        descriptor_sets_index, set_num
+                    )
+                    .into(),
+                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-00358"],
+                    ..Default::default()
+                }));
+            }
+
+            let mut dynamic_offsets_remaining = dynamic_offsets;
+            let mut required_dynamic_offset_count = 0;
+
+            for (&binding_num, binding) in set_layout.bindings() {
+                let required_alignment = match binding.descriptor_type {
+                    DescriptorType::UniformBufferDynamic => {
+                        properties.min_uniform_buffer_offset_alignment
+                    }
+                    DescriptorType::StorageBufferDynamic => {
+                        properties.min_storage_buffer_offset_alignment
+                    }
+                    _ => continue,
+                };
+
+                let count = if binding
+                    .binding_flags
+                    .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+                {
+                    set.variable_descriptor_count()
+                } else {
+                    binding.descriptor_count
+                } as usize;
+
+                required_dynamic_offset_count += count;
+
+                if !dynamic_offsets_remaining.is_empty() {
+                    let split_index = min(count, dynamic_offsets_remaining.len());
+                    let dynamic_offsets = &dynamic_offsets_remaining[..split_index];
+                    dynamic_offsets_remaining = &dynamic_offsets_remaining[split_index..];
+
+                    let resources = set.resources();
+                    let elements = match resources.binding(binding_num) {
+                        Some(DescriptorBindingResources::Buffer(elements)) => elements.as_slice(),
+                        _ => unreachable!(),
+                    };
+
+                    for (index, (&offset, element)) in
+                        dynamic_offsets.iter().zip(elements).enumerate()
+                    {
+                        if !is_aligned(offset as DeviceSize, required_alignment) {
+                            match binding.descriptor_type {
+                                DescriptorType::UniformBufferDynamic => {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "the descriptor type of `descriptor_sets[{}]` \
+                                            (for set number {}) is \
+                                            `DescriptorType::UniformBufferDynamic`, but the \
+                                            dynamic offset provided for binding {} index {} is \
+                                            not aligned to the \
+                                            `min_uniform_buffer_offset_alignment` device property",
+                                            descriptor_sets_index, set_num, binding_num, index,
+                                        )
+                                        .into(),
+                                        vuids: &[
+                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971",
+                                        ],
+                                        ..Default::default()
+                                    }));
+                                }
+                                DescriptorType::StorageBufferDynamic => {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "the descriptor type of `descriptor_sets[{}]` \
+                                            (for set number {}) is \
+                                            `DescriptorType::StorageBufferDynamic`, but the \
+                                            dynamic offset provided for binding {} index {} is \
+                                            not aligned to the \
+                                            `min_storage_buffer_offset_alignment` device property",
+                                            descriptor_sets_index, set_num, binding_num, index,
+                                        )
+                                        .into(),
+                                        vuids: &[
+                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972",
+                                        ],
+                                        ..Default::default()
+                                    }));
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+
+                        if let Some(buffer_info) = element {
+                            let DescriptorBufferInfo { buffer, range } = buffer_info;
+
+                            if offset as DeviceSize + range.end > buffer.size() {
+                                return Err(Box::new(ValidationError {
+                                    problem: format!(
+                                        "the dynamic offset of `descriptor_sets[{}]` \
+                                        (for set number {}) for binding {} index {}, when \
+                                        added to `range.end` of the descriptor write, is \
+                                        greater than the size of the bound buffer",
+                                        descriptor_sets_index, set_num, binding_num, index,
+                                    )
+                                    .into(),
+                                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979"],
+                                    ..Default::default()
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+
+            if dynamic_offsets.len() != required_dynamic_offset_count {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "the number of dynamic offsets provided for `descriptor_sets[{}]` \
+                        (for set number {}) does not equal the number required ({})",
+                        descriptor_sets_index, set_num, required_dynamic_offset_count,
+                    )
+                    .into(),
+                    vuids: &["VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359"],
+                    ..Default::default()
+                }));
+            }
+        }
 
         Ok(())
     }
@@ -73,7 +218,6 @@ impl<L> AutoCommandBufferBuilder<L> {
         descriptor_sets: impl DescriptorSetsCollection,
     ) -> &mut Self {
         let descriptor_sets = descriptor_sets.into_vec();
-
         if descriptor_sets.is_empty() {
             return self;
         }
@@ -95,11 +239,21 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_descriptor_sets",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
+                let dynamic_offsets: SmallVec<[_; 32]> = descriptor_sets
+                    .iter()
+                    .flat_map(|x| x.as_ref().1.iter().copied())
+                    .collect();
+                let descriptor_sets: SmallVec<[_; 12]> = descriptor_sets
+                    .iter()
+                    .map(|x| x.as_ref().0.as_raw())
+                    .collect();
+
                 out.bind_descriptor_sets_unchecked(
                     pipeline_bind_point,
                     &pipeline_layout,
                     first_set,
                     &descriptor_sets,
+                    &dynamic_offsets,
                 );
             },
         );
@@ -434,13 +588,15 @@ impl RecordingCommandBuffer {
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         first_set: u32,
-        descriptor_sets: &[DescriptorSetWithOffsets],
+        descriptor_sets: &[&RawDescriptorSet],
+        dynamic_offsets: &[u32],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_descriptor_sets(
             pipeline_bind_point,
             pipeline_layout,
             first_set,
             descriptor_sets,
+            dynamic_offsets,
         )?;
 
         Ok(self.bind_descriptor_sets_unchecked(
@@ -448,6 +604,7 @@ impl RecordingCommandBuffer {
             pipeline_layout,
             first_set,
             descriptor_sets,
+            dynamic_offsets,
         ))
     }
 
@@ -456,7 +613,138 @@ impl RecordingCommandBuffer {
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         first_set: u32,
-        descriptor_sets: &[DescriptorSetWithOffsets],
+        descriptor_sets: &[&RawDescriptorSet],
+        dynamic_offsets: &[u32],
+    ) -> Result<(), Box<ValidationError>> {
+        self.validate_bind_descriptor_sets_inner(
+            pipeline_bind_point,
+            pipeline_layout,
+            first_set,
+            descriptor_sets.len(),
+        )?;
+
+        let properties = self.device().physical_device().properties();
+        let mut dynamic_offsets_remaining = dynamic_offsets;
+        let mut required_dynamic_offset_count = 0;
+
+        for (descriptor_sets_index, set) in descriptor_sets.iter().enumerate() {
+            let set_num = first_set + descriptor_sets_index as u32;
+
+            // VUID-vkCmdBindDescriptorSets-commonparent
+            assert_eq!(self.device(), set.device());
+
+            let set_layout = set.layout();
+            let pipeline_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+
+            if !pipeline_set_layout.is_compatible_with(set_layout) {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`descriptor_sets[{0}]` (for set number {1}) is not compatible with \
+                        `pipeline_layout.set_layouts()[{1}]`",
+                        descriptor_sets_index, set_num
+                    )
+                    .into(),
+                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-00358"],
+                    ..Default::default()
+                }));
+            }
+
+            for (&binding_num, binding) in set_layout.bindings() {
+                let required_alignment = match binding.descriptor_type {
+                    DescriptorType::UniformBufferDynamic => {
+                        properties.min_uniform_buffer_offset_alignment
+                    }
+                    DescriptorType::StorageBufferDynamic => {
+                        properties.min_storage_buffer_offset_alignment
+                    }
+                    _ => continue,
+                };
+
+                let count = if binding
+                    .binding_flags
+                    .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
+                {
+                    set.variable_descriptor_count()
+                } else {
+                    binding.descriptor_count
+                } as usize;
+
+                required_dynamic_offset_count += count;
+
+                if !dynamic_offsets_remaining.is_empty() {
+                    let split_index = min(count, dynamic_offsets_remaining.len());
+                    let dynamic_offsets = &dynamic_offsets_remaining[..split_index];
+                    dynamic_offsets_remaining = &dynamic_offsets_remaining[split_index..];
+
+                    for (index, &offset) in dynamic_offsets.iter().enumerate() {
+                        if !is_aligned(offset as DeviceSize, required_alignment) {
+                            match binding.descriptor_type {
+                                DescriptorType::UniformBufferDynamic => {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "the descriptor type of `descriptor_sets[{}]` \
+                                            (for set number {}) is \
+                                            `DescriptorType::UniformBufferDynamic`, but the \
+                                            dynamic offset provided for binding {} index {} is \
+                                            not aligned to the \
+                                            `min_uniform_buffer_offset_alignment` device property",
+                                            descriptor_sets_index, set_num, binding_num, index,
+                                        )
+                                        .into(),
+                                        vuids: &[
+                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971",
+                                        ],
+                                        ..Default::default()
+                                    }));
+                                }
+                                DescriptorType::StorageBufferDynamic => {
+                                    return Err(Box::new(ValidationError {
+                                        problem: format!(
+                                            "the descriptor type of `descriptor_sets[{}]` \
+                                            (for set number {}) is \
+                                            `DescriptorType::StorageBufferDynamic`, but the \
+                                            dynamic offset provided for binding {} index {} is \
+                                            not aligned to the \
+                                            `min_storage_buffer_offset_alignment` device property",
+                                            descriptor_sets_index, set_num, binding_num, index,
+                                        )
+                                        .into(),
+                                        vuids: &[
+                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972",
+                                        ],
+                                        ..Default::default()
+                                    }));
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if dynamic_offsets.len() != required_dynamic_offset_count {
+            return Err(Box::new(ValidationError {
+                problem: format!(
+                    "the number of dynamic offsets provided does not equal the number required \
+                    ({})",
+                    required_dynamic_offset_count,
+                )
+                .into(),
+                vuids: &["VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
+    }
+
+    fn validate_bind_descriptor_sets_inner(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        first_set: u32,
+        descriptor_sets: usize,
     ) -> Result<(), Box<ValidationError>> {
         pipeline_bind_point
             .validate_device(self.device())
@@ -508,7 +796,7 @@ impl RecordingCommandBuffer {
             }
         }
 
-        if first_set + descriptor_sets.len() as u32 > pipeline_layout.set_layouts().len() as u32 {
+        if first_set + descriptor_sets as u32 > pipeline_layout.set_layouts().len() as u32 {
             return Err(Box::new(ValidationError {
                 problem: "`first_set + descriptor_sets.len()` is greater than \
                     `pipeline_layout.set_layouts().len()`"
@@ -516,148 +804,6 @@ impl RecordingCommandBuffer {
                 vuids: &["VUID-vkCmdBindDescriptorSets-firstSet-00360"],
                 ..Default::default()
             }));
-        }
-
-        let properties = self.device().physical_device().properties();
-
-        for (descriptor_sets_index, set) in descriptor_sets.iter().enumerate() {
-            let set_num = first_set + descriptor_sets_index as u32;
-            let (set, dynamic_offsets) = set.as_ref();
-
-            // VUID-vkCmdBindDescriptorSets-commonparent
-            assert_eq!(self.device(), set.device());
-
-            let set_layout = set.layout();
-            let pipeline_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
-
-            if !pipeline_set_layout.is_compatible_with(set_layout) {
-                return Err(Box::new(ValidationError {
-                    problem: format!(
-                        "`descriptor_sets[{0}]` (for set number {1}) is not compatible with \
-                        `pipeline_layout.set_layouts()[{1}]`",
-                        descriptor_sets_index, set_num
-                    )
-                    .into(),
-                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-00358"],
-                    ..Default::default()
-                }));
-            }
-
-            let mut dynamic_offsets_remaining = dynamic_offsets;
-            let mut required_dynamic_offset_count = 0;
-
-            for (&binding_num, binding) in set_layout.bindings() {
-                let required_alignment = match binding.descriptor_type {
-                    DescriptorType::UniformBufferDynamic => {
-                        properties.min_uniform_buffer_offset_alignment
-                    }
-                    DescriptorType::StorageBufferDynamic => {
-                        properties.min_storage_buffer_offset_alignment
-                    }
-                    _ => continue,
-                };
-
-                let count = if binding
-                    .binding_flags
-                    .intersects(DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT)
-                {
-                    set.variable_descriptor_count()
-                } else {
-                    binding.descriptor_count
-                } as usize;
-
-                required_dynamic_offset_count += count;
-
-                if !dynamic_offsets_remaining.is_empty() {
-                    let split_index = min(count, dynamic_offsets_remaining.len());
-                    let dynamic_offsets = &dynamic_offsets_remaining[..split_index];
-                    dynamic_offsets_remaining = &dynamic_offsets_remaining[split_index..];
-
-                    let resources = set.resources();
-                    let elements = match resources.binding(binding_num) {
-                        Some(DescriptorBindingResources::Buffer(elements)) => elements.as_slice(),
-                        _ => unreachable!(),
-                    };
-
-                    for (index, (&offset, element)) in
-                        dynamic_offsets.iter().zip(elements).enumerate()
-                    {
-                        if !is_aligned(offset as DeviceSize, required_alignment) {
-                            match binding.descriptor_type {
-                                DescriptorType::UniformBufferDynamic => {
-                                    return Err(Box::new(ValidationError {
-                                        problem: format!(
-                                            "the descriptor type of `descriptor_sets[{}]` \
-                                            (for set number {}) is \
-                                            `DescriptorType::UniformBufferDynamic`, but the \
-                                            dynamic offset provided for binding {} index {} is \
-                                            not aligned to the \
-                                            `min_uniform_buffer_offset_alignment` device property",
-                                            descriptor_sets_index, set_num, binding_num, index,
-                                        )
-                                        .into(),
-                                        vuids: &[
-                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971",
-                                        ],
-                                        ..Default::default()
-                                    }));
-                                }
-                                DescriptorType::StorageBufferDynamic => {
-                                    return Err(Box::new(ValidationError {
-                                        problem: format!(
-                                            "the descriptor type of `descriptor_sets[{}]` \
-                                            (for set number {}) is \
-                                            `DescriptorType::StorageBufferDynamic`, but the \
-                                            dynamic offset provided for binding {} index {} is \
-                                            not aligned to the \
-                                            `min_storage_buffer_offset_alignment` device property",
-                                            descriptor_sets_index, set_num, binding_num, index,
-                                        )
-                                        .into(),
-                                        vuids: &[
-                                            "VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972",
-                                        ],
-                                        ..Default::default()
-                                    }));
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-
-                        if let Some(buffer_info) = element {
-                            let DescriptorBufferInfo { buffer, range } = buffer_info;
-
-                            if offset as DeviceSize + range.end > buffer.size() {
-                                return Err(Box::new(ValidationError {
-                                    problem: format!(
-                                        "the dynamic offset of `descriptor_sets[{}]` \
-                                        (for set number {}) for binding {} index {}, when \
-                                        added to `range.end` of the descriptor write, is \
-                                        greater than the size of the bound buffer",
-                                        descriptor_sets_index, set_num, binding_num, index,
-                                    )
-                                    .into(),
-                                    vuids: &["VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979"],
-                                    ..Default::default()
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
-
-            if dynamic_offsets.len() != required_dynamic_offset_count {
-                return Err(Box::new(ValidationError {
-                    problem: format!(
-                        "the number of dynamic offsets provided for `descriptor_sets[{}]` \
-                        (for set number {}) does not equal the number required ({})",
-                        descriptor_sets_index, set_num, required_dynamic_offset_count,
-                    )
-                    .into(),
-                    vuids: &["VUID-vkCmdBindDescriptorSets-dynamicOffsetCount-00359"],
-                    ..Default::default()
-                }));
-            }
         }
 
         Ok(())
@@ -669,20 +815,15 @@ impl RecordingCommandBuffer {
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         first_set: u32,
-        descriptor_sets: &[DescriptorSetWithOffsets],
+        descriptor_sets: &[&RawDescriptorSet],
+        dynamic_offsets: &[u32],
     ) -> &mut Self {
         if descriptor_sets.is_empty() {
             return self;
         }
 
-        let descriptor_sets_vk: SmallVec<[_; 12]> = descriptor_sets
-            .iter()
-            .map(|x| x.as_ref().0.handle())
-            .collect();
-        let dynamic_offsets_vk: SmallVec<[_; 32]> = descriptor_sets
-            .iter()
-            .flat_map(|x| x.as_ref().1.iter().copied())
-            .collect();
+        let descriptor_sets_vk: SmallVec<[_; 12]> =
+            descriptor_sets.iter().map(|x| x.handle()).collect();
 
         let fns = self.device().fns();
         (fns.v1_0.cmd_bind_descriptor_sets)(
@@ -692,8 +833,8 @@ impl RecordingCommandBuffer {
             first_set,
             descriptor_sets_vk.len() as u32,
             descriptor_sets_vk.as_ptr(),
-            dynamic_offsets_vk.len() as u32,
-            dynamic_offsets_vk.as_ptr(),
+            dynamic_offsets.len() as u32,
+            dynamic_offsets.as_ptr(),
         );
 
         self
