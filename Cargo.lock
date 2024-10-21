@@ -1537,9 +1537,9 @@ dependencies = [
 
 [[package]]
 name = "slabbin"
-version = "1.0.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd8305086044614627ed85432d27b87cf9fc047204eaa036a11de6cf0120f273"
+checksum = "1fd33b7a607dbd960b5e78bb4740d1f86e84250eb03a12960ee1482c2a256063"
 
 [[package]]
 name = "smallvec"

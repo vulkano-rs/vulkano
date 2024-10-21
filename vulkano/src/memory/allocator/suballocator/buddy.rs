@@ -61,7 +61,7 @@ use std::cmp;
 /// [`BumpAllocator`]: super::BumpAllocator
 #[derive(Debug)]
 pub struct BuddyAllocator {
-    region_offset: DeviceSize,
+    region: Region,
     // Total memory remaining in the region.
     free_size: DeviceSize,
     // Every order has its own free-list for convenience, so that we don't have to traverse a tree.
@@ -105,7 +105,7 @@ unsafe impl Suballocator for BuddyAllocator {
         free_list[max_order].push(region.offset());
 
         BuddyAllocator {
-            region_offset: region.offset(),
+            region,
             free_size: region.size(),
             free_list,
         }
@@ -136,7 +136,7 @@ unsafe impl Suballocator for BuddyAllocator {
         let mut alignment = layout.alignment();
 
         if buffer_image_granularity != DeviceAlignment::MIN {
-            debug_assert!(is_aligned(self.region_offset, buffer_image_granularity));
+            debug_assert!(is_aligned(self.region.offset(), buffer_image_granularity));
 
             if allocation_type == AllocationType::Unknown
                 || allocation_type == AllocationType::NonLinear
@@ -224,7 +224,7 @@ unsafe impl Suballocator for BuddyAllocator {
 
             // This can't overflow because the offsets in the free-list are confined to the range
             // [region.offset, region.offset + region.size).
-            let buddy_offset = ((offset - self.region_offset) ^ size) + self.region_offset;
+            let buddy_offset = ((offset - self.region.offset()) ^ size) + self.region.offset();
 
             match free_list.binary_search(&buddy_offset) {
                 // If the buddy is in the free-list, we can coalesce.
@@ -250,6 +250,15 @@ unsafe impl Suballocator for BuddyAllocator {
         }
     }
 
+    fn reset(&mut self) {
+        self.free_size = self.region.size();
+        self.free_list.iter_mut().for_each(Vec::clear);
+
+        let max_order =
+            (self.region.size() / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
+        self.free_list[max_order].push(self.region.offset());
+    }
+
     /// Returns the total amount of free space left in the [region] that is available to the
     /// allocator, which means that [internal fragmentation] is excluded.
     ///
@@ -259,9 +268,6 @@ unsafe impl Suballocator for BuddyAllocator {
     fn free_size(&self) -> DeviceSize {
         self.free_size
     }
-
-    #[inline]
-    fn cleanup(&mut self) {}
 
     #[inline]
     fn suballocations(&self) -> Self::Suballocations<'_> {
