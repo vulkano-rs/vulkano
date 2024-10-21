@@ -1632,7 +1632,7 @@ impl<S: Suballocator> DeviceMemoryBlock<S> {
 
         // For bump allocators, reset the free-start once there are no remaining allocations.
         if self.allocation_count == 0 {
-            self.suballocator.cleanup();
+            self.suballocator.reset();
         }
     }
 
