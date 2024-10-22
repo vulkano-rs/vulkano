@@ -24,6 +24,8 @@ Changes to (physical) device:
 Changes to memory allocation:
 - `Suballocator::{allocate,deallocate}` now take `&mut self`.
 - `Suballocator` has new required items `Suballocations` and `suballocations` for iterating over suballocations.
+- `Suballocator::cleanup` was replaced with `Suballocator::reset`, allowing any suballocator to deallocate all suballocations at once, not just the bump allocator.
+- `BumpAllocator::reset` was removed.
 
 Changes to command buffers:
 - Renamed `UnsafeCommandBufferBuilder` to `RecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
