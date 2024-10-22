@@ -92,6 +92,7 @@ use std::{
     error::Error,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
+    marker::PhantomData,
     ops::Range,
     sync::Arc,
 };
@@ -1066,3 +1067,7 @@ impl From<Subbuffer<[u32]>> for IndexBuffer {
         Self::U32(value)
     }
 }
+
+/// This is intended for use by the `BufferContents` derive macro only.
+#[doc(hidden)]
+pub struct AssertParamIsBufferContents<T: BufferContents + ?Sized>(PhantomData<T>);

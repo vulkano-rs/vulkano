@@ -165,16 +165,10 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
 
     let bounds = bound_types.into_iter().map(|ty| {
         quote_spanned! { ty.span() =>
-            const _: () = {
-                // HACK: This works around Rust issue #48214, which makes it impossible to put
-                // these bounds in the where clause of the trait implementation where they actually
-                // belong until that is resolved.
-                #[allow(unused)]
-                fn bound #impl_generics () #where_clause {
-                    fn assert_impl<T: ::#crate_ident::buffer::BufferContents + ?Sized>() {}
-                    assert_impl::<#ty>();
-                }
-            };
+            // HACK: This works around Rust issue #48214, which makes it impossible to put these
+            // bounds in the where clause of the trait implementation where they actually belong
+            // until that is resolved.
+            let _: ::vulkano::buffer::AssertParamIsBufferContents<#ty>;
         }
     });
 
@@ -187,11 +181,11 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
 
             #[inline(always)]
             unsafe fn ptr_from_slice(slice: ::std::ptr::NonNull<[u8]>) -> *mut Self {
+                #( #bounds )*
+
                 #ptr_from_slice
             }
         }
-
-        #( #bounds )*
     })
 }
 
