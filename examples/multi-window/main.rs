@@ -45,12 +45,15 @@ use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{Key, NamedKey},
     window::{Window, WindowId},
 };
 
 fn main() -> Result<(), impl Error> {
     let event_loop = EventLoop::new().unwrap();
     let mut app = App::new(&event_loop);
+
+    println!("\nPress space to open a new window");
 
     event_loop.run_app(&mut app)
 }
@@ -365,6 +368,7 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
+                        logical_key: Key::Named(NamedKey::Space),
                         state: ElementState::Pressed,
                         ..
                     },
