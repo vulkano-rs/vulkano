@@ -839,9 +839,7 @@ pub unsafe trait BufferContents: Send + Sync + 'static {
     ///
     /// # Safety
     ///
-    /// - If `Self` is sized, then `slice.len()` must match the size exactly.
-    /// - If `Self` is unsized, then `slice.len()` minus the size of the head (sized part) of the
-    ///   DST must be evenly divisible by the size of the element type.
+    /// - `slice` must be a pointer that's valid for reads and writes of the entire slice.
     #[doc(hidden)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self;
 }
@@ -854,8 +852,6 @@ where
 
     #[inline(always)]
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
-        debug_assert_eq!(slice.len(), size_of::<T>());
-
         <*mut [u8]>::cast::<T>(slice.as_ptr())
     }
 }
