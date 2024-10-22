@@ -138,15 +138,13 @@ pub unsafe trait Suballocator {
     /// - `suballocation` must refer to a **currently allocated** suballocation of `self`.
     unsafe fn deallocate(&mut self, suballocation: Suballocation);
 
+    /// Resets the suballocator, deallocating all currently allocated suballocations at once.
+    fn reset(&mut self);
+
     /// Returns the total amount of free space that is left in the [region].
     ///
     /// [region]: Self#regions
     fn free_size(&self) -> DeviceSize;
-
-    /// Tries to free some space, if applicable.
-    ///
-    /// There must be no current allocations as they might get freed.
-    fn cleanup(&mut self);
 
     /// Returns an iterator over the current suballocations.
     fn suballocations(&self) -> Self::Suballocations<'_>
