@@ -95,8 +95,6 @@ pub fn derive_buffer_contents(crate_ident: &Ident, mut ast: DeriveInput) -> Resu
             };
 
             ptr_from_slice = quote! {
-                debug_assert_eq!(slice.len(), ::std::mem::size_of::<Self>());
-
                 <*mut [u8]>::cast::<Self>(slice.as_ptr())
             };
         }
