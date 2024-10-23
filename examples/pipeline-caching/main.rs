@@ -93,7 +93,7 @@ fn main() {
     .unwrap();
 
     // We are creating an empty PipelineCache to start somewhere.
-    let pipeline_cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+    let pipeline_cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
     // We need to create the compute pipeline that describes our operation. We are using the shader
     // from the basic-compute-shader example.
@@ -192,8 +192,8 @@ fn main() {
                 ..Default::default()
             },
         )
-        .unwrap()
-    };
+    }
+    .unwrap();
 
     // As the `PipelineCache` of the Vulkan implementation saves an opaque blob of data, there is
     // no real way to know if the data is correct. There might be differences in the byte blob

@@ -470,17 +470,15 @@ impl ApplicationHandler for App {
                         (self.vertex_buffer.clone(), self.instance_buffer.clone()),
                     )
                     .unwrap();
-
                 unsafe {
-                    builder
-                        .draw(
-                            self.vertex_buffer.len() as u32,
-                            self.instance_buffer.len() as u32,
-                            0,
-                            0,
-                        )
-                        .unwrap();
+                    builder.draw(
+                        self.vertex_buffer.len() as u32,
+                        self.instance_buffer.len() as u32,
+                        0,
+                        0,
+                    )
                 }
+                .unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 

@@ -476,10 +476,7 @@ impl ApplicationHandler for App {
                         rcx.descriptor_set.clone(),
                     )
                     .unwrap();
-
-                unsafe {
-                    builder.draw_mesh_tasks([self.cols, self.rows, 1]).unwrap();
-                }
+                unsafe { builder.draw_mesh_tasks([self.cols, self.rows, 1]) }.unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 

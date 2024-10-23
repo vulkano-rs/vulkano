@@ -481,12 +481,8 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .bind_index_buffer(self.index_buffer.clone())
                     .unwrap();
-
-                unsafe {
-                    builder
-                        .draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0)
-                        .unwrap();
-                }
+                unsafe { builder.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }
+                    .unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 

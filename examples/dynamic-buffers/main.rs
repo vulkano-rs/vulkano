@@ -255,10 +255,7 @@ fn main() {
                 set.clone().offsets([index * align as u32]),
             )
             .unwrap();
-
-        unsafe {
-            builder.dispatch([12, 1, 1]).unwrap();
-        }
+        unsafe { builder.dispatch([12, 1, 1]) }.unwrap();
     }
 
     let command_buffer = builder.build().unwrap();

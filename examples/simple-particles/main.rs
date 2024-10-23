@@ -559,12 +559,7 @@ impl ApplicationHandler for App {
                         self.descriptor_set.clone(),
                     )
                     .unwrap();
-
-                unsafe {
-                    builder
-                        .dispatch([PARTICLE_COUNT as u32 / 128, 1, 1])
-                        .unwrap();
-                }
+                unsafe { builder.dispatch([PARTICLE_COUNT as u32 / 128, 1, 1]) }.unwrap();
 
                 // Use render-pass to draw particles to swapchain.
                 builder
@@ -582,10 +577,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .bind_vertex_buffers(0, self.vertex_buffer.clone())
                     .unwrap();
-
-                unsafe {
-                    builder.draw(PARTICLE_COUNT as u32, 1, 0, 0).unwrap();
-                }
+                unsafe { builder.draw(PARTICLE_COUNT as u32, 1, 0, 0) }.unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 

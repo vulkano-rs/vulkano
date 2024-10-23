@@ -217,11 +217,9 @@ fn main() {
         )
         .unwrap();
 
-    unsafe {
-        // The command buffer only does one thing: execute the compute pipeline. This is called a
-        // *dispatch* operation.
-        builder.dispatch([1024, 1, 1]).unwrap();
-    }
+    // The command buffer only does one thing: execute the compute pipeline. This is called a
+    // *dispatch* operation.
+    unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
 
     // Finish building the command buffer by calling `build`.
     let command_buffer = builder.build().unwrap();

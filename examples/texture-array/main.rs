@@ -511,12 +511,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .bind_vertex_buffers(0, self.vertex_buffer.clone())
                     .unwrap();
-
-                unsafe {
-                    builder
-                        .draw(self.vertex_buffer.len() as u32, 3, 0, 0)
-                        .unwrap();
-                }
+                unsafe { builder.draw(self.vertex_buffer.len() as u32, 3, 0, 0) }.unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 

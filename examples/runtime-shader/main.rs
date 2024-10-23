@@ -258,8 +258,8 @@ impl ApplicationHandler for App {
                 // NOTE: You will have to verify correctness of the data by yourself!
                 let module = unsafe {
                     ShaderModule::new(self.device.clone(), ShaderModuleCreateInfo::new(&code))
-                        .unwrap()
-                };
+                }
+                .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -268,8 +268,8 @@ impl ApplicationHandler for App {
 
                 let module = unsafe {
                     ShaderModule::new(self.device.clone(), ShaderModuleCreateInfo::new(&code))
-                        .unwrap()
-                };
+                }
+                .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -414,12 +414,7 @@ impl ApplicationHandler for App {
                     .unwrap()
                     .bind_vertex_buffers(0, self.vertex_buffer.clone())
                     .unwrap();
-
-                unsafe {
-                    builder
-                        .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-                        .unwrap();
-                }
+                unsafe { builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 

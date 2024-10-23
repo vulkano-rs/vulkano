@@ -485,68 +485,72 @@ impl ApplicationHandler for App {
                 )
                 .unwrap();
 
+                // A query must be reset before each use, including the first use. This
+                // must be done outside a render pass.
                 // Beginning or resetting a query is unsafe for now.
+                unsafe { builder.reset_query_pool(self.query_pool.clone(), 0..3) }.unwrap();
+
+                builder
+                    .set_viewport(0, [rcx.viewport.clone()].into_iter().collect())
+                    .unwrap()
+                    .bind_pipeline_graphics(rcx.pipeline.clone())
+                    .unwrap()
+                    .begin_render_pass(
+                        RenderPassBeginInfo {
+                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), Some(1.0.into())],
+                            ..RenderPassBeginInfo::framebuffer(
+                                rcx.framebuffers[image_index as usize].clone(),
+                            )
+                        },
+                        Default::default(),
+                    )
+                    .unwrap();
+
+                // Begin query 0, then draw the red triangle. Enabling the
+                // `QueryControlFlags::PRECISE` flag would give exact numeric results. This
+                // needs the `occlusion_query_precise` feature to be enabled on the device.
                 unsafe {
-                    builder
-                        // A query must be reset before each use, including the first use. This
-                        // must be done outside a render pass.
-                        .reset_query_pool(self.query_pool.clone(), 0..3)
-                        .unwrap()
-                        .set_viewport(0, [rcx.viewport.clone()].into_iter().collect())
-                        .unwrap()
-                        .bind_pipeline_graphics(rcx.pipeline.clone())
-                        .unwrap()
-                        .begin_render_pass(
-                            RenderPassBeginInfo {
-                                clear_values: vec![
-                                    Some([0.0, 0.0, 1.0, 1.0].into()),
-                                    Some(1.0.into()),
-                                ],
-                                ..RenderPassBeginInfo::framebuffer(
-                                    rcx.framebuffers[image_index as usize].clone(),
-                                )
-                            },
-                            Default::default(),
-                        )
-                        .unwrap()
-                        // Begin query 0, then draw the red triangle. Enabling the
-                        // `QueryControlFlags::PRECISE` flag would give exact numeric results. This
-                        // needs the `occlusion_query_precise` feature to be enabled on the device.
-                        .begin_query(
-                            self.query_pool.clone(),
-                            0,
-                            QueryControlFlags::empty(),
-                            // QueryControlFlags::PRECISE,
-                        )
-                        .unwrap()
-                        .bind_vertex_buffers(0, self.triangle1.clone())
-                        .unwrap()
-                        .draw(self.triangle1.len() as u32, 1, 0, 0)
-                        .unwrap()
-                        // End query 0.
-                        .end_query(self.query_pool.clone(), 0)
-                        .unwrap()
-                        // Begin query 1 for the cyan triangle.
-                        .begin_query(self.query_pool.clone(), 1, QueryControlFlags::empty())
-                        .unwrap()
-                        .bind_vertex_buffers(0, self.triangle2.clone())
-                        .unwrap()
-                        .draw(self.triangle2.len() as u32, 1, 0, 0)
-                        .unwrap()
-                        .end_query(self.query_pool.clone(), 1)
-                        .unwrap()
-                        // Finally, query 2 for the green triangle.
-                        .begin_query(self.query_pool.clone(), 2, QueryControlFlags::empty())
-                        .unwrap()
-                        .bind_vertex_buffers(0, self.triangle3.clone())
-                        .unwrap()
-                        .draw(self.triangle3.len() as u32, 1, 0, 0)
-                        .unwrap()
-                        .end_query(self.query_pool.clone(), 2)
-                        .unwrap()
-                        .end_render_pass(Default::default())
-                        .unwrap();
+                    builder.begin_query(
+                        self.query_pool.clone(),
+                        0,
+                        QueryControlFlags::empty(),
+                        // QueryControlFlags::PRECISE,
+                    )
                 }
+                .unwrap();
+                builder
+                    .bind_vertex_buffers(0, self.triangle1.clone())
+                    .unwrap();
+
+                unsafe { builder.draw(self.triangle1.len() as u32, 1, 0, 0) }.unwrap();
+                // End query 0.
+                builder.end_query(self.query_pool.clone(), 0).unwrap();
+
+                // Begin query 1 for the cyan triangle.
+                unsafe {
+                    builder.begin_query(self.query_pool.clone(), 1, QueryControlFlags::empty())
+                }
+                .unwrap();
+                builder
+                    .bind_vertex_buffers(0, self.triangle2.clone())
+                    .unwrap();
+                unsafe { builder.draw(self.triangle2.len() as u32, 1, 0, 0) }.unwrap();
+                builder.end_query(self.query_pool.clone(), 1).unwrap();
+
+                // Finally, query 2 for the green triangle.
+                unsafe {
+                    builder.begin_query(self.query_pool.clone(), 2, QueryControlFlags::empty())
+                }
+                .unwrap();
+                builder
+                    .bind_vertex_buffers(0, self.triangle3.clone())
+                    .unwrap();
+                unsafe { builder.draw(self.triangle3.len() as u32, 1, 0, 0) }.unwrap();
+                builder
+                    .end_query(self.query_pool.clone(), 2)
+                    .unwrap()
+                    .end_render_pass(Default::default())
+                    .unwrap();
 
                 let command_buffer = builder.build().unwrap();
 

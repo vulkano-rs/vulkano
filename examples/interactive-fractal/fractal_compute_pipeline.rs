@@ -175,12 +175,7 @@ impl FractalComputePipeline {
             .unwrap()
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap();
-
-        unsafe {
-            builder
-                .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
-                .unwrap();
-        }
+        unsafe { builder.dispatch([image_extent[0] / 8, image_extent[1] / 8, 1]) }.unwrap();
 
         let command_buffer = builder.build().unwrap();
         let finished = command_buffer.execute(self.queue.clone()).unwrap();

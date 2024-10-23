@@ -158,10 +158,7 @@ impl PixelsDrawPipeline {
                 self.create_image_sampler_nearest(image),
             )
             .unwrap();
-
-        unsafe {
-            builder.draw(6, 1, 0, 0).unwrap();
-        }
+        unsafe { builder.draw(6, 1, 0, 0) }.unwrap();
 
         builder.build().unwrap()
     }

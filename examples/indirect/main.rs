@@ -541,10 +541,7 @@ impl ApplicationHandler for App {
                         cs_descriptor_set,
                     )
                     .unwrap();
-
-                unsafe {
-                    builder.dispatch([1, 1, 1]).unwrap();
-                }
+                unsafe { builder.dispatch([1, 1, 1]) }.unwrap();
 
                 builder
                     .begin_render_pass(
@@ -564,11 +561,9 @@ impl ApplicationHandler for App {
                     .bind_vertex_buffers(0, vertices)
                     .unwrap();
 
-                unsafe {
-                    // The indirect draw call is placed in the command buffer with a reference to
-                    // the buffer that will contain the arguments for the draw.
-                    builder.draw_indirect(indirect_buffer).unwrap();
-                }
+                // The indirect draw call is placed in the command buffer with a reference to
+                // the buffer that will contain the arguments for the draw.
+                unsafe { builder.draw_indirect(indirect_buffer) }.unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 
