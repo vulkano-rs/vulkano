@@ -34,6 +34,7 @@ Changes to command buffers:
 - `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RecordingCommandBuffer` and `CommandBuffer` no longer have a type parameter for the type of allocator.
 - `RecordingCommandBuffer::execute_commands` now takes `&CommandBuffer`s as argument.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
+- `RecordingCommandBuffer::bind_descriptor_sets` now takes `&RawDescriptorSet`s as argument.
 
 Changes to command buffer allocation:
 - `CommandBufferAllocator` no longer has any associated types in order to make the trait object-safe.
