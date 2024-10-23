@@ -124,7 +124,8 @@ impl Task for TonemapTask {
             PipelineBindPoint::Graphics,
             &rcx.pipeline_layout,
             0,
-            slice::from_ref(&rcx.descriptor_set),
+            &[&rcx.descriptor_set],
+            &[],
         )?;
 
         let swapchain_state = tcx.swapchain(self.swapchain_id)?;
