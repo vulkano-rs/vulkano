@@ -690,12 +690,8 @@ impl ApplicationHandler for App {
                     .bind_vertex_buffers(0, self.vertex_buffer.clone())
                     .unwrap();
 
-                unsafe {
-                    builder
-                        // We add a draw command.
-                        .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-                        .unwrap();
-                }
+                // We add a draw command.
+                unsafe { builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 
                 builder
                     // We leave the render pass. Note that if we had multiple subpasses we could

@@ -445,9 +445,7 @@ impl ApplicationHandler for App {
                     .bind_vertex_buffers(0, buffer)
                     .unwrap();
 
-                unsafe {
-                    builder.draw(num_vertices, 1, 0, 0).unwrap();
-                }
+                unsafe { builder.draw(num_vertices, 1, 0, 0) }.unwrap();
 
                 builder.end_render_pass(Default::default()).unwrap();
 

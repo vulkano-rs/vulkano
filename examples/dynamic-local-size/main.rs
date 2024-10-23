@@ -267,12 +267,8 @@ fn main() {
         )
         .unwrap();
 
-    unsafe {
-        // Note that dispatch dimensions must be proportional to the local size.
-        builder
-            .dispatch([1024 / local_size_x, 1024 / local_size_y, 1])
-            .unwrap();
-    }
+    // Note that dispatch dimensions must be proportional to the local size.
+    unsafe { builder.dispatch([1024 / local_size_x, 1024 / local_size_y, 1]) }.unwrap();
 
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))

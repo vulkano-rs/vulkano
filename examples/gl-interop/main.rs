@@ -178,8 +178,8 @@ mod linux {
                         },
                     )),
                 )
-                .unwrap()
-            };
+            }
+            .unwrap();
 
             let device_extensions = DeviceExtensions {
                 khr_external_semaphore: true,
@@ -326,12 +326,11 @@ mod linux {
                 .unwrap();
 
             // SAFETY: we just created this raw image and hasn't bound any memory to it.
-            let image = Arc::new(unsafe {
-                raw_image
-                    .bind_memory([ResourceMemory::new_dedicated(image_memory)])
+            let image = Arc::new(
+                unsafe { raw_image.bind_memory([ResourceMemory::new_dedicated(image_memory)]) }
                     .map_err(|(err, _, _)| err)
-                    .unwrap()
-            });
+                    .unwrap(),
+            );
 
             let image_view = ImageView::new_default(image).unwrap();
 
@@ -370,16 +369,10 @@ mod linux {
                 .unwrap(),
             );
 
-            let acquire_fd = unsafe {
-                acquire_sem
-                    .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
-                    .unwrap()
-            };
-            let release_fd = unsafe {
-                release_sem
-                    .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
-                    .unwrap()
-            };
+            let acquire_fd =
+                unsafe { acquire_sem.export_fd(ExternalSemaphoreHandleType::OpaqueFd) }.unwrap();
+            let release_fd =
+                unsafe { release_sem.export_fd(ExternalSemaphoreHandleType::OpaqueFd) }.unwrap();
 
             let barrier_clone = barrier.clone();
             let barrier_2_clone = barrier_2.clone();
@@ -407,13 +400,12 @@ mod linux {
 
                 let gl_acquire_sem = unsafe {
                     glium::semaphore::Semaphore::new_from_fd(gl_display.as_ref(), acquire_fd)
-                        .unwrap()
-                };
-
+                }
+                .unwrap();
                 let gl_release_sem = unsafe {
                     glium::semaphore::Semaphore::new_from_fd(gl_display.as_ref(), release_fd)
-                        .unwrap()
-                };
+                }
+                .unwrap();
 
                 let rotation_start = Instant::now();
 
@@ -733,12 +725,7 @@ mod linux {
                         .unwrap()
                         .bind_vertex_buffers(0, self.vertex_buffer.clone())
                         .unwrap();
-
-                    unsafe {
-                        builder
-                            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-                            .unwrap();
-                    }
+                    unsafe { builder.draw(self.vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 
                     builder.end_render_pass(Default::default()).unwrap();
 

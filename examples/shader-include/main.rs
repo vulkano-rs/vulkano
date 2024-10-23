@@ -183,10 +183,7 @@ fn main() {
             set,
         )
         .unwrap();
-
-    unsafe {
-        builder.dispatch([1024, 1, 1]).unwrap();
-    }
+    unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
 
     let command_buffer = builder.build().unwrap();
     let future = sync::now(device)

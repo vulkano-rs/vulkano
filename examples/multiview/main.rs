@@ -349,12 +349,10 @@ fn main() {
         .bind_vertex_buffers(0, vertex_buffer.clone())
         .unwrap();
 
-    unsafe {
-        // Drawing commands are broadcast to each view in the view mask of the active renderpass
-        // which means only a single draw call is needed to draw to multiple layers of the
-        // framebuffer.
-        builder.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
-    }
+    // Drawing commands are broadcast to each view in the view mask of the active renderpass
+    // which means only a single draw call is needed to draw to multiple layers of the
+    // framebuffer.
+    unsafe { builder.draw(vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 
     builder.end_render_pass(Default::default()).unwrap();
 
