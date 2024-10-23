@@ -117,10 +117,8 @@ impl Queue {
 impl Drop for Queue {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            let _ = (fns.v1_0.queue_wait_idle)(self.handle);
-        }
+        let fns = self.device.fns();
+        let _ = unsafe { (fns.v1_0.queue_wait_idle)(self.handle) };
     }
 }
 
@@ -212,12 +210,10 @@ impl<'a> QueueGuard<'a> {
     /// program.
     #[inline]
     pub fn wait_idle(&mut self) -> Result<(), VulkanError> {
-        unsafe {
-            let fns = self.queue.device.fns();
-            (fns.v1_0.queue_wait_idle)(self.queue.handle)
-                .result()
-                .map_err(VulkanError::from)
-        }
+        let fns = self.queue.device.fns();
+        unsafe { (fns.v1_0.queue_wait_idle)(self.queue.handle) }
+            .result()
+            .map_err(VulkanError::from)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -322,12 +318,13 @@ impl<'a> QueueGuard<'a> {
                 _ne: _,
             } = swapchain_info;
 
-            if unsafe {
-                !device
+            let surface_support = unsafe {
+                device
                     .physical_device
                     .surface_support_unchecked(self.queue.queue_family_index, swapchain.surface())
-                    .unwrap_or_default()
-            } {
+            };
+
+            if !surface_support.unwrap_or_default() {
                 return Err(Box::new(ValidationError {
                     context: format!(
                         "present_info.swapchain_infos[{}].swapchain.surface()",
@@ -651,10 +648,9 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), Box<ValidationError>> {
         self.validate_begin_debug_utils_label(&label_info)?;
 
-        unsafe {
-            self.begin_debug_utils_label_unchecked(label_info);
-            Ok(())
-        }
+        unsafe { self.begin_debug_utils_label_unchecked(label_info) };
+
+        Ok(())
     }
 
     fn validate_begin_debug_utils_label(
@@ -746,10 +742,9 @@ impl<'a> QueueGuard<'a> {
     ) -> Result<(), Box<ValidationError>> {
         self.validate_insert_debug_utils_label(&label_info)?;
 
-        unsafe {
-            self.insert_debug_utils_label_unchecked(label_info);
-            Ok(())
-        }
+        unsafe { self.insert_debug_utils_label_unchecked(label_info) };
+
+        Ok(())
     }
 
     fn validate_insert_debug_utils_label(
@@ -905,18 +900,16 @@ mod tests {
 
     #[test]
     fn signal_fence() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
-            let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
-            assert!(!fence.is_signaled().unwrap());
+        let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
+        assert!(!fence.is_signaled().unwrap());
 
-            queue
-                .with(|mut q| q.submit(&[Default::default()], Some(&fence)))
-                .unwrap();
+        queue
+            .with(|mut q| unsafe { q.submit(&[Default::default()], Some(&fence)) })
+            .unwrap();
 
-            fence.wait(Some(Duration::from_secs(5))).unwrap();
-            assert!(fence.is_signaled().unwrap());
-        }
+        fence.wait(Some(Duration::from_secs(5))).unwrap();
+        assert!(fence.is_signaled().unwrap());
     }
 }

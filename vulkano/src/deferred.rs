@@ -34,7 +34,7 @@ impl DeferredOperation {
     pub fn new(device: Arc<Device>) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&device)?;
 
-        unsafe { Ok(Self::new_unchecked(device)?) }
+        Ok(unsafe { Self::new_unchecked(device) }?)
     }
 
     fn validate_new(device: &Device) -> Result<(), Box<ValidationError>> {
@@ -85,8 +85,8 @@ impl DeferredOperation {
 
     /// Executes a portion of the operation on the current thread.
     pub fn join(&self) -> Result<DeferredOperationJoinStatus, VulkanError> {
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations.deferred_operation_join_khr)(
                 self.device.handle(),
                 self.handle,
@@ -103,8 +103,8 @@ impl DeferredOperation {
 
     /// Returns the result of the operation, or `None` if the operation is not yet complete.
     pub fn result(&self) -> Option<Result<(), VulkanError>> {
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations
                 .get_deferred_operation_result_khr)(self.device.handle(), self.handle)
         };
@@ -149,8 +149,8 @@ impl DeferredOperation {
     ///
     /// Returns `None` if no exact number of threads can be calculated.
     pub fn max_concurrency(&self) -> Option<u32> {
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations
                 .get_deferred_operation_max_concurrency_khr)(
                 self.device.handle(), self.handle
@@ -166,13 +166,13 @@ impl Drop for DeferredOperation {
     fn drop(&mut self) {
         let _ = self.wait(); // Ignore errors
 
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
             (fns.khr_deferred_host_operations
                 .destroy_deferred_operation_khr)(
                 self.device.handle(), self.handle, ptr::null()
-            );
-        }
+            )
+        };
     }
 }
 

@@ -147,7 +147,7 @@ impl SamplerYcbcrConversion {
     ) -> Result<Arc<SamplerYcbcrConversion>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -178,7 +178,7 @@ impl SamplerYcbcrConversion {
     ) -> Result<Arc<SamplerYcbcrConversion>, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
-        let handle = unsafe {
+        let handle = {
             let fns = device.fns();
             let create_sampler_ycbcr_conversion = if device.api_version() >= Version::V1_1 {
                 fns.v1_1.create_sampler_ycbcr_conversion
@@ -188,15 +188,17 @@ impl SamplerYcbcrConversion {
             };
 
             let mut output = MaybeUninit::uninit();
-            create_sampler_ycbcr_conversion(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                create_sampler_ycbcr_conversion(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(Self::from_handle(device, handle, create_info))
@@ -312,17 +314,15 @@ impl SamplerYcbcrConversion {
 impl Drop for SamplerYcbcrConversion {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            let destroy_sampler_ycbcr_conversion = if self.device.api_version() >= Version::V1_1 {
-                fns.v1_1.destroy_sampler_ycbcr_conversion
-            } else {
-                fns.khr_sampler_ycbcr_conversion
-                    .destroy_sampler_ycbcr_conversion_khr
-            };
+        let fns = self.device.fns();
+        let destroy_sampler_ycbcr_conversion = if self.device.api_version() >= Version::V1_1 {
+            fns.v1_1.destroy_sampler_ycbcr_conversion
+        } else {
+            fns.khr_sampler_ycbcr_conversion
+                .destroy_sampler_ycbcr_conversion_khr
+        };
 
-            destroy_sampler_ycbcr_conversion(self.device.handle(), self.handle, ptr::null());
-        }
+        unsafe { destroy_sampler_ycbcr_conversion(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -493,12 +493,9 @@ impl SamplerYcbcrConversionCreateInfo {
         }
 
         // Use unchecked, because all validation has been done above.
-        let potential_format_features = unsafe {
-            device
-                .physical_device()
-                .format_properties_unchecked(format)
-                .potential_format_features()
-        };
+        let format_properties =
+            unsafe { device.physical_device().format_properties_unchecked(format) };
+        let potential_format_features = format_properties.potential_format_features();
 
         if !potential_format_features.intersects(
             FormatFeatures::MIDPOINT_CHROMA_SAMPLES | FormatFeatures::COSITED_CHROMA_SAMPLES,

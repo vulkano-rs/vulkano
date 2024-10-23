@@ -113,7 +113,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_query(&query_pool, query)?;
 
-        unsafe { Ok(self.end_query_unchecked(query_pool, query)) }
+        Ok(unsafe { self.end_query_unchecked(query_pool, query) })
     }
 
     fn validate_end_query(
@@ -265,9 +265,9 @@ impl<L> AutoCommandBufferBuilder<L> {
     {
         self.validate_copy_query_pool_results(&query_pool, queries.clone(), &destination, flags)?;
 
-        unsafe {
-            Ok(self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags))
-        }
+        Ok(unsafe {
+            self.copy_query_pool_results_unchecked(query_pool, queries, destination, flags)
+        })
     }
 
     fn validate_copy_query_pool_results<T>(

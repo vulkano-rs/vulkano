@@ -1099,8 +1099,8 @@ impl<S> GenericMemoryAllocator<S> {
                     offset: 0,
                     size: memory.allocation_size(),
                     _ne: crate::NonExhaustive(()),
-                })?;
-            }
+                })
+            }?;
         }
 
         Ok(Arc::new(memory))

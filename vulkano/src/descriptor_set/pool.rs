@@ -41,7 +41,7 @@ impl DescriptorPool {
     ) -> Result<DescriptorPool, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -66,21 +66,23 @@ impl DescriptorPool {
         let create_info_vk =
             create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
-        let handle = unsafe {
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_descriptor_pool)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_descriptor_pool)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        unsafe { Ok(Self::from_handle(device, handle, create_info)) }
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `DescriptorPool` from a raw object handle.
@@ -374,10 +376,10 @@ impl DescriptorPool {
 impl Drop for DescriptorPool {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_descriptor_pool)(self.device.handle(), self.handle, ptr::null());
-        }
+            (fns.v1_0.destroy_descriptor_pool)(self.device.handle(), self.handle, ptr::null())
+        };
     }
 }
 
@@ -812,12 +814,10 @@ mod tests {
             },
         )
         .unwrap();
-        unsafe {
-            let sets = pool
-                .allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)])
+        let sets =
+            unsafe { pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)]) }
                 .unwrap();
-            assert_eq!(sets.count(), 1);
-        }
+        assert_eq!(sets.count(), 1);
     }
 
     #[test]
@@ -852,9 +852,9 @@ mod tests {
             )
             .unwrap();
 
-            unsafe {
-                let _ = pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)]);
-            }
+            let _ = unsafe {
+                pool.allocate_descriptor_sets([DescriptorSetAllocateInfo::new(set_layout)])
+            };
         });
     }
 
@@ -871,9 +871,7 @@ mod tests {
             },
         )
         .unwrap();
-        unsafe {
-            let sets = pool.allocate_descriptor_sets([]).unwrap();
-            assert_eq!(sets.count(), 0);
-        }
+        let sets = unsafe { pool.allocate_descriptor_sets([]) }.unwrap();
+        assert_eq!(sets.count(), 0);
     }
 }

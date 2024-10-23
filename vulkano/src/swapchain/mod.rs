@@ -79,14 +79,16 @@
 //! # unsafe impl Sync for Window {}
 //! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
 //! let window = build_window(); // Third-party function, not provided by vulkano
-//! let _surface = unsafe {
+//! let _surface = {
 //!     let hinstance: ash::vk::HINSTANCE = 0; // Windows-specific object
-//!     Surface::from_win32(
-//!         instance.clone(),
-//!         hinstance,
-//!         window.hwnd() as ash::vk::HWND,
-//!         Some(window),
-//!     )
+//!     unsafe {
+//!         Surface::from_win32(
+//!             instance.clone(),
+//!             hinstance,
+//!             window.hwnd() as ash::vk::HWND,
+//!             Some(window),
+//!         )
+//!     }
 //!     .unwrap()
 //! };
 //! ```
@@ -416,7 +418,7 @@ impl Swapchain {
     ) -> Result<(Arc<Swapchain>, Vec<Arc<Image>>), Validated<VulkanError>> {
         Self::validate_new_inner(&device, &surface, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, surface, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, surface, create_info) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -469,7 +471,7 @@ impl Swapchain {
             }
         }
 
-        unsafe { Ok(self.recreate_unchecked(create_info)?) }
+        Ok(unsafe { self.recreate_unchecked(create_info) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -488,8 +490,8 @@ impl Swapchain {
         *self.is_retired.lock() = true;
 
         let (handle, image_handles) = unsafe {
-            Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))?
-        };
+            Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))
+        }?;
 
         let (swapchain, swapchain_images) = Self::from_handle(
             self.device.clone(),
@@ -552,16 +554,14 @@ impl Swapchain {
         assert_eq!(device.instance(), surface.instance());
 
         // VUID-VkSwapchainCreateInfoKHR-surface-01270
-        if !device
-            .active_queue_family_indices()
-            .iter()
-            .any(|&index| unsafe {
+        if !device.active_queue_family_indices().iter().any(|&index| {
+            unsafe {
                 device
                     .physical_device()
                     .surface_support_unchecked(index, surface)
-                    .unwrap_or_default()
-            })
-        {
+            }
+            .unwrap_or_default()
+        }) {
             return Err(Box::new(ValidationError {
                 context: "surface".into(),
                 problem: "is not supported by the physical device".into(),
@@ -571,82 +571,74 @@ impl Swapchain {
         }
 
         let surface_capabilities = unsafe {
-            device
-                .physical_device()
-                .surface_capabilities_unchecked(
-                    surface,
-                    SurfaceInfo {
-                        present_mode: device
-                            .enabled_extensions()
-                            .ext_swapchain_maintenance1
-                            .then_some(present_mode),
-                        full_screen_exclusive,
-                        win32_monitor: win32_monitor
-                            .filter(|_| full_screen_exclusive != FullScreenExclusive::Default),
-                        ..Default::default()
-                    },
-                )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_capabilities` \
+            device.physical_device().surface_capabilities_unchecked(
+                surface,
+                SurfaceInfo {
+                    present_mode: device
+                        .enabled_extensions()
+                        .ext_swapchain_maintenance1
+                        .then_some(present_mode),
+                    full_screen_exclusive,
+                    win32_monitor: win32_monitor
+                        .filter(|_| full_screen_exclusive != FullScreenExclusive::Default),
+                    ..Default::default()
+                },
+            )
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::surface_capabilities` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
         let surface_formats = unsafe {
-            device
-                .physical_device()
-                .surface_formats_unchecked(
-                    surface,
-                    SurfaceInfo {
-                        present_mode: device
-                            .enabled_extensions()
-                            .ext_swapchain_maintenance1
-                            .then_some(present_mode),
-                        full_screen_exclusive,
-                        win32_monitor: win32_monitor.filter(|_| {
-                            surface.api() == SurfaceApi::Win32
-                                && full_screen_exclusive
-                                    == FullScreenExclusive::ApplicationControlled
-                        }),
-                        ..Default::default()
-                    },
-                )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_formats` \
+            device.physical_device().surface_formats_unchecked(
+                surface,
+                SurfaceInfo {
+                    present_mode: device
+                        .enabled_extensions()
+                        .ext_swapchain_maintenance1
+                        .then_some(present_mode),
+                    full_screen_exclusive,
+                    win32_monitor: win32_monitor.filter(|_| {
+                        surface.api() == SurfaceApi::Win32
+                            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+                    }),
+                    ..Default::default()
+                },
+            )
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::surface_formats` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
         let surface_present_modes = unsafe {
-            device
-                .physical_device()
-                .surface_present_modes_unchecked(
-                    surface,
-                    SurfaceInfo {
-                        full_screen_exclusive,
-                        win32_monitor: win32_monitor.filter(|_| {
-                            surface.api() == SurfaceApi::Win32
-                                && full_screen_exclusive
-                                    == FullScreenExclusive::ApplicationControlled
-                        }),
-                        ..Default::default()
-                    },
-                )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_present_modes` \
+            device.physical_device().surface_present_modes_unchecked(
+                surface,
+                SurfaceInfo {
+                    full_screen_exclusive,
+                    win32_monitor: win32_monitor.filter(|_| {
+                        surface.api() == SurfaceApi::Win32
+                            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+                    }),
+                    ..Default::default()
+                },
+            )
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::surface_present_modes` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
 
         if surface_capabilities
             .max_image_count
@@ -825,26 +817,24 @@ impl Swapchain {
 
                 if scaling_behavior.is_some() || present_gravity.is_some() {
                     let surface_capabilities = unsafe {
-                        device
-                            .physical_device()
-                            .surface_capabilities_unchecked(
-                                surface,
-                                SurfaceInfo {
-                                    present_mode: Some(present_mode),
-                                    full_screen_exclusive,
-                                    win32_monitor,
-                                    ..Default::default()
-                                },
-                            )
-                            .map_err(|_err| {
-                                Box::new(ValidationError {
-                                    problem: "`PhysicalDevice::surface_capabilities` \
+                        device.physical_device().surface_capabilities_unchecked(
+                            surface,
+                            SurfaceInfo {
+                                present_mode: Some(present_mode),
+                                full_screen_exclusive,
+                                win32_monitor,
+                                ..Default::default()
+                            },
+                        )
+                    }
+                    .map_err(|_err| {
+                        Box::new(ValidationError {
+                            problem: "`PhysicalDevice::surface_capabilities` \
                                         returned an error"
-                                        .into(),
-                                    ..Default::default()
-                                })
-                            })?
-                    };
+                                .into(),
+                            ..Default::default()
+                        })
+                    })?;
 
                     if let Some(scaling_behavior) = scaling_behavior {
                         if !surface_capabilities
@@ -1112,12 +1102,10 @@ impl Swapchain {
             .images
             .iter()
             .enumerate()
-            .map(|(image_index, entry)| unsafe {
-                Ok(Arc::new(Image::from_swapchain(
-                    entry.handle,
-                    swapchain.clone(),
-                    image_index as u32,
-                )?))
+            .map(|(image_index, entry)| {
+                Ok(Arc::new(unsafe {
+                    Image::from_swapchain(entry.handle, swapchain.clone(), image_index as u32)
+                }?))
             })
             .collect::<Result<_, VulkanError>>()?;
 
@@ -1401,7 +1389,7 @@ impl Swapchain {
         let is_retired_lock = self.is_retired.lock();
         self.validate_wait_for_present(present_id, timeout, *is_retired_lock)?;
 
-        unsafe { Ok(self.wait_for_present_unchecked(present_id, timeout)?) }
+        Ok(unsafe { self.wait_for_present_unchecked(present_id, timeout) }?)
     }
 
     fn validate_wait_for_present(
@@ -1486,7 +1474,7 @@ impl Swapchain {
     pub fn acquire_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_acquire_full_screen_exclusive_mode()?;
 
-        unsafe { Ok(self.acquire_full_screen_exclusive_mode_unchecked()?) }
+        Ok(unsafe { self.acquire_full_screen_exclusive_mode_unchecked() }?)
     }
 
     fn validate_acquire_full_screen_exclusive_mode(&self) -> Result<(), Box<ValidationError>> {
@@ -1544,7 +1532,7 @@ impl Swapchain {
     pub fn release_full_screen_exclusive_mode(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_release_full_screen_exclusive_mode()?;
 
-        unsafe { Ok(self.release_full_screen_exclusive_mode_unchecked()?) }
+        Ok(unsafe { self.release_full_screen_exclusive_mode_unchecked() }?)
     }
 
     fn validate_release_full_screen_exclusive_mode(&self) -> Result<(), Box<ValidationError>> {
@@ -1632,14 +1620,14 @@ impl Swapchain {
 impl Drop for Swapchain {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
             (fns.khr_swapchain.destroy_swapchain_khr)(
                 self.device.handle(),
                 self.handle,
                 ptr::null(),
-            );
-        }
+            )
+        };
     }
 }
 
@@ -1982,15 +1970,15 @@ impl SwapchainCreateInfo {
                     usage: image_usage,
                     ..Default::default()
                 })
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::image_format_properties` \
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::image_format_properties` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
 
         if image_format_properties.is_none() {
             return Err(Box::new(ValidationError {

@@ -641,10 +641,7 @@ impl ShaderModule {
     /// [`specialize`]: Self::specialize
     #[inline]
     pub fn entry_point(self: &Arc<Self>, name: &str) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .entry_point(name)
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }.entry_point(name)
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -657,10 +654,8 @@ impl ShaderModule {
         name: &str,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .entry_point_with_execution(name, execution)
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }
+            .entry_point_with_execution(name, execution)
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -669,10 +664,7 @@ impl ShaderModule {
     /// [`specialize`]: Self::specialize
     #[inline]
     pub fn single_entry_point(self: &Arc<Self>) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .single_entry_point()
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }.single_entry_point()
     }
 
     /// Equivalent to calling [`specialize`] with empty specialization info,
@@ -684,20 +676,16 @@ impl ShaderModule {
         self: &Arc<Self>,
         execution: ExecutionModel,
     ) -> Option<EntryPoint> {
-        unsafe {
-            self.specialize_unchecked(HashMap::default())
-                .single_entry_point_with_execution(execution)
-        }
+        unsafe { self.specialize_unchecked(HashMap::default()) }
+            .single_entry_point_with_execution(execution)
     }
 }
 
 impl Drop for ShaderModule {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_shader_module)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_shader_module)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -996,7 +984,7 @@ impl SpecializedShaderModule {
     ) -> Result<Arc<Self>, Box<ValidationError>> {
         Self::validate_new(&base_module, &specialization_info)?;
 
-        unsafe { Ok(Self::new_unchecked(base_module, specialization_info)) }
+        Ok(unsafe { Self::new_unchecked(base_module, specialization_info) })
     }
 
     fn validate_new(

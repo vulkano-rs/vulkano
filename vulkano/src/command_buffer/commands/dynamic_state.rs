@@ -54,7 +54,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_blend_constants(constants)?;
 
-        unsafe { Ok(self.set_blend_constants_unchecked(constants)) }
+        Ok(unsafe { self.set_blend_constants_unchecked(constants) })
     }
 
     fn validate_set_blend_constants(
@@ -90,7 +90,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_color_write_enable(&enables)?;
 
-        unsafe { Ok(self.set_color_write_enable_unchecked(enables)) }
+        Ok(unsafe { self.set_color_write_enable_unchecked(enables) })
     }
 
     fn validate_set_color_write_enable(
@@ -146,7 +146,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_cull_mode(cull_mode)?;
 
-        unsafe { Ok(self.set_cull_mode_unchecked(cull_mode)) }
+        Ok(unsafe { self.set_cull_mode_unchecked(cull_mode) })
     }
 
     fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), Box<ValidationError>> {
@@ -180,7 +180,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias(constant_factor, clamp, slope_factor)?;
 
-        unsafe { Ok(self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor)) }
+        Ok(unsafe { self.set_depth_bias_unchecked(constant_factor, clamp, slope_factor) })
     }
 
     fn validate_set_depth_bias(
@@ -227,7 +227,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bias_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_bias_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_bias_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bias_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -259,7 +259,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds(bounds.clone())?;
 
-        unsafe { Ok(self.set_depth_bounds_unchecked(bounds)) }
+        Ok(unsafe { self.set_depth_bounds_unchecked(bounds) })
     }
 
     fn validate_set_depth_bounds(
@@ -294,7 +294,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_bounds_test_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_bounds_test_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_bounds_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_bounds_test_enable(
@@ -329,7 +329,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_compare_op(compare_op)?;
 
-        unsafe { Ok(self.set_depth_compare_op_unchecked(compare_op)) }
+        Ok(unsafe { self.set_depth_compare_op_unchecked(compare_op) })
     }
 
     fn validate_set_depth_compare_op(
@@ -364,7 +364,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_test_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_test_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_test_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_test_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -396,7 +396,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_depth_write_enable(enable)?;
 
-        unsafe { Ok(self.set_depth_write_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_depth_write_enable_unchecked(enable) })
     }
 
     fn validate_set_depth_write_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -429,7 +429,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_discard_rectangle(first_rectangle, &rectangles)?;
 
-        unsafe { Ok(self.set_discard_rectangle_unchecked(first_rectangle, rectangles)) }
+        Ok(unsafe { self.set_discard_rectangle_unchecked(first_rectangle, rectangles) })
     }
 
     fn validate_set_discard_rectangle(
@@ -471,7 +471,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     pub fn set_front_face(&mut self, face: FrontFace) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_front_face(face)?;
 
-        unsafe { Ok(self.set_front_face_unchecked(face)) }
+        Ok(unsafe { self.set_front_face_unchecked(face) })
     }
 
     fn validate_set_front_face(&self, face: FrontFace) -> Result<(), Box<ValidationError>> {
@@ -504,7 +504,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_stipple(factor, pattern)?;
 
-        unsafe { Ok(self.set_line_stipple_unchecked(factor, pattern)) }
+        Ok(unsafe { self.set_line_stipple_unchecked(factor, pattern) })
     }
 
     fn validate_set_line_stipple(
@@ -537,7 +537,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     pub fn set_line_width(&mut self, line_width: f32) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_line_width(line_width)?;
 
-        unsafe { Ok(self.set_line_width_unchecked(line_width)) }
+        Ok(unsafe { self.set_line_width_unchecked(line_width) })
     }
 
     fn validate_set_line_width(&self, line_width: f32) -> Result<(), Box<ValidationError>> {
@@ -566,7 +566,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     pub fn set_logic_op(&mut self, logic_op: LogicOp) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_logic_op(logic_op)?;
 
-        unsafe { Ok(self.set_logic_op_unchecked(logic_op)) }
+        Ok(unsafe { self.set_logic_op_unchecked(logic_op) })
     }
 
     fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), Box<ValidationError>> {
@@ -598,7 +598,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_patch_control_points(num)?;
 
-        unsafe { Ok(self.set_patch_control_points_unchecked(num)) }
+        Ok(unsafe { self.set_patch_control_points_unchecked(num) })
     }
 
     fn validate_set_patch_control_points(&self, num: u32) -> Result<(), Box<ValidationError>> {
@@ -630,7 +630,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_restart_enable(enable)?;
 
-        unsafe { Ok(self.set_primitive_restart_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_primitive_restart_enable_unchecked(enable) })
     }
 
     fn validate_set_primitive_restart_enable(
@@ -665,7 +665,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_primitive_topology(topology)?;
 
-        unsafe { Ok(self.set_primitive_topology_unchecked(topology)) }
+        Ok(unsafe { self.set_primitive_topology_unchecked(topology) })
     }
 
     fn validate_set_primitive_topology(
@@ -703,7 +703,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_rasterizer_discard_enable(enable)?;
 
-        unsafe { Ok(self.set_rasterizer_discard_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_rasterizer_discard_enable_unchecked(enable) })
     }
 
     fn validate_set_rasterizer_discard_enable(
@@ -739,7 +739,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor(first_scissor, &scissors)?;
 
-        unsafe { Ok(self.set_scissor_unchecked(first_scissor, scissors)) }
+        Ok(unsafe { self.set_scissor_unchecked(first_scissor, scissors) })
     }
 
     fn validate_set_scissor(
@@ -785,7 +785,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_scissor_with_count(&scissors)?;
 
-        unsafe { Ok(self.set_scissor_with_count_unchecked(scissors)) }
+        Ok(unsafe { self.set_scissor_with_count_unchecked(scissors) })
     }
 
     fn validate_set_scissor_with_count(
@@ -824,7 +824,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_compare_mask(faces, compare_mask)?;
 
-        unsafe { Ok(self.set_stencil_compare_mask_unchecked(faces, compare_mask)) }
+        Ok(unsafe { self.set_stencil_compare_mask_unchecked(faces, compare_mask) })
     }
 
     fn validate_set_stencil_compare_mask(
@@ -878,9 +878,9 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)?;
 
-        unsafe {
-            Ok(self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op))
-        }
+        Ok(unsafe {
+            self.set_stencil_op_unchecked(faces, fail_op, pass_op, depth_fail_op, compare_op)
+        })
     }
 
     fn validate_set_stencil_op(
@@ -947,7 +947,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_reference(faces, reference)?;
 
-        unsafe { Ok(self.set_stencil_reference_unchecked(faces, reference)) }
+        Ok(unsafe { self.set_stencil_reference_unchecked(faces, reference) })
     }
 
     fn validate_set_stencil_reference(
@@ -997,7 +997,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_test_enable(enable)?;
 
-        unsafe { Ok(self.set_stencil_test_enable_unchecked(enable)) }
+        Ok(unsafe { self.set_stencil_test_enable_unchecked(enable) })
     }
 
     fn validate_set_stencil_test_enable(&self, enable: bool) -> Result<(), Box<ValidationError>> {
@@ -1030,7 +1030,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_stencil_write_mask(faces, write_mask)?;
 
-        unsafe { Ok(self.set_stencil_write_mask_unchecked(faces, write_mask)) }
+        Ok(unsafe { self.set_stencil_write_mask_unchecked(faces, write_mask) })
     }
 
     fn validate_set_stencil_write_mask(
@@ -1081,7 +1081,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_vertex_input(&vertex_input_state)?;
 
-        unsafe { Ok(self.set_vertex_input_unchecked(vertex_input_state)) }
+        Ok(unsafe { self.set_vertex_input_unchecked(vertex_input_state) })
     }
 
     fn validate_set_vertex_input(
@@ -1121,7 +1121,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport(first_viewport, &viewports)?;
 
-        unsafe { Ok(self.set_viewport_unchecked(first_viewport, viewports)) }
+        Ok(unsafe { self.set_viewport_unchecked(first_viewport, viewports) })
     }
 
     fn validate_set_viewport(
@@ -1166,7 +1166,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_viewport_with_count(&viewports)?;
 
-        unsafe { Ok(self.set_viewport_with_count_unchecked(viewports)) }
+        Ok(unsafe { self.set_viewport_with_count_unchecked(viewports) })
     }
 
     fn validate_set_viewport_with_count(
@@ -1205,9 +1205,9 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_conservative_rasterization_mode()?;
 
-        unsafe {
-            Ok(self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode))
-        }
+        Ok(unsafe {
+            self.set_conservative_rasterization_mode_unchecked(conservative_rasterization_mode)
+        })
     }
 
     fn validate_set_conservative_rasterization_mode(&self) -> Result<(), Box<ValidationError>> {
@@ -1244,11 +1244,11 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_extra_primitive_overestimation_size()?;
 
-        unsafe {
-            Ok(self.set_extra_primitive_overestimation_size_unchecked(
+        Ok(unsafe {
+            self.set_extra_primitive_overestimation_size_unchecked(
                 extra_primitive_overestimation_size,
-            ))
-        }
+            )
+        })
     }
 
     fn validate_set_extra_primitive_overestimation_size(&self) -> Result<(), Box<ValidationError>> {
@@ -1291,7 +1291,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_set_fragment_shading_rate(fragment_size, combiner_ops)?;
 
-        unsafe { Ok(self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops)) }
+        Ok(unsafe { self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops) })
     }
 
     fn validate_set_fragment_shading_rate(

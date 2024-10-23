@@ -40,7 +40,7 @@ impl PrivateDataSlot {
     ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -128,7 +128,7 @@ impl PrivateDataSlot {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_set_private_data(object)?;
 
-        unsafe { Ok(self.set_private_data_unchecked(object, data)?) }
+        Ok(unsafe { self.set_private_data_unchecked(object, data) }?)
     }
 
     fn validate_set_private_data<T: VulkanObject + DeviceOwned>(
@@ -174,11 +174,10 @@ impl PrivateDataSlot {
     /// If no private data was previously set, 0 is returned.
     pub fn get_private_data<T: VulkanObject + DeviceOwned>(&self, object: &T) -> u64 {
         let fns = self.device.fns();
+        let mut output = MaybeUninit::uninit();
 
-        unsafe {
-            let mut output = MaybeUninit::uninit();
-
-            if self.device.api_version() >= Version::V1_3 {
+        if self.device.api_version() >= Version::V1_3 {
+            unsafe {
                 (fns.v1_3.get_private_data)(
                     self.device.handle(),
                     T::Handle::TYPE,
@@ -186,7 +185,9 @@ impl PrivateDataSlot {
                     self.handle,
                     output.as_mut_ptr(),
                 )
-            } else {
+            }
+        } else {
+            unsafe {
                 (fns.ext_private_data.get_private_data_ext)(
                     self.device.handle(),
                     T::Handle::TYPE,
@@ -195,31 +196,29 @@ impl PrivateDataSlot {
                     output.as_mut_ptr(),
                 )
             }
-
-            output.assume_init()
         }
+
+        unsafe { output.assume_init() }
     }
 }
 
 impl Drop for PrivateDataSlot {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
+        let fns = self.device.fns();
 
-            if self.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.destroy_private_data_slot)(
-                    self.device.handle(),
-                    self.handle,
-                    ptr::null(),
-                );
-            } else {
+        if self.device.api_version() >= Version::V1_3 {
+            unsafe {
+                (fns.v1_3.destroy_private_data_slot)(self.device.handle(), self.handle, ptr::null())
+            };
+        } else {
+            unsafe {
                 (fns.ext_private_data.destroy_private_data_slot_ext)(
                     self.device.handle(),
                     self.handle,
                     ptr::null(),
-                );
-            }
+                )
+            };
         }
     }
 }

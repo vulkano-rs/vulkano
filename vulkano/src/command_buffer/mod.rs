@@ -74,10 +74,7 @@
 //!     .unwrap()
 //!     .bind_vertex_buffers(0, vertex_buffer.clone())
 //!     .unwrap();
-//!
-//! unsafe {
-//!     cb.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
-//! }
+//! unsafe { cb.draw(vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 //!
 //! cb.end_render_pass(Default::default()).unwrap();
 //!
@@ -704,12 +701,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::COLOR_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -748,12 +742,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -793,12 +784,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
                 return Err(Box::new(ValidationError {

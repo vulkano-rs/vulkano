@@ -38,7 +38,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_render_pass(&render_pass_begin_info, &subpass_begin_info)?;
 
-        unsafe { Ok(self.begin_render_pass_unchecked(render_pass_begin_info, subpass_begin_info)) }
+        Ok(unsafe { self.begin_render_pass_unchecked(render_pass_begin_info, subpass_begin_info) })
     }
 
     fn validate_begin_render_pass(
@@ -154,7 +154,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_next_subpass(&subpass_end_info, &subpass_begin_info)?;
 
-        unsafe { Ok(self.next_subpass_unchecked(subpass_end_info, subpass_begin_info)) }
+        Ok(unsafe { self.next_subpass_unchecked(subpass_end_info, subpass_begin_info) })
     }
 
     fn validate_next_subpass(
@@ -257,7 +257,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_render_pass(&subpass_end_info)?;
 
-        unsafe { Ok(self.end_render_pass_unchecked(subpass_end_info)) }
+        Ok(unsafe { self.end_render_pass_unchecked(subpass_end_info) })
     }
 
     fn validate_end_render_pass(
@@ -343,7 +343,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         rendering_info.set_auto_extent_layers();
         self.validate_begin_rendering(&rendering_info)?;
 
-        unsafe { Ok(self.begin_rendering_unchecked(rendering_info)) }
+        Ok(unsafe { self.begin_rendering_unchecked(rendering_info) })
     }
 
     fn validate_begin_rendering(
@@ -573,7 +573,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     pub fn end_rendering(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_rendering()?;
 
-        unsafe { Ok(self.end_rendering_unchecked()) }
+        Ok(unsafe { self.end_rendering_unchecked() })
     }
 
     fn validate_end_rendering(&self) -> Result<(), Box<ValidationError>> {
@@ -656,7 +656,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_attachments(&attachments, &rects)?;
 
-        unsafe { Ok(self.clear_attachments_unchecked(attachments, rects)) }
+        Ok(unsafe { self.clear_attachments_unchecked(attachments, rects) })
     }
 
     fn validate_clear_attachments(

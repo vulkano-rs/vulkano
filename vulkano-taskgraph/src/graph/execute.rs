@@ -566,7 +566,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 ObjectType::Buffer => {
                     // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
                     // exhaustively.
-                    let state = unsafe { resource_map.buffer_unchecked(id.parametrize()) };
+                    let id_p = unsafe { id.parametrize() };
+                    let state = unsafe { resource_map.buffer_unchecked(id_p) };
                     let access = BufferAccess::from_masks(
                         access.stage_mask,
                         access.access_mask,
@@ -577,7 +578,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 ObjectType::Image => {
                     // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
                     // exhaustively.
-                    let state = unsafe { resource_map.image_unchecked(id.parametrize()) };
+                    let id_p = unsafe { id.parametrize() };
+                    let state = unsafe { resource_map.image_unchecked(id_p) };
                     let access = ImageAccess::from_masks(
                         access.stage_mask,
                         access.access_mask,
@@ -589,7 +591,8 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 ObjectType::Swapchain => {
                     // SAFETY: The caller must ensure that `resource_map` maps the virtual IDs
                     // exhaustively.
-                    let state = unsafe { resource_map.swapchain_unchecked(id.parametrize()) };
+                    let id_p = unsafe { id.parametrize() };
+                    let state = unsafe { resource_map.swapchain_unchecked(id_p) };
                     let access = ImageAccess::from_masks(
                         access.stage_mask,
                         access.access_mask,
@@ -1670,17 +1673,26 @@ impl<'a> ResourceMap<'a> {
 
             *slot = match physical_id.object_type() {
                 // SAFETY: We own an `epoch::Guard`.
-                ObjectType::Buffer => <*const _>::cast(unsafe {
-                    physical_resources.buffer_unprotected(physical_id.parametrize())
-                }?),
+                ObjectType::Buffer => {
+                    let physical_id_p = unsafe { physical_id.parametrize() };
+                    <*const _>::cast(unsafe {
+                        physical_resources.buffer_unprotected(physical_id_p)
+                    }?)
+                }
                 // SAFETY: We own an `epoch::Guard`.
-                ObjectType::Image => <*const _>::cast(unsafe {
-                    physical_resources.image_unprotected(physical_id.parametrize())
-                }?),
+                ObjectType::Image => {
+                    let physical_id_p = unsafe { physical_id.parametrize() };
+                    <*const _>::cast(unsafe {
+                        physical_resources.image_unprotected(physical_id_p)
+                    }?)
+                }
                 // SAFETY: We own an `epoch::Guard`.
-                ObjectType::Swapchain => <*const _>::cast(unsafe {
-                    physical_resources.swapchain_unprotected(physical_id.parametrize())
-                }?),
+                ObjectType::Swapchain => {
+                    let physical_id_p = unsafe { physical_id.parametrize() };
+                    <*const _>::cast(unsafe {
+                        physical_resources.swapchain_unprotected(physical_id_p)
+                    }?)
+                }
                 _ => unreachable!(),
             };
         }

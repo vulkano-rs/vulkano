@@ -33,7 +33,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let copy_buffer_info = copy_buffer_info.into();
         self.validate_copy_buffer(&copy_buffer_info)?;
 
-        unsafe { Ok(self.copy_buffer_unchecked(copy_buffer_info)) }
+        Ok(unsafe { self.copy_buffer_unchecked(copy_buffer_info) })
     }
 
     fn validate_copy_buffer(
@@ -131,7 +131,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image(&copy_image_info)?;
 
-        unsafe { Ok(self.copy_image_unchecked(copy_image_info)) }
+        Ok(unsafe { self.copy_image_unchecked(copy_image_info) })
     }
 
     fn validate_copy_image(
@@ -215,7 +215,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_buffer_to_image(&copy_buffer_to_image_info)?;
 
-        unsafe { Ok(self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info)) }
+        Ok(unsafe { self.copy_buffer_to_image_unchecked(copy_buffer_to_image_info) })
     }
 
     fn validate_copy_buffer_to_image(
@@ -302,7 +302,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_image_to_buffer(&copy_image_to_buffer_info)?;
 
-        unsafe { Ok(self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info)) }
+        Ok(unsafe { self.copy_image_to_buffer_unchecked(copy_image_to_buffer_info) })
     }
 
     fn validate_copy_image_to_buffer(
@@ -418,7 +418,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_blit_image(&blit_image_info)?;
 
-        unsafe { Ok(self.blit_image_unchecked(blit_image_info)) }
+        Ok(unsafe { self.blit_image_unchecked(blit_image_info) })
     }
 
     fn validate_blit_image(
@@ -506,7 +506,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_resolve_image(&resolve_image_info)?;
 
-        unsafe { Ok(self.resolve_image_unchecked(resolve_image_info)) }
+        Ok(unsafe { self.resolve_image_unchecked(resolve_image_info) })
     }
 
     fn validate_resolve_image(

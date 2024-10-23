@@ -68,7 +68,7 @@ impl Fence {
     ) -> Result<Fence, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -119,13 +119,11 @@ impl Fence {
         let handle = device.fence_pool().lock().pop();
         let fence = match handle {
             Some(handle) => {
-                unsafe {
-                    // Make sure the fence isn't signaled
-                    let fns = device.fns();
-                    (fns.v1_0.reset_fences)(device.handle(), 1, &handle)
-                        .result()
-                        .map_err(VulkanError::from)?;
-                }
+                // Make sure the fence isn't signaled
+                let fns = device.fns();
+                unsafe { (fns.v1_0.reset_fences)(device.handle(), 1, &handle) }
+                    .result()
+                    .map_err(VulkanError::from)?;
 
                 Fence {
                     handle,
@@ -141,7 +139,7 @@ impl Fence {
             None => {
                 // Pool is empty, alloc new fence
                 let mut fence =
-                    unsafe { Fence::new_unchecked(device, FenceCreateInfo::default())? };
+                    unsafe { Fence::new_unchecked(device, FenceCreateInfo::default()) }?;
                 fence.must_put_in_pool = true;
                 fence
             }
@@ -195,11 +193,8 @@ impl Fence {
     /// Returns true if the fence is signaled.
     #[inline]
     pub fn is_signaled(&self) -> Result<bool, VulkanError> {
-        let result = unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.get_fence_status)(self.device.handle(), self.handle)
-        };
-
+        let fns = self.device.fns();
+        let result = unsafe { (fns.v1_0.get_fence_status)(self.device.handle(), self.handle) };
         match result {
             ash::vk::Result::SUCCESS => Ok(true),
             ash::vk::Result::NOT_READY => Ok(false),
@@ -218,8 +213,8 @@ impl Fence {
                 .saturating_add(timeout.subsec_nanos() as u64)
         });
 
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.v1_0.wait_for_fences)(
                 self.device.handle(),
                 1,
@@ -247,7 +242,7 @@ impl Fence {
         let fences: SmallVec<[_; 8]> = fences.into_iter().collect();
         Self::validate_multi_wait(&fences, timeout)?;
 
-        unsafe { Ok(Self::multi_wait_unchecked(fences, timeout)?) }
+        Ok(unsafe { Self::multi_wait_unchecked(fences, timeout) }?)
     }
 
     fn validate_multi_wait(
@@ -322,7 +317,7 @@ impl Fence {
     pub unsafe fn reset(&self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
 
-        unsafe { Ok(self.reset_unchecked()?) }
+        Ok(unsafe { self.reset_unchecked() }?)
     }
 
     fn validate_reset(&self) -> Result<(), Box<ValidationError>> {
@@ -350,7 +345,7 @@ impl Fence {
         let fences: SmallVec<[_; 8]> = fences.into_iter().collect();
         Self::validate_multi_reset(&fences)?;
 
-        unsafe { Ok(Self::multi_reset_unchecked(fences)?) }
+        Ok(unsafe { Self::multi_reset_unchecked(fences) }?)
     }
 
     fn validate_multi_reset(fences: &[&Fence]) -> Result<(), Box<ValidationError>> {
@@ -408,7 +403,7 @@ impl Fence {
     ) -> Result<File, Validated<VulkanError>> {
         self.validate_export_fd(handle_type)?;
 
-        unsafe { Ok(self.export_fd_unchecked(handle_type)?) }
+        Ok(unsafe { self.export_fd_unchecked(handle_type) }?)
     }
 
     fn validate_export_fd(
@@ -507,7 +502,7 @@ impl Fence {
     ) -> Result<ash::vk::HANDLE, Validated<VulkanError>> {
         self.validate_export_win32_handle(handle_type)?;
 
-        unsafe { Ok(self.export_win32_handle_unchecked(handle_type)?) }
+        Ok(unsafe { self.export_win32_handle_unchecked(handle_type) }?)
     }
 
     fn validate_export_win32_handle(
@@ -715,14 +710,12 @@ impl Fence {
 impl Drop for Fence {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            if self.must_put_in_pool {
-                let raw_fence = self.handle;
-                self.device.fence_pool().lock().push(raw_fence);
-            } else {
-                let fns = self.device.fns();
-                (fns.v1_0.destroy_fence)(self.device.handle(), self.handle, ptr::null());
-            }
+        if self.must_put_in_pool {
+            let raw_fence = self.handle;
+            self.device.fence_pool().lock().push(raw_fence);
+        } else {
+            let fns = self.device.fns();
+            unsafe { (fns.v1_0.destroy_fence)(self.device.handle(), self.handle, ptr::null()) };
         }
     }
 }
@@ -1337,9 +1330,7 @@ mod tests {
         )
         .unwrap();
 
-        unsafe {
-            fence.reset().unwrap();
-        }
+        unsafe { fence.reset() }.unwrap();
 
         assert!(!fence.is_signaled().unwrap());
     }

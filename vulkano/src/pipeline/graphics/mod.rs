@@ -180,7 +180,7 @@ impl GraphicsPipeline {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }
 
     fn validate_new(
@@ -611,10 +611,8 @@ unsafe impl VulkanObject for GraphicsPipeline {
 impl Drop for GraphicsPipeline {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -2307,10 +2305,10 @@ impl GraphicsPipelineCreateInfo {
                         }
                     };
 
-                    if !attachment_format.map_or(false, |format| unsafe {
-                        device
-                            .physical_device()
-                            .format_properties_unchecked(format)
+                    if !attachment_format.map_or(false, |format| {
+                        let format_properties =
+                            unsafe { device.physical_device().format_properties_unchecked(format) };
+                        format_properties
                             .potential_format_features()
                             .intersects(FormatFeatures::COLOR_ATTACHMENT_BLEND)
                     }) {

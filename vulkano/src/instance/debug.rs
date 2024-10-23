@@ -18,17 +18,15 @@
 //!     DebugUtilsMessenger, DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
 //! };
 //!
-//! let _callback = unsafe {
-//!     DebugUtilsMessenger::new(
-//!         instance,
-//!         DebugUtilsMessengerCreateInfo::user_callback(DebugUtilsMessengerCallback::new(
-//!             |message_severity, message_type, callback_data| {
-//!                 println!("Debug callback: {:?}", callback_data.message);
-//!             },
-//!         )),
-//!     )
-//!     .ok()
-//! };
+//! let _callback = DebugUtilsMessenger::new(
+//!     instance,
+//!     DebugUtilsMessengerCreateInfo::user_callback(unsafe {
+//!         DebugUtilsMessengerCallback::new(|message_severity, message_type, callback_data| {
+//!             println!("Debug callback: {:?}", callback_data.message);
+//!         })
+//!     }),
+//! )
+//! .ok();
 //! ```
 //!
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
@@ -69,7 +67,7 @@ impl DebugUtilsMessenger {
     ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(&instance, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(instance, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(instance, create_info) }?)
     }
 
     fn validate_new(
@@ -124,14 +122,14 @@ impl DebugUtilsMessenger {
 impl Drop for DebugUtilsMessenger {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.instance.fns();
         unsafe {
-            let fns = self.instance.fns();
             (fns.ext_debug_utils.destroy_debug_utils_messenger_ext)(
                 self.instance.handle(),
                 self.handle,
                 ptr::null(),
-            );
-        }
+            )
+        };
     }
 }
 
@@ -424,11 +422,12 @@ impl<'a> Iterator for DebugUtilsMessengerCallbackLabelIter<'a> {
     type Item = DebugUtilsMessengerCallbackLabel<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|label| unsafe {
-            DebugUtilsMessengerCallbackLabel {
-                label_name: label.label_name_as_c_str().unwrap().to_str().unwrap(),
-                color: &label.color,
-            }
+        self.0.next().map(|label| DebugUtilsMessengerCallbackLabel {
+            label_name: unsafe { label.label_name_as_c_str() }
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            color: &label.color,
         })
     }
 }
@@ -455,7 +454,7 @@ impl<'a> Iterator for DebugUtilsMessengerCallbackObjectNameInfoIter<'a> {
     type Item = DebugUtilsMessengerCallbackObjectNameInfo<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|info| unsafe {
+        self.0.next().map(|info| {
             let &ash::vk::DebugUtilsObjectNameInfoEXT {
                 object_type,
                 object_handle,
@@ -466,9 +465,9 @@ impl<'a> Iterator for DebugUtilsMessengerCallbackObjectNameInfoIter<'a> {
             DebugUtilsMessengerCallbackObjectNameInfo {
                 object_type,
                 object_handle,
-                object_name: p_object_name
-                    .as_ref()
-                    .map(|p_object_name| CStr::from_ptr(p_object_name).to_str().unwrap()),
+                object_name: unsafe { p_object_name.as_ref() }.map(|p_object_name| {
+                    unsafe { CStr::from_ptr(p_object_name) }.to_str().unwrap()
+                }),
             }
         })
     }
@@ -673,20 +672,18 @@ mod tests {
             }
         };
 
-        let callback = unsafe {
-            DebugUtilsMessenger::new(
-                instance,
-                DebugUtilsMessengerCreateInfo {
-                    message_severity: DebugUtilsMessageSeverity::ERROR,
-                    message_type: DebugUtilsMessageType::GENERAL
-                        | DebugUtilsMessageType::VALIDATION
-                        | DebugUtilsMessageType::PERFORMANCE,
-                    ..DebugUtilsMessengerCreateInfo::user_callback(
-                        DebugUtilsMessengerCallback::new(|_, _, _| {}),
-                    )
-                },
-            )
-        }
+        let callback = DebugUtilsMessenger::new(
+            instance,
+            DebugUtilsMessengerCreateInfo {
+                message_severity: DebugUtilsMessageSeverity::ERROR,
+                message_type: DebugUtilsMessageType::GENERAL
+                    | DebugUtilsMessageType::VALIDATION
+                    | DebugUtilsMessageType::PERFORMANCE,
+                ..DebugUtilsMessengerCreateInfo::user_callback(unsafe {
+                    DebugUtilsMessengerCallback::new(|_, _, _| {})
+                })
+            },
+        )
         .unwrap();
         thread::spawn(move || {
             drop(callback);

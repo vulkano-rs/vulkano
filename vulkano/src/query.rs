@@ -41,7 +41,7 @@ impl QueryPool {
     ) -> Result<Arc<QueryPool>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -62,18 +62,20 @@ impl QueryPool {
     ) -> Result<Arc<QueryPool>, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
-        let handle = unsafe {
-            let fns = device.fns();
+        let fns = device.fns();
+        let handle = {
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_query_pool)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_query_pool)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(Self::from_handle(device, handle, create_info))
@@ -169,7 +171,7 @@ impl QueryPool {
     {
         self.validate_get_results(range.clone(), destination, flags)?;
 
-        unsafe { Ok(self.get_results_unchecked(range, destination, flags)?) }
+        Ok(unsafe { self.get_results_unchecked(range, destination, flags) }?)
     }
 
     fn validate_get_results<T>(
@@ -264,8 +266,8 @@ impl QueryPool {
         let per_query_len = self.result_len(flags);
         let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
 
+        let fns = self.device.fns();
         let result = unsafe {
-            let fns = self.device.fns();
             (fns.v1_0.get_query_pool_results)(
                 self.device.handle(),
                 self.handle(),
@@ -301,9 +303,7 @@ impl QueryPool {
     pub unsafe fn reset(&self, range: Range<u32>) -> Result<(), Box<ValidationError>> {
         self.validate_reset(range.clone())?;
 
-        unsafe {
-            self.reset_unchecked(range);
-        }
+        unsafe { self.reset_unchecked(range) };
 
         Ok(())
     }
@@ -372,10 +372,8 @@ impl QueryPool {
 impl Drop for QueryPool {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_query_pool)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_query_pool)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 

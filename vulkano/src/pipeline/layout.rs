@@ -103,7 +103,7 @@ impl PipelineLayout {
     ) -> Result<Arc<PipelineLayout>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -353,10 +353,10 @@ impl PipelineLayout {
 impl Drop for PipelineLayout {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline_layout)(self.device.handle(), self.handle, ptr::null());
-        }
+            (fns.v1_0.destroy_pipeline_layout)(self.device.handle(), self.handle, ptr::null())
+        };
     }
 }
 

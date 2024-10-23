@@ -188,7 +188,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_headless(&instance)?;
 
-        unsafe { Ok(Self::headless_unchecked(instance, object)?) }
+        Ok(unsafe { Self::headless_unchecked(instance, object) }?)
     }
 
     fn validate_headless(instance: &Instance) -> Result<(), Box<ValidationError>> {
@@ -242,12 +242,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_display_plane(&display_mode, &create_info)?;
 
-        unsafe {
-            Ok(Self::from_display_plane_unchecked(
-                display_mode,
-                create_info,
-            )?)
-        }
+        Ok(unsafe { Self::from_display_plane_unchecked(display_mode, create_info) }?)
     }
 
     fn validate_from_display_plane(
@@ -283,15 +278,15 @@ impl Surface {
                 .display()
                 .physical_device()
                 .display_plane_properties_raw()
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::display_plane_properties` \
+        }
+        .map_err(|_err| {
+            Box::new(ValidationError {
+                problem: "`PhysicalDevice::display_plane_properties` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                    .into(),
+                ..Default::default()
+            })
+        })?;
 
         if display_mode.display().plane_reorder_possible() {
             if plane_stack_index as usize >= display_plane_properties_raw.len() {
@@ -318,18 +313,17 @@ impl Surface {
             }
         }
 
-        let display_plane_capabilities = unsafe {
-            display_mode
-                .display_plane_capabilities_unchecked(plane_index)
-                .map_err(|_err| {
+        let display_plane_capabilities =
+            unsafe { display_mode.display_plane_capabilities_unchecked(plane_index) }.map_err(
+                |_err| {
                     Box::new(ValidationError {
                         problem: "`DisplayMode::display_plane_capabilities` \
                             returned an error"
                             .into(),
                         ..Default::default()
                     })
-                })?
-        };
+                },
+            )?;
 
         if !display_plane_capabilities
             .supported_alpha
@@ -1393,10 +1387,10 @@ impl Surface {
 impl Drop for Surface {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.instance.fns();
         unsafe {
-            let fns = self.instance.fns();
-            (fns.khr_surface.destroy_surface_khr)(self.instance.handle(), self.handle, ptr::null());
-        }
+            (fns.khr_surface.destroy_surface_khr)(self.instance.handle(), self.handle, ptr::null())
+        };
     }
 }
 
@@ -1525,18 +1519,15 @@ impl DisplaySurfaceCreateInfo {
                     .set_vuids(&["VUID-VkDisplaySurfaceCreateInfoKHR-alphaMode-parameter"])
             })?;
 
-        let display_plane_properties_raw = unsafe {
-            physical_device
-                .display_plane_properties_raw()
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::display_plane_properties` \
+        let display_plane_properties_raw =
+            unsafe { physical_device.display_plane_properties_raw() }.map_err(|_err| {
+                Box::new(ValidationError {
+                    problem: "`PhysicalDevice::display_plane_properties` \
                             returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-        };
+                        .into(),
+                    ..Default::default()
+                })
+            })?;
 
         if plane_index as usize >= display_plane_properties_raw.len() {
             return Err(Box::new(ValidationError {

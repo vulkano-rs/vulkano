@@ -211,7 +211,8 @@ impl StandardDescriptorSetAllocator {
     /// This has no effect if the entry was not initialized yet.
     #[inline]
     pub fn clear(&self, layout: &Arc<DescriptorSetLayout>) {
-        unsafe { &mut *self.pools.get_or(Default::default).get() }.remove(layout.id())
+        let entry_ptr = self.pools.get_or(Default::default).get();
+        unsafe { &mut *entry_ptr }.remove(layout.id())
     }
 
     /// Clears all entries for the current thread. This does not mean that the pools are dropped
@@ -220,7 +221,8 @@ impl StandardDescriptorSetAllocator {
     /// This has no effect if no entries were initialized yet.
     #[inline]
     pub fn clear_all(&self) {
-        unsafe { *self.pools.get_or(Default::default).get() = SortedMap::default() };
+        let entry_ptr = self.pools.get_or(Default::default).get();
+        unsafe { *entry_ptr = SortedMap::default() };
     }
 }
 
@@ -234,7 +236,8 @@ unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
         let is_fixed = layout.variable_descriptor_count() == 0;
         let pools = self.pools.get_or_default();
 
-        let entry = unsafe { &mut *pools.get() }.get_or_try_insert(layout.id(), || {
+        let entry_ptr = pools.get();
+        let entry = unsafe { &mut *entry_ptr }.get_or_try_insert(layout.id(), || {
             if is_fixed {
                 FixedEntry::new(layout, &self.create_info).map(Entry::Fixed)
             } else {

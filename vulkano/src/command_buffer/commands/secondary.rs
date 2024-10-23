@@ -30,7 +30,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let command_buffer = DropUnlockCommandBuffer::new(command_buffer)?;
         self.validate_execute_commands(iter::once(&**command_buffer))?;
 
-        unsafe { Ok(self.execute_commands_locked(smallvec![command_buffer])) }
+        Ok(unsafe { self.execute_commands_locked(smallvec![command_buffer]) })
     }
 
     /// Executes multiple secondary command buffers in a vector.
@@ -50,7 +50,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         self.validate_execute_commands(command_buffers.iter().map(|cb| &***cb))?;
 
-        unsafe { Ok(self.execute_commands_locked(command_buffers)) }
+        Ok(unsafe { self.execute_commands_locked(command_buffers) })
     }
 
     fn validate_execute_commands<'a>(

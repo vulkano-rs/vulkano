@@ -73,17 +73,17 @@ where
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
-        unsafe {
-            let mut wait_submitted = self.wait_submitted.lock();
+        let mut wait_submitted = self.wait_submitted.lock();
 
-            if *wait_submitted {
-                return Ok(());
-            }
+        if *wait_submitted {
+            return Ok(());
+        }
 
-            let queue = self.previous.queue().unwrap();
+        let queue = self.previous.queue().unwrap();
 
-            match self.previous.build_submission()? {
-                SubmitAnyBuilder::Empty => {
+        match unsafe { self.previous.build_submission() }? {
+            SubmitAnyBuilder::Empty => {
+                unsafe {
                     queue_submit(
                         &queue,
                         SubmitInfo {
@@ -94,9 +94,11 @@ where
                         },
                         None,
                         &self.previous,
-                    )?;
-                }
-                SubmitAnyBuilder::SemaphoresWait(semaphores) => {
+                    )
+                }?;
+            }
+            SubmitAnyBuilder::SemaphoresWait(semaphores) => {
+                unsafe {
                     queue_submit(
                         &queue,
                         SubmitInfo {
@@ -117,62 +119,67 @@ where
                         },
                         None,
                         &self.previous,
-                    )?;
-                }
-                SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
-                    debug_assert!(submit_info.signal_semaphores.is_empty());
+                    )
+                }?;
+            }
+            SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
+                debug_assert!(submit_info.signal_semaphores.is_empty());
 
-                    submit_info
-                        .signal_semaphores
-                        .push(SemaphoreSubmitInfo::new(self.semaphore.clone()));
+                submit_info
+                    .signal_semaphores
+                    .push(SemaphoreSubmitInfo::new(self.semaphore.clone()));
 
-                    queue_submit(&queue, submit_info, fence, &self.previous)?;
-                }
-                SubmitAnyBuilder::BindSparse(_, _) => {
-                    unimplemented!() // TODO: how to do that?
-                                     /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
-                                     builder.add_signal_semaphore(&self.semaphore);
-                                     builder.submit(&queue)?;*/
-                }
-                SubmitAnyBuilder::QueuePresent(present_info) => {
-                    for swapchain_info in &present_info.swapchain_infos {
-                        if swapchain_info.present_id.map_or(false, |present_id| {
-                            !swapchain_info.swapchain.try_claim_present_id(present_id)
-                        }) {
-                            return Err(Box::new(ValidationError {
-                                problem: "the provided `present_id` was not greater than any \
+                unsafe { queue_submit(&queue, submit_info, fence, &self.previous) }?;
+            }
+            SubmitAnyBuilder::BindSparse(_, _) => {
+                unimplemented!() // TODO: how to do that?
+                                 /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
+                                 builder.add_signal_semaphore(&self.semaphore);
+                                 builder.submit(&queue)?;*/
+            }
+            SubmitAnyBuilder::QueuePresent(present_info) => {
+                for swapchain_info in &present_info.swapchain_infos {
+                    if swapchain_info
+                        .present_id
+                        .map_or(false, |present_id| !unsafe {
+                            swapchain_info.swapchain.try_claim_present_id(present_id)
+                        })
+                    {
+                        return Err(Box::new(ValidationError {
+                            problem: "the provided `present_id` was not greater than any \
                                     `present_id` passed previously for the same swapchain"
-                                    .into(),
-                                vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
-                                ..Default::default()
-                            })
-                            .into());
-                        }
-
-                        match self.previous.check_swapchain_image_acquired(
-                            &swapchain_info.swapchain,
-                            swapchain_info.image_index,
-                            true,
-                        ) {
-                            Ok(_) => (),
-                            Err(AccessCheckError::Unknown) => {
-                                return Err(Box::new(ValidationError::from_error(
-                                    AccessError::SwapchainImageNotAcquired,
-                                ))
-                                .into());
-                            }
-                            Err(AccessCheckError::Denied(err)) => {
-                                return Err(Box::new(ValidationError::from_error(err)).into());
-                            }
-                        }
+                                .into(),
+                            vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
+                            ..Default::default()
+                        })
+                        .into());
                     }
 
-                    queue_present(&queue, present_info)?
-                        .map(|r| r.map(|_| ()))
-                        .fold(Ok(()), Result::and)?;
+                    match self.previous.check_swapchain_image_acquired(
+                        &swapchain_info.swapchain,
+                        swapchain_info.image_index,
+                        true,
+                    ) {
+                        Ok(_) => (),
+                        Err(AccessCheckError::Unknown) => {
+                            return Err(Box::new(ValidationError::from_error(
+                                AccessError::SwapchainImageNotAcquired,
+                            ))
+                            .into());
+                        }
+                        Err(AccessCheckError::Denied(err)) => {
+                            return Err(Box::new(ValidationError::from_error(err)).into());
+                        }
+                    }
+                }
 
-                    // FIXME: problematic because if we return an error and flush() is called again,
-                    // then we'll submit the present twice
+                unsafe { queue_present(&queue, present_info) }?
+                    .map(|r| r.map(|_| ()))
+                    .fold(Ok(()), Result::and)?;
+
+                // FIXME: problematic because if we return an error and flush() is called again,
+                // then we'll submit the present twice
+                unsafe {
                     queue_submit(
                         &queue,
                         SubmitInfo {
@@ -183,14 +190,14 @@ where
                         },
                         None,
                         &self.previous,
-                    )?;
-                }
-            };
+                    )
+                }?;
+            }
+        };
 
-            // Only write `true` here in order to try again next time if an error occurs.
-            *wait_submitted = true;
-            Ok(())
-        }
+        // Only write `true` here in order to try again next time if an error occurs.
+        *wait_submitted = true;
+        Ok(())
     }
 
     unsafe fn signal_finished(&self) {
@@ -262,9 +269,7 @@ where
             // Block until the queue finished.
             self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
 
-            unsafe {
-                self.signal_finished();
-            }
+            unsafe { self.signal_finished() };
         }
     }
 }
