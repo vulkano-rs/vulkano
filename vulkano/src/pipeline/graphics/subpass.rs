@@ -225,7 +225,10 @@ impl PipelineRenderingCreateInfo {
                 }));
             }
 
-            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+
+            if !format_properties
                 .potential_format_features()
                 .intersects(FormatFeatures::COLOR_ATTACHMENT)
             {
@@ -254,7 +257,10 @@ impl PipelineRenderingCreateInfo {
                 }));
             }
 
-            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+
+            if !format_properties
                 .potential_format_features()
                 .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
             {
@@ -292,7 +298,10 @@ impl PipelineRenderingCreateInfo {
                 }));
             }
 
-            if !unsafe { device.physical_device().format_properties_unchecked(format) }
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+
+            if !format_properties
                 .potential_format_features()
                 .intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT)
             {

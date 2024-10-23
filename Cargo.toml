@@ -83,11 +83,12 @@ rand = "0.8"
 ron = "0.8"
 
 [workspace.lints]
-rust.missing_docs = "allow"            # TODO: warn eventually
+rust.missing_docs = "allow"                                       # TODO: warn eventually
 rust.rust_2018_idioms = { level = "warn", priority = -1 }
 rust.rust_2024_compatibility = { level = "allow", priority = -1 } # TODO: warn eventually
 clippy.borrow_as_ptr = "warn"
-clippy.missing_safety_doc = "allow"    # TODO: warn eventually
+clippy.missing_safety_doc = "allow"                               # TODO: warn eventually
+clippy.multiple_unsafe_ops_per_block = "warn"
 clippy.ptr_as_ptr = "warn"
 clippy.ptr_cast_constness = "warn"
 # clippy.ref_as_ptr = "warn"                 # TODO: enable once it's stable

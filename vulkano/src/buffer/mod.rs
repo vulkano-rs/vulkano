@@ -405,12 +405,10 @@ impl Buffer {
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
         // SAFETY: we just created this raw buffer and hasn't bound any memory to it.
-        let buffer = unsafe {
-            raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
-                err.map(AllocateBufferError::BindMemory)
-                    .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
-            })?
-        };
+        let buffer = unsafe { raw_buffer.bind_memory(allocation) }.map_err(|(err, _, _)| {
+            err.map(AllocateBufferError::BindMemory)
+                .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
+        })?;
 
         Ok(Arc::new(buffer))
     }
@@ -472,7 +470,7 @@ impl Buffer {
     pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
         self.validate_device_address()?;
 
-        unsafe { Ok(self.device_address_unchecked()) }
+        Ok(unsafe { self.device_address_unchecked() })
     }
 
     fn validate_device_address(&self) -> Result<(), Box<ValidationError>> {

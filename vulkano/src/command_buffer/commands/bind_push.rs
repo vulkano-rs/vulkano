@@ -38,14 +38,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             &descriptor_sets,
         )?;
 
-        unsafe {
-            Ok(self.bind_descriptor_sets_unchecked(
+        Ok(unsafe {
+            self.bind_descriptor_sets_unchecked(
                 pipeline_bind_point,
                 pipeline_layout,
                 first_set,
                 descriptor_sets,
-            ))
-        }
+            )
+        })
     }
 
     // TODO: The validation here is somewhat duplicated because of how different the parameters are
@@ -269,7 +269,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let index_buffer = index_buffer.into();
         self.validate_bind_index_buffer(&index_buffer)?;
 
-        unsafe { Ok(self.bind_index_buffer_unchecked(index_buffer)) }
+        Ok(unsafe { self.bind_index_buffer_unchecked(index_buffer) })
     }
 
     fn validate_bind_index_buffer(
@@ -306,7 +306,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_pipeline_compute(&pipeline)?;
 
-        unsafe { Ok(self.bind_pipeline_compute_unchecked(pipeline)) }
+        Ok(unsafe { self.bind_pipeline_compute_unchecked(pipeline) })
     }
 
     fn validate_bind_pipeline_compute(
@@ -342,7 +342,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_pipeline_graphics(&pipeline)?;
 
-        unsafe { Ok(self.bind_pipeline_graphics_unchecked(pipeline)) }
+        Ok(unsafe { self.bind_pipeline_graphics_unchecked(pipeline) })
     }
 
     fn validate_bind_pipeline_graphics(
@@ -387,7 +387,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let vertex_buffers = vertex_buffers.into_vec();
         self.validate_bind_vertex_buffers(first_binding, &vertex_buffers)?;
 
-        unsafe { Ok(self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers)) }
+        Ok(unsafe { self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers) })
     }
 
     fn validate_bind_vertex_buffers(
@@ -444,7 +444,7 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         self.validate_push_constants(&pipeline_layout, offset, &push_constants)?;
 
-        unsafe { Ok(self.push_constants_unchecked(pipeline_layout, offset, push_constants)) }
+        Ok(unsafe { self.push_constants_unchecked(pipeline_layout, offset, push_constants) })
     }
 
     fn validate_push_constants<Pc: BufferContents>(
@@ -505,14 +505,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             &descriptor_writes,
         )?;
 
-        unsafe {
-            Ok(self.push_descriptor_set_unchecked(
+        Ok(unsafe {
+            self.push_descriptor_set_unchecked(
                 pipeline_bind_point,
                 pipeline_layout,
                 set_num,
                 descriptor_writes,
-            ))
-        }
+            )
+        })
     }
 
     fn validate_push_descriptor_set(

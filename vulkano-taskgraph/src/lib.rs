@@ -389,7 +389,8 @@ impl<'a> TaskContext<'a> {
         let mapped_slice = subbuffer.mapped_slice().unwrap();
 
         // SAFETY: The caller must ensure that access to the data is synchronized.
-        let data = unsafe { &*T::ptr_from_slice(mapped_slice) };
+        let data_ptr = unsafe { T::ptr_from_slice(mapped_slice) };
+        let data = unsafe { &*data_ptr };
 
         Ok(data)
     }
@@ -492,7 +493,8 @@ impl<'a> TaskContext<'a> {
         let mapped_slice = subbuffer.mapped_slice().unwrap();
 
         // SAFETY: The caller must ensure that access to the data is synchronized.
-        let data = unsafe { &mut *T::ptr_from_slice(mapped_slice) };
+        let data_ptr = unsafe { T::ptr_from_slice(mapped_slice) };
+        let data = unsafe { &mut *data_ptr };
 
         Ok(data)
     }

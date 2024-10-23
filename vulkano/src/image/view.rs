@@ -55,7 +55,7 @@ impl ImageView {
     ) -> Result<Arc<ImageView>, Validated<VulkanError>> {
         Self::validate_new(&image, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(image, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(image, create_info) }?)
     }
 
     fn validate_new(
@@ -729,11 +729,9 @@ impl ImageView {
 impl Drop for ImageView {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let device = self.device();
-            let fns = device.fns();
-            (fns.v1_0.destroy_image_view)(device.handle(), self.handle, ptr::null());
-        }
+        let device = self.device();
+        let fns = device.fns();
+        unsafe { (fns.v1_0.destroy_image_view)(device.handle(), self.handle, ptr::null()) };
     }
 }
 

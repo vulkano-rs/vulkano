@@ -56,7 +56,7 @@ impl Framebuffer {
         create_info.set_auto_extent_layers(&render_pass);
         Self::validate_new(&render_pass, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(render_pass, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(render_pass, create_info) }?)
     }
 
     fn validate_new(
@@ -250,18 +250,20 @@ impl Framebuffer {
         let create_info_fields1_vk = create_info.to_vk_fields1();
         let create_info_vk = create_info.to_vk(render_pass.handle(), &create_info_fields1_vk);
 
-        let handle = unsafe {
+        let handle = {
             let fns = render_pass.device().fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_framebuffer)(
-                render_pass.device().handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_framebuffer)(
+                    render_pass.device().handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(Self::from_handle(render_pass, handle, create_info))
@@ -347,10 +349,8 @@ impl Framebuffer {
 impl Drop for Framebuffer {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device().fns();
-            (fns.v1_0.destroy_framebuffer)(self.device().handle(), self.handle, ptr::null());
-        }
+        let fns = self.device().fns();
+        unsafe { (fns.v1_0.destroy_framebuffer)(self.device().handle(), self.handle, ptr::null()) };
     }
 }
 

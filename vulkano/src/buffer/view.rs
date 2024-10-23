@@ -71,7 +71,7 @@ impl BufferView {
         let subbuffer = subbuffer.into_bytes();
         Self::validate_new(&subbuffer, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(subbuffer, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(subbuffer, create_info) }?)
     }
 
     fn validate_new(
@@ -89,12 +89,9 @@ impl BufferView {
         let buffer = subbuffer.buffer();
         let properties = device.physical_device().properties();
 
-        let format_features = unsafe {
-            device
-                .physical_device()
-                .format_properties_unchecked(format)
-                .buffer_features
-        };
+        let format_properties =
+            unsafe { device.physical_device().format_properties_unchecked(format) };
+        let format_features = format_properties.buffer_features;
 
         if !buffer
             .usage()
@@ -290,18 +287,20 @@ impl BufferView {
         let device = subbuffer.device();
         let create_info_vk = create_info.to_vk(subbuffer.as_bytes());
 
-        let handle = unsafe {
-            let fns = device.fns();
+        let fns = device.fns();
+        let handle = {
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_buffer_view)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_buffer_view)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(Self::from_handle(subbuffer, handle, create_info))
@@ -320,13 +319,13 @@ impl BufferView {
     ) -> Arc<BufferView> {
         let &BufferViewCreateInfo { format, _ne: _ } = &create_info;
         let size = subbuffer.size();
-        let format_features = unsafe {
+        let format_properties = unsafe {
             subbuffer
                 .device()
                 .physical_device()
                 .format_properties_unchecked(format)
-                .buffer_features
         };
+        let format_features = format_properties.buffer_features;
 
         Arc::new(BufferView {
             handle,
@@ -366,14 +365,14 @@ impl BufferView {
 impl Drop for BufferView {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.subbuffer.device().fns();
         unsafe {
-            let fns = self.subbuffer.device().fns();
             (fns.v1_0.destroy_buffer_view)(
                 self.subbuffer.device().handle(),
                 self.handle,
                 ptr::null(),
-            );
-        }
+            )
+        };
     }
 }
 

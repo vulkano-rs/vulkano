@@ -141,7 +141,7 @@ impl RenderPass {
 
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -174,32 +174,34 @@ impl RenderPass {
             }
         }
 
-        let handle = unsafe {
-            if device.api_version() >= Version::V1_2
-                || device.enabled_extensions().khr_create_renderpass2
-            {
-                let mut create_info_fields2_extensions_vk = create_info.to_vk2_fields2_extensions();
-                let create_info_fields2_vk =
-                    create_info.to_vk2_fields2(&mut create_info_fields2_extensions_vk);
-                let mut create_info_fields1_extensions_vk =
-                    create_info.to_vk2_fields1_extensions(&create_info_fields2_vk);
-                let create_info_fields1_vk = create_info.to_vk2_fields1(
-                    &create_info_fields2_vk,
-                    &mut create_info_fields1_extensions_vk,
-                );
-                let create_info_vk = create_info.to_vk2(&create_info_fields1_vk);
+        let handle = if device.api_version() >= Version::V1_2
+            || device.enabled_extensions().khr_create_renderpass2
+        {
+            let mut create_info_fields2_extensions_vk = create_info.to_vk2_fields2_extensions();
+            let create_info_fields2_vk =
+                create_info.to_vk2_fields2(&mut create_info_fields2_extensions_vk);
+            let mut create_info_fields1_extensions_vk =
+                create_info.to_vk2_fields1_extensions(&create_info_fields2_vk);
+            let create_info_fields1_vk = create_info.to_vk2_fields1(
+                &create_info_fields2_vk,
+                &mut create_info_fields1_extensions_vk,
+            );
+            let create_info_vk = create_info.to_vk2(&create_info_fields1_vk);
 
-                let fns = device.fns();
-                let mut output = MaybeUninit::uninit();
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
 
-                if device.api_version() >= Version::V1_2 {
+            if device.api_version() >= Version::V1_2 {
+                unsafe {
                     (fns.v1_2.create_render_pass2)(
                         device.handle(),
                         &create_info_vk,
                         ptr::null(),
                         output.as_mut_ptr(),
                     )
-                } else {
+                }
+            } else {
+                unsafe {
                     (fns.khr_create_renderpass2.create_render_pass2_khr)(
                         device.handle(),
                         &create_info_vk,
@@ -207,33 +209,35 @@ impl RenderPass {
                         output.as_mut_ptr(),
                     )
                 }
-                .result()
-                .map_err(VulkanError::from)?;
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
-                output.assume_init()
-            } else {
-                let create_info_fields2_vk = create_info.to_vk_fields2();
-                let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
-                let mut create_info_extensions_vk =
-                    create_info.to_vk_extensions(&create_info_fields1_vk);
-                let create_info_vk =
-                    create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
+            unsafe { output.assume_init() }
+        } else {
+            let create_info_fields2_vk = create_info.to_vk_fields2();
+            let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
+            let mut create_info_extensions_vk =
+                create_info.to_vk_extensions(&create_info_fields1_vk);
+            let create_info_vk =
+                create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
-                let fns = device.fns();
-                let mut output = MaybeUninit::uninit();
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
                 (fns.v1_0.create_render_pass)(
                     device.handle(),
                     &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
-                .result()
-                .map_err(VulkanError::from)?;
-                output.assume_init()
             }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
         };
 
-        unsafe { Ok(Self::from_handle(device, handle, create_info)) }
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `RenderPass` from a raw object handle.
@@ -646,10 +650,8 @@ impl RenderPass {
 impl Drop for RenderPass {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_render_pass)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_render_pass)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -866,12 +868,10 @@ impl RenderPassCreateInfo {
             } = attachment;
 
             // Safety: attachment has been validated
-            attachment_potential_format_features[attachment_index] = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            attachment_potential_format_features[attachment_index] =
+                format_properties.potential_format_features();
         }
 
         if subpasses.is_empty() {

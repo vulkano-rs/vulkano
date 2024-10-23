@@ -427,7 +427,7 @@ impl PhysicalDevice {
     ) -> Result<Vec<Arc<Display>>, Validated<VulkanError>> {
         self.validate_display_properties()?;
 
-        unsafe { Ok(self.display_properties_unchecked()?) }
+        Ok(unsafe { self.display_properties_unchecked() }?)
     }
 
     fn validate_display_properties(&self) -> Result<(), Box<ValidationError>> {
@@ -454,35 +454,36 @@ impl PhysicalDevice {
             .enabled_extensions()
             .khr_get_display_properties2
         {
-            let properties_vk = unsafe {
-                loop {
-                    let mut count = 0;
+            let properties_vk = loop {
+                let mut count = 0;
+                unsafe {
                     (fns.khr_get_display_properties2
                         .get_physical_device_display_properties2_khr)(
                         self.handle,
                         &mut count,
                         ptr::null_mut(),
                     )
-                    .result()
-                    .map_err(VulkanError::from)?;
+                }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                    let mut properties_vk = vec![DisplayProperties::to_mut_vk2(); count as usize];
-                    let result = (fns
-                        .khr_get_display_properties2
+                let mut properties_vk = vec![DisplayProperties::to_mut_vk2(); count as usize];
+                let result = unsafe {
+                    (fns.khr_get_display_properties2
                         .get_physical_device_display_properties2_khr)(
                         self.handle,
                         &mut count,
                         properties_vk.as_mut_ptr(),
-                    );
+                    )
+                };
 
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            properties_vk.set_len(count as usize);
-                            break properties_vk;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        unsafe { properties_vk.set_len(count as usize) };
+                        break properties_vk;
                     }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
                 }
             };
 
@@ -501,32 +502,34 @@ impl PhysicalDevice {
                 })
                 .collect())
         } else {
-            let properties_vk = unsafe {
-                loop {
-                    let mut count = 0;
+            let properties_vk = loop {
+                let mut count = 0;
+                unsafe {
                     (fns.khr_display.get_physical_device_display_properties_khr)(
                         self.handle,
                         &mut count,
                         ptr::null_mut(),
                     )
-                    .result()
-                    .map_err(VulkanError::from)?;
+                }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                    let mut properties_vk = Vec::with_capacity(count as usize);
-                    let result = (fns.khr_display.get_physical_device_display_properties_khr)(
+                let mut properties_vk = Vec::with_capacity(count as usize);
+                let result = unsafe {
+                    (fns.khr_display.get_physical_device_display_properties_khr)(
                         self.handle,
                         &mut count,
                         properties_vk.as_mut_ptr(),
-                    );
+                    )
+                };
 
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            properties_vk.set_len(count as usize);
-                            break properties_vk;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        unsafe { properties_vk.set_len(count as usize) };
+                        break properties_vk;
                     }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
                 }
             };
 
@@ -553,7 +556,7 @@ impl PhysicalDevice {
     ) -> Result<Vec<DisplayPlaneProperties>, Validated<VulkanError>> {
         self.validate_display_plane_properties()?;
 
-        unsafe { Ok(self.display_plane_properties_unchecked()?) }
+        Ok(unsafe { self.display_plane_properties_unchecked() }?)
     }
 
     fn validate_display_plane_properties(&self) -> Result<(), Box<ValidationError>> {
@@ -625,36 +628,36 @@ impl PhysicalDevice {
             .enabled_extensions()
             .khr_get_display_properties2
         {
-            let properties_vk = unsafe {
-                loop {
-                    let mut count = 0;
+            let properties_vk = loop {
+                let mut count = 0;
+                unsafe {
                     (fns.khr_get_display_properties2
                         .get_physical_device_display_plane_properties2_khr)(
                         self.handle,
                         &mut count,
                         ptr::null_mut(),
                     )
-                    .result()
-                    .map_err(VulkanError::from)?;
+                }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                    let mut properties =
-                        vec![DisplayPlanePropertiesRaw::to_mut_vk2(); count as usize];
-                    let result = (fns
-                        .khr_get_display_properties2
+                let mut properties = vec![DisplayPlanePropertiesRaw::to_mut_vk2(); count as usize];
+                let result = unsafe {
+                    (fns.khr_get_display_properties2
                         .get_physical_device_display_plane_properties2_khr)(
                         self.handle,
                         &mut count,
                         properties.as_mut_ptr(),
-                    );
+                    )
+                };
 
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            properties.set_len(count as usize);
-                            break properties;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        unsafe { properties.set_len(count as usize) };
+                        break properties;
                     }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
                 }
             };
 
@@ -666,35 +669,36 @@ impl PhysicalDevice {
                 })
                 .collect()
         } else {
-            let properties_vk = unsafe {
-                loop {
-                    let mut count = 0;
+            let properties_vk = loop {
+                let mut count = 0;
+                unsafe {
                     (fns.khr_display
                         .get_physical_device_display_plane_properties_khr)(
                         self.handle,
                         &mut count,
                         ptr::null_mut(),
                     )
-                    .result()
-                    .map_err(VulkanError::from)?;
+                }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                    let mut properties = Vec::with_capacity(count as usize);
-                    let result = (fns
-                        .khr_display
+                let mut properties = Vec::with_capacity(count as usize);
+                let result = unsafe {
+                    (fns.khr_display
                         .get_physical_device_display_plane_properties_khr)(
                         self.handle,
                         &mut count,
                         properties.as_mut_ptr(),
-                    );
+                    )
+                };
 
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            properties.set_len(count as usize);
-                            break properties;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        unsafe { properties.set_len(count as usize) };
+                        break properties;
                     }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
                 }
             };
 
@@ -722,7 +726,7 @@ impl PhysicalDevice {
     ) -> Result<Vec<Arc<Display>>, Validated<VulkanError>> {
         self.validate_display_plane_supported_displays(plane_index)?;
 
-        unsafe { Ok(self.display_plane_supported_displays_unchecked(plane_index)?) }
+        Ok(unsafe { self.display_plane_supported_displays_unchecked(plane_index) }?)
     }
 
     fn validate_display_plane_supported_displays(
@@ -738,16 +742,15 @@ impl PhysicalDevice {
             }));
         }
 
-        let display_plane_properties_raw = unsafe {
-            self.display_plane_properties_raw().map_err(|_err| {
+        let display_plane_properties_raw =
+            unsafe { self.display_plane_properties_raw() }.map_err(|_err| {
                 Box::new(ValidationError {
                     problem: "`PhysicalDevice::display_plane_properties` \
                         returned an error"
                         .into(),
                     ..Default::default()
                 })
-            })?
-        };
+            })?;
 
         if plane_index as usize >= display_plane_properties_raw.len() {
             return Err(Box::new(ValidationError {
@@ -769,34 +772,36 @@ impl PhysicalDevice {
     ) -> Result<Vec<Arc<Display>>, VulkanError> {
         let fns = self.instance.fns();
 
-        let displays_vk = unsafe {
-            loop {
-                let mut count = 0;
+        let displays_vk = loop {
+            let mut count = 0;
+            unsafe {
                 (fns.khr_display.get_display_plane_supported_displays_khr)(
                     self.handle,
                     plane_index,
                     &mut count,
                     ptr::null_mut(),
                 )
-                .result()
-                .map_err(VulkanError::from)?;
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
-                let mut displays = Vec::with_capacity(count as usize);
-                let result = (fns.khr_display.get_display_plane_supported_displays_khr)(
+            let mut displays = Vec::with_capacity(count as usize);
+            let result = unsafe {
+                (fns.khr_display.get_display_plane_supported_displays_khr)(
                     self.handle,
                     plane_index,
                     &mut count,
                     displays.as_mut_ptr(),
-                );
+                )
+            };
 
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        displays.set_len(count as usize);
-                        break displays;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    unsafe { displays.set_len(count as usize) };
+                    break displays;
                 }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
             }
         };
 
@@ -833,7 +838,7 @@ impl PhysicalDevice {
     ) -> Result<ExternalBufferProperties, Box<ValidationError>> {
         self.validate_external_buffer_properties(&info)?;
 
-        unsafe { Ok(self.external_buffer_properties_unchecked(info)) }
+        Ok(unsafe { self.external_buffer_properties_unchecked(info) })
     }
 
     fn validate_external_buffer_properties(
@@ -917,7 +922,7 @@ impl PhysicalDevice {
     ) -> Result<ExternalFenceProperties, Box<ValidationError>> {
         self.validate_external_fence_properties(&info)?;
 
-        unsafe { Ok(self.external_fence_properties_unchecked(info)) }
+        Ok(unsafe { self.external_fence_properties_unchecked(info) })
     }
 
     fn validate_external_fence_properties(
@@ -1001,7 +1006,7 @@ impl PhysicalDevice {
     ) -> Result<ExternalSemaphoreProperties, Box<ValidationError>> {
         self.validate_external_semaphore_properties(&info)?;
 
-        unsafe { Ok(self.external_semaphore_properties_unchecked(info)) }
+        Ok(unsafe { self.external_semaphore_properties_unchecked(info) })
     }
 
     fn validate_external_semaphore_properties(
@@ -1081,7 +1086,7 @@ impl PhysicalDevice {
     ) -> Result<FormatProperties, Box<ValidationError>> {
         self.validate_format_properties(format)?;
 
-        unsafe { Ok(self.format_properties_unchecked(format)) }
+        Ok(unsafe { self.format_properties_unchecked(format) })
     }
 
     fn validate_format_properties(&self, format: Format) -> Result<(), Box<ValidationError>> {
@@ -1176,7 +1181,7 @@ impl PhysicalDevice {
     ) -> Result<Option<ImageFormatProperties>, Validated<VulkanError>> {
         self.validate_image_format_properties(&image_format_info)?;
 
-        unsafe { Ok(self.image_format_properties_unchecked(image_format_info)?) }
+        Ok(unsafe { self.image_format_properties_unchecked(image_format_info) }?)
     }
 
     fn validate_image_format_properties(
@@ -1290,7 +1295,7 @@ impl PhysicalDevice {
     ) -> Result<Vec<SparseImageFormatProperties>, Box<ValidationError>> {
         self.validate_sparse_image_format_properties(&format_info)?;
 
-        unsafe { Ok(self.sparse_image_format_properties_unchecked(format_info)) }
+        Ok(unsafe { self.sparse_image_format_properties_unchecked(format_info) })
     }
 
     fn validate_sparse_image_format_properties(
@@ -1422,7 +1427,7 @@ impl PhysicalDevice {
     ) -> Result<SurfaceCapabilities, Validated<VulkanError>> {
         self.validate_surface_capabilities(surface, &surface_info)?;
 
-        unsafe { Ok(self.surface_capabilities_unchecked(surface, surface_info)?) }
+        Ok(unsafe { self.surface_capabilities_unchecked(surface, surface_info) }?)
     }
 
     fn validate_surface_capabilities(
@@ -1448,9 +1453,8 @@ impl PhysicalDevice {
         // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
-        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
-            self.surface_support_unchecked(index, surface)
-                .unwrap_or_default()
+        if !(0..self.queue_family_properties.len() as u32).any(|index| {
+            unsafe { self.surface_support_unchecked(index, surface) }.unwrap_or_default()
         }) {
             return Err(Box::new(ValidationError {
                 context: "surface".into(),
@@ -1480,15 +1484,15 @@ impl PhysicalDevice {
                         ..surface_info.clone()
                     },
                 )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_present_modes` \
+            }
+            .map_err(|_err| {
+                Box::new(ValidationError {
+                    problem: "`PhysicalDevice::surface_present_modes` \
                                 returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-            };
+                        .into(),
+                    ..Default::default()
+                })
+            })?;
 
             if !present_modes.into_iter().any(|mode| mode == present_mode) {
                 return Err(Box::new(ValidationError {
@@ -1607,7 +1611,7 @@ impl PhysicalDevice {
     ) -> Result<Vec<(Format, ColorSpace)>, Validated<VulkanError>> {
         self.validate_surface_formats(surface, &surface_info)?;
 
-        unsafe { Ok(self.surface_formats_unchecked(surface, surface_info)?) }
+        Ok(unsafe { self.surface_formats_unchecked(surface, surface_info) }?)
     }
 
     fn validate_surface_formats(
@@ -1633,9 +1637,8 @@ impl PhysicalDevice {
         // VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
-        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
-            self.surface_support_unchecked(index, surface)
-                .unwrap_or_default()
+        if !(0..self.queue_family_properties.len() as u32).any(|index| {
+            unsafe { self.surface_support_unchecked(index, surface) }.unwrap_or_default()
         }) {
             return Err(Box::new(ValidationError {
                 context: "surface".into(),
@@ -1665,15 +1668,15 @@ impl PhysicalDevice {
                         ..surface_info.clone()
                     },
                 )
-                .map_err(|_err| {
-                    Box::new(ValidationError {
-                        problem: "`PhysicalDevice::surface_present_modes` \
+            }
+            .map_err(|_err| {
+                Box::new(ValidationError {
+                    problem: "`PhysicalDevice::surface_present_modes` \
                                 returned an error"
-                            .into(),
-                        ..Default::default()
-                    })
-                })?
-            };
+                        .into(),
+                    ..Default::default()
+                })
+            })?;
 
             if !present_modes.into_iter().any(|mode| mode == present_mode) {
                 return Err(Box::new(ValidationError {
@@ -1872,7 +1875,7 @@ impl PhysicalDevice {
     ) -> Result<Vec<PresentMode>, Validated<VulkanError>> {
         self.validate_surface_present_modes(surface, &surface_info)?;
 
-        unsafe { Ok(self.surface_present_modes_unchecked(surface, surface_info)?) }
+        Ok(unsafe { self.surface_present_modes_unchecked(surface, surface_info) }?)
     }
 
     fn validate_surface_present_modes(
@@ -1892,9 +1895,8 @@ impl PhysicalDevice {
         // VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
-        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
-            self.surface_support_unchecked(index, surface)
-                .unwrap_or_default()
+        if !(0..self.queue_family_properties.len() as u32).any(|index| {
+            unsafe { self.surface_support_unchecked(index, surface) }.unwrap_or_default()
         }) {
             return Err(Box::new(ValidationError {
                 context: "surface".into(),
@@ -2095,7 +2097,7 @@ impl PhysicalDevice {
     ) -> Result<bool, Validated<VulkanError>> {
         self.validate_surface_support(queue_family_index, surface)?;
 
-        unsafe { Ok(self.surface_support_unchecked(queue_family_index, surface)?) }
+        Ok(unsafe { self.surface_support_unchecked(queue_family_index, surface) }?)
     }
 
     fn validate_surface_support(
@@ -2162,7 +2164,7 @@ impl PhysicalDevice {
     pub fn tool_properties(&self) -> Result<Vec<ToolProperties>, Validated<VulkanError>> {
         self.validate_tool_properties()?;
 
-        unsafe { Ok(self.tool_properties_unchecked()?) }
+        Ok(unsafe { self.tool_properties_unchecked() }?)
     }
 
     fn validate_tool_properties(&self) -> Result<(), Box<ValidationError>> {
@@ -2265,7 +2267,6 @@ impl PhysicalDevice {
             RawDisplayHandle::AppKit(_) => true,
             RawDisplayHandle::Wayland(display) => {
                 let display = display.display.as_ptr();
-
                 unsafe { self.wayland_presentation_support(queue_family_index, display.cast()) }?
             }
             RawDisplayHandle::Windows(_display) => {
@@ -2412,7 +2413,7 @@ impl PhysicalDevice {
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_win32_presentation_support(queue_family_index)?;
 
-        unsafe { Ok(self.win32_presentation_support_unchecked(queue_family_index)) }
+        Ok(unsafe { self.win32_presentation_support_unchecked(queue_family_index) })
     }
 
     fn validate_win32_presentation_support(

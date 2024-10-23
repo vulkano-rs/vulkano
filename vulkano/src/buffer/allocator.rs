@@ -182,7 +182,8 @@ where
     /// The next time you allocate a subbuffer, a new arena will be allocated with the new size,
     /// and all subsequently allocated arenas will also share the new size.
     pub fn set_arena_size(&self, size: DeviceSize) {
-        let state = unsafe { &mut *self.state.get() };
+        let state_ptr = self.state.get();
+        let state = unsafe { &mut *state_ptr };
         state.arena_size = size;
         state.arena = None;
         state.reserve = None;
@@ -195,7 +196,8 @@ where
     /// this has no effect.
     pub fn reserve(&self, size: DeviceSize) -> Result<(), MemoryAllocatorError> {
         if size > self.arena_size() {
-            let state = unsafe { &mut *self.state.get() };
+            let state_ptr = self.state.get();
+            let state = unsafe { &mut *state_ptr };
             state.arena_size = size;
             state.reserve = None;
             state.arena = Some(state.next_arena()?);
@@ -211,7 +213,9 @@ where
     {
         let layout = T::LAYOUT.unwrap_sized();
 
-        unsafe { &mut *self.state.get() }
+        let state_ptr = self.state.get();
+        let state = unsafe { &mut *state_ptr };
+        state
             .allocate(layout)
             .map(|subbuffer| unsafe { subbuffer.reinterpret_unchecked() })
     }

@@ -141,9 +141,9 @@ impl Display {
             .enabled_extensions()
             .khr_get_display_properties2
         {
-            let properties_vk = unsafe {
-                loop {
-                    let mut count = 0;
+            let properties_vk = loop {
+                let mut count = 0;
+                unsafe {
                     (fns.khr_get_display_properties2
                         .get_display_mode_properties2_khr)(
                         self.physical_device.handle(),
@@ -151,28 +151,29 @@ impl Display {
                         &mut count,
                         ptr::null_mut(),
                     )
-                    .result()
-                    .map_err(VulkanError::from)?;
+                }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                    let mut properties_vk =
-                        vec![ash::vk::DisplayModeProperties2KHR::default(); count as usize];
-                    let result = (fns
-                        .khr_get_display_properties2
+                let mut properties_vk =
+                    vec![ash::vk::DisplayModeProperties2KHR::default(); count as usize];
+                let result = unsafe {
+                    (fns.khr_get_display_properties2
                         .get_display_mode_properties2_khr)(
                         self.physical_device.handle(),
                         self.handle,
                         &mut count,
                         properties_vk.as_mut_ptr(),
-                    );
+                    )
+                };
 
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            properties_vk.set_len(count as usize);
-                            break properties_vk;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        unsafe { properties_vk.set_len(count as usize) };
+                        break properties_vk;
                     }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
                 }
             };
 
@@ -193,34 +194,36 @@ impl Display {
                 })
                 .collect())
         } else {
-            let properties_vk = unsafe {
-                loop {
-                    let mut count = 0;
+            let properties_vk = loop {
+                let mut count = 0;
+                unsafe {
                     (fns.khr_display.get_display_mode_properties_khr)(
                         self.physical_device.handle(),
                         self.handle,
                         &mut count,
                         ptr::null_mut(),
                     )
-                    .result()
-                    .map_err(VulkanError::from)?;
+                }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                    let mut properties = Vec::with_capacity(count as usize);
-                    let result = (fns.khr_display.get_display_mode_properties_khr)(
+                let mut properties = Vec::with_capacity(count as usize);
+                let result = unsafe {
+                    (fns.khr_display.get_display_mode_properties_khr)(
                         self.physical_device.handle(),
                         self.handle,
                         &mut count,
                         properties.as_mut_ptr(),
-                    );
+                    )
+                };
 
-                    match result {
-                        ash::vk::Result::SUCCESS => {
-                            properties.set_len(count as usize);
-                            break properties;
-                        }
-                        ash::vk::Result::INCOMPLETE => (),
-                        err => return Err(VulkanError::from(err)),
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        unsafe { properties.set_len(count as usize) };
+                        break properties;
                     }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
                 }
             };
 
@@ -355,7 +358,7 @@ impl DisplayMode {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_new(&display, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(display, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(display, create_info) }?)
     }
 
     fn validate_new(
@@ -453,26 +456,23 @@ impl DisplayMode {
     ) -> Result<DisplayPlaneCapabilities, Validated<VulkanError>> {
         self.validate_display_plane_capabilities(plane_index)?;
 
-        unsafe { Ok(self.display_plane_capabilities_unchecked(plane_index)?) }
+        Ok(unsafe { self.display_plane_capabilities_unchecked(plane_index) }?)
     }
 
     fn validate_display_plane_capabilities(
         &self,
         plane_index: u32,
     ) -> Result<(), Box<ValidationError>> {
-        let display_plane_properties_raw = unsafe {
-            self.display
-                .physical_device
-                .display_plane_properties_raw()
-                .map_err(|_err| {
+        let display_plane_properties_raw =
+            unsafe { self.display.physical_device.display_plane_properties_raw() }.map_err(
+                |_err| {
                     Box::new(ValidationError {
-                        problem: "`PhysicalDevice::display_plane_properties` \
-                        returned an error"
+                        problem: "`PhysicalDevice::display_plane_properties` returned an error"
                             .into(),
                         ..Default::default()
                     })
-                })?
-        };
+                },
+            )?;
 
         if plane_index as usize >= display_plane_properties_raw.len() {
             return Err(Box::new(ValidationError {
@@ -492,7 +492,7 @@ impl DisplayMode {
         plane_index: u32,
     ) -> Result<DisplayPlaneCapabilities, VulkanError> {
         self.display_plane_capabilities
-            .get_or_try_insert(plane_index, |&plane_index| unsafe {
+            .get_or_try_insert(plane_index, |&plane_index| {
                 let fns = self.display.physical_device.instance().fns();
 
                 let mut capabilities_vk = DisplayPlaneCapabilities::to_mut_vk2();
@@ -506,21 +506,25 @@ impl DisplayMode {
                         .mode(self.handle)
                         .plane_index(plane_index);
 
-                    (fns.khr_get_display_properties2
-                        .get_display_plane_capabilities2_khr)(
-                        self.display.physical_device.handle(),
-                        &info_vk,
-                        &mut capabilities_vk,
-                    )
+                    unsafe {
+                        (fns.khr_get_display_properties2
+                            .get_display_plane_capabilities2_khr)(
+                            self.display.physical_device.handle(),
+                            &info_vk,
+                            &mut capabilities_vk,
+                        )
+                    }
                     .result()
                     .map_err(VulkanError::from)?;
                 } else {
-                    (fns.khr_display.get_display_plane_capabilities_khr)(
-                        self.display.physical_device.handle(),
-                        self.handle,
-                        plane_index,
-                        &mut capabilities_vk.capabilities,
-                    )
+                    unsafe {
+                        (fns.khr_display.get_display_plane_capabilities_khr)(
+                            self.display.physical_device.handle(),
+                            self.handle,
+                            plane_index,
+                            &mut capabilities_vk.capabilities,
+                        )
+                    }
                     .result()
                     .map_err(VulkanError::from)?;
                 }
