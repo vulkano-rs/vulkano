@@ -52,7 +52,7 @@ pub(crate) fn validate_runtime(
     validator.validate_decorations()?;
     validator.validate_execution_modes()?;
     validator.validate_types()?;
-    validator.validate_global_variables()?;
+    // FIXME: validator.validate_global_variables()?;
     validator.validate_functions()?;
 
     Ok(())
@@ -1040,6 +1040,9 @@ impl<'a> RuntimeValidator<'a> {
         Ok(())
     }
 
+    // FIXME: this needs to use only the global variables that are statically used by the
+    // entry point's call tree. That requires analysing the call tree during `Spirv::new`.
+    #[allow(dead_code)]
     fn validate_global_variables(&self) -> Result<(), Box<ValidationError>> {
         let properties = self.device.physical_device().properties();
 
