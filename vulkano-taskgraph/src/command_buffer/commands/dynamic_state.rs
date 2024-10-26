@@ -780,7 +780,7 @@ impl RecordingCommandBuffer<'_> {
         fragment_size: [u32; 2],
         combiner_ops: [FragmentShadingRateCombinerOp; 2],
     ) -> Result<&mut Self> {
-        unsafe { Ok(self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops)) }
+        Ok(unsafe { self.set_fragment_shading_rate_unchecked(fragment_size, combiner_ops) })
     }
 
     pub unsafe fn set_fragment_shading_rate_unchecked(
