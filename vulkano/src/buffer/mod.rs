@@ -404,8 +404,7 @@ impl Buffer {
             .map_err(AllocateBufferError::AllocateMemory)?;
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
-        // SAFETY: we just created this raw buffer and hasn't bound any memory to it.
-        let buffer = unsafe { raw_buffer.bind_memory(allocation) }.map_err(|(err, _, _)| {
+        let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
             err.map(AllocateBufferError::BindMemory)
                 .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
         })?;

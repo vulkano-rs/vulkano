@@ -103,6 +103,8 @@ impl RawBuffer {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the buffer has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawBuffer`.
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
@@ -119,6 +121,8 @@ impl RawBuffer {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the buffer has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawBuffer`.
     /// - Caller must ensure that the handle will not be destroyed for the lifetime of returned
     ///   `RawBuffer`.
     #[inline]
@@ -241,11 +245,7 @@ impl RawBuffer {
     }
 
     /// Binds device memory to this buffer.
-    ///
-    /// # Safety
-    ///
-    /// - The buffer must not already have memory bound to it.
-    pub unsafe fn bind_memory(
+    pub fn bind_memory(
         self,
         allocation: ResourceMemory,
     ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, ResourceMemory)> {
@@ -255,15 +255,6 @@ impl RawBuffer {
 
         unsafe { self.bind_memory_unchecked(allocation) }
             .map_err(|(err, buffer, allocation)| (err.into(), buffer, allocation))
-    }
-
-    /// Assume this buffer has memory bound to it.
-    ///
-    /// # Safety
-    ///
-    /// - The buffer must have memory bound to it.
-    pub unsafe fn assume_bound(self) -> Buffer {
-        Buffer::from_raw(self, BufferMemory::External)
     }
 
     fn validate_bind_memory(
@@ -518,6 +509,15 @@ impl RawBuffer {
         }
 
         Ok(Buffer::from_raw(self, BufferMemory::Normal(allocation)))
+    }
+
+    /// Assume this buffer has memory bound to it.
+    ///
+    /// # Safety
+    ///
+    /// - The buffer must have memory bound to it.
+    pub unsafe fn assume_bound(self) -> Buffer {
+        Buffer::from_raw(self, BufferMemory::External)
     }
 
     /// Returns the memory requirements for this buffer.
