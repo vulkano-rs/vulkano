@@ -100,7 +100,7 @@ impl Semaphore {
     ) -> Result<Semaphore, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -162,7 +162,7 @@ impl Semaphore {
             None => {
                 // Pool is empty, alloc new semaphore
                 let mut semaphore =
-                    unsafe { Semaphore::new_unchecked(device, Default::default())? };
+                    unsafe { Semaphore::new_unchecked(device, Default::default()) }?;
                 semaphore.must_put_in_pool = true;
                 semaphore
             }
@@ -222,7 +222,7 @@ impl Semaphore {
     pub fn counter_value(&self) -> Result<u64, Validated<VulkanError>> {
         self.validate_counter_value()?;
 
-        unsafe { Ok(self.counter_value_unchecked()?) }
+        Ok(unsafe { self.counter_value_unchecked() }?)
     }
 
     fn validate_counter_value(&self) -> Result<(), Box<ValidationError>> {
@@ -330,7 +330,7 @@ impl Semaphore {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_wait(&wait_info, timeout)?;
 
-        unsafe { Ok(self.wait_unchecked(wait_info, timeout)?) }
+        Ok(unsafe { self.wait_unchecked(wait_info, timeout) }?)
     }
 
     fn validate_wait(
@@ -407,7 +407,7 @@ impl Semaphore {
     ) -> Result<(), Validated<VulkanError>> {
         Self::validate_wait_multiple(&wait_info, timeout)?;
 
-        unsafe { Ok(Self::wait_multiple_unchecked(wait_info, timeout)?) }
+        Ok(unsafe { Self::wait_multiple_unchecked(wait_info, timeout) }?)
     }
 
     fn validate_wait_multiple(
@@ -489,7 +489,7 @@ impl Semaphore {
     ) -> Result<File, Validated<VulkanError>> {
         self.validate_export_fd(handle_type)?;
 
-        unsafe { Ok(self.export_fd_unchecked(handle_type)?) }
+        Ok(unsafe { self.export_fd_unchecked(handle_type) }?)
     }
 
     fn validate_export_fd(
@@ -600,7 +600,7 @@ impl Semaphore {
     ) -> Result<ash::vk::HANDLE, Validated<VulkanError>> {
         self.validate_export_win32_handle(handle_type)?;
 
-        unsafe { Ok(self.export_win32_handle_unchecked(handle_type)?) }
+        Ok(unsafe { self.export_win32_handle_unchecked(handle_type) }?)
     }
 
     fn validate_export_win32_handle(
@@ -691,7 +691,7 @@ impl Semaphore {
     ) -> Result<ash::vk::zx_handle_t, Validated<VulkanError>> {
         self.validate_export_zircon_handle(handle_type)?;
 
-        unsafe { Ok(self.export_zircon_handle_unchecked(handle_type)?) }
+        Ok(unsafe { self.export_zircon_handle_unchecked(handle_type) }?)
     }
 
     fn validate_export_zircon_handle(
@@ -989,14 +989,12 @@ impl Semaphore {
 impl Drop for Semaphore {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            if self.must_put_in_pool {
-                let raw_sem = self.handle;
-                self.device.semaphore_pool().lock().push(raw_sem);
-            } else {
-                let fns = self.device.fns();
-                (fns.v1_0.destroy_semaphore)(self.device.handle(), self.handle, ptr::null());
-            }
+        if self.must_put_in_pool {
+            let raw_sem = self.handle;
+            self.device.semaphore_pool().lock().push(raw_sem);
+        } else {
+            let fns = self.device.fns();
+            unsafe { (fns.v1_0.destroy_semaphore)(self.device.handle(), self.handle, ptr::null()) };
         }
     }
 }
@@ -2169,9 +2167,6 @@ mod tests {
             },
         )
         .unwrap();
-        let _fd = unsafe {
-            sem.export_fd(ExternalSemaphoreHandleType::OpaqueFd)
-                .unwrap()
-        };
+        let _fd = unsafe { sem.export_fd(ExternalSemaphoreHandleType::OpaqueFd) }.unwrap();
     }
 }

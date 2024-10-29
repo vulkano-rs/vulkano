@@ -45,7 +45,7 @@ impl CommandPool {
     ) -> Result<CommandPool, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -175,19 +175,21 @@ impl CommandPool {
             let allocate_info_vk = allocate_info.to_vk(self.handle);
             let command_buffer_count = command_buffer_count as usize;
 
+            let fns = self.device.fns();
+            let mut out = Vec::with_capacity(command_buffer_count);
+
             unsafe {
-                let fns = self.device.fns();
-                let mut out = Vec::with_capacity(command_buffer_count);
                 (fns.v1_0.allocate_command_buffers)(
                     self.device.handle(),
                     &allocate_info_vk,
                     out.as_mut_ptr(),
                 )
-                .result()
-                .map_err(VulkanError::from)?;
-                out.set_len(command_buffer_count);
-                out
             }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { out.set_len(command_buffer_count) };
+
+            out
         };
 
         let device = self.device.clone();
@@ -302,10 +304,8 @@ impl CommandPool {
 impl Drop for CommandPool {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_command_pool)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_command_pool)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 

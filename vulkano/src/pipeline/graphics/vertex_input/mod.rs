@@ -795,12 +795,9 @@ impl VertexInputAttributeDescription {
             }));
         }
 
-        let format_features = unsafe {
-            device
-                .physical_device()
-                .format_properties_unchecked(format)
-                .buffer_features
-        };
+        let format_properties =
+            unsafe { device.physical_device().format_properties_unchecked(format) };
+        let format_features = format_properties.buffer_features;
 
         if !format_features.intersects(FormatFeatures::VERTEX_BUFFER) {
             return Err(Box::new(ValidationError {

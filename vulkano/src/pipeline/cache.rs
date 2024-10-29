@@ -77,8 +77,8 @@ impl PipelineCache {
     ///             ..Default::default()
     ///         },
     ///     )
-    ///     .unwrap()
-    /// };
+    /// }
+    /// .unwrap();
     /// ```
     #[inline]
     pub unsafe fn new(
@@ -183,34 +183,36 @@ impl PipelineCache {
     pub fn get_data(&self) -> Result<Vec<u8>, VulkanError> {
         let fns = self.device.fns();
 
-        let data = unsafe {
-            loop {
-                let mut count = 0;
+        let data = loop {
+            let mut count = 0;
+            unsafe {
                 (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
                     self.handle,
                     &mut count,
                     ptr::null_mut(),
                 )
-                .result()
-                .map_err(VulkanError::from)?;
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
-                let mut data: Vec<u8> = Vec::with_capacity(count);
-                let result = (fns.v1_0.get_pipeline_cache_data)(
+            let mut data: Vec<u8> = Vec::with_capacity(count);
+            let result = unsafe {
+                (fns.v1_0.get_pipeline_cache_data)(
                     self.device.handle(),
                     self.handle,
                     &mut count,
                     data.as_mut_ptr().cast(),
-                );
+                )
+            };
 
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        data.set_len(count);
-                        break data;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    unsafe { data.set_len(count) };
+                    break data;
                 }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
             }
         };
 
@@ -229,7 +231,7 @@ impl PipelineCache {
         let src_caches: SmallVec<[_; 8]> = src_caches.into_iter().collect();
         self.validate_merge(&src_caches)?;
 
-        unsafe { Ok(self.merge_unchecked(src_caches)?) }
+        Ok(unsafe { self.merge_unchecked(src_caches) }?)
     }
 
     fn validate_merge(&self, src_caches: &[&PipelineCache]) -> Result<(), Box<ValidationError>> {
@@ -272,10 +274,10 @@ impl PipelineCache {
 impl Drop for PipelineCache {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline_cache)(self.device.handle(), self.handle, ptr::null());
-        }
+            (fns.v1_0.destroy_pipeline_cache)(self.device.handle(), self.handle, ptr::null())
+        };
     }
 }
 
@@ -393,7 +395,7 @@ mod tests {
     #[test]
     fn merge_self_forbidden() {
         let (device, _queue) = gfx_dev_and_queue!();
-        let pipeline = unsafe { PipelineCache::new(device, Default::default()).unwrap() };
+        let pipeline = unsafe { PipelineCache::new(device, Default::default()) }.unwrap();
         match pipeline.merge([pipeline.as_ref()]) {
             Err(_) => (),
             Ok(_) => panic!(),
@@ -404,9 +406,9 @@ mod tests {
     fn cache_returns_same_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
-        let cs = unsafe {
+        let cs = {
             /*
              * #version 450
              * void main() {
@@ -419,7 +421,8 @@ mod tests {
                 3, 131320, 5, 65789, 65592,
             ];
             let module =
-                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
+                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                    .unwrap();
             module.entry_point("main").unwrap()
         };
 
@@ -450,10 +453,10 @@ mod tests {
     fn cache_returns_different_data() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
         let _first_pipeline = {
-            let cs = unsafe {
+            let cs = {
                 /*
                  * #version 450
                  * void main() {
@@ -465,9 +468,10 @@ mod tests {
                     1, 196611, 2, 450, 262149, 4, 1852399981, 0, 131091, 2, 196641, 3, 2, 327734,
                     2, 4, 0, 3, 131320, 5, 65789, 65592,
                 ];
-                let module =
+                let module = unsafe {
                     ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
-                        .unwrap();
+                }
+                .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -490,7 +494,7 @@ mod tests {
         let cache_data = cache.get_data().unwrap();
 
         let _second_pipeline = {
-            let cs = unsafe {
+            let cs = {
                 /*
                  * #version 450
                  *
@@ -508,9 +512,10 @@ mod tests {
                     327734, 2, 4, 0, 3, 131320, 5, 262203, 7, 8, 7, 327745, 13, 14, 11, 12, 262205,
                     6, 15, 14, 196670, 8, 15, 65789, 65592,
                 ];
-                let module =
+                let module = unsafe {
                     ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE))
-                        .unwrap();
+                }
+                .unwrap();
                 module.entry_point("main").unwrap()
             };
 
@@ -543,9 +548,9 @@ mod tests {
     fn cache_data_does_not_change() {
         let (device, _queue) = gfx_dev_and_queue!();
 
-        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()).unwrap() };
+        let cache = unsafe { PipelineCache::new(device.clone(), Default::default()) }.unwrap();
 
-        let cs = unsafe {
+        let cs = {
             /*
              * #version 450
              * void main() {
@@ -558,7 +563,8 @@ mod tests {
                 3, 131320, 5, 65789, 65592,
             ];
             let module =
-                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
+                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                    .unwrap();
             module.entry_point("main").unwrap()
         };
 

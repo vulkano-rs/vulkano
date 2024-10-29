@@ -377,7 +377,8 @@ where
         }
 
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
-        let data = unsafe { &*T::ptr_from_slice(mapped_slice) };
+        let data_ptr = unsafe { T::ptr_from_slice(mapped_slice) };
+        let data = unsafe { &*data_ptr };
 
         Ok(BufferReadGuard {
             subbuffer: self,
@@ -464,7 +465,8 @@ where
         }
 
         // SAFETY: `Subbuffer` guarantees that its contents are laid out correctly for `T`.
-        let data = unsafe { &mut *T::ptr_from_slice(mapped_slice) };
+        let data_ptr = unsafe { T::ptr_from_slice(mapped_slice) };
+        let data = unsafe { &mut *data_ptr };
 
         Ok(BufferWriteGuard {
             subbuffer: self,
@@ -710,7 +712,7 @@ impl<T: ?Sized> Drop for BufferWriteGuard<'_, T> {
                 _ne: crate::NonExhaustive(()),
             };
 
-            unsafe { allocation.flush_range_unchecked(memory_range).unwrap() };
+            unsafe { allocation.flush_range_unchecked(memory_range) }.unwrap();
         }
 
         let mut state = self.subbuffer.buffer().state();

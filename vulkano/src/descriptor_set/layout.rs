@@ -37,7 +37,7 @@ impl DescriptorSetLayout {
     ) -> Result<Arc<DescriptorSetLayout>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -63,11 +63,7 @@ impl DescriptorSetLayout {
             // Safety: create_info is validated, and we only enter here if the
             // max_per_set_descriptors property exists (which means this function exists too).
             if total_descriptor_count > max_per_set_descriptors
-                && unsafe {
-                    device
-                        .descriptor_set_layout_support_unchecked(create_info)
-                        .is_none()
-                }
+                && unsafe { device.descriptor_set_layout_support_unchecked(create_info) }.is_none()
             {
                 return Err(Box::new(ValidationError {
                     problem: "the total number of descriptors across all bindings is greater than \
@@ -201,14 +197,10 @@ impl DescriptorSetLayout {
 impl Drop for DescriptorSetLayout {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_descriptor_set_layout)(
-                self.device.handle(),
-                self.handle,
-                ptr::null(),
-            );
-        }
+            (fns.v1_0.destroy_descriptor_set_layout)(self.device.handle(), self.handle, ptr::null())
+        };
     }
 }
 

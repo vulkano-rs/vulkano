@@ -18,7 +18,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_debug_utils_label(&label_info)?;
 
-        unsafe { Ok(self.begin_debug_utils_label_unchecked(label_info)) }
+        Ok(unsafe { self.begin_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_begin_debug_utils_label(
@@ -89,7 +89,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_insert_debug_utils_label(&label_info)?;
 
-        unsafe { Ok(self.insert_debug_utils_label_unchecked(label_info)) }
+        Ok(unsafe { self.insert_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_insert_debug_utils_label(

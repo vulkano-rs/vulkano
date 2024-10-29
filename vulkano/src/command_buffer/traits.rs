@@ -203,24 +203,23 @@ where
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
-        unsafe {
-            let mut submitted = self.submitted.lock();
-            if *submitted {
-                return Ok(());
-            }
+        let mut submitted = self.submitted.lock();
 
-            match self.build_submission_impl()? {
-                SubmitAnyBuilder::Empty => {}
-                SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
-                    queue_submit(&self.queue, submit_info, fence, &self.previous).unwrap();
-                }
-                _ => unreachable!(),
-            };
-
-            // Only write `true` here in order to try again next time if we failed to submit.
-            *submitted = true;
-            Ok(())
+        if *submitted {
+            return Ok(());
         }
+
+        match unsafe { self.build_submission_impl() }? {
+            SubmitAnyBuilder::Empty => {}
+            SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
+                unsafe { queue_submit(&self.queue, submit_info, fence, &self.previous) }.unwrap();
+            }
+            _ => unreachable!(),
+        };
+
+        // Only write `true` here in order to try again next time if we failed to submit.
+        *submitted = true;
+        Ok(())
     }
 
     unsafe fn signal_finished(&self) {
