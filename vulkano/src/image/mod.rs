@@ -166,7 +166,7 @@ impl Image {
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
         // SAFETY: we just created this raw image and hasn't bound any memory to it.
-        let image = unsafe { raw_image.bind_memory([allocation]) }.map_err(|(err, _, _)| {
+        let image = raw_image.bind_memory([allocation]).map_err(|(err, _, _)| {
             err.map(AllocateImageError::BindMemory)
                 .map_validation(|err| err.add_context("RawImage::bind_memory"))
         })?;

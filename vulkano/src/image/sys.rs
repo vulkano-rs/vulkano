@@ -129,6 +129,8 @@ impl RawImage {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the image has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawImage`.
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
@@ -145,6 +147,8 @@ impl RawImage {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the image has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawImage`.
     /// - Caller must ensure the handle will not be destroyed for the lifetime of returned
     ///   `RawImage`.
     #[inline]
@@ -475,11 +479,7 @@ impl RawImage {
     /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
     ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
     ///   `self.drm_format_modifier().unwrap().1` elements.
-    ///
-    /// # Safety
-    ///
-    /// - The image must not already have memory bound to it.
-    pub unsafe fn bind_memory(
+    pub fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
     ) -> Result<
@@ -833,39 +833,6 @@ impl RawImage {
         Ok(())
     }
 
-    /// Assume that this image already has memory backing it.
-    ///
-    /// # Safety
-    ///
-    /// - The image must be backed by suitable memory allocations.
-    pub unsafe fn assume_bound(self) -> Image {
-        let usage = self
-            .usage
-            .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
-
-        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-            && usage
-                .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-                .is_empty()
-        {
-            ImageLayout::ShaderReadOnlyOptimal
-        } else if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
-            && usage.difference(ImageUsage::COLOR_ATTACHMENT).is_empty()
-        {
-            ImageLayout::ColorAttachmentOptimal
-        } else if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-            && usage
-                .difference(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                .is_empty()
-        {
-            ImageLayout::DepthStencilAttachmentOptimal
-        } else {
-            ImageLayout::General
-        };
-
-        Image::from_raw(self, ImageMemory::External, layout)
-    }
-
     /// # Safety
     ///
     /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
@@ -1009,6 +976,39 @@ impl RawImage {
             ImageMemory::Normal(allocations),
             layout,
         ))
+    }
+
+    /// Assume that this image already has memory backing it.
+    ///
+    /// # Safety
+    ///
+    /// - The image must be backed by suitable memory allocations.
+    pub unsafe fn assume_bound(self) -> Image {
+        let usage = self
+            .usage
+            .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
+
+        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::ShaderReadOnlyOptimal
+        } else if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
+            && usage.difference(ImageUsage::COLOR_ATTACHMENT).is_empty()
+        {
+            ImageLayout::ColorAttachmentOptimal
+        } else if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::DepthStencilAttachmentOptimal
+        } else {
+            ImageLayout::General
+        };
+
+        Image::from_raw(self, ImageMemory::External, layout)
     }
 
     /// Returns the memory requirements for this image.
