@@ -71,11 +71,9 @@ Changes to render passes:
 
 Changes to buffers:
 - `BufferMemory` is now marked non-exhaustive.
-- `RawBuffer::bind_memory` is now marked unsafe.
 
 Changes to images:
 - `ImageMemory` is now marked non-exhaustive.
-- `RawImage::bind_memory` is now marked unsafe.
 
 Changes to draw/dispatch commands:
 - These are now `unsafe`, as the shader can perform invalid operations outside of Vulkano's control.
