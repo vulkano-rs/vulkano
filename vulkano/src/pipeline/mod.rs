@@ -592,7 +592,7 @@ vulkan_enum! {
     /// [`FragmentShadingRateState`](crate::pipeline::graphics::fragment_shading_rate::FragmentShadingRateState).
     ///
     /// Set with
-    /// [`set_fragment_shading_rate`](crate::command_buffer::RecordingCommandBuffer::set_fragment_shading_rate).
+    /// [`set_fragment_shading_rate`](crate::command_buffer::AutoCommandBufferBuilder::set_fragment_shading_rate).
     FragmentShadingRate = FRAGMENT_SHADING_RATE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_fragment_shading_rate)]),
