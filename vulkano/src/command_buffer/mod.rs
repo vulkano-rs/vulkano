@@ -52,7 +52,10 @@
 //! on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+//! use vulkano::command_buffer::{
+//!     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
+//!     SubpassContents,
+//! };
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
@@ -97,7 +100,10 @@ pub use self::commands::{
 pub use self::{
     auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
     sys::{CommandBuffer, CommandBufferBeginInfo, RecordingCommandBuffer},
-    traits::{CommandBufferExecError, CommandBufferExecFuture},
+    traits::{
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
+        SecondaryCommandBufferAbstract,
+    },
 };
 use crate::{
     buffer::{Buffer, Subbuffer},
@@ -1185,7 +1191,7 @@ pub struct CommandBufferSubmitInfo {
     /// The command buffer to execute.
     ///
     /// There is no default value.
-    pub command_buffer: Arc<PrimaryAutoCommandBuffer>,
+    pub command_buffer: Arc<dyn PrimaryCommandBufferAbstract>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1193,7 +1199,7 @@ pub struct CommandBufferSubmitInfo {
 impl CommandBufferSubmitInfo {
     /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<PrimaryAutoCommandBuffer>) -> Self {
+    pub fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),

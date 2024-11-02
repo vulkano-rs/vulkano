@@ -65,8 +65,8 @@ pub(in crate::command_buffer) use self::builder::{
 use super::{
     sys::{CommandBuffer, RecordingCommandBuffer},
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, ResourceInCommand, SecondaryCommandBufferResourcesUsage,
-    SecondaryResourceUseRef,
+    CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
+    SecondaryCommandBufferAbstract, SecondaryCommandBufferResourcesUsage, SecondaryResourceUseRef,
 };
 use crate::{
     buffer::Subbuffer,
@@ -118,30 +118,27 @@ impl Debug for PrimaryAutoCommandBuffer {
     }
 }
 
-impl PrimaryAutoCommandBuffer {
-    /// Returns the inner raw command buffer.
+unsafe impl PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer {
     #[inline]
-    pub fn inner(&self) -> &CommandBuffer {
+    fn as_raw(&self) -> &CommandBuffer {
         &self.inner
     }
 
-    /// Returns the queue family index of this command buffer.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
+    fn queue_family_index(&self) -> u32 {
         self.inner.queue_family_index()
     }
 
-    /// Returns the usage of this command buffer.
     #[inline]
-    pub fn usage(&self) -> CommandBufferUsage {
+    fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
-    pub(crate) fn state(&self) -> MutexGuard<'_, CommandBufferState> {
+    fn state(&self) -> MutexGuard<'_, CommandBufferState> {
         self.state.lock()
     }
 
-    pub(crate) fn resources_usage(&self) -> &CommandBufferResourcesUsage {
+    fn resources_usage(&self) -> &CommandBufferResourcesUsage {
         &self.resources_usage
     }
 }
@@ -177,36 +174,23 @@ impl Debug for SecondaryAutoCommandBuffer {
     }
 }
 
-impl SecondaryAutoCommandBuffer {
-    /// Returns the inner raw command buffer.
+unsafe impl SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer {
     #[inline]
-    pub fn inner(&self) -> &CommandBuffer {
+    fn as_raw(&self) -> &CommandBuffer {
         &self.inner
     }
 
-    /// Returns the queue family index of this command buffer.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
-        self.inner.queue_family_index()
-    }
-
-    /// Returns the usage of this command buffer.
-    #[inline]
-    pub fn usage(&self) -> CommandBufferUsage {
+    fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
-    /// Returns the inheritance info of the command buffer.
     #[inline]
-    pub fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
         self.inner.inheritance_info().unwrap()
     }
 
-    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
-    /// and if so locks it.
-    ///
-    /// If you call this function, then you should call `unlock` afterwards.
-    pub fn lock_record(&self) -> Result<(), Box<ValidationError>> {
+    fn lock_record(&self) -> Result<(), Box<ValidationError>> {
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -242,12 +226,7 @@ impl SecondaryAutoCommandBuffer {
         Ok(())
     }
 
-    /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
-    ///
-    /// # Safety
-    ///
-    /// Must not be called if you haven't called `lock_record` before.
-    pub unsafe fn unlock(&self) {
+    unsafe fn unlock(&self) {
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -262,7 +241,7 @@ impl SecondaryAutoCommandBuffer {
         };
     }
 
-    pub(crate) fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
+    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
         &self.resources_usage
     }
 }
@@ -347,6 +326,7 @@ mod tests {
         command_buffer::{
             allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
             AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
+            PrimaryCommandBufferAbstract,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,

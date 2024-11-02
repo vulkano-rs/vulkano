@@ -121,7 +121,10 @@ pub mod view;
 /// ```
 /// use vulkano::{
 ///     buffer::{BufferUsage, Buffer, BufferCreateInfo},
-///     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo},
+///     command_buffer::{
+///         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo,
+///         PrimaryCommandBufferAbstract,
+///     },
 ///     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
 ///     sync::GpuFuture,
 ///     DeviceSize,
