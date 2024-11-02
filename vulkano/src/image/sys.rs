@@ -2754,7 +2754,7 @@ impl ImageCreateInfo {
     pub(crate) fn to_vk<'a>(
         &'a self,
         extensions_vk: &'a mut ImageCreateInfoExtensionsVk<'_>,
-    ) -> ash::vk::ImageCreateInfo<'_> {
+    ) -> ash::vk::ImageCreateInfo<'a> {
         let &Self {
             flags,
             image_type,
