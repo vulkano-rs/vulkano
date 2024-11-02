@@ -944,10 +944,10 @@ impl BufferContentsLayout {
         }
     }
 
-    /// Returns the [`DeviceLayout`] for the data for the given `len`, or returns [`None`] on
-    /// arithmetic overflow or if the total size would exceed [`DeviceLayout::MAX_SIZE`].
+    /// Returns the [`DeviceLayout`] for the data for the given `len`, or returns [`None`] if `len`
+    /// is zero or if the total size would exceed [`DeviceLayout::MAX_SIZE`].
     #[inline]
-    pub const fn layout_for_len(&self, len: NonZeroDeviceSize) -> Option<DeviceLayout> {
+    pub const fn layout_for_len(&self, len: DeviceSize) -> Option<DeviceLayout> {
         match &self.0 {
             BufferContentsLayoutInner::Sized(sized) => Some(*sized),
             BufferContentsLayoutInner::Unsized {
@@ -977,7 +977,7 @@ impl BufferContentsLayout {
             "types with alignments above 64 are not valid buffer contents",
         );
 
-        if let Ok(sized) = DeviceLayout::from_layout(sized) {
+        if let Some(sized) = DeviceLayout::from_layout(sized) {
             Self(BufferContentsLayoutInner::Sized(sized))
         } else {
             unreachable!()
@@ -994,7 +994,7 @@ impl BufferContentsLayout {
             "types with alignments above 64 are not valid buffer contents",
         );
 
-        if let Ok(element_layout) = DeviceLayout::from_layout(element_layout) {
+        if let Some(element_layout) = DeviceLayout::from_layout(element_layout) {
             Self(BufferContentsLayoutInner::Unsized {
                 head_layout: None,
                 element_layout,
@@ -1021,11 +1021,11 @@ impl BufferContentsLayout {
 
         while i < field_layouts.len() {
             head_layout = match DeviceLayout::from_layout(field_layouts[i]) {
-                Ok(field_layout) => Some(match head_layout {
+                Some(field_layout) => Some(match head_layout {
                     Some(layout) => extend(layout, field_layout),
                     None => field_layout,
                 }),
-                Err(_) => unreachable!(),
+                None => unreachable!(),
             };
 
             i += 1;
@@ -1133,7 +1133,7 @@ impl BufferContentsLayout {
         )
     }
 
-    pub(super) const fn unwrap_sized(self) -> DeviceLayout {
+    pub(crate) const fn unwrap_sized(self) -> DeviceLayout {
         match self.0 {
             BufferContentsLayoutInner::Sized(sized) => sized,
             BufferContentsLayoutInner::Unsized { .. } => {

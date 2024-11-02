@@ -1,5 +1,5 @@
 use crate::{App, RenderContext};
-use std::{alloc::Layout, slice, sync::Arc};
+use std::{slice, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage},
     command_buffer::RenderPassBeginInfo,
@@ -122,7 +122,7 @@ impl SceneTask {
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
-                DeviceLayout::from_layout(Layout::for_value(&vertices)).unwrap(),
+                DeviceLayout::for_value(vertices.as_slice()).unwrap(),
             )
             .unwrap();
 

@@ -83,8 +83,8 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf,
-    Validated, ValidationError, Version, VulkanError, VulkanObject,
+    DeviceSize, NonNullDeviceAddress, Requires, RequiresAllOf, RequiresOneOf, Validated,
+    ValidationError, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -352,7 +352,6 @@ impl Buffer {
     where
         T: BufferContents + ?Sized,
     {
-        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
         let buffer = Subbuffer::new(Buffer::new(
             allocator,

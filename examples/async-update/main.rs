@@ -30,7 +30,6 @@
 use glam::f32::Mat4;
 use rand::Rng;
 use std::{
-    alloc::Layout,
     error::Error,
     slice,
     sync::{
@@ -293,7 +292,7 @@ impl App {
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
-                DeviceLayout::from_layout(Layout::for_value(&vertices)).unwrap(),
+                DeviceLayout::for_value(vertices.as_slice()).unwrap(),
             )
             .unwrap();
 
@@ -311,7 +310,7 @@ impl App {
                             | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                         ..Default::default()
                     },
-                    DeviceLayout::from_layout(Layout::new::<vs::Data>()).unwrap(),
+                    DeviceLayout::new_sized::<vs::Data>(),
                 )
                 .unwrap()
         });
