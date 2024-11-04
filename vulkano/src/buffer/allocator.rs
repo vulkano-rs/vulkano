@@ -13,7 +13,7 @@ use crate::{
         },
         DeviceAlignment,
     },
-    DeviceSize, NonZeroDeviceSize, Validated,
+    DeviceSize, Validated,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{
@@ -241,7 +241,6 @@ where
     where
         T: BufferContents + ?Sized,
     {
-        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
 
         unsafe { &mut *self.state.get() }
