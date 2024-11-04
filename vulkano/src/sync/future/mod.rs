@@ -92,8 +92,8 @@ use crate::{
     buffer::{Buffer, BufferState},
     command_buffer::{
         CommandBufferExecError, CommandBufferExecFuture, CommandBufferResourcesUsage,
-        CommandBufferState, CommandBufferSubmitInfo, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SubmitInfo,
+        CommandBufferState, CommandBufferSubmitInfo, CommandBufferUsage,
+        PrimaryCommandBufferAbstract, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{Image, ImageLayout, ImageState},
@@ -242,7 +242,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn then_execute(
         self,
         queue: Arc<Queue>,
-        command_buffer: Arc<PrimaryAutoCommandBuffer>,
+        command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>,
     ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
@@ -256,7 +256,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > `CommandBuffer` trait.
     fn then_execute_same_queue(
         self,
-        command_buffer: Arc<PrimaryAutoCommandBuffer>,
+        command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>,
     ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
