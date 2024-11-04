@@ -35,7 +35,6 @@ Changes to command buffers:
 - `RecordingCommandBuffer` and `CommandBuffer` were moved to the `command_buffer` module; the `command_buffer::sys` module was removed.
 - `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RecordingCommandBuffer` and `CommandBuffer` no longer have a type parameter for the type of allocator.
 - `RecordingCommandBuffer::execute_commands` now takes `&CommandBuffer`s as argument.
-- The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
 - `RecordingCommandBuffer::bind_descriptor_sets` now takes `&RawDescriptorSet`s as argument.
 
 Changes to command buffer allocation:
