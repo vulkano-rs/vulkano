@@ -245,8 +245,8 @@ impl AccelerationStructure {
     pub fn device_address(&self) -> NonNullDeviceAddress {
         let info_vk = ash::vk::AccelerationStructureDeviceAddressInfoKHR::default()
             .acceleration_structure(self.handle);
+        let fns = self.device.fns();
         let ptr = unsafe {
-            let fns = self.device.fns();
             (fns.khr_acceleration_structure
                 .get_acceleration_structure_device_address_khr)(
                 self.device.handle(), &info_vk
@@ -260,8 +260,8 @@ impl AccelerationStructure {
 impl Drop for AccelerationStructure {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.device.fns();
         unsafe {
-            let fns = self.device.fns();
             (fns.khr_acceleration_structure
                 .destroy_acceleration_structure_khr)(
                 self.device.handle(), self.handle, ptr::null()
@@ -917,13 +917,16 @@ impl AccelerationStructureGeometryTrianglesData {
             ])
         })?;
 
-        if unsafe {
-            !device
+        let format_properties = unsafe {
+            device
                 .physical_device()
                 .format_properties_unchecked(vertex_format)
-                .buffer_features
-                .intersects(FormatFeatures::ACCELERATION_STRUCTURE_VERTEX_BUFFER)
-        } {
+        };
+
+        if !format_properties
+            .buffer_features
+            .intersects(FormatFeatures::ACCELERATION_STRUCTURE_VERTEX_BUFFER)
+        {
             return Err(Box::new(ValidationError {
                 context: "vertex_format".into(),
                 problem: "format features do not contain \

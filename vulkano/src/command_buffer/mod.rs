@@ -52,7 +52,10 @@
 //! on the GPU.
 //!
 //! ```
-//! use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+//! use vulkano::command_buffer::{
+//!     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
+//!     SubpassContents,
+//! };
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
@@ -74,10 +77,7 @@
 //!     .unwrap()
 //!     .bind_vertex_buffers(0, vertex_buffer.clone())
 //!     .unwrap();
-//!
-//! unsafe {
-//!     cb.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
-//! }
+//! unsafe { cb.draw(vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 //!
 //! cb.end_render_pass(Default::default()).unwrap();
 //!
@@ -100,7 +100,10 @@ pub use self::commands::{
 pub use self::{
     auto::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer},
     sys::{CommandBuffer, CommandBufferBeginInfo, RecordingCommandBuffer},
-    traits::{CommandBufferExecError, CommandBufferExecFuture},
+    traits::{
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBufferAbstract,
+        SecondaryCommandBufferAbstract,
+    },
 };
 use crate::{
     buffer::{Buffer, Subbuffer},
@@ -704,12 +707,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::COLOR_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -748,12 +748,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -793,12 +790,9 @@ impl CommandBufferInheritanceRenderingInfo {
                 }));
             }
 
-            let potential_format_features = unsafe {
-                device
-                    .physical_device()
-                    .format_properties_unchecked(format)
-                    .potential_format_features()
-            };
+            let format_properties =
+                unsafe { device.physical_device().format_properties_unchecked(format) };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(FormatFeatures::DEPTH_STENCIL_ATTACHMENT) {
                 return Err(Box::new(ValidationError {
@@ -1197,7 +1191,7 @@ pub struct CommandBufferSubmitInfo {
     /// The command buffer to execute.
     ///
     /// There is no default value.
-    pub command_buffer: Arc<PrimaryAutoCommandBuffer>,
+    pub command_buffer: Arc<dyn PrimaryCommandBufferAbstract>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -1205,7 +1199,7 @@ pub struct CommandBufferSubmitInfo {
 impl CommandBufferSubmitInfo {
     /// Returns a `CommandBufferSubmitInfo` with the specified `command_buffer`.
     #[inline]
-    pub fn new(command_buffer: Arc<PrimaryAutoCommandBuffer>) -> Self {
+    pub fn new(command_buffer: Arc<dyn PrimaryCommandBufferAbstract>) -> Self {
         Self {
             command_buffer,
             _ne: crate::NonExhaustive(()),

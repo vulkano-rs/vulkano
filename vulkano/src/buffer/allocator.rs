@@ -13,7 +13,7 @@ use crate::{
         },
         DeviceAlignment,
     },
-    DeviceSize, NonZeroDeviceSize, Validated,
+    DeviceSize, Validated,
 };
 use crossbeam_queue::ArrayQueue;
 use std::{
@@ -78,7 +78,9 @@ const MAX_ARENAS: usize = 32;
 ///         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
 ///         BufferUsage,
 ///     },
-///     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+///     command_buffer::{
+///         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract,
+///     },
 ///     memory::allocator::MemoryTypeFilter,
 ///     sync::GpuFuture,
 /// };
@@ -182,7 +184,8 @@ where
     /// The next time you allocate a subbuffer, a new arena will be allocated with the new size,
     /// and all subsequently allocated arenas will also share the new size.
     pub fn set_arena_size(&self, size: DeviceSize) {
-        let state = unsafe { &mut *self.state.get() };
+        let state_ptr = self.state.get();
+        let state = unsafe { &mut *state_ptr };
         state.arena_size = size;
         state.arena = None;
         state.reserve = None;
@@ -195,7 +198,8 @@ where
     /// this has no effect.
     pub fn reserve(&self, size: DeviceSize) -> Result<(), MemoryAllocatorError> {
         if size > self.arena_size() {
-            let state = unsafe { &mut *self.state.get() };
+            let state_ptr = self.state.get();
+            let state = unsafe { &mut *state_ptr };
             state.arena_size = size;
             state.reserve = None;
             state.arena = Some(state.next_arena()?);
@@ -211,7 +215,9 @@ where
     {
         let layout = T::LAYOUT.unwrap_sized();
 
-        unsafe { &mut *self.state.get() }
+        let state_ptr = self.state.get();
+        let state = unsafe { &mut *state_ptr };
+        state
             .allocate(layout)
             .map(|subbuffer| unsafe { subbuffer.reinterpret_unchecked() })
     }
@@ -237,7 +243,6 @@ where
     where
         T: BufferContents + ?Sized,
     {
-        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
 
         unsafe { &mut *self.state.get() }

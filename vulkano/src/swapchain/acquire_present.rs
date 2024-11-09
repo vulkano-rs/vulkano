@@ -170,8 +170,8 @@ pub fn acquire_next_image(
             semaphore: Some(semaphore.clone()),
             fence: Some(fence.clone()),
             ..Default::default()
-        })?
-    };
+        })
+    }?;
 
     Ok((
         image_index,
@@ -1132,68 +1132,66 @@ where
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
-        unsafe {
-            // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
+        // SAFETY: If `flushed` already contains `true`, then `build_submission` will return
+        // `Empty`.
+        let build_submission_result = unsafe { self.build_submission() };
+        self.flushed.store(true, Ordering::SeqCst);
 
-            let build_submission_result = self.build_submission();
-            self.flushed.store(true, Ordering::SeqCst);
+        match build_submission_result? {
+            SubmitAnyBuilder::Empty => Ok(()),
+            SubmitAnyBuilder::QueuePresent(present_info) => {
+                let PresentInfo {
+                    wait_semaphores: _,
+                    swapchain_infos: swapchains,
+                    _ne: _,
+                } = &present_info;
 
-            match build_submission_result? {
-                SubmitAnyBuilder::Empty => Ok(()),
-                SubmitAnyBuilder::QueuePresent(present_info) => {
-                    let PresentInfo {
-                        wait_semaphores: _,
-                        swapchain_infos: swapchains,
+                for swapchain_info in swapchains {
+                    let &SwapchainPresentInfo {
+                        ref swapchain,
+                        image_index: _,
+                        present_id,
+                        present_region: _,
+                        present_mode: _,
                         _ne: _,
-                    } = &present_info;
+                    } = swapchain_info;
 
-                    for swapchain_info in swapchains {
-                        let &SwapchainPresentInfo {
-                            ref swapchain,
-                            image_index: _,
-                            present_id,
-                            present_region: _,
-                            present_mode: _,
-                            _ne: _,
-                        } = swapchain_info;
-
-                        if present_id.map_or(false, |present_id| {
-                            !swapchain.try_claim_present_id(present_id)
-                        }) {
-                            return Err(Box::new(ValidationError {
-                                problem: "the provided `present_id` was not greater than any \
+                    if present_id.map_or(false, |present_id| !unsafe {
+                        swapchain.try_claim_present_id(present_id)
+                    }) {
+                        return Err(Box::new(ValidationError {
+                            problem: "the provided `present_id` was not greater than any \
                                     `present_id` passed previously for the same swapchain"
-                                    .into(),
-                                vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
-                                ..Default::default()
-                            })
-                            .into());
-                        }
+                                .into(),
+                            vuids: &["VUID-VkPresentIdKHR-presentIds-04999"],
+                            ..Default::default()
+                        })
+                        .into());
                     }
-
-                    match self.previous.check_swapchain_image_acquired(
-                        &self.swapchain_info.swapchain,
-                        self.swapchain_info.image_index,
-                        true,
-                    ) {
-                        Ok(_) => (),
-                        Err(AccessCheckError::Unknown) => {
-                            return Err(Box::new(ValidationError::from_error(
-                                AccessError::SwapchainImageNotAcquired,
-                            ))
-                            .into());
-                        }
-                        Err(AccessCheckError::Denied(err)) => {
-                            return Err(Box::new(ValidationError::from_error(err)).into());
-                        }
-                    }
-
-                    Ok(queue_present(&self.queue, present_info)?
-                        .map(|r| r.map(|_| ()))
-                        .fold(Ok(()), Result::and)?)
                 }
-                _ => unreachable!(),
+
+                match self.previous.check_swapchain_image_acquired(
+                    &self.swapchain_info.swapchain,
+                    self.swapchain_info.image_index,
+                    true,
+                ) {
+                    Ok(_) => (),
+                    Err(AccessCheckError::Unknown) => {
+                        return Err(Box::new(ValidationError::from_error(
+                            AccessError::SwapchainImageNotAcquired,
+                        ))
+                        .into());
+                    }
+                    Err(AccessCheckError::Denied(err)) => {
+                        return Err(Box::new(ValidationError::from_error(err)).into());
+                    }
+                }
+
+                Ok(unsafe { queue_present(&self.queue, present_info) }?
+                    .map(|r| r.map(|_| ()))
+                    .fold(Ok(()), Result::and)?)
             }
+            _ => unreachable!(),
         }
     }
 
@@ -1288,18 +1286,16 @@ where
             return;
         }
 
-        unsafe {
-            if !*self.flushed.get_mut() {
-                // Flushing may fail, that's okay. We will still wait for the queue later, so any
-                // previous futures that were flushed correctly will still be waited upon.
-                self.flush().ok();
-            }
+        if !*self.flushed.get_mut() {
+            // Flushing may fail, that's okay. We will still wait for the queue later, so any
+            // previous futures that were flushed correctly will still be waited upon.
+            self.flush().ok();
+        }
 
-            if !*self.finished.get_mut() {
-                // Block until the queue finished.
-                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
-                self.previous.signal_finished();
-            }
+        if !*self.finished.get_mut() {
+            // Block until the queue finished.
+            self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
+            unsafe { self.previous.signal_finished() };
         }
     }
 }

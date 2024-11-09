@@ -59,7 +59,7 @@ impl ComputePipeline {
     ) -> Result<Arc<ComputePipeline>, Validated<VulkanError>> {
         Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }
 
     fn validate_new(
@@ -213,10 +213,8 @@ unsafe impl DeviceOwned for ComputePipeline {
 impl Drop for ComputePipeline {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_pipeline)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -460,7 +458,7 @@ mod tests {
 
         let (device, queue) = gfx_dev_and_queue!();
 
-        let cs = unsafe {
+        let cs = {
             /*
             #version 450
 
@@ -487,7 +485,8 @@ mod tests {
                 4, 0, 3, 131320, 5, 327745, 12, 13, 9, 10, 196670, 13, 11, 65789, 65592,
             ];
             let module =
-                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
+                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                    .unwrap();
             module
                 .specialize([(83, 0x12345678i32.into())].into_iter().collect())
                 .unwrap()
@@ -560,10 +559,7 @@ mod tests {
                 set,
             )
             .unwrap();
-
-        unsafe {
-            cbb.dispatch([1, 1, 1]).unwrap();
-        }
+        unsafe { cbb.dispatch([1, 1, 1]) }.unwrap();
 
         let cb = cbb.build().unwrap();
 
@@ -596,7 +592,7 @@ mod tests {
             return;
         }
 
-        let cs = unsafe {
+        let cs = {
             /*
             #version 450
 
@@ -636,7 +632,8 @@ mod tests {
                 131321, 17, 131320, 17, 65789, 65592,
             ];
             let module =
-                ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)).unwrap();
+                unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&MODULE)) }
+                    .unwrap();
             module.entry_point("main").unwrap()
         };
 
@@ -711,10 +708,7 @@ mod tests {
                 set,
             )
             .unwrap();
-
-        unsafe {
-            cbb.dispatch([128, 1, 1]).unwrap();
-        }
+        unsafe { cbb.dispatch([128, 1, 1]) }.unwrap();
 
         let cb = cbb.build().unwrap();
 

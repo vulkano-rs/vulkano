@@ -83,8 +83,8 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{future::AccessError, AccessConflict, CurrentAccess, Sharing},
-    DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, Requires, RequiresAllOf, RequiresOneOf,
-    Validated, ValidationError, Version, VulkanError, VulkanObject,
+    DeviceSize, NonNullDeviceAddress, Requires, RequiresAllOf, RequiresOneOf, Validated,
+    ValidationError, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
@@ -121,7 +121,10 @@ pub mod view;
 /// ```
 /// use vulkano::{
 ///     buffer::{BufferUsage, Buffer, BufferCreateInfo},
-///     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo},
+///     command_buffer::{
+///         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo,
+///         PrimaryCommandBufferAbstract,
+///     },
 ///     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
 ///     sync::GpuFuture,
 ///     DeviceSize,
@@ -352,7 +355,6 @@ impl Buffer {
     where
         T: BufferContents + ?Sized,
     {
-        let len = NonZeroDeviceSize::new(len).expect("empty slices are not valid buffer contents");
         let layout = T::LAYOUT.layout_for_len(len).unwrap();
         let buffer = Subbuffer::new(Buffer::new(
             allocator,
@@ -404,13 +406,10 @@ impl Buffer {
             .map_err(AllocateBufferError::AllocateMemory)?;
         let allocation = unsafe { ResourceMemory::from_allocation(allocator, allocation) };
 
-        // SAFETY: we just created this raw buffer and hasn't bound any memory to it.
-        let buffer = unsafe {
-            raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
-                err.map(AllocateBufferError::BindMemory)
-                    .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
-            })?
-        };
+        let buffer = raw_buffer.bind_memory(allocation).map_err(|(err, _, _)| {
+            err.map(AllocateBufferError::BindMemory)
+                .map_validation(|err| err.add_context("RawBuffer::bind_memory"))
+        })?;
 
         Ok(Arc::new(buffer))
     }
@@ -472,7 +471,7 @@ impl Buffer {
     pub fn device_address(&self) -> Result<NonNullDeviceAddress, Box<ValidationError>> {
         self.validate_device_address()?;
 
-        unsafe { Ok(self.device_address_unchecked()) }
+        Ok(unsafe { self.device_address_unchecked() })
     }
 
     fn validate_device_address(&self) -> Result<(), Box<ValidationError>> {

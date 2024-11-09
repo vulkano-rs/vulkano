@@ -118,7 +118,7 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
     pub fn build(self) -> Result<Arc<PrimaryAutoCommandBuffer>, Validated<VulkanError>> {
         self.validate_end()?;
 
-        let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked()? };
+        let (inner, keep_alive_objects, resources_usage, _) = unsafe { self.end_unchecked() }?;
 
         Ok(Arc::new(PrimaryAutoCommandBuffer {
             inner,
@@ -178,7 +178,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer> {
     pub fn build(self) -> Result<Arc<SecondaryAutoCommandBuffer>, Validated<VulkanError>> {
         self.validate_end()?;
 
-        let (inner, keep_alive_objects, _, resources_usage) = unsafe { self.end_unchecked()? };
+        let (inner, keep_alive_objects, _, resources_usage) = unsafe { self.end_unchecked() }?;
 
         let submit_state = match inner.usage() {
             CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {
@@ -332,15 +332,14 @@ impl<L> AutoCommandBufferBuilder<L> {
         for (command_index, (_, record_func)) in self.commands.iter().enumerate() {
             if let Some(barriers) = barriers.remove(&command_index) {
                 for dependency_info in barriers {
-                    unsafe {
-                        #[cfg(debug_assertions)]
-                        self.inner
-                            .pipeline_barrier(&dependency_info)
-                            .expect("bug in Vulkano");
+                    #[cfg(debug_assertions)]
+                    unsafe { self.inner.pipeline_barrier(&dependency_info) }
+                        .expect("bug in Vulkano");
 
-                        #[cfg(not(debug_assertions))]
-                        self.inner.pipeline_barrier_unchecked(&dependency_info);
-                    }
+                    #[cfg(not(debug_assertions))]
+                    unsafe {
+                        self.inner.pipeline_barrier_unchecked(&dependency_info)
+                    };
                 }
             }
 
@@ -350,15 +349,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         // Record final barriers
         if let Some(final_barriers) = barriers.remove(&final_barrier_index) {
             for dependency_info in final_barriers {
-                unsafe {
-                    #[cfg(debug_assertions)]
-                    self.inner
-                        .pipeline_barrier(&dependency_info)
-                        .expect("bug in Vulkano");
+                #[cfg(debug_assertions)]
+                unsafe { self.inner.pipeline_barrier(&dependency_info) }.expect("bug in Vulkano");
 
-                    #[cfg(not(debug_assertions))]
-                    self.inner.pipeline_barrier_unchecked(&dependency_info);
-                }
+                #[cfg(not(debug_assertions))]
+                unsafe {
+                    self.inner.pipeline_barrier_unchecked(&dependency_info)
+                };
             }
         }
 

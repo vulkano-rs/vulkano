@@ -150,7 +150,7 @@ impl AllocationHandle {
     /// [`from_index`]: Self::from_index
     #[allow(clippy::transmutes_expressible_as_ptr_casts)]
     #[inline]
-    pub const fn as_index(self) -> usize {
+    pub fn as_index(self) -> usize {
         // SAFETY: `usize` and `*mut ()` have the same layout.
         unsafe { mem::transmute::<*mut (), usize>(self.0) }
     }
@@ -216,7 +216,9 @@ impl StandardCommandBufferAllocator {
         queue_family_index: u32,
         flags: CommandPoolResetFlags,
     ) -> Result<(), Validated<ResetCommandPoolError>> {
-        if let Some(entry) = unsafe { &mut *self.entry(queue_family_index) }.as_mut() {
+        let entry_ptr = self.entry(queue_family_index);
+
+        if let Some(entry) = unsafe { &mut *entry_ptr }.as_mut() {
             entry.try_reset_pool(flags)
         } else {
             Ok(())
@@ -234,7 +236,8 @@ impl StandardCommandBufferAllocator {
     /// - Panics if `queue_family_index` is not less than the number of queue families.
     #[inline]
     pub fn clear(&self, queue_family_index: u32) {
-        unsafe { *self.entry(queue_family_index) = None };
+        let entry_ptr = self.entry(queue_family_index);
+        unsafe { *entry_ptr = None };
     }
 
     fn entry(&self, queue_family_index: u32) -> *mut Option<Entry> {
@@ -271,7 +274,8 @@ unsafe impl CommandBufferAllocator for StandardCommandBufferAllocator {
             }))?;
         }
 
-        let entry = unsafe { &mut *self.entry(queue_family_index) };
+        let entry_ptr = self.entry(queue_family_index);
+        let entry = unsafe { &mut *entry_ptr };
 
         if entry.is_none() {
             *entry = Some(Entry::new(

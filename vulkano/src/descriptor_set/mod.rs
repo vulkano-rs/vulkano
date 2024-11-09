@@ -209,8 +209,8 @@ impl DescriptorSet {
                 self.resources.get_mut(),
                 &descriptor_writes,
                 &descriptor_copies,
-            );
-        }
+            )
+        };
 
         Ok(())
     }

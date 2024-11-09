@@ -10,9 +10,9 @@
 //! An event can also be signaled from the host, by calling the [`set`] method directly on the
 //! [`Event`].
 //!
-//! [`set_event`]: crate::command_buffer::sys::RecordingCommandBuffer::set_event
-//! [pipeline barrier]: crate::command_buffer::sys::RecordingCommandBuffer::pipeline_barrier
-//! [`wait_events`]: crate::command_buffer::sys::RecordingCommandBuffer::wait_events
+//! [`set_event`]: crate::command_buffer::RecordingCommandBuffer::set_event
+//! [pipeline barrier]: crate::command_buffer::RecordingCommandBuffer::pipeline_barrier
+//! [`wait_events`]: crate::command_buffer::RecordingCommandBuffer::wait_events
 //! [`set`]: Event::set
 
 use crate::{
@@ -54,7 +54,7 @@ impl Event {
     ) -> Result<Event, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -86,18 +86,20 @@ impl Event {
     ) -> Result<Event, VulkanError> {
         let create_info_vk = create_info.to_vk();
 
-        let handle = unsafe {
+        let handle = {
             let mut output = MaybeUninit::uninit();
             let fns = device.fns();
-            (fns.v1_0.create_event)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_event)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(Self::from_handle(device, handle, create_info))
@@ -114,13 +116,14 @@ impl Event {
         let handle = device.event_pool().lock().pop();
         let event = match handle {
             Some(handle) => {
+                // Make sure the event isn't signaled
+                let fns = device.fns();
                 unsafe {
-                    // Make sure the event isn't signaled
-                    let fns = device.fns();
                     (fns.v1_0.reset_event)(device.handle(), handle)
                         .result()
-                        .map_err(VulkanError::from)?;
-                }
+                        .map_err(VulkanError::from)
+                }?;
+
                 Event {
                     handle,
                     device: InstanceOwnedDebugWrapper(device),
@@ -132,7 +135,7 @@ impl Event {
             }
             None => {
                 // Pool is empty, alloc new event
-                let mut event = unsafe { Event::new_unchecked(device, Default::default())? };
+                let mut event = unsafe { Event::new_unchecked(device, Default::default()) }?;
                 event.must_put_in_pool = true;
                 event
             }
@@ -175,7 +178,7 @@ impl Event {
     pub fn is_signaled(&self) -> Result<bool, Validated<VulkanError>> {
         self.validate_is_signaled()?;
 
-        unsafe { Ok(self.is_signaled_unchecked()?) }
+        Ok(unsafe { self.is_signaled_unchecked() }?)
     }
 
     fn validate_is_signaled(&self) -> Result<(), Box<ValidationError>> {
@@ -185,14 +188,12 @@ impl Event {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn is_signaled_unchecked(&self) -> Result<bool, VulkanError> {
-        unsafe {
-            let fns = self.device.fns();
-            let result = (fns.v1_0.get_event_status)(self.device.handle(), self.handle);
-            match result {
-                ash::vk::Result::EVENT_SET => Ok(true),
-                ash::vk::Result::EVENT_RESET => Ok(false),
-                err => Err(VulkanError::from(err)),
-            }
+        let fns = self.device.fns();
+        let result = unsafe { (fns.v1_0.get_event_status)(self.device.handle(), self.handle) };
+        match result {
+            ash::vk::Result::EVENT_SET => Ok(true),
+            ash::vk::Result::EVENT_RESET => Ok(false),
+            err => Err(VulkanError::from(err)),
         }
     }
 
@@ -202,7 +203,7 @@ impl Event {
     pub fn set(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_set()?;
 
-        unsafe { Ok(self.set_unchecked()?) }
+        Ok(unsafe { self.set_unchecked() }?)
     }
 
     fn validate_set(&mut self) -> Result<(), Box<ValidationError>> {
@@ -212,13 +213,11 @@ impl Event {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn set_unchecked(&mut self) -> Result<(), VulkanError> {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.set_event)(self.device.handle(), self.handle)
-                .result()
-                .map_err(VulkanError::from)?;
-            Ok(())
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.set_event)(self.device.handle(), self.handle) }
+            .result()
+            .map_err(VulkanError::from)?;
+        Ok(())
     }
 
     /// Changes the `Event` to the unsignaled state.
@@ -228,7 +227,7 @@ impl Event {
     /// - There must be an execution dependency between `reset` and the execution of any
     ///   [`wait_events`] command that includes this event in its `events` parameter.
     ///
-    /// [`wait_events`]: crate::command_buffer::sys::RecordingCommandBuffer::wait_events
+    /// [`wait_events`]: crate::command_buffer::RecordingCommandBuffer::wait_events
     #[inline]
     pub unsafe fn reset(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
@@ -247,27 +246,23 @@ impl Event {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn reset_unchecked(&mut self) -> Result<(), VulkanError> {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.reset_event)(self.device.handle(), self.handle)
-                .result()
-                .map_err(VulkanError::from)?;
-            Ok(())
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.reset_event)(self.device.handle(), self.handle) }
+            .result()
+            .map_err(VulkanError::from)?;
+        Ok(())
     }
 }
 
 impl Drop for Event {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            if self.must_put_in_pool {
-                let raw_event = self.handle;
-                self.device.event_pool().lock().push(raw_event);
-            } else {
-                let fns = self.device.fns();
-                (fns.v1_0.destroy_event)(self.device.handle(), self.handle, ptr::null());
-            }
+        if self.must_put_in_pool {
+            let raw_event = self.handle;
+            self.device.event_pool().lock().push(raw_event);
+        } else {
+            let fns = self.device.fns();
+            unsafe { (fns.v1_0.destroy_event)(self.device.handle(), self.handle, ptr::null()) };
         }
     }
 }

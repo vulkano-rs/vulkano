@@ -295,7 +295,7 @@ impl Instance {
 
         Self::validate_new(&library, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(library, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(library, create_info) }?)
     }
 
     fn validate_new(
@@ -536,41 +536,40 @@ impl Instance {
     ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, VulkanError> {
         let fns = self.fns();
 
-        unsafe {
-            let handles = loop {
-                let mut count = 0;
+        let handles = loop {
+            let mut count = 0;
+            unsafe {
                 (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, ptr::null_mut())
-                    .result()
-                    .map_err(VulkanError::from)?;
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
-                let mut handles = Vec::with_capacity(count as usize);
-                let result = (fns.v1_0.enumerate_physical_devices)(
-                    self.handle,
-                    &mut count,
-                    handles.as_mut_ptr(),
-                );
-
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        handles.set_len(count as usize);
-                        break handles;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
-                }
+            let mut handles = Vec::with_capacity(count as usize);
+            let result = unsafe {
+                (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, handles.as_mut_ptr())
             };
 
-            let physical_devices: SmallVec<[_; 4]> = handles
-                .into_iter()
-                .map(|handle| {
-                    self.physical_devices.get_or_try_insert(handle, |&handle| {
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    unsafe { handles.set_len(count as usize) };
+                    break handles;
+                }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
+            }
+        };
+
+        let physical_devices: SmallVec<[_; 4]> = handles
+            .into_iter()
+            .map(|handle| {
+                self.physical_devices
+                    .get_or_try_insert(handle, |&handle| unsafe {
                         PhysicalDevice::from_handle(self.clone(), handle)
                     })
-                })
-                .collect::<Result<_, _>>()?;
+            })
+            .collect::<Result<_, _>>()?;
 
-            Ok(physical_devices.into_iter())
-        }
+        Ok(physical_devices.into_iter())
     }
 
     /// Returns an iterator that enumerates the groups of physical devices available. All
@@ -595,7 +594,7 @@ impl Instance {
     {
         self.validate_enumerate_physical_device_groups()?;
 
-        unsafe { Ok(self.enumerate_physical_device_groups_unchecked()?) }
+        Ok(unsafe { self.enumerate_physical_device_groups_unchecked() }?)
     }
 
     fn validate_enumerate_physical_device_groups(&self) -> Result<(), Box<ValidationError>> {
@@ -735,10 +734,7 @@ impl Drop for Instance {
     #[inline]
     fn drop(&mut self) {
         let fns = self.fns();
-
-        unsafe {
-            (fns.v1_0.destroy_instance)(self.handle, ptr::null());
-        }
+        unsafe { (fns.v1_0.destroy_instance)(self.handle, ptr::null()) };
     }
 }
 

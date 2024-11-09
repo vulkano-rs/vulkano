@@ -3,7 +3,7 @@ use crate::{
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
         sys::{CommandBuffer, RecordingCommandBuffer},
         AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
-        ResourceInCommand, SecondaryAutoCommandBuffer, SecondaryCommandBufferBufferUsage,
+        ResourceInCommand, SecondaryCommandBufferAbstract, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
@@ -25,12 +25,12 @@ impl<L> AutoCommandBufferBuilder<L> {
     /// with `Flags::OneTimeSubmit` will set `self`'s flags to `Flags::OneTimeSubmit` also.
     pub fn execute_commands(
         &mut self,
-        command_buffer: Arc<SecondaryAutoCommandBuffer>,
+        command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffer = DropUnlockCommandBuffer::new(command_buffer)?;
         self.validate_execute_commands(iter::once(&**command_buffer))?;
 
-        unsafe { Ok(self.execute_commands_locked(smallvec![command_buffer])) }
+        Ok(unsafe { self.execute_commands_locked(smallvec![command_buffer]) })
     }
 
     /// Executes multiple secondary command buffers in a vector.
@@ -41,7 +41,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     // TODO ^ would be nice if this just worked without errors
     pub fn execute_commands_from_vec(
         &mut self,
-        command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
+        command_buffers: Vec<Arc<dyn SecondaryCommandBufferAbstract>>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffers: SmallVec<[_; 4]> = command_buffers
             .into_iter()
@@ -50,15 +50,15 @@ impl<L> AutoCommandBufferBuilder<L> {
 
         self.validate_execute_commands(command_buffers.iter().map(|cb| &***cb))?;
 
-        unsafe { Ok(self.execute_commands_locked(command_buffers)) }
+        Ok(unsafe { self.execute_commands_locked(command_buffers) })
     }
 
     fn validate_execute_commands<'a>(
         &self,
-        command_buffers: impl Iterator<Item = &'a SecondaryAutoCommandBuffer> + Clone,
+        command_buffers: impl Iterator<Item = &'a dyn SecondaryCommandBufferAbstract> + Clone,
     ) -> Result<(), Box<ValidationError>> {
         self.inner
-            .validate_execute_commands(command_buffers.clone().map(|cb| cb.inner()))?;
+            .validate_execute_commands(command_buffers.clone().map(|cb| cb.as_raw()))?;
 
         if let Some(render_pass_state) = &self.builder_state.render_pass {
             if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
@@ -459,7 +459,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn execute_commands_unchecked(
         &mut self,
-        command_buffers: SmallVec<[Arc<SecondaryAutoCommandBuffer>; 4]>,
+        command_buffers: SmallVec<[Arc<dyn SecondaryCommandBufferAbstract>; 4]>,
     ) -> &mut Self {
         self.execute_commands_locked(
             command_buffers
@@ -670,17 +670,19 @@ impl RecordingCommandBuffer {
     }
 }
 
-struct DropUnlockCommandBuffer(Arc<SecondaryAutoCommandBuffer>);
+struct DropUnlockCommandBuffer(Arc<dyn SecondaryCommandBufferAbstract>);
 
 impl DropUnlockCommandBuffer {
-    fn new(command_buffer: Arc<SecondaryAutoCommandBuffer>) -> Result<Self, Box<ValidationError>> {
+    fn new(
+        command_buffer: Arc<dyn SecondaryCommandBufferAbstract>,
+    ) -> Result<Self, Box<ValidationError>> {
         command_buffer.lock_record()?;
         Ok(Self(command_buffer))
     }
 }
 
 impl std::ops::Deref for DropUnlockCommandBuffer {
-    type Target = Arc<SecondaryAutoCommandBuffer>;
+    type Target = Arc<dyn SecondaryCommandBufferAbstract>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

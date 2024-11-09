@@ -65,8 +65,8 @@ pub(in crate::command_buffer) use self::builder::{
 use super::{
     sys::{CommandBuffer, RecordingCommandBuffer},
     CommandBufferInheritanceInfo, CommandBufferResourcesUsage, CommandBufferState,
-    CommandBufferUsage, ResourceInCommand, SecondaryCommandBufferResourcesUsage,
-    SecondaryResourceUseRef,
+    CommandBufferUsage, PrimaryCommandBufferAbstract, ResourceInCommand,
+    SecondaryCommandBufferAbstract, SecondaryCommandBufferResourcesUsage, SecondaryResourceUseRef,
 };
 use crate::{
     buffer::Subbuffer,
@@ -118,30 +118,27 @@ impl Debug for PrimaryAutoCommandBuffer {
     }
 }
 
-impl PrimaryAutoCommandBuffer {
-    /// Returns the inner raw command buffer.
+unsafe impl PrimaryCommandBufferAbstract for PrimaryAutoCommandBuffer {
     #[inline]
-    pub fn inner(&self) -> &CommandBuffer {
+    fn as_raw(&self) -> &CommandBuffer {
         &self.inner
     }
 
-    /// Returns the queue family index of this command buffer.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
+    fn queue_family_index(&self) -> u32 {
         self.inner.queue_family_index()
     }
 
-    /// Returns the usage of this command buffer.
     #[inline]
-    pub fn usage(&self) -> CommandBufferUsage {
+    fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
-    pub(crate) fn state(&self) -> MutexGuard<'_, CommandBufferState> {
+    fn state(&self) -> MutexGuard<'_, CommandBufferState> {
         self.state.lock()
     }
 
-    pub(crate) fn resources_usage(&self) -> &CommandBufferResourcesUsage {
+    fn resources_usage(&self) -> &CommandBufferResourcesUsage {
         &self.resources_usage
     }
 }
@@ -177,36 +174,23 @@ impl Debug for SecondaryAutoCommandBuffer {
     }
 }
 
-impl SecondaryAutoCommandBuffer {
-    /// Returns the inner raw command buffer.
+unsafe impl SecondaryCommandBufferAbstract for SecondaryAutoCommandBuffer {
     #[inline]
-    pub fn inner(&self) -> &CommandBuffer {
+    fn as_raw(&self) -> &CommandBuffer {
         &self.inner
     }
 
-    /// Returns the queue family index of this command buffer.
     #[inline]
-    pub fn queue_family_index(&self) -> u32 {
-        self.inner.queue_family_index()
-    }
-
-    /// Returns the usage of this command buffer.
-    #[inline]
-    pub fn usage(&self) -> CommandBufferUsage {
+    fn usage(&self) -> CommandBufferUsage {
         self.inner.usage()
     }
 
-    /// Returns the inheritance info of the command buffer.
     #[inline]
-    pub fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
         self.inner.inheritance_info().unwrap()
     }
 
-    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
-    /// and if so locks it.
-    ///
-    /// If you call this function, then you should call `unlock` afterwards.
-    pub fn lock_record(&self) -> Result<(), Box<ValidationError>> {
+    fn lock_record(&self) -> Result<(), Box<ValidationError>> {
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -242,12 +226,7 @@ impl SecondaryAutoCommandBuffer {
         Ok(())
     }
 
-    /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
-    ///
-    /// # Safety
-    ///
-    /// Must not be called if you haven't called `lock_record` before.
-    pub unsafe fn unlock(&self) {
+    unsafe fn unlock(&self) {
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -262,7 +241,7 @@ impl SecondaryAutoCommandBuffer {
         };
     }
 
-    pub(crate) fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
+    fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
         &self.resources_usage
     }
 }
@@ -347,6 +326,7 @@ mod tests {
         command_buffer::{
             allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
             AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
+            PrimaryCommandBufferAbstract,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator,
@@ -644,67 +624,51 @@ mod tests {
 
     #[test]
     fn secondary_conflicting_writes() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-                device.clone(),
-                StandardCommandBufferAllocatorCreateInfo {
-                    secondary_buffer_count: 1,
-                    ..Default::default()
-                },
-            ));
-            let cbb = AutoCommandBufferBuilder::primary(
-                cb_allocator.clone(),
-                queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
-            )
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            StandardCommandBufferAllocatorCreateInfo {
+                secondary_buffer_count: 1,
+                ..Default::default()
+            },
+        ));
+        let cbb = AutoCommandBufferBuilder::primary(
+            cb_allocator.clone(),
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        // Create a tiny test buffer
+        let buffer = Buffer::from_data(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            0u32,
+        )
+        .unwrap();
+
+        cbb.build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
             .unwrap();
 
-            let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
-            // Create a tiny test buffer
-            let buffer = Buffer::from_data(
-                memory_allocator,
-                BufferCreateInfo {
-                    usage: BufferUsage::TRANSFER_DST,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                0u32,
-            )
-            .unwrap();
-
-            cbb.build()
-                .unwrap()
-                .execute(queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None)
-                .unwrap();
-
-            // Two secondary command buffers that both write to the buffer
-            let secondary = (0..2)
-                .map(|_| {
-                    let mut builder = AutoCommandBufferBuilder::secondary(
-                        cb_allocator.clone(),
-                        queue.queue_family_index(),
-                        CommandBufferUsage::SimultaneousUse,
-                        Default::default(),
-                    )
-                    .unwrap();
-                    builder
-                        .fill_buffer(buffer.clone().into_slice(), 42)
-                        .unwrap();
-                    builder.build().unwrap()
-                })
-                .collect::<Vec<_>>();
-
-            {
+        // Two secondary command buffers that both write to the buffer
+        let secondary = (0..2)
+            .map(|_| {
                 let mut builder = AutoCommandBufferBuilder::secondary(
                     cb_allocator.clone(),
                     queue.queue_family_index(),
@@ -712,224 +676,243 @@ mod tests {
                     Default::default(),
                 )
                 .unwrap();
+                builder
+                    .fill_buffer(buffer.clone().into_slice(), 42)
+                    .unwrap();
+                builder.build().unwrap()
+            })
+            .collect::<Vec<_>>();
 
-                // Add both secondary command buffers using separate execute_commands calls.
-                secondary.iter().cloned().for_each(|secondary| {
-                    builder.execute_commands_unchecked([secondary as _].into_iter().collect());
-                });
+        {
+            let mut builder = AutoCommandBufferBuilder::secondary(
+                cb_allocator.clone(),
+                queue.queue_family_index(),
+                CommandBufferUsage::SimultaneousUse,
+                Default::default(),
+            )
+            .unwrap();
 
-                let _primary = builder.build().unwrap();
-                /*
-                let names = primary._commands.iter().map(|c| c.name).collect::<Vec<_>>();
+            // Add both secondary command buffers using separate execute_commands calls.
+            secondary.iter().cloned().for_each(|secondary| {
+                unsafe {
+                    builder.execute_commands_unchecked([secondary as _].into_iter().collect())
+                };
+            });
 
-                // Ensure that the builder added a barrier between the two writes
-                assert_eq!(&names, &["execute_commands", "execute_commands"]);
-                assert_eq!(&primary._barriers, &[0, 1]);
-                 */
-            }
+            let _primary = builder.build().unwrap();
+            /*
+            let names = primary._commands.iter().map(|c| c.name).collect::<Vec<_>>();
 
-            {
-                let mut builder = AutoCommandBufferBuilder::secondary(
-                    cb_allocator,
-                    queue.queue_family_index(),
-                    CommandBufferUsage::SimultaneousUse,
-                    Default::default(),
-                )
-                .unwrap();
+            // Ensure that the builder added a barrier between the two writes
+            assert_eq!(&names, &["execute_commands", "execute_commands"]);
+            assert_eq!(&primary._barriers, &[0, 1]);
+             */
+        }
 
-                // Add a single execute_commands for all secondary command buffers at once
+        {
+            let mut builder = AutoCommandBufferBuilder::secondary(
+                cb_allocator,
+                queue.queue_family_index(),
+                CommandBufferUsage::SimultaneousUse,
+                Default::default(),
+            )
+            .unwrap();
+
+            // Add a single execute_commands for all secondary command buffers at once
+            unsafe {
                 builder.execute_commands_unchecked(
                     secondary
                         .into_iter()
                         .map(|secondary| secondary as _)
                         .collect(),
-                );
-            }
+                )
+            };
         }
     }
 
     #[test]
     fn vertex_buffer_binding() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-                device.clone(),
-                Default::default(),
-            ));
-            let mut sync = AutoCommandBufferBuilder::primary(
-                cb_allocator,
-                queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .unwrap();
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+        let mut sync = AutoCommandBufferBuilder::primary(
+            cb_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )
+        .unwrap();
 
-            let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
-            let buf = Buffer::from_data(
-                memory_allocator,
-                BufferCreateInfo {
-                    usage: BufferUsage::VERTEX_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                0u32,
-            )
-            .unwrap();
-            sync.bind_vertex_buffers_unchecked(1, buf);
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device));
+        let buf = Buffer::from_data(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            0u32,
+        )
+        .unwrap();
+        unsafe { sync.bind_vertex_buffers_unchecked(1, buf) };
 
-            assert!(!sync.builder_state.vertex_buffers.contains_key(&0));
-            assert!(sync.builder_state.vertex_buffers.contains_key(&1));
-            assert!(!sync.builder_state.vertex_buffers.contains_key(&2));
-        }
+        assert!(!sync.builder_state.vertex_buffers.contains_key(&0));
+        assert!(sync.builder_state.vertex_buffers.contains_key(&1));
+        assert!(!sync.builder_state.vertex_buffers.contains_key(&2));
     }
 
     #[test]
     fn descriptor_set_binding() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
-            let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
-                device.clone(),
-                Default::default(),
-            ));
-            let mut sync = AutoCommandBufferBuilder::primary(
-                cb_allocator,
-                queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .unwrap();
-            let set_layout = DescriptorSetLayout::new(
-                device.clone(),
-                DescriptorSetLayoutCreateInfo {
-                    bindings: [(
-                        0,
-                        DescriptorSetLayoutBinding {
-                            stages: ShaderStages::all_graphics(),
-                            ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
-                        },
-                    )]
-                    .into(),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let pipeline_layout = PipelineLayout::new(
-                device.clone(),
-                PipelineLayoutCreateInfo {
-                    set_layouts: [set_layout.clone(), set_layout.clone()].into(),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-            let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-                device.clone(),
-                Default::default(),
-            ));
-
-            let set = DescriptorSet::new(
-                ds_allocator.clone(),
-                set_layout.clone(),
-                [WriteDescriptorSet::sampler(
+        let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+        let mut sync = AutoCommandBufferBuilder::primary(
+            cb_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )
+        .unwrap();
+        let set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            DescriptorSetLayoutCreateInfo {
+                bindings: [(
                     0,
-                    Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear())
-                        .unwrap(),
-                )],
-                [],
-            )
-            .unwrap();
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::all_graphics(),
+                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let pipeline_layout = PipelineLayout::new(
+            device.clone(),
+            PipelineLayoutCreateInfo {
+                set_layouts: [set_layout.clone(), set_layout.clone()].into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
+        let ds_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+
+        let set = DescriptorSet::new(
+            ds_allocator.clone(),
+            set_layout.clone(),
+            [WriteDescriptorSet::sampler(
+                0,
+                Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear()).unwrap(),
+            )],
+            [],
+        )
+        .unwrap();
+
+        unsafe {
             sync.bind_descriptor_sets_unchecked(
                 PipelineBindPoint::Graphics,
                 pipeline_layout.clone(),
                 1,
                 set.clone(),
-            );
+            )
+        };
 
-            assert!(!sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Compute)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
-            assert!(!sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Graphics)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
-            assert!(sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Graphics)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
-            assert!(!sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Graphics)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&2)));
+        assert!(!sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Compute)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+        assert!(!sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Graphics)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+        assert!(sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Graphics)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
+        assert!(!sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Graphics)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&2)));
 
+        unsafe {
             sync.bind_descriptor_sets_unchecked(
                 PipelineBindPoint::Graphics,
                 pipeline_layout,
                 0,
                 set,
-            );
-
-            assert!(sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Graphics)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
-            assert!(sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Graphics)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
-
-            let pipeline_layout = PipelineLayout::new(
-                device.clone(),
-                PipelineLayoutCreateInfo {
-                    set_layouts: [
-                        DescriptorSetLayout::new(device.clone(), Default::default()).unwrap(),
-                        set_layout.clone(),
-                    ]
-                    .into(),
-                    ..Default::default()
-                },
             )
-            .unwrap();
+        };
 
-            let set = DescriptorSet::new(
-                ds_allocator,
-                set_layout,
-                [WriteDescriptorSet::sampler(
-                    0,
-                    Sampler::new(device, SamplerCreateInfo::simple_repeat_linear()).unwrap(),
-                )],
-                [],
-            )
-            .unwrap();
+        assert!(sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Graphics)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+        assert!(sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Graphics)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
 
+        let pipeline_layout = PipelineLayout::new(
+            device.clone(),
+            PipelineLayoutCreateInfo {
+                set_layouts: [
+                    DescriptorSetLayout::new(device.clone(), Default::default()).unwrap(),
+                    set_layout.clone(),
+                ]
+                .into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let set = DescriptorSet::new(
+            ds_allocator,
+            set_layout,
+            [WriteDescriptorSet::sampler(
+                0,
+                Sampler::new(device, SamplerCreateInfo::simple_repeat_linear()).unwrap(),
+            )],
+            [],
+        )
+        .unwrap();
+
+        unsafe {
             sync.bind_descriptor_sets_unchecked(
                 PipelineBindPoint::Graphics,
                 pipeline_layout,
                 1,
                 set,
-            );
+            )
+        };
 
-            assert!(!sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Graphics)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
-            assert!(sync
-                .builder_state
-                .descriptor_sets
-                .get(&PipelineBindPoint::Graphics)
-                .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
-        }
+        assert!(!sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Graphics)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+        assert!(sync
+            .builder_state
+            .descriptor_sets
+            .get(&PipelineBindPoint::Graphics)
+            .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
     }
 }

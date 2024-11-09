@@ -26,6 +26,8 @@ Changes to memory allocation:
 - `Suballocator` has new required items `Suballocations` and `suballocations` for iterating over suballocations.
 - `Suballocator::cleanup` was replaced with `Suballocator::reset`, allowing any suballocator to deallocate all suballocations at once, not just the bump allocator.
 - `BumpAllocator::reset` was removed.
+- `DeviceLayout::repeat` and `BufferContentsLayout::layout_for_len` now take `DeviceSize` as argument.
+- `DeviceLayout::{from_layout,into_layout}` return an `Option` now.
 
 Changes to command buffers:
 - Renamed `UnsafeCommandBufferBuilder` to `RecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
@@ -33,7 +35,6 @@ Changes to command buffers:
 - `RecordingCommandBuffer` and `CommandBuffer` were moved to the `command_buffer` module; the `command_buffer::sys` module was removed.
 - `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RecordingCommandBuffer` and `CommandBuffer` no longer have a type parameter for the type of allocator.
 - `RecordingCommandBuffer::execute_commands` now takes `&CommandBuffer`s as argument.
-- The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
 - `RecordingCommandBuffer::bind_descriptor_sets` now takes `&RawDescriptorSet`s as argument.
 
 Changes to command buffer allocation:
@@ -71,11 +72,9 @@ Changes to render passes:
 
 Changes to buffers:
 - `BufferMemory` is now marked non-exhaustive.
-- `RawBuffer::bind_memory` is now marked unsafe.
 
 Changes to images:
 - `ImageMemory` is now marked non-exhaustive.
-- `RawImage::bind_memory` is now marked unsafe.
 
 Changes to draw/dispatch commands:
 - These are now `unsafe`, as the shader can perform invalid operations outside of Vulkano's control.
@@ -148,6 +147,8 @@ Other:
 - Added `PhysicalDevice::presentation_support` for determining presentation support to the surface of any window of a given event loop.
 - Added support for tvOS.
 - Added `Suballocation[Node]::as[_usize]_range` for cleaner slicing.
+- Added `DeviceLayout::{new_sized,new_unsized,for_value}` for improved ergonomics when (sub)allocating buffers.
+- Added `DeviceAlignment::of_val`.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
@@ -175,6 +176,7 @@ Other:
 - Fixed compiling on iOS.
 - Fixed UB in `GenericMemoryAllocator::deallocate` arising due to invalid pointer provenance given out on allocation.
 - Fixed UB in `impl VertexBufferCollection for Vec<Subbuffer<T>>` where a `Vec` was being transmuted.
+- Fixed `AllocationHandle::as_index` being a const fn, as it is UB to observe the address of a pointer in const eval.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)

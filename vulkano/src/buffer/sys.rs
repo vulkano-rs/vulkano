@@ -58,7 +58,7 @@ impl RawBuffer {
     ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -103,6 +103,8 @@ impl RawBuffer {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the buffer has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawBuffer`.
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
@@ -119,6 +121,8 @@ impl RawBuffer {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the buffer has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawBuffer`.
     /// - Caller must ensure that the handle will not be destroyed for the lifetime of returned
     ///   `RawBuffer`.
     #[inline]
@@ -195,33 +199,37 @@ impl RawBuffer {
         let mut memory_requirements2_vk =
             MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
 
-        unsafe {
-            let fns = device.fns();
+        let fns = device.fns();
 
-            if device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_get_memory_requirements2
-            {
-                if device.api_version() >= Version::V1_1 {
+        if device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_get_memory_requirements2
+        {
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
                     (fns.v1_1.get_buffer_memory_requirements2)(
                         device.handle(),
                         &info_vk,
                         &mut memory_requirements2_vk,
-                    );
-                } else {
+                    )
+                };
+            } else {
+                unsafe {
                     (fns.khr_get_memory_requirements2
                         .get_buffer_memory_requirements2_khr)(
                         device.handle(),
                         &info_vk,
                         &mut memory_requirements2_vk,
-                    );
-                }
-            } else {
+                    )
+                };
+            }
+        } else {
+            unsafe {
                 (fns.v1_0.get_buffer_memory_requirements)(
                     device.handle(),
                     handle,
                     &mut memory_requirements2_vk.memory_requirements,
-                );
-            }
+                )
+            };
         }
 
         // Unborrow
@@ -237,11 +245,7 @@ impl RawBuffer {
     }
 
     /// Binds device memory to this buffer.
-    ///
-    /// # Safety
-    ///
-    /// - The buffer must not already have memory bound to it.
-    pub unsafe fn bind_memory(
+    pub fn bind_memory(
         self,
         allocation: ResourceMemory,
     ) -> Result<Buffer, (Validated<VulkanError>, RawBuffer, ResourceMemory)> {
@@ -251,15 +255,6 @@ impl RawBuffer {
 
         unsafe { self.bind_memory_unchecked(allocation) }
             .map_err(|(err, buffer, allocation)| (err.into(), buffer, allocation))
-    }
-
-    /// Assume this buffer has memory bound to it.
-    ///
-    /// # Safety
-    ///
-    /// - The buffer must have memory bound to it.
-    pub unsafe fn assume_bound(self) -> Buffer {
-        Buffer::from_raw(self, BufferMemory::External)
     }
 
     fn validate_bind_memory(
@@ -516,6 +511,15 @@ impl RawBuffer {
         Ok(Buffer::from_raw(self, BufferMemory::Normal(allocation)))
     }
 
+    /// Assume this buffer has memory bound to it.
+    ///
+    /// # Safety
+    ///
+    /// - The buffer must have memory bound to it.
+    pub unsafe fn assume_bound(self) -> Buffer {
+        Buffer::from_raw(self, BufferMemory::External)
+    }
+
     /// Returns the memory requirements for this buffer.
     pub fn memory_requirements(&self) -> &MemoryRequirements {
         &self.memory_requirements
@@ -556,10 +560,8 @@ impl Drop for RawBuffer {
     #[inline]
     fn drop(&mut self) {
         if self.needs_destruction {
-            unsafe {
-                let fns = self.device.fns();
-                (fns.v1_0.destroy_buffer)(self.device.handle(), self.handle, ptr::null());
-            }
+            let fns = self.device.fns();
+            unsafe { (fns.v1_0.destroy_buffer)(self.device.handle(), self.handle, ptr::null()) };
         }
     }
 }

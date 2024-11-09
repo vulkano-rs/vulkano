@@ -90,14 +90,13 @@ impl VulkanLibrary {
 
     /// Loads a custom Vulkan library.
     pub fn with_loader(loader: impl Loader + 'static) -> Result<Arc<Self>, LoadingError> {
-        let fns = EntryFunctions::load(|name| unsafe {
-            loader
-                .get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr())
+        let fns = EntryFunctions::load(|name| {
+            unsafe { loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr()) }
                 .map_or(ptr::null(), |func| func as _)
         });
 
-        let api_version = unsafe { Self::get_api_version(&loader)? };
-        let extension_properties = unsafe { Self::get_extension_properties(&fns, None)? };
+        let api_version = unsafe { Self::get_api_version(&loader) }?;
+        let extension_properties = unsafe { Self::get_extension_properties(&fns, None) }?;
         let supported_extensions = extension_properties
             .iter()
             .map(|property| property.extension_name.as_str())
@@ -227,27 +226,24 @@ impl VulkanLibrary {
     ) -> Result<impl ExactSizeIterator<Item = LayerProperties>, VulkanError> {
         let fns = self.fns();
 
-        let layer_properties = unsafe {
-            loop {
-                let mut count = 0;
-                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut())
-                    .result()
-                    .map_err(VulkanError::from)?;
+        let layer_properties = loop {
+            let mut count = 0;
+            unsafe { (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut()) }
+                .result()
+                .map_err(VulkanError::from)?;
 
-                let mut properties = Vec::with_capacity(count as usize);
-                let result = (fns.v1_0.enumerate_instance_layer_properties)(
-                    &mut count,
-                    properties.as_mut_ptr(),
-                );
+            let mut properties = Vec::with_capacity(count as usize);
+            let result = unsafe {
+                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, properties.as_mut_ptr())
+            };
 
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        properties.set_len(count as usize);
-                        break properties;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err)),
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    unsafe { properties.set_len(count as usize) };
+                    break properties;
                 }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
             }
         };
 
@@ -449,11 +445,9 @@ mod tests {
 
     #[test]
     fn dl_open_error() {
-        unsafe {
-            match DynamicLibraryLoader::new("_non_existing_library.void") {
-                Err(LoadingError::LibraryLoadFailure(_)) => (),
-                _ => panic!(),
-            }
+        match unsafe { DynamicLibraryLoader::new("_non_existing_library.void") } {
+            Err(LoadingError::LibraryLoadFailure(_)) => (),
+            _ => panic!(),
         }
     }
 }

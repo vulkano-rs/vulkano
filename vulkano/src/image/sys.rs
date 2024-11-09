@@ -82,7 +82,7 @@ impl RawImage {
     ) -> Result<RawImage, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(RawImage::new_unchecked(device, create_info)?) }
+        Ok(unsafe { RawImage::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -129,6 +129,8 @@ impl RawImage {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the image has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawImage`.
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
@@ -145,6 +147,8 @@ impl RawImage {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    /// - If the image has memory bound to it, `bind_memory` must not be called on the returned
+    ///   `RawImage`.
     /// - Caller must ensure the handle will not be destroyed for the lifetime of returned
     ///   `RawImage`.
     #[inline]
@@ -306,33 +310,37 @@ impl RawImage {
         let mut memory_requirements2_vk =
             MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
 
-        unsafe {
-            let fns = device.fns();
+        let fns = device.fns();
 
-            if device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_get_memory_requirements2
-            {
-                if device.api_version() >= Version::V1_1 {
+        if device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_get_memory_requirements2
+        {
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
                     (fns.v1_1.get_image_memory_requirements2)(
                         device.handle(),
                         &info_vk,
                         &mut memory_requirements2_vk,
-                    );
-                } else {
+                    )
+                };
+            } else {
+                unsafe {
                     (fns.khr_get_memory_requirements2
                         .get_image_memory_requirements2_khr)(
                         device.handle(),
                         &info_vk,
                         &mut memory_requirements2_vk,
-                    );
-                }
-            } else {
+                    )
+                };
+            }
+        } else {
+            unsafe {
                 (fns.v1_0.get_image_memory_requirements)(
                     device.handle(),
                     handle,
                     &mut memory_requirements2_vk.memory_requirements,
-                );
-            }
+                )
+            };
         }
 
         // Unborrow
@@ -350,88 +358,95 @@ impl RawImage {
     #[allow(dead_code)] // Remove when sparse memory is implemented
     fn get_sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
         let device = &self.device;
+        let fns = self.device.fns();
 
-        unsafe {
-            let fns = self.device.fns();
+        if device.api_version() >= Version::V1_1
+            || device.enabled_extensions().khr_get_memory_requirements2
+        {
+            let info2_vk =
+                ash::vk::ImageSparseMemoryRequirementsInfo2::default().image(self.handle);
 
-            if device.api_version() >= Version::V1_1
-                || device.enabled_extensions().khr_get_memory_requirements2
-            {
-                let info2_vk =
-                    ash::vk::ImageSparseMemoryRequirementsInfo2::default().image(self.handle);
+            let mut count = 0;
 
-                let mut count = 0;
-
-                if device.api_version() >= Version::V1_1 {
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
                     (fns.v1_1.get_image_sparse_memory_requirements2)(
                         device.handle(),
                         &info2_vk,
                         &mut count,
                         ptr::null_mut(),
-                    );
-                } else {
-                    (fns.khr_get_memory_requirements2
-                        .get_image_sparse_memory_requirements2_khr)(
-                        device.handle(),
-                        &info2_vk,
-                        &mut count,
-                        ptr::null_mut(),
-                    );
-                }
-
-                let mut requirements2_vk =
-                    vec![SparseImageMemoryRequirements::to_mut_vk2(); count as usize];
-
-                if device.api_version() >= Version::V1_1 {
-                    (fns.v1_1.get_image_sparse_memory_requirements2)(
-                        self.device.handle(),
-                        &info2_vk,
-                        &mut count,
-                        requirements2_vk.as_mut_ptr(),
-                    );
-                } else {
-                    (fns.khr_get_memory_requirements2
-                        .get_image_sparse_memory_requirements2_khr)(
-                        self.device.handle(),
-                        &info2_vk,
-                        &mut count,
-                        requirements2_vk.as_mut_ptr(),
-                    );
-                }
-
-                requirements2_vk.set_len(count as usize);
-
-                requirements2_vk
-                    .iter()
-                    .map(SparseImageMemoryRequirements::from_vk2)
-                    .collect()
+                    )
+                };
             } else {
-                let mut count = 0;
+                unsafe {
+                    (fns.khr_get_memory_requirements2
+                        .get_image_sparse_memory_requirements2_khr)(
+                        device.handle(),
+                        &info2_vk,
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                };
+            }
 
+            let mut requirements2_vk =
+                vec![SparseImageMemoryRequirements::to_mut_vk2(); count as usize];
+
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
+                    (fns.v1_1.get_image_sparse_memory_requirements2)(
+                        self.device.handle(),
+                        &info2_vk,
+                        &mut count,
+                        requirements2_vk.as_mut_ptr(),
+                    )
+                };
+            } else {
+                unsafe {
+                    (fns.khr_get_memory_requirements2
+                        .get_image_sparse_memory_requirements2_khr)(
+                        self.device.handle(),
+                        &info2_vk,
+                        &mut count,
+                        requirements2_vk.as_mut_ptr(),
+                    )
+                };
+            }
+
+            unsafe { requirements2_vk.set_len(count as usize) };
+            requirements2_vk
+                .iter()
+                .map(SparseImageMemoryRequirements::from_vk2)
+                .collect()
+        } else {
+            let mut count = 0;
+
+            unsafe {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
                     self.handle,
                     &mut count,
                     ptr::null_mut(),
-                );
+                )
+            };
 
-                let mut requirements_vk =
-                    vec![SparseImageMemoryRequirements::to_mut_vk(); count as usize];
+            let mut requirements_vk =
+                vec![SparseImageMemoryRequirements::to_mut_vk(); count as usize];
 
+            unsafe {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
                     self.handle,
                     &mut count,
                     requirements_vk.as_mut_ptr(),
-                );
+                )
+            };
 
-                requirements_vk.set_len(count as usize);
-
-                requirements_vk
-                    .iter()
-                    .map(SparseImageMemoryRequirements::from_vk)
-                    .collect()
-            }
+            unsafe { requirements_vk.set_len(count as usize) };
+            requirements_vk
+                .iter()
+                .map(SparseImageMemoryRequirements::from_vk)
+                .collect()
         }
     }
 
@@ -464,11 +479,7 @@ impl RawImage {
     /// - If `self.flags()` contains `ImageCreateFlags::DISJOINT`, and `self.tiling()` is
     ///   `ImageTiling::DrmFormatModifier`, then `allocations` must contain exactly
     ///   `self.drm_format_modifier().unwrap().1` elements.
-    ///
-    /// # Safety
-    ///
-    /// - The image must not already have memory bound to it.
-    pub unsafe fn bind_memory(
+    pub fn bind_memory(
         self,
         allocations: impl IntoIterator<Item = ResourceMemory>,
     ) -> Result<
@@ -822,39 +833,6 @@ impl RawImage {
         Ok(())
     }
 
-    /// Assume that this image already has memory backing it.
-    ///
-    /// # Safety
-    ///
-    /// - The image must be backed by suitable memory allocations.
-    pub unsafe fn assume_bound(self) -> Image {
-        let usage = self
-            .usage
-            .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
-
-        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-            && usage
-                .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-                .is_empty()
-        {
-            ImageLayout::ShaderReadOnlyOptimal
-        } else if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
-            && usage.difference(ImageUsage::COLOR_ATTACHMENT).is_empty()
-        {
-            ImageLayout::ColorAttachmentOptimal
-        } else if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-            && usage
-                .difference(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                .is_empty()
-        {
-            ImageLayout::DepthStencilAttachmentOptimal
-        } else {
-            ImageLayout::General
-        };
-
-        Image::from_raw(self, ImageMemory::External, layout)
-    }
-
     /// # Safety
     ///
     /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, then `allocations` must
@@ -998,6 +976,39 @@ impl RawImage {
             ImageMemory::Normal(allocations),
             layout,
         ))
+    }
+
+    /// Assume that this image already has memory backing it.
+    ///
+    /// # Safety
+    ///
+    /// - The image must be backed by suitable memory allocations.
+    pub unsafe fn assume_bound(self) -> Image {
+        let usage = self
+            .usage
+            .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
+
+        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::ShaderReadOnlyOptimal
+        } else if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
+            && usage.difference(ImageUsage::COLOR_ATTACHMENT).is_empty()
+        {
+            ImageLayout::ColorAttachmentOptimal
+        } else if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+            && usage
+                .difference(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
+                .is_empty()
+        {
+            ImageLayout::DepthStencilAttachmentOptimal
+        } else {
+            ImageLayout::General
+        };
+
+        Image::from_raw(self, ImageMemory::External, layout)
     }
 
     /// Returns the memory requirements for this image.
@@ -1159,7 +1170,7 @@ impl RawImage {
     ) -> Result<SubresourceLayout, Box<ValidationError>> {
         self.validate_subresource_layout(aspect, mip_level, array_layer)?;
 
-        unsafe { Ok(self.subresource_layout_unchecked(aspect, mip_level, array_layer)) }
+        Ok(unsafe { self.subresource_layout_unchecked(aspect, mip_level, array_layer) })
     }
 
     fn validate_subresource_layout(
@@ -1417,10 +1428,8 @@ impl Drop for RawImage {
             return;
         }
 
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_image)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_image)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -2606,33 +2615,32 @@ impl ImageCreateInfo {
         for drm_format_modifier in iter_or_none(drm_format_modifiers.iter().copied()) {
             for external_memory_handle_type in iter_or_none(external_memory_handle_types) {
                 let image_format_properties = unsafe {
-                    physical_device
-                        .image_format_properties_unchecked(ImageFormatInfo {
-                            flags,
-                            format,
-                            image_type,
-                            tiling,
-                            usage,
-                            stencil_usage,
-                            external_memory_handle_type,
-                            drm_format_modifier_info: drm_format_modifier.map(
-                                |drm_format_modifier| ImageDrmFormatModifierInfo {
-                                    drm_format_modifier,
-                                    sharing: sharing.clone(),
-                                    ..Default::default()
-                                },
-                            ),
-                            ..Default::default()
-                        })
-                        .map_err(|_err| {
-                            Box::new(ValidationError {
-                                problem: "`PhysicalDevice::image_format_properties` \
-                                    returned an error"
-                                    .into(),
+                    physical_device.image_format_properties_unchecked(ImageFormatInfo {
+                        flags,
+                        format,
+                        image_type,
+                        tiling,
+                        usage,
+                        stencil_usage,
+                        external_memory_handle_type,
+                        drm_format_modifier_info: drm_format_modifier.map(|drm_format_modifier| {
+                            ImageDrmFormatModifierInfo {
+                                drm_format_modifier,
+                                sharing: sharing.clone(),
                                 ..Default::default()
-                            })
-                        })?
-                };
+                            }
+                        }),
+                        ..Default::default()
+                    })
+                }
+                .map_err(|_err| {
+                    Box::new(ValidationError {
+                        problem: "`PhysicalDevice::image_format_properties` \
+                                    returned an error"
+                            .into(),
+                        ..Default::default()
+                    })
+                })?;
 
                 let image_format_properties = image_format_properties.ok_or_else(|| Box::new(ValidationError {
                     problem: "the combination of parameters of this image is not \
@@ -2746,7 +2754,7 @@ impl ImageCreateInfo {
     pub(crate) fn to_vk<'a>(
         &'a self,
         extensions_vk: &'a mut ImageCreateInfoExtensionsVk<'_>,
-    ) -> ash::vk::ImageCreateInfo<'_> {
+    ) -> ash::vk::ImageCreateInfo<'a> {
         let &Self {
             flags,
             image_type,

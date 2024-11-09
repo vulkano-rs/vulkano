@@ -685,7 +685,7 @@ fn formats_members(
 
             let mut parts = vulkan_name.split('_').collect::<Vec<_>>();
 
-            if ["EXT", "IMG"].contains(parts.last().unwrap()) {
+            if ["KHR", "EXT", "IMG"].contains(parts.last().unwrap()) {
                 parts.pop();
             }
 

@@ -180,7 +180,7 @@ impl Device {
     {
         Self::validate_new(&physical_device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(physical_device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(physical_device, create_info) }?)
     }
 
     fn validate_new(
@@ -364,19 +364,20 @@ impl Device {
             let create_info_vk =
                 create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions);
 
+            let fns = physical_device.instance().fns();
+
+            let mut output = MaybeUninit::uninit();
             unsafe {
-                let fns = physical_device.instance().fns();
-                let mut output = MaybeUninit::uninit();
                 (fns.v1_0.create_device)(
                     physical_device.handle(),
                     &create_info_vk,
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
-                .result()
-                .map_err(VulkanError::from)?;
-                output.assume_init()
             }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
         };
 
         Ok(Self::from_handle(physical_device, handle, create_info))
@@ -403,9 +404,11 @@ impl Device {
         } = create_info;
 
         let api_version = physical_device.api_version();
-        let fns = DeviceFunctions::load(|name| unsafe {
-            (physical_device.instance().fns().v1_0.get_device_proc_addr)(handle, name.as_ptr())
-                .map_or(ptr::null(), |func| func as _)
+        let fns = DeviceFunctions::load(|name| {
+            unsafe {
+                (physical_device.instance().fns().v1_0.get_device_proc_addr)(handle, name.as_ptr())
+            }
+            .map_or(ptr::null(), |func| func as _)
         });
 
         let mut active_queue_family_indices: SmallVec<[_; 2]> =
@@ -578,13 +581,13 @@ impl Device {
             max_primitive_counts,
         )?;
 
-        unsafe {
-            Ok(self.acceleration_structure_build_sizes_unchecked(
+        Ok(unsafe {
+            self.acceleration_structure_build_sizes_unchecked(
                 build_type,
                 build_info,
                 max_primitive_counts,
-            ))
-        }
+            )
+        })
     }
 
     fn validate_acceleration_structure_build_sizes(
@@ -729,7 +732,7 @@ impl Device {
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_acceleration_structure_is_compatible(version_data)?;
 
-        unsafe { Ok(self.acceleration_structure_is_compatible_unchecked(version_data)) }
+        Ok(unsafe { self.acceleration_structure_is_compatible_unchecked(version_data) })
     }
 
     fn validate_acceleration_structure_is_compatible(
@@ -798,7 +801,7 @@ impl Device {
     ) -> Result<Option<DescriptorSetLayoutSupport>, Box<ValidationError>> {
         self.validate_descriptor_set_layout_support(create_info)?;
 
-        unsafe { Ok(self.descriptor_set_layout_support_unchecked(create_info)) }
+        Ok(unsafe { self.descriptor_set_layout_support_unchecked(create_info) })
     }
 
     fn validate_descriptor_set_layout_support(
@@ -876,7 +879,7 @@ impl Device {
     ) -> Result<MemoryRequirements, Box<ValidationError>> {
         self.validate_buffer_memory_requirements(&create_info)?;
 
-        unsafe { Ok(self.buffer_memory_requirements_unchecked(create_info)) }
+        Ok(unsafe { self.buffer_memory_requirements_unchecked(create_info) })
     }
 
     fn validate_buffer_memory_requirements(
@@ -916,24 +919,26 @@ impl Device {
         let mut memory_requirements2_vk =
             MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
 
-        unsafe {
-            let fns = self.fns();
+        let fns = self.fns();
 
-            if self.api_version() >= Version::V1_3 {
+        if self.api_version() >= Version::V1_3 {
+            unsafe {
                 (fns.v1_3.get_device_buffer_memory_requirements)(
                     self.handle(),
                     &info_vk,
                     &mut memory_requirements2_vk,
-                );
-            } else {
-                debug_assert!(self.enabled_extensions().khr_maintenance4);
+                )
+            };
+        } else {
+            debug_assert!(self.enabled_extensions().khr_maintenance4);
+            unsafe {
                 (fns.khr_maintenance4
                     .get_device_buffer_memory_requirements_khr)(
                     self.handle(),
                     &info_vk,
                     &mut memory_requirements2_vk,
-                );
-            }
+                )
+            };
         }
 
         // Unborrow
@@ -967,7 +972,7 @@ impl Device {
     ) -> Result<MemoryRequirements, Box<ValidationError>> {
         self.validate_image_memory_requirements(&create_info, plane)?;
 
-        unsafe { Ok(self.image_memory_requirements_unchecked(create_info, plane)) }
+        Ok(unsafe { self.image_memory_requirements_unchecked(create_info, plane) })
     }
 
     fn validate_image_memory_requirements(
@@ -1131,24 +1136,26 @@ impl Device {
         let mut memory_requirements2_vk =
             MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
 
-        unsafe {
-            let fns = self.fns();
+        let fns = self.fns();
 
-            if self.api_version() >= Version::V1_3 {
+        if self.api_version() >= Version::V1_3 {
+            unsafe {
                 (fns.v1_3.get_device_image_memory_requirements)(
                     self.handle(),
                     &info_vk,
                     &mut memory_requirements2_vk,
-                );
-            } else {
-                debug_assert!(self.enabled_extensions().khr_maintenance4);
+                )
+            };
+        } else {
+            debug_assert!(self.enabled_extensions().khr_maintenance4);
+            unsafe {
                 (fns.khr_maintenance4
                     .get_device_image_memory_requirements_khr)(
                     self.handle(),
                     &info_vk,
                     &mut memory_requirements2_vk,
-                );
-            }
+                )
+            };
         }
 
         // Unborrow
@@ -1271,12 +1278,10 @@ impl Device {
             info_vk = info_vk.object_name(object_name_vk);
         }
 
-        unsafe {
-            let fns = self.fns();
-            (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info_vk)
-                .result()
-                .map_err(VulkanError::from)?;
-        }
+        let fns = self.fns();
+        unsafe { (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info_vk) }
+            .result()
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -1400,18 +1405,19 @@ impl Drop for Device {
     fn drop(&mut self) {
         let fns = self.fns();
 
-        unsafe {
-            for &raw_fence in self.fence_pool.lock().iter() {
-                (fns.v1_0.destroy_fence)(self.handle, raw_fence, ptr::null());
-            }
-            for &raw_sem in self.semaphore_pool.lock().iter() {
-                (fns.v1_0.destroy_semaphore)(self.handle, raw_sem, ptr::null());
-            }
-            for &raw_event in self.event_pool.lock().iter() {
-                (fns.v1_0.destroy_event)(self.handle, raw_event, ptr::null());
-            }
-            (fns.v1_0.destroy_device)(self.handle, ptr::null());
+        for &raw_fence in self.fence_pool.lock().iter() {
+            unsafe { (fns.v1_0.destroy_fence)(self.handle, raw_fence, ptr::null()) };
         }
+
+        for &raw_sem in self.semaphore_pool.lock().iter() {
+            unsafe { (fns.v1_0.destroy_semaphore)(self.handle, raw_sem, ptr::null()) };
+        }
+
+        for &raw_event in self.event_pool.lock().iter() {
+            unsafe { (fns.v1_0.destroy_event)(self.handle, raw_event, ptr::null()) };
+        }
+
+        unsafe { (fns.v1_0.destroy_device)(self.handle, ptr::null()) };
     }
 }
 

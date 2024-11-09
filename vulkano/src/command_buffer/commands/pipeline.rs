@@ -69,7 +69,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_dispatch(group_counts)?;
 
-        unsafe { Ok(self.dispatch_unchecked(group_counts)) }
+        Ok(unsafe { self.dispatch_unchecked(group_counts) })
     }
 
     fn validate_dispatch(&self, group_counts: [u32; 3]) -> Result<(), Box<ValidationError>> {
@@ -144,7 +144,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_dispatch_indirect(indirect_buffer.as_bytes())?;
 
-        unsafe { Ok(self.dispatch_indirect_unchecked(indirect_buffer)) }
+        Ok(unsafe { self.dispatch_indirect_unchecked(indirect_buffer) })
     }
 
     fn validate_dispatch_indirect(
@@ -232,9 +232,9 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_draw(vertex_count, instance_count, first_vertex, first_instance)?;
 
-        unsafe {
-            Ok(self.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance))
-        }
+        Ok(unsafe {
+            self.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance)
+        })
     }
 
     fn validate_draw(
@@ -423,7 +423,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let stride = size_of::<DrawIndirectCommand>() as u32;
         self.validate_draw_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe { Ok(self.draw_indirect_unchecked(indirect_buffer, draw_count, stride)) }
+        Ok(unsafe { self.draw_indirect_unchecked(indirect_buffer, draw_count, stride) })
     }
 
     fn validate_draw_indirect(
@@ -539,14 +539,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             stride,
         )?;
 
-        unsafe {
-            Ok(self.draw_indirect_count_unchecked(
+        Ok(unsafe {
+            self.draw_indirect_count_unchecked(
                 indirect_buffer,
                 count_buffer,
                 max_draw_count,
                 stride,
-            ))
-        }
+            )
+        })
     }
 
     fn validate_draw_indirect_count(
@@ -682,15 +682,15 @@ impl<L> AutoCommandBufferBuilder<L> {
             first_instance,
         )?;
 
-        unsafe {
-            Ok(self.draw_indexed_unchecked(
+        Ok(unsafe {
+            self.draw_indexed_unchecked(
                 index_count,
                 instance_count,
                 first_index,
                 vertex_offset,
                 first_instance,
-            ))
-        }
+            )
+        })
     }
 
     fn validate_draw_indexed(
@@ -910,7 +910,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
         self.validate_draw_indexed_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe { Ok(self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride)) }
+        Ok(unsafe { self.draw_indexed_indirect_unchecked(indirect_buffer, draw_count, stride) })
     }
 
     fn validate_draw_indexed_indirect(
@@ -1041,14 +1041,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             stride,
         )?;
 
-        unsafe {
-            Ok(self.draw_indexed_indirect_count_unchecked(
+        Ok(unsafe {
+            self.draw_indexed_indirect_count_unchecked(
                 indirect_buffer,
                 count_buffer,
                 max_draw_count,
                 stride,
-            ))
-        }
+            )
+        })
     }
 
     fn validate_draw_indexed_indirect_count(
@@ -1164,7 +1164,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_draw_mesh_tasks(group_counts)?;
 
-        unsafe { Ok(self.draw_mesh_tasks_unchecked(group_counts)) }
+        Ok(unsafe { self.draw_mesh_tasks_unchecked(group_counts) })
     }
 
     fn validate_draw_mesh_tasks(&self, group_counts: [u32; 3]) -> Result<(), Box<ValidationError>> {
@@ -1362,7 +1362,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         let stride = size_of::<DrawMeshTasksIndirectCommand>() as u32;
         self.validate_draw_mesh_tasks_indirect(indirect_buffer.as_bytes(), draw_count, stride)?;
 
-        unsafe { Ok(self.draw_mesh_tasks_indirect_unchecked(indirect_buffer, draw_count, stride)) }
+        Ok(unsafe { self.draw_mesh_tasks_indirect_unchecked(indirect_buffer, draw_count, stride) })
     }
 
     fn validate_draw_mesh_tasks_indirect(
@@ -1486,14 +1486,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             stride,
         )?;
 
-        unsafe {
-            Ok(self.draw_mesh_tasks_indirect_count_unchecked(
+        Ok(unsafe {
+            self.draw_mesh_tasks_indirect_count_unchecked(
                 indirect_buffer,
                 count_buffer,
                 max_draw_count,
                 stride,
-            ))
-        }
+            )
+        })
     }
 
     fn validate_draw_mesh_tasks_indirect_count(

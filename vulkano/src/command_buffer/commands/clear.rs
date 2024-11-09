@@ -22,7 +22,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_color_image(&clear_info)?;
 
-        unsafe { Ok(self.clear_color_image_unchecked(clear_info)) }
+        Ok(unsafe { self.clear_color_image_unchecked(clear_info) })
     }
 
     fn validate_clear_color_image(
@@ -88,7 +88,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_depth_stencil_image(&clear_info)?;
 
-        unsafe { Ok(self.clear_depth_stencil_image_unchecked(clear_info)) }
+        Ok(unsafe { self.clear_depth_stencil_image_unchecked(clear_info) })
     }
 
     fn validate_clear_depth_stencil_image(
@@ -158,7 +158,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_fill_buffer(&dst_buffer, data)?;
 
-        unsafe { Ok(self.fill_buffer_unchecked(dst_buffer, data)) }
+        Ok(unsafe { self.fill_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_fill_buffer(
@@ -220,7 +220,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             size_of_val(data.deref()) as DeviceSize,
         )?;
 
-        unsafe { Ok(self.update_buffer_unchecked(dst_buffer, data)) }
+        Ok(unsafe { self.update_buffer_unchecked(dst_buffer, data) })
     }
 
     fn validate_update_buffer(

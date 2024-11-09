@@ -84,7 +84,7 @@ impl DeviceMemory {
 
         Self::validate_allocate(&device, &allocate_info, None)?;
 
-        unsafe { Ok(Self::allocate_unchecked(device, allocate_info, None)?) }
+        Ok(unsafe { Self::allocate_unchecked(device, allocate_info, None) }?)
     }
 
     /// Imports a block of memory from an external source.
@@ -331,7 +331,7 @@ impl DeviceMemory {
     pub fn map(&mut self, map_info: MemoryMapInfo) -> Result<(), Validated<VulkanError>> {
         self.validate_map(&map_info, None)?;
 
-        unsafe { Ok(self.map_unchecked(map_info)?) }
+        Ok(unsafe { self.map_unchecked(map_info) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -366,7 +366,7 @@ impl DeviceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_map(&map_info, Some(placed_address))?;
 
-        unsafe { Ok(self.map_placed_unchecked(map_info, placed_address)?) }
+        Ok(unsafe { self.map_placed_unchecked(map_info, placed_address) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -644,7 +644,7 @@ impl DeviceMemory {
     pub fn commitment(&self) -> Result<DeviceSize, Box<ValidationError>> {
         self.validate_commitment()?;
 
-        unsafe { Ok(self.commitment_unchecked()) }
+        Ok(unsafe { self.commitment_unchecked() })
     }
 
     fn validate_commitment(&self) -> Result<(), Box<ValidationError>> {
@@ -693,7 +693,7 @@ impl DeviceMemory {
     ) -> Result<File, Validated<VulkanError>> {
         self.validate_export_fd(handle_type)?;
 
-        unsafe { Ok(self.export_fd_unchecked(handle_type)?) }
+        Ok(unsafe { self.export_fd_unchecked(handle_type) }?)
     }
 
     fn validate_export_fd(
@@ -767,11 +767,9 @@ impl DeviceMemory {
 impl Drop for DeviceMemory {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.free_memory)(self.device.handle(), self.handle, ptr::null());
-            self.device.allocation_count.fetch_sub(1, Ordering::Release);
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.free_memory)(self.device.handle(), self.handle, ptr::null()) };
+        self.device.allocation_count.fetch_sub(1, Ordering::Release);
     }
 }
 
@@ -2022,7 +2020,7 @@ impl MappedDeviceMemory {
     ) -> Result<Self, Validated<VulkanError>> {
         Self::validate_new(&memory, range.clone())?;
 
-        unsafe { Ok(Self::new_unchecked(memory, range)?) }
+        Ok(unsafe { Self::new_unchecked(memory, range) }?)
     }
 
     fn validate_new(
@@ -2110,20 +2108,22 @@ impl MappedDeviceMemory {
 
         let device = memory.device();
 
-        let pointer = unsafe {
+        let pointer = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.map_memory)(
-                device.handle(),
-                memory.handle,
-                range.start,
-                range.end - range.start,
-                ash::vk::MemoryMapFlags::empty(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.map_memory)(
+                    device.handle(),
+                    memory.handle,
+                    range.start,
+                    range.end - range.start,
+                    ash::vk::MemoryMapFlags::empty(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         let atom_size = device.physical_device().properties().non_coherent_atom_size;
@@ -2145,11 +2145,9 @@ impl MappedDeviceMemory {
     /// Unmaps the memory. It will no longer be accessible from the CPU.
     #[inline]
     pub fn unmap(self) -> DeviceMemory {
-        unsafe {
-            let device = self.memory.device();
-            let fns = device.fns();
-            (fns.v1_0.unmap_memory)(device.handle(), self.memory.handle);
-        }
+        let device = self.memory.device();
+        let fns = device.fns();
+        unsafe { (fns.v1_0.unmap_memory)(device.handle(), self.memory.handle) };
 
         self.memory
     }
@@ -2583,33 +2581,30 @@ mod tests {
         .unwrap();
 
         let address = unsafe {
-            let address = libc::mmap(
+            libc::mmap(
                 ptr::null_mut(),
                 16 * 1024,
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
                 -1,
                 0,
-            );
-
-            if address as i64 == -1 {
-                panic!("failed to map memory")
-            }
-
-            address
+            )
         };
 
-        unsafe {
-            memory
-                .map_placed(
-                    MemoryMapInfo {
-                        flags: MemoryMapFlags::PLACED,
-                        size: memory.allocation_size,
-                        ..Default::default()
-                    },
-                    NonNull::new(address).unwrap(),
-                )
-                .unwrap();
+        if address as i64 == -1 {
+            panic!("failed to map memory")
         }
+
+        unsafe {
+            memory.map_placed(
+                MemoryMapInfo {
+                    flags: MemoryMapFlags::PLACED,
+                    size: memory.allocation_size,
+                    ..Default::default()
+                },
+                NonNull::new(address).unwrap(),
+            )
+        }
+        .unwrap();
     }
 }

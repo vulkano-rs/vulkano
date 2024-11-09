@@ -116,7 +116,7 @@ impl Sampler {
     ) -> Result<Arc<Sampler>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -138,18 +138,20 @@ impl Sampler {
         let mut create_info_extensions_vk = create_info.to_vk_extensions();
         let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
 
-        let handle = unsafe {
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_sampler)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_sampler)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(Self::from_handle(device, handle, create_info))
@@ -507,10 +509,8 @@ impl Sampler {
 impl Drop for Sampler {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.destroy_sampler)(self.device.handle(), self.handle, ptr::null());
-        }
+        let fns = self.device.fns();
+        unsafe { (fns.v1_0.destroy_sampler)(self.device.handle(), self.handle, ptr::null()) };
     }
 }
 
@@ -980,12 +980,12 @@ impl SamplerCreateInfo {
             assert_eq!(device, sampler_ycbcr_conversion.device().as_ref());
 
             // Use unchecked, because all validation has been done by the SamplerYcbcrConversion.
-            let potential_format_features = unsafe {
+            let format_properties = unsafe {
                 device
                     .physical_device()
                     .format_properties_unchecked(sampler_ycbcr_conversion.format())
-                    .potential_format_features()
             };
+            let potential_format_features = format_properties.potential_format_features();
 
             if !potential_format_features.intersects(
                 FormatFeatures::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER,

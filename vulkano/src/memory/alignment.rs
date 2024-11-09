@@ -4,7 +4,7 @@ use std::{
     error::Error,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
-    mem::{self, align_of, size_of},
+    mem,
 };
 
 /// Vulkan analog of std's [`Alignment`], stored as a [`DeviceSize`] that is guaranteed to be a
@@ -15,8 +15,10 @@ use std::{
 #[repr(transparent)]
 pub struct DeviceAlignment(AlignmentEnum);
 
-const _: () = assert!(size_of::<DeviceAlignment>() == size_of::<DeviceSize>());
-const _: () = assert!(align_of::<DeviceAlignment>() == align_of::<DeviceSize>());
+const _: () = assert!(mem::size_of::<DeviceAlignment>() == mem::size_of::<DeviceSize>());
+const _: () = assert!(mem::align_of::<DeviceAlignment>() == mem::align_of::<DeviceSize>());
+
+const _: () = assert!(mem::size_of::<DeviceSize>() >= mem::size_of::<usize>());
 
 impl DeviceAlignment {
     /// The smallest possible alignment, 1.
@@ -28,17 +30,15 @@ impl DeviceAlignment {
     /// Returns the alignment for a type.
     #[inline]
     pub const fn of<T>() -> Self {
-        #[cfg(any(
-            target_pointer_width = "64",
-            target_pointer_width = "32",
-            target_pointer_width = "16",
-        ))]
-        {
-            const _: () = assert!(size_of::<DeviceSize>() >= size_of::<usize>());
+        // SAFETY: rustc guarantees that the alignment of types is a power of two.
+        unsafe { DeviceAlignment::new_unchecked(mem::align_of::<T>() as DeviceSize) }
+    }
 
-            // SAFETY: rustc guarantees that the alignment of types is a power of two.
-            unsafe { DeviceAlignment::new_unchecked(align_of::<T>() as DeviceSize) }
-        }
+    /// Returns the alignment for a value.
+    #[inline]
+    pub fn of_val<T: ?Sized>(value: &T) -> Self {
+        // SAFETY: rustc guarantees that the alignment of types is a power of two.
+        unsafe { DeviceAlignment::new_unchecked(mem::align_of_val(value) as DeviceSize) }
     }
 
     /// Tries to create a `DeviceAlignment` from a [`DeviceSize`], returning [`None`] if it's not a
