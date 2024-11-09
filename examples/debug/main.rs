@@ -113,8 +113,8 @@ fn main() {
                 ))
             },
         )
-        .ok()
-    };
+    }
+    .ok();
 
     // Create Vulkan objects in the same way as the other examples.
     let device_extensions = DeviceExtensions {

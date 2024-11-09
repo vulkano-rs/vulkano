@@ -156,6 +156,57 @@ impl DepthStencilState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PipelineDepthStencilStateCreateInfo<'static> {
+        let &Self {
+            flags,
+            ref depth,
+            ref depth_bounds,
+            ref stencil,
+            _ne: _,
+        } = self;
+
+        let (depth_test_enable_vk, depth_write_enable_vk, depth_compare_op_vk) =
+            if let Some(depth_state) = depth {
+                let &DepthState {
+                    write_enable,
+                    compare_op,
+                } = depth_state;
+
+                (true, write_enable, compare_op.into())
+            } else {
+                (false, false, ash::vk::CompareOp::ALWAYS)
+            };
+
+        let (depth_bounds_test_enable_vk, min_depth_bounds_vk, max_depth_bounds_vk) =
+            if let Some(depth_bounds) = depth_bounds {
+                (true, *depth_bounds.start(), *depth_bounds.end())
+            } else {
+                (false, 0.0, 1.0)
+            };
+
+        let (stencil_test_enable_vk, front_vk, back_vk) = if let Some(stencil_state) = stencil {
+            let StencilState { front, back } = stencil_state;
+
+            let [front, back] = [front, back].map(|stencil_op_state| stencil_op_state.to_vk());
+
+            (true, front, back)
+        } else {
+            (false, Default::default(), Default::default())
+        };
+
+        ash::vk::PipelineDepthStencilStateCreateInfo::default()
+            .flags(flags.into())
+            .depth_test_enable(depth_test_enable_vk)
+            .depth_write_enable(depth_write_enable_vk)
+            .depth_compare_op(depth_compare_op_vk)
+            .depth_bounds_test_enable(depth_bounds_test_enable_vk)
+            .stencil_test_enable(stencil_test_enable_vk)
+            .front(front_vk)
+            .back(back_vk)
+            .min_depth_bounds(min_depth_bounds_vk)
+            .max_depth_bounds(max_depth_bounds_vk)
+    }
 }
 
 vulkan_bitflags! {
@@ -329,6 +380,28 @@ impl Default for StencilOpState {
             compare_mask: u32::MAX,
             write_mask: u32::MAX,
             reference: u32::MAX,
+        }
+    }
+}
+
+impl StencilOpState {
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_vk(&self) -> ash::vk::StencilOpState {
+        let &Self {
+            ops,
+            compare_mask,
+            write_mask,
+            reference,
+        } = self;
+
+        ash::vk::StencilOpState {
+            fail_op: ops.fail_op.into(),
+            pass_op: ops.pass_op.into(),
+            depth_fail_op: ops.depth_fail_op.into(),
+            compare_op: ops.compare_op.into(),
+            compare_mask,
+            write_mask,
+            reference,
         }
     }
 }

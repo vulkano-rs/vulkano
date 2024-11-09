@@ -8,8 +8,8 @@ use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, CopyImageToBufferInfo, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        CopyImageToBufferInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -249,14 +249,10 @@ fn main() {
     )
     .unwrap();
 
-    let mut builder = RecordingCommandBuffer::new(
+    let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
-        CommandBufferLevel::Primary,
-        CommandBufferBeginInfo {
-            usage: CommandBufferUsage::OneTimeSubmit,
-            ..Default::default()
-        },
+        CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
 
@@ -271,18 +267,14 @@ fn main() {
         )
         .unwrap();
 
-    unsafe {
-        // Note that dispatch dimensions must be proportional to the local size.
-        builder
-            .dispatch([1024 / local_size_x, 1024 / local_size_y, 1])
-            .unwrap();
-    }
+    // Note that dispatch dimensions must be proportional to the local size.
+    unsafe { builder.dispatch([1024 / local_size_x, 1024 / local_size_y, 1]) }.unwrap();
 
     builder
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();
 
-    let command_buffer = builder.end().unwrap();
+    let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

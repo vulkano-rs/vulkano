@@ -109,15 +109,12 @@ use crate::{
         AccelerationStructureBuildType, AccelerationStructureGeometries,
     },
     buffer::BufferCreateInfo,
-    descriptor_set::layout::{
-        DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutSupport,
-    },
-    image::{ImageCreateFlags, ImageCreateInfo, ImageTiling},
+    descriptor_set::layout::{DescriptorSetLayoutCreateInfo, DescriptorSetLayoutSupport},
+    image::{sys::ImageCreateInfoExtensionsVk, ImageCreateFlags, ImageCreateInfo, ImageTiling},
     instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
-    memory::{allocator::DeviceLayout, ExternalMemoryHandleType, MemoryRequirements},
+    memory::{ExternalMemoryHandleType, MemoryFdProperties, MemoryRequirements},
     pipeline::ray_tracing::RayTracingPipeline,
-    sync::Sharing,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
@@ -125,9 +122,10 @@ use ash::vk::Handle;
 use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    ffi::CString,
+    ffi::{c_char, CString},
     fmt::{Debug, Error as FmtError, Formatter},
     fs::File,
+    marker::PhantomData,
     mem::MaybeUninit,
     num::NonZeroU64,
     ops::Deref,
@@ -335,121 +333,50 @@ impl Device {
         // VUID-VkPhysicalDeviceRobustness2FeaturesEXT-robustBufferAccess2-04000
         enable_feature_required_features!(robust_buffer_access2, robust_buffer_access);
 
-        let &DeviceCreateInfo {
-            ref queue_create_infos,
-            ref enabled_extensions,
-            ref enabled_features,
-            ref physical_devices,
-            private_data_slot_request_count,
-            _ne: _,
-        } = &create_info;
+        let handle = {
+            let has_khr_get_physical_device_properties2 = physical_device.instance().api_version()
+                >= Version::V1_1
+                || physical_device
+                    .instance()
+                    .enabled_extensions()
+                    .khr_get_physical_device_properties2;
 
-        let queue_create_infos_vk: SmallVec<[_; 2]> = queue_create_infos
-            .iter()
-            .map(|queue_create_info| {
-                let &QueueCreateInfo {
-                    flags,
-                    queue_family_index,
-                    ref queues,
-                    _ne: _,
-                } = queue_create_info;
+            let mut features_ffi = DeviceFeaturesFfi::default();
+            features_ffi.make_chain(
+                physical_device.api_version(),
+                &create_info.enabled_extensions,
+                physical_device.instance().enabled_extensions(),
+            );
+            features_ffi.write(&create_info.enabled_features);
 
-                ash::vk::DeviceQueueCreateInfo {
-                    flags: flags.into(),
-                    queue_family_index,
-                    queue_count: queues.len() as u32,
-                    p_queue_priorities: queues.as_ptr(),
-                    ..Default::default()
-                }
-            })
-            .collect();
+            // VUID-VkDeviceCreateInfo-pNext-00373
+            let (features_vk, features2_vk) = if has_khr_get_physical_device_properties2 {
+                (None, Some(features_ffi.head_as_mut()))
+            } else {
+                (Some(&features_ffi.head_as_ref().features), None)
+            };
 
-        let enabled_extensions_strings_vk = Vec::<CString>::from(enabled_extensions);
-        let enabled_extensions_ptrs_vk = enabled_extensions_strings_vk
-            .iter()
-            .map(|extension| extension.as_ptr())
-            .collect::<SmallVec<[_; 16]>>();
+            let create_info_fields2_vk = create_info.to_vk_fields2();
+            let create_info_fields1_vk =
+                create_info.to_vk_fields1(&create_info_fields2_vk, features_vk);
+            let mut create_info_extensions =
+                create_info.to_vk_extensions(&create_info_fields1_vk, features2_vk);
+            let create_info_vk =
+                create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions);
 
-        let mut features_ffi = DeviceFeaturesFfi::default();
-        features_ffi.make_chain(
-            physical_device.api_version(),
-            enabled_extensions,
-            physical_device.instance().enabled_extensions(),
-        );
-        features_ffi.write(enabled_features);
-
-        let has_khr_get_physical_device_properties2 = physical_device.instance().api_version()
-            >= Version::V1_1
-            || physical_device
-                .instance()
-                .enabled_extensions()
-                .khr_get_physical_device_properties2;
-
-        let mut create_info_vk = ash::vk::DeviceCreateInfo {
-            flags: ash::vk::DeviceCreateFlags::empty(),
-            queue_create_info_count: queue_create_infos_vk.len() as u32,
-            p_queue_create_infos: queue_create_infos_vk.as_ptr(),
-            enabled_extension_count: enabled_extensions_ptrs_vk.len() as u32,
-            pp_enabled_extension_names: enabled_extensions_ptrs_vk.as_ptr(),
-            p_enabled_features: ptr::null(),
-            ..Default::default()
-        };
-        let mut device_group_create_info_vk = None;
-        let device_group_physical_devices_vk: SmallVec<[_; 2]>;
-
-        // Length of zero and length of one are completely equivalent,
-        // so only do anything special here if more than one physical device was given.
-        // Spec:
-        // A logical device created without using VkDeviceGroupDeviceCreateInfo,
-        // or with physicalDeviceCount equal to zero, is equivalent to a physicalDeviceCount of one
-        // and pPhysicalDevices pointing to the physicalDevice parameter to vkCreateDevice.
-        if physical_devices.len() > 1 {
-            device_group_physical_devices_vk = physical_devices
-                .iter()
-                .map(|physical_device| physical_device.handle())
-                .collect();
-
-            let next = device_group_create_info_vk.insert(ash::vk::DeviceGroupDeviceCreateInfo {
-                physical_device_count: device_group_physical_devices_vk.len() as u32,
-                p_physical_devices: device_group_physical_devices_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*mut _>::cast(next);
-        }
-
-        let mut private_data_create_info_vk = None;
-
-        if private_data_slot_request_count != 0 {
-            let next = private_data_create_info_vk.insert(ash::vk::DevicePrivateDataCreateInfo {
-                private_data_slot_request_count,
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*mut _>::cast(next);
-        }
-
-        // VUID-VkDeviceCreateInfo-pNext-00373
-        if has_khr_get_physical_device_properties2 {
-            create_info_vk.p_next = <*const _>::cast(features_ffi.head_as_ref());
-        } else {
-            create_info_vk.p_enabled_features = &features_ffi.head_as_ref().features;
-        }
-
-        let handle = unsafe {
-            let fns = physical_device.instance().fns();
-            let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_device)(
-                physical_device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
-            .result()
-            .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe {
+                let fns = physical_device.instance().fns();
+                let mut output = MaybeUninit::uninit();
+                (fns.v1_0.create_device)(
+                    physical_device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
+                output.assume_init()
+            }
         };
 
         Ok(Self::from_handle(physical_device, handle, create_info))
@@ -775,14 +702,10 @@ impl Device {
         build_info: &AccelerationStructureBuildGeometryInfo,
         max_primitive_counts: &[u32],
     ) -> AccelerationStructureBuildSizesInfo {
-        let (mut build_info_vk, geometries_vk) = build_info.to_vulkan();
-        build_info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-            geometry_count: geometries_vk.len() as u32,
-            p_geometries: geometries_vk.as_ptr(),
-            ..build_info_vk
-        };
+        let build_info_fields1_vk = build_info.to_vk_fields1();
+        let build_info_vk = build_info.to_vk(&build_info_fields1_vk);
 
-        let mut build_sizes_info_vk = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
+        let mut build_sizes_info_vk = AccelerationStructureBuildSizesInfo::to_mut_vk();
 
         let fns = self.fns();
         (fns.khr_acceleration_structure
@@ -794,12 +717,7 @@ impl Device {
             &mut build_sizes_info_vk,
         );
 
-        AccelerationStructureBuildSizesInfo {
-            acceleration_structure_size: build_sizes_info_vk.acceleration_structure_size,
-            update_scratch_size: build_sizes_info_vk.update_scratch_size,
-            build_scratch_size: build_sizes_info_vk.build_scratch_size,
-            _ne: crate::NonExhaustive(()),
-        }
+        AccelerationStructureBuildSizesInfo::from_vk(&build_sizes_info_vk)
     }
 
     /// Returns whether a serialized acceleration structure with the specified version data
@@ -845,10 +763,8 @@ impl Device {
         &self,
         version_data: &[u8; 2 * ash::vk::UUID_SIZE],
     ) -> bool {
-        let version_info_vk = ash::vk::AccelerationStructureVersionInfoKHR {
-            p_version_data: version_data,
-            ..Default::default()
-        };
+        let version_info_vk =
+            ash::vk::AccelerationStructureVersionInfoKHR::default().version_data(version_data);
         let mut compatibility_vk = ash::vk::AccelerationStructureCompatibilityKHR::default();
 
         let fns = self.fns();
@@ -912,80 +828,14 @@ impl Device {
         &self,
         create_info: &DescriptorSetLayoutCreateInfo,
     ) -> Option<DescriptorSetLayoutSupport> {
-        let &DescriptorSetLayoutCreateInfo {
-            flags,
-            ref bindings,
-            _ne: _,
-        } = create_info;
+        let create_info_fields2_vk = create_info.to_vk_fields2();
+        let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields2_vk);
+        let create_info_vk =
+            create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
-        struct PerBinding {
-            immutable_samplers_vk: Vec<ash::vk::Sampler>,
-        }
-
-        let mut bindings_vk = Vec::with_capacity(bindings.len());
-        let mut per_binding_vk = Vec::with_capacity(bindings.len());
-        let mut binding_flags_info_vk = None;
-        let mut binding_flags_vk = Vec::with_capacity(bindings.len());
-
-        let mut support_vk = ash::vk::DescriptorSetLayoutSupport::default();
-        let mut variable_descriptor_count_support_vk = None;
-
-        for (&binding_num, binding) in bindings.iter() {
-            let &DescriptorSetLayoutBinding {
-                binding_flags,
-                descriptor_type,
-                descriptor_count,
-                stages,
-                ref immutable_samplers,
-                _ne: _,
-            } = binding;
-
-            bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
-                binding: binding_num,
-                descriptor_type: descriptor_type.into(),
-                descriptor_count,
-                stage_flags: stages.into(),
-                p_immutable_samplers: ptr::null(),
-                ..Default::default()
-            });
-            per_binding_vk.push(PerBinding {
-                immutable_samplers_vk: immutable_samplers
-                    .iter()
-                    .map(VulkanObject::handle)
-                    .collect(),
-            });
-            binding_flags_vk.push(binding_flags.into());
-        }
-
-        for (binding_vk, per_binding_vk) in bindings_vk.iter_mut().zip(per_binding_vk.iter_mut()) {
-            binding_vk.p_immutable_samplers = per_binding_vk.immutable_samplers_vk.as_ptr();
-        }
-
-        let mut create_info_vk = ash::vk::DescriptorSetLayoutCreateInfo {
-            flags: flags.into(),
-            binding_count: bindings_vk.len() as u32,
-            p_bindings: bindings_vk.as_ptr(),
-            ..Default::default()
-        };
-
-        if self.api_version() >= Version::V1_2 || self.enabled_extensions().ext_descriptor_indexing
-        {
-            let next =
-                binding_flags_info_vk.insert(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
-                    binding_count: binding_flags_vk.len() as u32,
-                    p_binding_flags: binding_flags_vk.as_ptr(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-
-            let next = variable_descriptor_count_support_vk
-                .insert(ash::vk::DescriptorSetVariableDescriptorCountLayoutSupport::default());
-
-            next.p_next = support_vk.p_next;
-            support_vk.p_next = <*mut _>::cast(next);
-        }
+        let mut support_extensions_vk = DescriptorSetLayoutSupport::to_mut_vk_extensions(self);
+        let mut support_vk = DescriptorSetLayoutSupport::to_mut_vk(&mut support_extensions_vk);
 
         let fns = self.fns();
 
@@ -1003,10 +853,13 @@ impl Device {
             )
         }
 
-        (support_vk.supported != ash::vk::FALSE).then(|| DescriptorSetLayoutSupport {
-            max_variable_descriptor_count: variable_descriptor_count_support_vk
-                .map_or(0, |s| s.max_variable_descriptor_count),
-        })
+        // Unborrow
+        let support_vk = ash::vk::DescriptorSetLayoutSupport {
+            _marker: PhantomData,
+            ..support_vk
+        };
+
+        DescriptorSetLayoutSupport::from_vk(&support_vk, &support_extensions_vk)
     }
 
     /// Returns the memory requirements that would apply for a buffer created with the specified
@@ -1052,62 +905,16 @@ impl Device {
         &self,
         create_info: BufferCreateInfo,
     ) -> MemoryRequirements {
-        let &BufferCreateInfo {
-            flags,
-            ref sharing,
-            size,
-            usage,
-            external_memory_handle_types,
-            _ne: _,
-        } = &create_info;
+        let mut extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk = create_info.to_vk(&mut extensions_vk);
 
-        let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
-            Sharing::Concurrent(queue_family_indices) => (
-                ash::vk::SharingMode::CONCURRENT,
-                queue_family_indices.len() as u32,
-                queue_family_indices.as_ptr(),
-            ),
-        };
+        let info_vk =
+            ash::vk::DeviceBufferMemoryRequirements::default().create_info(&create_info_vk);
 
-        let mut create_info_vk = ash::vk::BufferCreateInfo {
-            flags: flags.into(),
-            size,
-            usage: usage.into(),
-            sharing_mode,
-            queue_family_index_count,
-            p_queue_family_indices,
-            ..Default::default()
-        };
-        let mut external_memory_info_vk = None;
-
-        if !external_memory_handle_types.is_empty() {
-            let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryBufferCreateInfo {
-                handle_types: external_memory_handle_types.into(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        let info_vk = ash::vk::DeviceBufferMemoryRequirements {
-            p_create_info: &create_info_vk,
-            ..Default::default()
-        };
-
-        let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
-        let mut memory_dedicated_requirements_vk = None;
-
-        // `khr_maintenance4` requires Vulkan 1.1,
-        // which means dedicated allocation support is always available.
-        {
-            let next = memory_dedicated_requirements_vk
-                .insert(ash::vk::MemoryDedicatedRequirements::default());
-
-            next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = <*mut _>::cast(next);
-        }
+        let mut memory_requirements2_extensions_vk =
+            MemoryRequirements::to_mut_vk2_extensions(self);
+        let mut memory_requirements2_vk =
+            MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
 
         unsafe {
             let fns = self.fns();
@@ -1129,18 +936,16 @@ impl Device {
             }
         }
 
-        MemoryRequirements {
-            layout: DeviceLayout::from_size_alignment(
-                memory_requirements2_vk.memory_requirements.size,
-                memory_requirements2_vk.memory_requirements.alignment,
-            )
-            .unwrap(),
-            memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
-            prefers_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
-            requires_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
-        }
+        // Unborrow
+        let memory_requirements2_vk = ash::vk::MemoryRequirements2 {
+            _marker: PhantomData,
+            ..memory_requirements2_vk
+        };
+
+        MemoryRequirements::from_vk2(
+            &memory_requirements2_vk,
+            &memory_requirements2_extensions_vk,
+        )
     }
 
     /// Returns the memory requirements that would apply for an image created with the specified
@@ -1283,123 +1088,25 @@ impl Device {
         create_info: ImageCreateInfo,
         plane: Option<usize>,
     ) -> MemoryRequirements {
-        let &ImageCreateInfo {
-            flags,
-            image_type,
-            format,
-            ref view_formats,
-            extent,
-            array_layers,
-            mip_levels,
-            samples,
-            tiling,
-            usage,
-            stencil_usage,
-            ref sharing,
-            initial_layout,
-            ref drm_format_modifiers,
-            drm_format_modifier_plane_layouts: _,
-            external_memory_handle_types,
-            _ne: _,
-        } = &create_info;
-
-        let (sharing_mode, queue_family_index_count, p_queue_family_indices) = match sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
-            Sharing::Concurrent(queue_family_indices) => (
-                ash::vk::SharingMode::CONCURRENT,
-                queue_family_indices.len() as u32,
-                queue_family_indices.as_ptr(),
-            ),
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let mut create_info_extensions_vk = ImageCreateInfoExtensionsVk {
+            drm_format_modifier_explicit_vk: None,
+            ..create_info.to_vk_extensions(&create_info_fields1_vk)
         };
-
-        let mut create_info_vk = ash::vk::ImageCreateInfo {
-            flags: flags.into(),
-            image_type: image_type.into(),
-            format: format.into(),
-            extent: ash::vk::Extent3D {
-                width: extent[0],
-                height: extent[1],
-                depth: extent[2],
-            },
-            mip_levels,
-            array_layers,
-            samples: samples.into(),
-            tiling: tiling.into(),
-            usage: usage.into(),
-            sharing_mode,
-            queue_family_index_count,
-            p_queue_family_indices,
-            initial_layout: initial_layout.into(),
-            ..Default::default()
-        };
-        let mut drm_format_modifier_list_info_vk = None;
-        let mut external_memory_info_vk = None;
-        let mut format_list_info_vk = None;
-        let format_list_view_formats_vk: Vec<_>;
-        let mut stencil_usage_info_vk = None;
-
-        if !drm_format_modifiers.is_empty() {
-            let next = drm_format_modifier_list_info_vk.insert(
-                ash::vk::ImageDrmFormatModifierListCreateInfoEXT {
-                    drm_format_modifier_count: drm_format_modifiers.len() as u32,
-                    p_drm_format_modifiers: drm_format_modifiers.as_ptr(),
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if !external_memory_handle_types.is_empty() {
-            let next = external_memory_info_vk.insert(ash::vk::ExternalMemoryImageCreateInfo {
-                handle_types: external_memory_handle_types.into(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if !view_formats.is_empty() {
-            format_list_view_formats_vk = view_formats
-                .iter()
-                .copied()
-                .map(ash::vk::Format::from)
-                .collect();
-
-            let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
-                view_format_count: format_list_view_formats_vk.len() as u32,
-                p_view_formats: format_list_view_formats_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if let Some(stencil_usage) = stencil_usage {
-            let next = stencil_usage_info_vk.insert(ash::vk::ImageStencilUsageCreateInfo {
-                stencil_usage: stencil_usage.into(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
+        let create_info_vk = create_info.to_vk(&mut create_info_extensions_vk);
 
         // This is currently necessary because of an issue with the spec. The plane aspect should
         // only be needed if the image is disjoint, but the spec currently demands a valid aspect
         // even for non-disjoint DRM format modifier images.
         // See: https://github.com/KhronosGroup/Vulkan-Docs/issues/2309
         // Replace this variable with ash::vk::ImageAspectFlags::NONE when resolved.
-        let default_aspect = if tiling == ImageTiling::DrmFormatModifier {
+        let default_aspect = if create_info.tiling == ImageTiling::DrmFormatModifier {
             // Hopefully valid for any DrmFormatModifier image?
             ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT
         } else {
             ash::vk::ImageAspectFlags::NONE
         };
-        let plane_aspect = plane.map_or(default_aspect, |plane| match tiling {
+        let plane_aspect = plane.map_or(default_aspect, |plane| match create_info.tiling {
             ImageTiling::Optimal | ImageTiling::Linear => match plane {
                 0 => ash::vk::ImageAspectFlags::PLANE_0,
                 1 => ash::vk::ImageAspectFlags::PLANE_1,
@@ -1415,24 +1122,14 @@ impl Device {
             },
         });
 
-        let info_vk = ash::vk::DeviceImageMemoryRequirements {
-            p_create_info: &create_info_vk,
-            plane_aspect,
-            ..Default::default()
-        };
+        let info_vk = ash::vk::DeviceImageMemoryRequirements::default()
+            .create_info(&create_info_vk)
+            .plane_aspect(plane_aspect);
 
-        let mut memory_requirements2_vk = ash::vk::MemoryRequirements2::default();
-        let mut memory_dedicated_requirements_vk = None;
-
-        // `khr_maintenance4` requires Vulkan 1.1,
-        // which means dedicated allocation support is always available.
-        {
-            let next = memory_dedicated_requirements_vk
-                .insert(ash::vk::MemoryDedicatedRequirements::default());
-
-            next.p_next = memory_requirements2_vk.p_next;
-            memory_requirements2_vk.p_next = <*mut _>::cast(next);
-        }
+        let mut memory_requirements2_extensions_vk =
+            MemoryRequirements::to_mut_vk2_extensions(self);
+        let mut memory_requirements2_vk =
+            MemoryRequirements::to_mut_vk2(&mut memory_requirements2_extensions_vk);
 
         unsafe {
             let fns = self.fns();
@@ -1454,18 +1151,16 @@ impl Device {
             }
         }
 
-        MemoryRequirements {
-            layout: DeviceLayout::from_size_alignment(
-                memory_requirements2_vk.memory_requirements.size,
-                memory_requirements2_vk.memory_requirements.alignment,
-            )
-            .unwrap(),
-            memory_type_bits: memory_requirements2_vk.memory_requirements.memory_type_bits,
-            prefers_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
-            requires_dedicated_allocation: memory_dedicated_requirements_vk
-                .map_or(false, |dreqs| dreqs.requires_dedicated_allocation != 0),
-        }
+        // Unborrow
+        let memory_requirements2_vk = ash::vk::MemoryRequirements2 {
+            _marker: PhantomData,
+            ..memory_requirements2_vk
+        };
+
+        MemoryRequirements::from_vk2(
+            &memory_requirements2_vk,
+            &memory_requirements2_extensions_vk,
+        )
     }
 
     // TODO: image_sparse_memory_requirements
@@ -1528,7 +1223,7 @@ impl Device {
         handle_type: ExternalMemoryHandleType,
         file: File,
     ) -> Result<MemoryFdProperties, VulkanError> {
-        let mut memory_fd_properties = ash::vk::MemoryFdPropertiesKHR::default();
+        let mut memory_fd_properties = MemoryFdProperties::to_mut_vk();
 
         #[cfg(unix)]
         let fd = {
@@ -1552,9 +1247,7 @@ impl Device {
         .result()
         .map_err(VulkanError::from)?;
 
-        Ok(MemoryFdProperties {
-            memory_type_bits: memory_fd_properties.memory_type_bits,
-        })
+        Ok(MemoryFdProperties::from_vk(&memory_fd_properties))
     }
 
     /// Assigns a human-readable name to `object` for debugging purposes.
@@ -1571,18 +1264,16 @@ impl Device {
         assert_eq!(object.device().handle(), self.handle());
 
         let object_name_vk = object_name.map(|object_name| CString::new(object_name).unwrap());
-        let info = ash::vk::DebugUtilsObjectNameInfoEXT {
-            object_type: T::Handle::TYPE,
-            object_handle: object.handle().as_raw(),
-            p_object_name: object_name_vk
-                .as_ref()
-                .map_or(ptr::null(), |object_name| object_name.as_ptr()),
-            ..Default::default()
-        };
+        let mut info_vk =
+            ash::vk::DebugUtilsObjectNameInfoEXT::default().object_handle(object.handle());
+
+        if let Some(object_name_vk) = &object_name_vk {
+            info_vk = info_vk.object_name(object_name_vk);
+        }
 
         unsafe {
             let fns = self.fns();
-            (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info)
+            (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info_vk)
                 .result()
                 .map_err(VulkanError::from)?;
         }
@@ -2149,6 +1840,140 @@ impl DeviceCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a DeviceCreateInfoFields1Vk<'_>,
+        extensions_vk: &'a mut DeviceCreateInfoExtensionsVk<'_, '_>,
+    ) -> ash::vk::DeviceCreateInfo<'a> {
+        let DeviceCreateInfoFields1Vk {
+            queue_create_infos_vk,
+            enabled_extension_names_vk,
+            features_vk,
+            device_group_physical_devices_vk: _,
+        } = fields1_vk;
+
+        let mut val_vk = ash::vk::DeviceCreateInfo::default()
+            .flags(ash::vk::DeviceCreateFlags::empty())
+            .queue_create_infos(queue_create_infos_vk)
+            .enabled_extension_names(enabled_extension_names_vk);
+
+        if let Some(features_vk) = features_vk {
+            val_vk = val_vk.enabled_features(features_vk);
+        }
+
+        let DeviceCreateInfoExtensionsVk {
+            device_group_vk,
+            features2_vk,
+            private_data_vk,
+        } = extensions_vk;
+
+        if let Some(next) = device_group_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = features2_vk {
+            val_vk = val_vk.push_next(*next);
+        }
+
+        if let Some(next) = private_data_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a, 'b>(
+        &self,
+        fields1_vk: &'a DeviceCreateInfoFields1Vk<'_>,
+        features2_vk: Option<&'a mut ash::vk::PhysicalDeviceFeatures2<'b>>,
+    ) -> DeviceCreateInfoExtensionsVk<'a, 'b> {
+        let DeviceCreateInfoFields1Vk {
+            queue_create_infos_vk: _,
+            enabled_extension_names_vk: _,
+            features_vk: _,
+            device_group_physical_devices_vk,
+        } = fields1_vk;
+
+        // Length of zero and length of one are completely equivalent,
+        // so only do anything special here if more than one physical device was given.
+        // Spec:
+        // A logical device created without using VkDeviceGroupDeviceCreateInfo,
+        // or with physicalDeviceCount equal to zero, is equivalent to a physicalDeviceCount of one
+        // and pPhysicalDevices pointing to the physicalDevice parameter to vkCreateDevice.
+        let device_group_vk = (device_group_physical_devices_vk.len() > 1).then(|| {
+            ash::vk::DeviceGroupDeviceCreateInfo::default()
+                .physical_devices(device_group_physical_devices_vk)
+        });
+
+        let private_data_vk = (self.private_data_slot_request_count != 0).then(|| {
+            ash::vk::DevicePrivateDataCreateInfo::default()
+                .private_data_slot_request_count(self.private_data_slot_request_count)
+        });
+
+        DeviceCreateInfoExtensionsVk {
+            device_group_vk,
+            features2_vk,
+            private_data_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &'a self,
+        fields2_vk: &'a DeviceCreateInfoFields2Vk,
+        features_vk: Option<&'a ash::vk::PhysicalDeviceFeatures>,
+    ) -> DeviceCreateInfoFields1Vk<'a> {
+        let DeviceCreateInfoFields2Vk {
+            enabled_extensions_vk,
+        } = fields2_vk;
+
+        let queue_create_infos_vk = self
+            .queue_create_infos
+            .iter()
+            .map(QueueCreateInfo::to_vk)
+            .collect();
+        let enabled_extension_names_vk = enabled_extensions_vk
+            .iter()
+            .map(|extension| extension.as_ptr())
+            .collect();
+        let device_group_physical_devices_vk = self
+            .physical_devices
+            .iter()
+            .map(VulkanObject::handle)
+            .collect();
+
+        DeviceCreateInfoFields1Vk {
+            queue_create_infos_vk,
+            enabled_extension_names_vk,
+            features_vk,
+            device_group_physical_devices_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> DeviceCreateInfoFields2Vk {
+        let enabled_extensions_vk = Vec::<CString>::from(&self.enabled_extensions);
+
+        DeviceCreateInfoFields2Vk {
+            enabled_extensions_vk,
+        }
+    }
+}
+
+pub(crate) struct DeviceCreateInfoExtensionsVk<'a, 'b> {
+    pub(crate) device_group_vk: Option<ash::vk::DeviceGroupDeviceCreateInfo<'a>>,
+    pub(crate) features2_vk: Option<&'a mut ash::vk::PhysicalDeviceFeatures2<'b>>,
+    pub(crate) private_data_vk: Option<ash::vk::DevicePrivateDataCreateInfo<'static>>,
+}
+
+pub(crate) struct DeviceCreateInfoFields1Vk<'a> {
+    pub(crate) queue_create_infos_vk: SmallVec<[ash::vk::DeviceQueueCreateInfo<'a>; 2]>,
+    pub(crate) enabled_extension_names_vk: SmallVec<[*const c_char; 16]>,
+    pub(crate) features_vk: Option<&'a ash::vk::PhysicalDeviceFeatures>,
+    pub(crate) device_group_physical_devices_vk: SmallVec<[ash::vk::PhysicalDevice; 2]>,
+}
+
+pub(crate) struct DeviceCreateInfoFields2Vk {
+    pub(crate) enabled_extensions_vk: Vec<CString>,
 }
 
 /// Parameters to create queues in a new `Device`.
@@ -2260,6 +2085,20 @@ impl QueueCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::DeviceQueueCreateInfo<'_> {
+        let &Self {
+            flags,
+            queue_family_index,
+            ref queues,
+            _ne: _,
+        } = self;
+
+        ash::vk::DeviceQueueCreateInfo::default()
+            .flags(flags.into())
+            .queue_family_index(queue_family_index)
+            .queue_priorities(queues)
+    }
 }
 
 vulkan_bitflags! {
@@ -2345,14 +2184,6 @@ impl<T> Deref for DeviceOwnedDebugWrapper<T> {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
-}
-
-/// The properties of a Unix file descriptor when it is imported.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct MemoryFdProperties {
-    /// A bitmask of the indices of memory types that can be used with the file.
-    pub memory_type_bits: u32,
 }
 
 #[derive(Clone, Debug)]

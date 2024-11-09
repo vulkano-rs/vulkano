@@ -8,8 +8,7 @@ use std::{iter::repeat, mem::size_of, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorBufferInfo,
@@ -83,6 +82,7 @@ fn main() {
         },
     )
     .unwrap();
+
     let queue = queues.next().unwrap();
 
     mod cs {
@@ -237,14 +237,10 @@ fn main() {
     .unwrap();
 
     // Build the command buffer, using different offsets for each call.
-    let mut builder = RecordingCommandBuffer::new(
+    let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
-        CommandBufferLevel::Primary,
-        CommandBufferBeginInfo {
-            usage: CommandBufferUsage::OneTimeSubmit,
-            ..Default::default()
-        },
+        CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
 
@@ -259,13 +255,10 @@ fn main() {
                 set.clone().offsets([index * align as u32]),
             )
             .unwrap();
-
-        unsafe {
-            builder.dispatch([12, 1, 1]).unwrap();
-        }
+        unsafe { builder.dispatch([12, 1, 1]) }.unwrap();
     }
 
-    let command_buffer = builder.end().unwrap();
+    let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

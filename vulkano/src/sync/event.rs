@@ -10,9 +10,9 @@
 //! An event can also be signaled from the host, by calling the [`set`] method directly on the
 //! [`Event`].
 //!
-//! [`set_event`]: crate::command_buffer::sys::RawRecordingCommandBuffer::set_event
-//! [pipeline barrier]: crate::command_buffer::sys::RawRecordingCommandBuffer::pipeline_barrier
-//! [`wait_events`]: crate::command_buffer::sys::RawRecordingCommandBuffer::wait_events
+//! [`set_event`]: crate::command_buffer::sys::RecordingCommandBuffer::set_event
+//! [pipeline barrier]: crate::command_buffer::sys::RecordingCommandBuffer::pipeline_barrier
+//! [`wait_events`]: crate::command_buffer::sys::RecordingCommandBuffer::wait_events
 //! [`set`]: Event::set
 
 use crate::{
@@ -84,12 +84,7 @@ impl Event {
         device: Arc<Device>,
         create_info: EventCreateInfo,
     ) -> Result<Event, VulkanError> {
-        let &EventCreateInfo { flags, _ne: _ } = &create_info;
-
-        let create_info_vk = ash::vk::EventCreateInfo {
-            flags: flags.into(),
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
@@ -233,7 +228,7 @@ impl Event {
     /// - There must be an execution dependency between `reset` and the execution of any
     ///   [`wait_events`] command that includes this event in its `events` parameter.
     ///
-    /// [`wait_events`]: crate::command_buffer::sys::RawRecordingCommandBuffer::wait_events
+    /// [`wait_events`]: crate::command_buffer::sys::RecordingCommandBuffer::wait_events
     #[inline]
     pub unsafe fn reset(&mut self) -> Result<(), Validated<VulkanError>> {
         self.validate_reset()?;
@@ -326,6 +321,12 @@ impl EventCreateInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::EventCreateInfo<'static> {
+        let &Self { flags, _ne: _ } = self;
+
+        ash::vk::EventCreateInfo::default().flags(flags.into())
     }
 }
 

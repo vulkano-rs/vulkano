@@ -234,7 +234,7 @@
 //! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain> = return;
 //! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
-//!     # let mut command_buffer: ::std::sync::Arc<::vulkano::command_buffer::CommandBuffer> = return;
+//!     # let mut command_buffer: ::std::sync::Arc<::vulkano::command_buffer::PrimaryAutoCommandBuffer> = return;
 //!     let (image_index, suboptimal, acquire_future)
 //!         = swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 //!
@@ -318,8 +318,6 @@
 //! ```
 
 pub use self::{acquire_present::*, surface::*};
-#[cfg(target_os = "ios")]
-pub use surface::IOSMetalLayer;
 
 mod acquire_present;
 mod surface;
@@ -493,7 +491,7 @@ impl Swapchain {
             Self::new_inner_unchecked(&self.device, &self.surface, &create_info, Some(self))?
         };
 
-        let (mut swapchain, swapchain_images) = Self::from_handle(
+        let (swapchain, swapchain_images) = Self::from_handle(
             self.device.clone(),
             handle,
             image_handles,
@@ -502,10 +500,10 @@ impl Swapchain {
         )?;
 
         if self.full_screen_exclusive == FullScreenExclusive::ApplicationControlled {
-            Arc::get_mut(&mut swapchain)
-                .unwrap()
-                .full_screen_exclusive_held =
-                AtomicBool::new(self.full_screen_exclusive_held.load(Ordering::Relaxed))
+            swapchain.full_screen_exclusive_held.store(
+                self.full_screen_exclusive_held.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
         };
 
         Ok((swapchain, swapchain_images))
@@ -980,135 +978,13 @@ impl Swapchain {
         create_info: &SwapchainCreateInfo,
         old_swapchain: Option<&Swapchain>,
     ) -> Result<(ash::vk::SwapchainKHR, Vec<ash::vk::Image>), VulkanError> {
-        let &SwapchainCreateInfo {
-            flags,
-            min_image_count,
-            image_format,
-            ref image_view_formats,
-            image_color_space,
-            image_extent,
-            image_array_layers,
-            image_usage,
-            ref image_sharing,
-            pre_transform,
-            composite_alpha,
-            present_mode,
-            ref present_modes,
-            clipped,
-            scaling_behavior,
-            present_gravity,
-            full_screen_exclusive,
-            win32_monitor,
-            _ne: _,
-        } = create_info;
-
-        let (image_sharing_mode_vk, queue_family_index_count_vk, p_queue_family_indices_vk) =
-            match image_sharing {
-                Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
-                Sharing::Concurrent(ref ids) => (
-                    ash::vk::SharingMode::CONCURRENT,
-                    ids.len() as u32,
-                    ids.as_ptr(),
-                ),
-            };
-
-        let mut create_info_vk = ash::vk::SwapchainCreateInfoKHR {
-            flags: flags.into(),
-            surface: surface.handle(),
-            min_image_count,
-            image_format: image_format.into(),
-            image_color_space: image_color_space.into(),
-            image_extent: ash::vk::Extent2D {
-                width: image_extent[0],
-                height: image_extent[1],
-            },
-            image_array_layers,
-            image_usage: image_usage.into(),
-            image_sharing_mode: image_sharing_mode_vk,
-            queue_family_index_count: queue_family_index_count_vk,
-            p_queue_family_indices: p_queue_family_indices_vk,
-            pre_transform: pre_transform.into(),
-            composite_alpha: composite_alpha.into(),
-            present_mode: present_mode.into(),
-            clipped: clipped as ash::vk::Bool32,
-            old_swapchain: old_swapchain.map_or(ash::vk::SwapchainKHR::null(), |os| os.handle),
-            ..Default::default()
-        };
-        let mut format_list_info_vk = None;
-        let format_list_view_formats_vk: Vec<_>;
-        let mut full_screen_exclusive_info_vk = None;
-        let mut full_screen_exclusive_win32_info_vk = None;
-        let mut present_modes_info_vk = None;
-        let present_modes_vk: SmallVec<[ash::vk::PresentModeKHR; PresentMode::COUNT]>;
-        let mut present_scaling_info_vk = None;
-
-        if !image_view_formats.is_empty() {
-            format_list_view_formats_vk = image_view_formats
-                .iter()
-                .copied()
-                .map(ash::vk::Format::from)
-                .collect();
-
-            let next = format_list_info_vk.insert(ash::vk::ImageFormatListCreateInfo {
-                view_format_count: format_list_view_formats_vk.len() as u32,
-                p_view_formats: format_list_view_formats_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if full_screen_exclusive != FullScreenExclusive::Default {
-            let next =
-                full_screen_exclusive_info_vk.insert(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                    full_screen_exclusive: full_screen_exclusive.into(),
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if let Some(Win32Monitor(hmonitor)) = win32_monitor {
-            let next = full_screen_exclusive_win32_info_vk.insert(
-                ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                    hmonitor,
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if !present_modes.is_empty() {
-            present_modes_vk = present_modes.iter().copied().map(Into::into).collect();
-
-            let next = present_modes_info_vk.insert(ash::vk::SwapchainPresentModesCreateInfoEXT {
-                present_mode_count: present_modes_vk.len() as u32,
-                p_present_modes: present_modes_vk.as_ptr(),
-                ..Default::default()
-            });
-
-            next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
-
-        if scaling_behavior.is_some() || present_gravity.is_some() {
-            let [present_gravity_x, present_gravity_y] =
-                present_gravity.map_or_else(Default::default, |pg| pg.map(Into::into));
-            let next =
-                present_scaling_info_vk.insert(ash::vk::SwapchainPresentScalingCreateInfoEXT {
-                    scaling_behavior: scaling_behavior.map_or_else(Default::default, Into::into),
-                    present_gravity_x,
-                    present_gravity_y,
-                    ..Default::default()
-                });
-
-            next.p_next = create_info_vk.p_next.cast_mut();
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let mut create_info_extensions_vk = create_info.to_vk_extensions(&create_info_fields1_vk);
+        let create_info_vk = create_info.to_vk(
+            surface.handle(),
+            old_swapchain.map_or(ash::vk::SwapchainKHR::null(), |os| os.handle),
+            &mut create_info_extensions_vk,
+        );
 
         let fns = device.fns();
 
@@ -1460,26 +1336,7 @@ impl Swapchain {
         &self,
         acquire_info: &AcquireNextImageInfo,
     ) -> Result<AcquiredImage, VulkanError> {
-        let &AcquireNextImageInfo {
-            timeout,
-            ref semaphore,
-            ref fence,
-            _ne: _,
-        } = acquire_info;
-
-        let acquire_info_vk = ash::vk::AcquireNextImageInfoKHR {
-            swapchain: self.handle,
-            timeout: timeout.map_or(u64::MAX, |duration| {
-                u64::try_from(duration.as_nanos()).unwrap()
-            }),
-            semaphore: semaphore
-                .as_ref()
-                .map(VulkanObject::handle)
-                .unwrap_or_default(),
-            fence: fence.as_ref().map(VulkanObject::handle).unwrap_or_default(),
-            device_mask: self.device.device_mask(),
-            ..Default::default()
-        };
+        let acquire_info_vk = acquire_info.to_vk(self.handle(), self.device.device_mask());
 
         let fns = self.device.fns();
         let mut output = MaybeUninit::uninit();
@@ -2328,6 +2185,186 @@ impl SwapchainCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &'a self,
+        surface_vk: ash::vk::SurfaceKHR,
+        old_swapchain_vk: ash::vk::SwapchainKHR,
+        extensions_vk: &'a mut SwapchainCreateInfoExtensionsVk<'_>,
+    ) -> ash::vk::SwapchainCreateInfoKHR<'a> {
+        let &Self {
+            flags,
+            min_image_count,
+            image_format,
+            image_view_formats: _,
+            image_color_space,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            ref image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            present_modes: _,
+            clipped,
+            scaling_behavior: _,
+            present_gravity: _,
+            full_screen_exclusive: _,
+            win32_monitor: _,
+            _ne: _,
+        } = self;
+
+        let (image_sharing_mode_vk, queue_family_indices_vk) = match image_sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(ref ids) => (ash::vk::SharingMode::CONCURRENT, ids.as_slice()),
+        };
+
+        let mut val_vk = ash::vk::SwapchainCreateInfoKHR::default()
+            .flags(flags.into())
+            .surface(surface_vk)
+            .min_image_count(min_image_count)
+            .image_format(image_format.into())
+            .image_color_space(image_color_space.into())
+            .image_extent(ash::vk::Extent2D {
+                width: image_extent[0],
+                height: image_extent[1],
+            })
+            .image_array_layers(image_array_layers)
+            .image_usage(image_usage.into())
+            .image_sharing_mode(image_sharing_mode_vk)
+            .queue_family_indices(queue_family_indices_vk)
+            .pre_transform(pre_transform.into())
+            .composite_alpha(composite_alpha.into())
+            .present_mode(present_mode.into())
+            .clipped(clipped)
+            .old_swapchain(old_swapchain_vk);
+
+        let SwapchainCreateInfoExtensionsVk {
+            full_screen_exclusive_vk,
+            full_screen_exclusive_win32_vk,
+            image_format_list_vk,
+            present_modes_vk,
+            present_scaling_vk,
+        } = extensions_vk;
+
+        if let Some(next) = full_screen_exclusive_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = full_screen_exclusive_win32_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = image_format_list_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_modes_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        if let Some(next) = present_scaling_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions<'a>(
+        &self,
+        fields1_vk: &'a SwapchainCreateInfoFields1Vk,
+    ) -> SwapchainCreateInfoExtensionsVk<'a> {
+        let &Self {
+            flags: _,
+            min_image_count: _,
+            image_format: _,
+            image_view_formats: _,
+            image_color_space: _,
+            image_extent: _,
+            image_array_layers: _,
+            image_usage: _,
+            image_sharing: _,
+            pre_transform: _,
+            composite_alpha: _,
+            present_mode: _,
+            present_modes: _,
+            clipped: _,
+            scaling_behavior,
+            present_gravity,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = self;
+        let SwapchainCreateInfoFields1Vk {
+            present_modes_vk,
+            view_formats_vk,
+        } = fields1_vk;
+
+        let full_screen_exclusive_vk = (full_screen_exclusive != FullScreenExclusive::Default)
+            .then(|| {
+                ash::vk::SurfaceFullScreenExclusiveInfoEXT::default()
+                    .full_screen_exclusive(full_screen_exclusive.into())
+            });
+
+        let full_screen_exclusive_win32_vk = win32_monitor.map(|win32_monitor| {
+            ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT::default().hmonitor(win32_monitor.0)
+        });
+
+        let image_format_list_vk = (!view_formats_vk.is_empty())
+            .then(|| ash::vk::ImageFormatListCreateInfo::default().view_formats(view_formats_vk));
+
+        let present_modes_vk = (!present_modes_vk.is_empty()).then(|| {
+            ash::vk::SwapchainPresentModesCreateInfoEXT::default().present_modes(present_modes_vk)
+        });
+
+        let present_scaling_vk =
+            (scaling_behavior.is_some() || present_gravity.is_some()).then(|| {
+                let [present_gravity_x, present_gravity_y] =
+                    present_gravity.map_or_else(Default::default, |pg| pg.map(Into::into));
+                ash::vk::SwapchainPresentScalingCreateInfoEXT::default()
+                    .scaling_behavior(scaling_behavior.map_or_else(Default::default, Into::into))
+                    .present_gravity_x(present_gravity_x)
+                    .present_gravity_y(present_gravity_y)
+            });
+
+        SwapchainCreateInfoExtensionsVk {
+            full_screen_exclusive_vk,
+            full_screen_exclusive_win32_vk,
+            image_format_list_vk,
+            present_modes_vk,
+            present_scaling_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> SwapchainCreateInfoFields1Vk {
+        let present_modes_vk = self.present_modes.iter().copied().map(Into::into).collect();
+        let view_formats_vk = self
+            .image_view_formats
+            .iter()
+            .copied()
+            .map(ash::vk::Format::from)
+            .collect();
+
+        SwapchainCreateInfoFields1Vk {
+            present_modes_vk,
+            view_formats_vk,
+        }
+    }
+}
+
+pub(crate) struct SwapchainCreateInfoExtensionsVk<'a> {
+    pub(crate) full_screen_exclusive_vk:
+        Option<ash::vk::SurfaceFullScreenExclusiveInfoEXT<'static>>,
+    pub(crate) full_screen_exclusive_win32_vk:
+        Option<ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT<'static>>,
+    pub(crate) image_format_list_vk: Option<ash::vk::ImageFormatListCreateInfo<'a>>,
+    pub(crate) present_modes_vk: Option<ash::vk::SwapchainPresentModesCreateInfoEXT<'a>>,
+    pub(crate) present_scaling_vk: Option<ash::vk::SwapchainPresentScalingCreateInfoEXT<'static>>,
+}
+
+pub(crate) struct SwapchainCreateInfoFields1Vk {
+    pub(crate) present_modes_vk: SmallVec<[ash::vk::PresentModeKHR; PresentMode::COUNT]>,
+    pub(crate) view_formats_vk: Vec<ash::vk::Format>,
 }
 
 vulkan_bitflags! {

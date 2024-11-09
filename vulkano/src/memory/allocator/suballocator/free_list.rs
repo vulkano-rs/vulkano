@@ -55,12 +55,14 @@ use std::{cmp, iter::FusedIterator, marker::PhantomData, ptr::NonNull};
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
 /// [external fragmentation]: super#external-fragmentation
+/// [`BuddyAllocator`]: super::BuddyAllocator
+/// [`BumpAllocator`]: super::BumpAllocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<FreeListAllocator>
 /// [internal fragmentation]: super#internal-fragmentation
 /// [alignment requirements]: super#alignment
 #[derive(Debug)]
 pub struct FreeListAllocator {
-    region_offset: DeviceSize,
+    region: Region,
     // Total memory remaining in the region.
     free_size: DeviceSize,
     suballocations: SuballocationList,
@@ -96,7 +98,7 @@ unsafe impl Suballocator for FreeListAllocator {
         };
 
         FreeListAllocator {
-            region_offset: region.offset(),
+            region,
             free_size: region.size(),
             suballocations,
         }
@@ -162,7 +164,7 @@ unsafe impl Suballocator for FreeListAllocator {
                     let mut offset = align_up(node.offset, alignment);
 
                     if buffer_image_granularity != DeviceAlignment::MIN {
-                        debug_assert!(is_aligned(self.region_offset, buffer_image_granularity));
+                        debug_assert!(is_aligned(self.region.offset(), buffer_image_granularity));
 
                         if let Some(prev_ptr) = node.prev {
                             let prev = unsafe { *prev_ptr.as_ptr() };
@@ -248,13 +250,30 @@ unsafe impl Suballocator for FreeListAllocator {
         unsafe { self.suballocations.deallocate(node_ptr) };
     }
 
+    fn reset(&mut self) {
+        self.free_size = self.region.size();
+        self.suballocations.free_list.clear();
+        unsafe { self.suballocations.node_allocator.reset() };
+
+        let root_ptr = self.suballocations.node_allocator.allocate();
+        let root = SuballocationListNode {
+            prev: None,
+            next: None,
+            offset: self.region.offset(),
+            size: self.region.size(),
+            allocation_type: SuballocationType::Free,
+        };
+        unsafe { root_ptr.as_ptr().write(root) };
+
+        self.suballocations.head = root_ptr;
+        self.suballocations.tail = root_ptr;
+        self.suballocations.len = 1;
+    }
+
     #[inline]
     fn free_size(&self) -> DeviceSize {
         self.free_size
     }
-
-    #[inline]
-    fn cleanup(&mut self) {}
 
     #[inline]
     fn suballocations(&self) -> Self::Suballocations<'_> {

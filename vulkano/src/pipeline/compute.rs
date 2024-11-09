@@ -13,7 +13,10 @@
 //! binding any descriptor sets and/or push constants that the pipeline needs, and then issuing a
 //! `dispatch` command on the command buffer.
 
-use super::{PipelineCreateFlags, PipelineShaderStageCreateInfo};
+use super::{
+    PipelineCreateFlags, PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
+    PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
+};
 use crate::{
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
@@ -80,27 +83,11 @@ impl ComputePipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
     ) -> Result<Arc<ComputePipeline>, VulkanError> {
-        let &ComputePipelineCreateInfo {
-            flags,
-            ref stage,
-            ref layout,
-            ref base_pipeline,
-            _ne: _,
-        } = &create_info;
-
-        let owned_stage_vk = stage.to_owned_vulkan();
-        let stage_vk = owned_stage_vk.to_vulkan();
-
-        let create_infos_vk = ash::vk::ComputePipelineCreateInfo {
-            flags: flags.into(),
-            stage: stage_vk,
-            layout: layout.handle(),
-            base_pipeline_handle: base_pipeline
-                .as_ref()
-                .map_or(ash::vk::Pipeline::null(), VulkanObject::handle),
-            base_pipeline_index: -1,
-            ..Default::default()
-        };
+        let create_info_fields2_vk = create_info.to_vk_fields2();
+        let create_info_fields1_vk = create_info.to_vk_fields1(&create_info_fields2_vk);
+        let mut create_info_extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk =
+            create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
         let handle = {
             let fns = device.fns();
@@ -109,7 +96,7 @@ impl ComputePipeline {
                 device.handle(),
                 cache.as_ref().map_or_else(Default::default, |c| c.handle()),
                 1,
-                &create_infos_vk,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -371,6 +358,74 @@ impl ComputePipelineCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a ComputePipelineCreateInfoFields1Vk<'_>,
+        extensions_vk: &'a mut ComputePipelineCreateInfoExtensionsVk,
+    ) -> ash::vk::ComputePipelineCreateInfo<'a> {
+        let &Self {
+            flags,
+            ref stage,
+            ref layout,
+            ref base_pipeline,
+            _ne: _,
+        } = self;
+        let ComputePipelineCreateInfoFields1Vk { stage_fields1_vk } = fields1_vk;
+        let ComputePipelineCreateInfoExtensionsVk {
+            stage_extensions_vk,
+        } = extensions_vk;
+
+        let stage_vk = stage.to_vk(stage_fields1_vk, stage_extensions_vk);
+
+        ash::vk::ComputePipelineCreateInfo::default()
+            .flags(flags.into())
+            .stage(stage_vk)
+            .layout(layout.handle())
+            .base_pipeline_handle(
+                base_pipeline
+                    .as_ref()
+                    .map_or(ash::vk::Pipeline::null(), VulkanObject::handle),
+            )
+            .base_pipeline_index(-1)
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> ComputePipelineCreateInfoExtensionsVk {
+        let stage_extensions_vk = self.stage.to_vk_extensions();
+
+        ComputePipelineCreateInfoExtensionsVk {
+            stage_extensions_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a ComputePipelineCreateInfoFields2Vk,
+    ) -> ComputePipelineCreateInfoFields1Vk<'a> {
+        let ComputePipelineCreateInfoFields2Vk { stage_fields2_vk } = fields2_vk;
+
+        let stage_fields1_vk = self.stage.to_vk_fields1(stage_fields2_vk);
+
+        ComputePipelineCreateInfoFields1Vk { stage_fields1_vk }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> ComputePipelineCreateInfoFields2Vk {
+        let stage_fields2_vk = self.stage.to_vk_fields2();
+
+        ComputePipelineCreateInfoFields2Vk { stage_fields2_vk }
+    }
+}
+
+pub(crate) struct ComputePipelineCreateInfoExtensionsVk {
+    pub(crate) stage_extensions_vk: PipelineShaderStageCreateInfoExtensionsVk,
+}
+
+pub(crate) struct ComputePipelineCreateInfoFields1Vk<'a> {
+    pub(crate) stage_fields1_vk: PipelineShaderStageCreateInfoFields1Vk<'a>,
+}
+
+pub(crate) struct ComputePipelineCreateInfoFields2Vk {
+    pub(crate) stage_fields2_vk: PipelineShaderStageCreateInfoFields2Vk,
 }
 
 #[cfg(test)]
@@ -378,8 +433,7 @@ mod tests {
     use crate::{
         buffer::{Buffer, BufferCreateInfo, BufferUsage},
         command_buffer::{
-            allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-            CommandBufferUsage, RecordingCommandBuffer,
+            allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         },
         descriptor_set::{
             allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -490,14 +544,10 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let mut cbb = RecordingCommandBuffer::new(
+        let mut cbb = AutoCommandBufferBuilder::primary(
             cb_allocator,
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
@@ -515,7 +565,7 @@ mod tests {
             cbb.dispatch([1, 1, 1]).unwrap();
         }
 
-        let cb = cbb.end().unwrap();
+        let cb = cbb.build().unwrap();
 
         let future = now(device)
             .then_execute(queue, cb)
@@ -645,14 +695,10 @@ mod tests {
             device.clone(),
             Default::default(),
         ));
-        let mut cbb = RecordingCommandBuffer::new(
+        let mut cbb = AutoCommandBufferBuilder::primary(
             cb_allocator,
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
@@ -670,7 +716,7 @@ mod tests {
             cbb.dispatch([128, 1, 1]).unwrap();
         }
 
-        let cb = cbb.end().unwrap();
+        let cb = cbb.build().unwrap();
 
         let future = now(device)
             .then_execute(queue, cb)

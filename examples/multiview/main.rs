@@ -7,9 +7,8 @@ use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, BufferImageCopy, CommandBufferBeginInfo,
-        CommandBufferLevel, CommandBufferUsage, CopyImageToBufferInfo, RecordingCommandBuffer,
-        RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
+        CommandBufferUsage, CopyImageToBufferInfo, RenderPassBeginInfo,
     },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
@@ -329,14 +328,10 @@ fn main() {
     let buffer1 = create_buffer();
     let buffer2 = create_buffer();
 
-    let mut builder = RecordingCommandBuffer::new(
+    let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
-        CommandBufferLevel::Primary,
-        CommandBufferBeginInfo {
-            usage: CommandBufferUsage::OneTimeSubmit,
-            ..Default::default()
-        },
+        CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
 
@@ -354,12 +349,10 @@ fn main() {
         .bind_vertex_buffers(0, vertex_buffer.clone())
         .unwrap();
 
-    unsafe {
-        // Drawing commands are broadcast to each view in the view mask of the active renderpass
-        // which means only a single draw call is needed to draw to multiple layers of the
-        // framebuffer.
-        builder.draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap();
-    }
+    // Drawing commands are broadcast to each view in the view mask of the active renderpass
+    // which means only a single draw call is needed to draw to multiple layers of the
+    // framebuffer.
+    unsafe { builder.draw(vertex_buffer.len() as u32, 1, 0, 0) }.unwrap();
 
     builder.end_render_pass(Default::default()).unwrap();
 
@@ -392,7 +385,7 @@ fn main() {
         })
         .unwrap();
 
-    let command_buffer = builder.end().unwrap();
+    let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device)
         .then_execute(queue, command_buffer)

@@ -1,17 +1,16 @@
 use crate::{
-    command_buffer::{sys::RawRecordingCommandBuffer, RecordingCommandBuffer},
+    command_buffer::{sys::RecordingCommandBuffer, AutoCommandBufferBuilder},
     device::{DeviceOwned, QueueFlags},
     instance::debug::DebugUtilsLabel,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
-use std::ffi::CString;
 
 /// # Commands for debugging.
 ///
 /// These commands all require the [`ext_debug_utils`] extension to be enabled on the instance.
 ///
 /// [`ext_debug_utils`]: crate::instance::InstanceExtensions::ext_debug_utils
-impl RecordingCommandBuffer {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Opens a command buffer debug label region.
     pub fn begin_debug_utils_label(
         &mut self,
@@ -39,7 +38,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "begin_debug_utils_label",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.begin_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -75,7 +74,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "end_debug_utils_label",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.end_debug_utils_label_unchecked();
             },
         );
@@ -110,7 +109,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "insert_debug_utils_label",
             Default::default(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.insert_debug_utils_label_unchecked(&label_info);
             },
         );
@@ -119,7 +118,7 @@ impl RecordingCommandBuffer {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn begin_debug_utils_label(
         &mut self,
@@ -170,21 +169,11 @@ impl RawRecordingCommandBuffer {
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> &mut Self {
-        let &DebugUtilsLabel {
-            ref label_name,
-            color,
-            _ne: _,
-        } = label_info;
-
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
-        };
+        let label_info_fields1_vk = label_info.to_vk_fields1();
+        let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
         let fns = self.device().fns();
-        (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info);
+        (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info_vk);
 
         self
     }
@@ -286,21 +275,11 @@ impl RawRecordingCommandBuffer {
         &mut self,
         label_info: &DebugUtilsLabel,
     ) -> &mut Self {
-        let &DebugUtilsLabel {
-            ref label_name,
-            color,
-            _ne: _,
-        } = label_info;
-
-        let label_name_vk = CString::new(label_name.as_str()).unwrap();
-        let label_info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: label_name_vk.as_ptr(),
-            color,
-            ..Default::default()
-        };
+        let label_info_fields1_vk = label_info.to_vk_fields1();
+        let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
         let fns = self.device().fns();
-        (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info);
+        (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info_vk);
 
         self
     }

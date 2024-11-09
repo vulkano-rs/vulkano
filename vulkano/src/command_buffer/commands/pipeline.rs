@@ -5,9 +5,9 @@ use crate::{
     buffer::{view::BufferView, BufferUsage, Subbuffer},
     command_buffer::{
         auto::{RenderPassState, RenderPassStateType, Resource, ResourceUseRef2},
-        sys::RawRecordingCommandBuffer,
-        DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
-        DrawMeshTasksIndirectCommand, RecordingCommandBuffer, ResourceInCommand, SubpassContents,
+        sys::RecordingCommandBuffer,
+        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
+        DrawIndirectCommand, DrawMeshTasksIndirectCommand, ResourceInCommand, SubpassContents,
     },
     descriptor_set::{
         layout::{DescriptorBindingFlags, DescriptorType},
@@ -53,7 +53,7 @@ macro_rules! vuids {
 /// # Commands to execute a bound pipeline.
 ///
 /// Dispatch commands require a compute queue, draw commands require a graphics queue.
-impl RecordingCommandBuffer {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Perform a single compute operation using a compute pipeline.
     ///
     /// A compute pipeline must have been bound using
@@ -118,7 +118,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.dispatch_unchecked(group_counts);
             },
         );
@@ -200,7 +200,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "dispatch",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.dispatch_indirect_unchecked(&indirect_buffer);
             },
         );
@@ -387,7 +387,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_unchecked(vertex_count, instance_count, first_vertex, first_instance);
             },
         );
@@ -494,7 +494,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_indirect",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -624,7 +624,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_indirect_count",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indirect_count_unchecked(
                     &indirect_buffer,
                     &count_buffer,
@@ -861,7 +861,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_indexed",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indexed_unchecked(
                     index_count,
                     instance_count,
@@ -990,7 +990,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_indexed_indirect",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indexed_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -1135,7 +1135,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_indexed_indirect_count",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_indexed_indirect_count_unchecked(
                     &indirect_buffer,
                     &count_buffer,
@@ -1327,7 +1327,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_mesh_tasks",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_mesh_tasks_unchecked(group_counts);
             },
         );
@@ -1442,7 +1442,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_mesh_tasks_indirect",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_mesh_tasks_indirect_unchecked(&indirect_buffer, draw_count, stride);
             },
         );
@@ -1580,7 +1580,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "draw_mesh_tasks_indirect_count",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.draw_mesh_tasks_indirect_count_unchecked(
                     &indirect_buffer,
                     &count_buffer,
@@ -2681,7 +2681,25 @@ impl RecordingCommandBuffer {
                     }
                 }
                 // DynamicState::ExclusiveScissor => todo!(),
-                // DynamicState::FragmentShadingRate => todo!(),
+                DynamicState::FragmentShadingRate => {
+                    if self.builder_state.fragment_shading_rate.is_none() {
+                        return Err(Box::new(ValidationError {
+                            problem: format!(
+                                "the currently bound graphics pipeline requires the \
+                                `DynamicState::{:?}` dynamic state, but \
+                                this state was either not set, or it was overwritten by a \
+                                more recent `bind_pipeline_graphics` command",
+                                dynamic_state
+                            )
+                            .into(),
+                            vuids: vuids!(
+                                vuid_type,
+                                "VUID-vkCmdDrawIndexed-pipelineFragmentShadingRate-09238"
+                            ),
+                            ..Default::default()
+                        }));
+                    }
+                }
                 DynamicState::FrontFace => {
                     if self.builder_state.front_face.is_none() {
                         return Err(Box::new(ValidationError {
@@ -3761,7 +3779,7 @@ impl RecordingCommandBuffer {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn dispatch(
         &mut self,
@@ -4801,7 +4819,7 @@ impl RawRecordingCommandBuffer {
                 }));
             }
         } else {
-            if size_of::<DrawIndirectCommand>() as DeviceSize > indirect_buffer.size() {
+            if size_of::<DrawMeshTasksIndirectCommand>() as DeviceSize > indirect_buffer.size() {
                 return Err(Box::new(ValidationError {
                     problem: "`draw_count` is 1, but `size_of::<DrawMeshTasksIndirectCommand>()` \
                         is greater than `indirect_buffer.size()`"

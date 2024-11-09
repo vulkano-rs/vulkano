@@ -92,6 +92,7 @@ use std::{
     error::Error,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
+    marker::PhantomData,
     ops::Range,
     sync::Arc,
 };
@@ -120,10 +121,7 @@ pub mod view;
 /// ```
 /// use vulkano::{
 ///     buffer::{BufferUsage, Buffer, BufferCreateInfo},
-///     command_buffer::{
-///         CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage, CopyBufferInfo,
-///         RecordingCommandBuffer,
-///     },
+///     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo},
 ///     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
 ///     sync::GpuFuture,
 ///     DeviceSize,
@@ -173,22 +171,18 @@ pub mod view;
 /// .unwrap();
 ///
 /// // Create a one-time command to copy between the buffers.
-/// let mut cbb = RecordingCommandBuffer::new(
+/// let mut cbb = AutoCommandBufferBuilder::primary(
 ///     command_buffer_allocator.clone(),
 ///     queue.queue_family_index(),
-///     CommandBufferLevel::Primary,
-///     CommandBufferBeginInfo {
-///         usage: CommandBufferUsage::OneTimeSubmit,
-///         ..Default::default()
-///     },
+///     CommandBufferUsage::OneTimeSubmit,
 /// )
 /// .unwrap();
 /// cbb.copy_buffer(CopyBufferInfo::buffers(
-///         temporary_accessible_buffer,
-///         device_local_buffer.clone(),
-///     ))
-///     .unwrap();
-/// let cb = cbb.end().unwrap();
+///     temporary_accessible_buffer,
+///     device_local_buffer.clone(),
+/// ))
+/// .unwrap();
+/// let cb = cbb.build().unwrap();
 ///
 /// // Execute the copy command and wait for completion before proceeding.
 /// cb.execute(queue.clone())
@@ -510,10 +504,7 @@ impl Buffer {
     pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
         let device = self.device();
 
-        let info_vk = ash::vk::BufferDeviceAddressInfo {
-            buffer: self.handle(),
-            ..Default::default()
-        };
+        let info_vk = ash::vk::BufferDeviceAddressInfo::default().buffer(self.handle());
 
         let ptr = {
             let fns = device.fns();
@@ -933,6 +924,20 @@ impl ExternalBufferInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PhysicalDeviceExternalBufferInfo<'static> {
+        let &Self {
+            flags,
+            usage,
+            handle_type,
+            _ne: _,
+        } = self;
+
+        ash::vk::PhysicalDeviceExternalBufferInfo::default()
+            .flags(flags.into())
+            .usage(usage.into())
+            .handle_type(handle_type.into())
+    }
 }
 
 /// The external memory properties supported for buffers with a given configuration.
@@ -941,6 +946,25 @@ impl ExternalBufferInfo {
 pub struct ExternalBufferProperties {
     /// The properties for external memory.
     pub external_memory_properties: ExternalMemoryProperties,
+}
+
+impl ExternalBufferProperties {
+    pub(crate) fn to_mut_vk() -> ash::vk::ExternalBufferProperties<'static> {
+        ash::vk::ExternalBufferProperties::default()
+    }
+
+    pub(crate) fn from_vk(val_vk: &ash::vk::ExternalBufferProperties<'_>) -> Self {
+        let &ash::vk::ExternalBufferProperties {
+            ref external_memory_properties,
+            ..
+        } = val_vk;
+
+        Self {
+            external_memory_properties: ExternalMemoryProperties::from_vk(
+                external_memory_properties,
+            ),
+        }
+    }
 }
 
 vulkan_enum! {
@@ -1043,3 +1067,7 @@ impl From<Subbuffer<[u32]>> for IndexBuffer {
         Self::U32(value)
     }
 }
+
+/// This is intended for use by the `BufferContents` derive macro only.
+#[doc(hidden)]
+pub struct AssertParamIsBufferContents<T: BufferContents + ?Sized>(PhantomData<T>);

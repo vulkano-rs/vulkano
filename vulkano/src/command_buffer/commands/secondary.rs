@@ -1,9 +1,9 @@
 use crate::{
     command_buffer::{
         auto::{RenderPassStateType, Resource, ResourceUseRef2},
-        sys::{RawCommandBuffer, RawRecordingCommandBuffer},
-        CommandBuffer, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
-        RecordingCommandBuffer, ResourceInCommand, SecondaryCommandBufferBufferUsage,
+        sys::{CommandBuffer, RecordingCommandBuffer},
+        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, CommandBufferLevel,
+        ResourceInCommand, SecondaryAutoCommandBuffer, SecondaryCommandBufferBufferUsage,
         SecondaryCommandBufferImageUsage, SecondaryCommandBufferResourcesUsage, SubpassContents,
     },
     device::{DeviceOwned, QueueFlags},
@@ -17,7 +17,7 @@ use std::{cmp::min, iter, sync::Arc};
 ///
 /// These commands can be called on any queue that can execute the commands recorded in the
 /// secondary command buffer.
-impl RecordingCommandBuffer {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Executes a secondary command buffer.
     ///
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of
@@ -25,7 +25,7 @@ impl RecordingCommandBuffer {
     /// with `Flags::OneTimeSubmit` will set `self`'s flags to `Flags::OneTimeSubmit` also.
     pub fn execute_commands(
         &mut self,
-        command_buffer: Arc<CommandBuffer>,
+        command_buffer: Arc<SecondaryAutoCommandBuffer>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffer = DropUnlockCommandBuffer::new(command_buffer)?;
         self.validate_execute_commands(iter::once(&**command_buffer))?;
@@ -41,7 +41,7 @@ impl RecordingCommandBuffer {
     // TODO ^ would be nice if this just worked without errors
     pub fn execute_commands_from_vec(
         &mut self,
-        command_buffers: Vec<Arc<CommandBuffer>>,
+        command_buffers: Vec<Arc<SecondaryAutoCommandBuffer>>,
     ) -> Result<&mut Self, Box<ValidationError>> {
         let command_buffers: SmallVec<[_; 4]> = command_buffers
             .into_iter()
@@ -55,7 +55,7 @@ impl RecordingCommandBuffer {
 
     fn validate_execute_commands<'a>(
         &self,
-        command_buffers: impl Iterator<Item = &'a CommandBuffer> + Clone,
+        command_buffers: impl Iterator<Item = &'a SecondaryAutoCommandBuffer> + Clone,
     ) -> Result<(), Box<ValidationError>> {
         self.inner
             .validate_execute_commands(command_buffers.clone().map(|cb| cb.inner()))?;
@@ -89,7 +89,7 @@ impl RecordingCommandBuffer {
         }
 
         for (command_buffer_index, command_buffer) in command_buffers.enumerate() {
-            let inheritance_info = command_buffer.inheritance_info().unwrap();
+            let inheritance_info = command_buffer.inheritance_info();
 
             if let Some(render_pass_state) = &self.builder_state.render_pass {
                 let inheritance_render_pass =
@@ -459,7 +459,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn execute_commands_unchecked(
         &mut self,
-        command_buffers: SmallVec<[Arc<CommandBuffer>; 4]>,
+        command_buffers: SmallVec<[Arc<SecondaryAutoCommandBuffer>; 4]>,
     ) -> &mut Self {
         self.execute_commands_locked(
             command_buffers
@@ -485,7 +485,7 @@ impl RecordingCommandBuffer {
                 .flat_map(|(index, command_buffer)| {
                     let index = index as u32;
                     let SecondaryCommandBufferResourcesUsage { buffers, images } =
-                        command_buffer.secondary_resources_usage();
+                        command_buffer.resources_usage();
 
                     (buffers.iter().map(move |usage| {
                         let &SecondaryCommandBufferBufferUsage {
@@ -537,7 +537,7 @@ impl RecordingCommandBuffer {
                     }))
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.execute_commands_locked(&command_buffers);
             },
         );
@@ -546,11 +546,11 @@ impl RecordingCommandBuffer {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn execute_commands(
         &mut self,
-        command_buffers: &[&RawCommandBuffer],
+        command_buffers: &[&CommandBuffer],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_execute_commands(command_buffers.iter().copied())?;
 
@@ -559,7 +559,7 @@ impl RawRecordingCommandBuffer {
 
     fn validate_execute_commands<'a>(
         &self,
-        command_buffers: impl Iterator<Item = &'a RawCommandBuffer>,
+        command_buffers: impl Iterator<Item = &'a CommandBuffer>,
     ) -> Result<(), Box<ValidationError>> {
         if self.level() != CommandBufferLevel::Primary {
             return Err(Box::new(ValidationError {
@@ -615,7 +615,7 @@ impl RawRecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn execute_commands_unchecked(
         &mut self,
-        command_buffers: &[&RawCommandBuffer],
+        command_buffers: &[&CommandBuffer],
     ) -> &mut Self {
         if command_buffers.is_empty() {
             return self;
@@ -670,17 +670,17 @@ impl RawRecordingCommandBuffer {
     }
 }
 
-struct DropUnlockCommandBuffer(Arc<CommandBuffer>);
+struct DropUnlockCommandBuffer(Arc<SecondaryAutoCommandBuffer>);
 
 impl DropUnlockCommandBuffer {
-    fn new(command_buffer: Arc<CommandBuffer>) -> Result<Self, Box<ValidationError>> {
+    fn new(command_buffer: Arc<SecondaryAutoCommandBuffer>) -> Result<Self, Box<ValidationError>> {
         command_buffer.lock_record()?;
         Ok(Self(command_buffer))
     }
 }
 
 impl std::ops::Deref for DropUnlockCommandBuffer {
-    type Target = Arc<CommandBuffer>;
+    type Target = Arc<SecondaryAutoCommandBuffer>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

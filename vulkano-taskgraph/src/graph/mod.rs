@@ -1,32 +1,30 @@
 //! The task graph data structure and associated types.
 
-pub use self::execute::{ExecuteError, ResourceMap};
-use crate::{
-    resource::{AccessType, BufferRange, ImageLayoutType},
-    Id, InvalidSlotError, QueueFamilyType, Task, BUFFER_TAG, IMAGE_TAG, SWAPCHAIN_TAG,
+pub use self::{
+    compile::{CompileError, CompileErrorKind, CompileInfo},
+    execute::{ExecuteError, ResourceMap},
 };
+use crate::{
+    resource::{self, AccessType, Flight, HostAccessType, ImageLayoutType},
+    Id, InvalidSlotError, Object, ObjectType, QueueFamilyType, Task,
+};
+use ahash::HashMap;
+use ash::vk;
 use concurrent_slotmap::{IterMut, IterUnprotected, SlotId, SlotMap};
 use smallvec::SmallVec;
 use std::{
-    borrow::Cow, cell::RefCell, error::Error, fmt, hint, iter::FusedIterator, ops::Range, slice,
-    sync::Arc,
+    borrow::Cow, cell::RefCell, error::Error, fmt, hint, iter::FusedIterator, ops::Range, sync::Arc,
 };
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo},
     device::{Device, DeviceOwned, Queue},
-    format::Format,
-    image::{
-        Image, ImageAspects, ImageCreateFlags, ImageCreateInfo, ImageLayout, ImageSubresourceRange,
-    },
+    image::{Image, ImageCreateInfo, ImageLayout},
     swapchain::{Swapchain, SwapchainCreateInfo},
     sync::{semaphore::Semaphore, AccessFlags, PipelineStages},
-    DeviceSize,
 };
 
+mod compile;
 mod execute;
-
-const EXCLUSIVE_BIT: u32 = 1 << 6;
-const VIRTUAL_BIT: u32 = 1 << 7;
 
 /// The task graph is a [directed acyclic graph] consisting of [`Task`] nodes, with edges
 /// representing happens-before relations.
@@ -42,6 +40,8 @@ struct Nodes<W: ?Sized> {
 }
 
 struct Node<W: ?Sized> {
+    // TODO:
+    #[allow(unused)]
     name: Cow<'static, str>,
     inner: NodeInner<W>,
     in_edges: Vec<NodeIndex>,
@@ -51,53 +51,41 @@ struct Node<W: ?Sized> {
 enum NodeInner<W: ?Sized> {
     Task(TaskNode<W>),
     // TODO:
+    #[allow(unused)]
     Semaphore,
 }
 
 type NodeIndex = u32;
 
-struct Resources {
-    inner: SlotMap<ResourceInfo>,
-}
-
-#[derive(Clone, Copy)]
-enum ResourceInfo {
-    Buffer(BufferInfo),
-    Image(ImageInfo),
-    Swapchain(SwapchainInfo),
-}
-
-#[derive(Clone, Copy)]
-struct BufferInfo {
-    size: DeviceSize,
-}
-
-#[derive(Clone, Copy)]
-struct ImageInfo {
-    flags: ImageCreateFlags,
-    format: Format,
-    array_layers: u32,
-    mip_levels: u32,
-}
-
-#[derive(Clone, Copy)]
-struct SwapchainInfo {
-    image_array_layers: u32,
+pub(crate) struct Resources {
+    inner: SlotMap<()>,
+    physical_resources: Arc<resource::Resources>,
+    physical_map: HashMap<Id, Id>,
+    host_reads: Vec<Id<Buffer>>,
+    host_writes: Vec<Id<Buffer>>,
 }
 
 impl<W: ?Sized> TaskGraph<W> {
     /// Creates a new `TaskGraph`.
     ///
     /// `max_nodes` is the maximum number of nodes the graph can ever have. `max_resources` is the
-    /// maximum number of resources the graph can ever have.
+    /// maximum number of virtual resources the graph can ever have.
     #[must_use]
-    pub fn new(max_nodes: u32, max_resources: u32) -> Self {
+    pub fn new(
+        physical_resources: &Arc<resource::Resources>,
+        max_nodes: u32,
+        max_resources: u32,
+    ) -> Self {
         TaskGraph {
             nodes: Nodes {
                 inner: SlotMap::new(max_nodes),
             },
             resources: Resources {
                 inner: SlotMap::new(max_resources),
+                physical_resources: physical_resources.clone(),
+                physical_map: HashMap::default(),
+                host_reads: Vec::new(),
+                host_writes: Vec::new(),
             },
         }
     }
@@ -124,7 +112,7 @@ impl<W: ?Sized> TaskGraph<W> {
         TaskNodeBuilder {
             id,
             task_node,
-            resources: &self.resources,
+            resources: &mut self.resources,
         }
     }
 
@@ -220,6 +208,15 @@ impl<W: ?Sized> TaskGraph<W> {
     #[must_use]
     pub fn add_swapchain(&mut self, create_info: &SwapchainCreateInfo) -> Id<Swapchain> {
         self.resources.add_swapchain(create_info)
+    }
+
+    /// Adds a host buffer access to this task graph.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
+    pub fn add_host_buffer_access(&mut self, id: Id<Buffer>, access_type: HostAccessType) {
+        self.resources.add_host_buffer_access(id, access_type)
     }
 }
 
@@ -363,47 +360,108 @@ impl<W: ?Sized> Nodes<W> {
 
 impl Resources {
     fn add_buffer(&mut self, create_info: &BufferCreateInfo) -> Id<Buffer> {
-        let resource_info = ResourceInfo::Buffer(BufferInfo {
-            size: create_info.size,
-        });
-        let mut tag = BUFFER_TAG | VIRTUAL_BIT;
+        let mut tag = Buffer::TAG | Id::VIRTUAL_BIT;
 
         if create_info.sharing.is_exclusive() {
-            tag |= EXCLUSIVE_BIT;
+            tag |= Id::EXCLUSIVE_BIT;
         }
 
-        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
+        let slot = self.inner.insert_with_tag_mut((), tag);
 
-        Id::new(slot)
+        unsafe { Id::new(slot) }
     }
 
     fn add_image(&mut self, create_info: &ImageCreateInfo) -> Id<Image> {
-        let resource_info = ResourceInfo::Image(ImageInfo {
-            flags: create_info.flags,
-            format: create_info.format,
-            array_layers: create_info.array_layers,
-            mip_levels: create_info.mip_levels,
-        });
-        let mut tag = IMAGE_TAG | VIRTUAL_BIT;
+        let mut tag = Image::TAG | Id::VIRTUAL_BIT;
 
         if create_info.sharing.is_exclusive() {
-            tag |= EXCLUSIVE_BIT;
+            tag |= Id::EXCLUSIVE_BIT;
         }
 
-        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
+        let slot = self.inner.insert_with_tag_mut((), tag);
 
-        Id::new(slot)
+        unsafe { Id::new(slot) }
     }
 
     fn add_swapchain(&mut self, create_info: &SwapchainCreateInfo) -> Id<Swapchain> {
-        let resource_info = ResourceInfo::Swapchain(SwapchainInfo {
-            image_array_layers: create_info.image_array_layers,
+        let mut tag = Swapchain::TAG | Id::VIRTUAL_BIT;
+
+        if create_info.image_sharing.is_exclusive() {
+            tag |= Id::EXCLUSIVE_BIT;
+        }
+
+        let slot = self.inner.insert_with_tag_mut((), tag);
+
+        unsafe { Id::new(slot) }
+    }
+
+    fn add_physical_buffer(
+        &mut self,
+        physical_id: Id<Buffer>,
+    ) -> Result<Id<Buffer>, InvalidSlotError> {
+        let physical_resources = self.physical_resources.clone();
+        let buffer_state = physical_resources.buffer(physical_id)?;
+        let buffer = buffer_state.buffer();
+        let virtual_id = self.add_buffer(&BufferCreateInfo {
+            sharing: buffer.sharing().clone(),
+            ..Default::default()
         });
-        let tag = SWAPCHAIN_TAG | VIRTUAL_BIT;
+        self.physical_map
+            .insert(physical_id.erase(), virtual_id.erase());
 
-        let slot = self.inner.insert_with_tag_mut(resource_info, tag);
+        Ok(virtual_id)
+    }
 
-        Id::new(slot)
+    fn add_physical_image(
+        &mut self,
+        physical_id: Id<Image>,
+    ) -> Result<Id<Image>, InvalidSlotError> {
+        let physical_resources = self.physical_resources.clone();
+        let image_state = physical_resources.image(physical_id)?;
+        let image = image_state.image();
+        let virtual_id = self.add_image(&ImageCreateInfo {
+            sharing: image.sharing().clone(),
+            ..Default::default()
+        });
+        self.physical_map
+            .insert(physical_id.erase(), virtual_id.erase());
+
+        Ok(virtual_id)
+    }
+
+    fn add_physical_swapchain(
+        &mut self,
+        id: Id<Swapchain>,
+    ) -> Result<Id<Swapchain>, InvalidSlotError> {
+        let physical_resources = self.physical_resources.clone();
+        let swapchain_state = physical_resources.swapchain(id)?;
+        let swapchain = swapchain_state.swapchain();
+        let virtual_id = self.add_swapchain(&SwapchainCreateInfo {
+            image_sharing: swapchain.image_sharing().clone(),
+            ..Default::default()
+        });
+        self.physical_map.insert(id.erase(), virtual_id.erase());
+
+        Ok(virtual_id)
+    }
+
+    fn add_host_buffer_access(&mut self, mut id: Id<Buffer>, access_type: HostAccessType) {
+        if id.is_virtual() {
+            self.get(id.erase()).expect("invalid buffer");
+        } else if let Some(&virtual_id) = self.physical_map.get(&id.erase()) {
+            id = unsafe { virtual_id.parametrize() };
+        } else {
+            id = self.add_physical_buffer(id).expect("invalid buffer");
+        }
+
+        let host_accesses = match access_type {
+            HostAccessType::Read => &mut self.host_reads,
+            HostAccessType::Write => &mut self.host_writes,
+        };
+
+        if !host_accesses.contains(&id) {
+            host_accesses.push(id);
+        }
     }
 
     fn capacity(&self) -> u32 {
@@ -414,96 +472,49 @@ impl Resources {
         self.inner.len()
     }
 
-    fn buffer(&self, id: Id<Buffer>) -> Result<&BufferInfo, InvalidSlotError> {
+    fn get(&self, id: Id) -> Result<&(), InvalidSlotError> {
         // SAFETY: We never modify the map concurrently.
-        let resource_info =
-            unsafe { self.inner.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))?;
-
-        if let ResourceInfo::Buffer(buffer) = resource_info {
-            Ok(buffer)
-        } else {
-            // SAFETY: The `get_unprotected` call above already successfully compared the tag, so
-            // there is no need to check it again. We always ensure that buffer IDs get tagged with
-            // the `BUFFER_TAG`.
-            unsafe { hint::unreachable_unchecked() }
-        }
+        unsafe { self.inner.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))
     }
 
-    unsafe fn buffer_unchecked(&self, id: Id<Buffer>) -> &BufferInfo {
-        // SAFETY:
-        // * The caller must ensure that the `id` is valid.
-        // * We never modify the map concurrently.
-        let resource_info = unsafe { self.inner.index_unchecked_unprotected(id.index()) };
-
-        if let ResourceInfo::Buffer(buffer) = resource_info {
-            buffer
-        } else {
-            // SAFETY: The caller must ensure that the `id` is valid.
-            unsafe { hint::unreachable_unchecked() }
-        }
-    }
-
-    fn image(&self, id: Id<Image>) -> Result<&ImageInfo, InvalidSlotError> {
+    fn iter(&self) -> impl Iterator<Item = (Id, &())> {
         // SAFETY: We never modify the map concurrently.
-        let resource_info =
-            unsafe { self.inner.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))?;
-
-        if let ResourceInfo::Image(image) = resource_info {
-            Ok(image)
-        } else {
-            // SAFETY: The `get_unprotected` call above already successfully compared the tag, so
-            // there is no need to check it again. We always ensure that image IDs get tagged with
-            // the `IMAGE_TAG`.
-            unsafe { hint::unreachable_unchecked() }
-        }
+        unsafe { self.inner.iter_unprotected() }.map(|(slot, v)| (unsafe { Id::new(slot) }, v))
     }
 
-    unsafe fn image_unchecked(&self, id: Id<Image>) -> &ImageInfo {
-        // SAFETY:
-        // * The caller must ensure that the `index` is valid.
-        // * We never modify the map concurrently.
-        let resource_info = unsafe { self.inner.index_unchecked_unprotected(id.index()) };
-
-        if let ResourceInfo::Image(image) = resource_info {
-            image
-        } else {
-            // SAFETY: The caller must ensure that the `id` is valid.
-            unsafe { hint::unreachable_unchecked() }
+    pub(crate) fn contains_host_buffer_access(
+        &self,
+        mut id: Id<Buffer>,
+        access_type: HostAccessType,
+    ) -> bool {
+        if !id.is_virtual() {
+            if let Some(&virtual_id) = self.physical_map.get(&id.erase()) {
+                id = unsafe { virtual_id.parametrize() };
+            } else {
+                return false;
+            }
         }
+
+        let host_accesses = match access_type {
+            HostAccessType::Read => &self.host_reads,
+            HostAccessType::Write => &self.host_writes,
+        };
+
+        host_accesses.contains(&id)
     }
+}
 
-    fn swapchain(&self, id: Id<Swapchain>) -> Result<&SwapchainInfo, InvalidSlotError> {
-        // SAFETY: We never modify the map concurrently.
-        let resource_info =
-            unsafe { self.inner.get_unprotected(id.slot) }.ok_or(InvalidSlotError::new(id))?;
-
-        if let ResourceInfo::Swapchain(swapchain) = resource_info {
-            Ok(swapchain)
-        } else {
-            // SAFETY: The `get_unprotected` call above already successfully compared the tag, so
-            // there is no need to check it again. We always ensure that swapchain IDs get tagged
-            // with the `SWAPCHAIN_TAG`.
-            unsafe { hint::unreachable_unchecked() }
-        }
+impl<W: ?Sized> fmt::Debug for TaskGraph<W> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // FIXME:
+        f.debug_struct("TaskGraph").finish_non_exhaustive()
     }
+}
 
-    unsafe fn swapchain_unchecked(&self, id: Id<Swapchain>) -> &SwapchainInfo {
-        // SAFETY:
-        // * The caller must ensure that the `index` is valid.
-        // * We never modify the map concurrently.
-        let resource_info = unsafe { self.inner.index_unchecked_unprotected(id.index()) };
-
-        if let ResourceInfo::Swapchain(swapchain) = resource_info {
-            swapchain
-        } else {
-            // SAFETY: The caller must ensure that the `id` is valid.
-            unsafe { hint::unreachable_unchecked() }
-        }
-    }
-
-    fn iter(&self) -> IterUnprotected<'_, ResourceInfo> {
-        // SAFETY: We never modify the map concurrently.
-        unsafe { self.inner.iter_unprotected() }
+unsafe impl<W: ?Sized> DeviceOwned for TaskGraph<W> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.resources.physical_resources.device()
     }
 }
 
@@ -540,44 +551,21 @@ pub struct TaskNode<W: ?Sized> {
 }
 
 pub(crate) struct ResourceAccesses {
-    inner: Vec<ResourceAccess>,
+    inner: Vec<(Id, ResourceAccess)>,
 }
 
-// TODO: Literally anything else
-#[derive(Clone)]
-enum ResourceAccess {
-    Buffer(BufferAccess),
-    Image(ImageAccess),
-    Swapchain(SwapchainAccess),
-}
-
-#[derive(Clone)]
-struct BufferAccess {
-    id: Id<Buffer>,
-    range: BufferRange,
-    access_type: AccessType,
-}
-
-#[derive(Clone)]
-struct ImageAccess {
-    id: Id<Image>,
-    subresource_range: ImageSubresourceRange,
-    access_type: AccessType,
-    layout_type: ImageLayoutType,
-}
-
-#[derive(Clone)]
-struct SwapchainAccess {
-    id: Id<Swapchain>,
-    array_layers: Range<u32>,
-    access_type: AccessType,
-    layout_type: ImageLayoutType,
+#[derive(Clone, Copy, Default)]
+struct ResourceAccess {
+    stage_mask: PipelineStages,
+    access_mask: AccessFlags,
+    image_layout: ImageLayout,
+    queue_family_index: u32,
 }
 
 impl<W: ?Sized> TaskNode<W> {
     fn new(queue_family_type: QueueFamilyType, task: impl Task<World = W>) -> Self {
         TaskNode {
-            accesses: ResourceAccesses { inner: Vec::new() },
+            accesses: ResourceAccesses::new(),
             queue_family_type,
             queue_family_index: 0,
             dependency_level_index: 0,
@@ -605,113 +593,50 @@ impl<W: ?Sized> TaskNode<W> {
     pub fn task_mut(&mut self) -> &mut dyn Task<World = W> {
         &mut *self.task
     }
-
-    /// Returns `true` if the task node has access of the given `access_type` to the buffer
-    /// corresponding to `id` where the given `range` is contained within the access's range.
-    #[inline]
-    #[must_use]
-    pub fn contains_buffer_access(
-        &self,
-        id: Id<Buffer>,
-        range: BufferRange,
-        access_type: AccessType,
-    ) -> bool {
-        self.accesses.contains_buffer_access(id, range, access_type)
-    }
-
-    /// Returns `true` if the task node has access of the given `access_type` and `layout_type` to
-    /// the image corresponding to `id` where the given `subresource_range` is contained within
-    /// the access's subresource range.
-    #[inline]
-    #[must_use]
-    pub fn contains_image_access(
-        &self,
-        id: Id<Image>,
-        subresource_range: ImageSubresourceRange,
-        access_type: AccessType,
-        layout_type: ImageLayoutType,
-    ) -> bool {
-        self.accesses
-            .contains_image_access(id, subresource_range, access_type, layout_type)
-    }
-
-    /// Returns `true` if the task node has access of the given `access_type` and `layout_type` to
-    /// the swapchain corresponding to `id` where the given `array_layers` are contained within
-    /// the access's array layers.
-    #[inline]
-    #[must_use]
-    pub fn contains_swapchain_access(
-        &self,
-        id: Id<Swapchain>,
-        array_layers: Range<u32>,
-        access_type: AccessType,
-        layout_type: ImageLayoutType,
-    ) -> bool {
-        self.accesses
-            .contains_swapchain_access(id, array_layers, access_type, layout_type)
-    }
 }
 
 impl ResourceAccesses {
-    fn iter(&self) -> slice::Iter<'_, ResourceAccess> {
-        self.inner.iter()
+    pub(crate) const fn new() -> Self {
+        ResourceAccesses { inner: Vec::new() }
     }
 
-    pub(crate) fn contains_buffer_access(
-        &self,
-        id: Id<Buffer>,
-        range: BufferRange,
-        access_type: AccessType,
-    ) -> bool {
-        debug_assert!(!range.is_empty());
+    fn get_mut(
+        &mut self,
+        resources: &mut Resources,
+        mut id: Id,
+    ) -> Result<(Id, Option<&mut ResourceAccess>), InvalidSlotError> {
+        if id.is_virtual() {
+            resources.get(id)?;
+        } else if let Some(&virtual_id) = resources.physical_map.get(&id) {
+            id = virtual_id;
+        } else {
+            id = match id.object_type() {
+                ObjectType::Buffer => resources
+                    .add_physical_buffer(unsafe { id.parametrize() })?
+                    .erase(),
+                ObjectType::Image => resources
+                    .add_physical_image(unsafe { id.parametrize() })?
+                    .erase(),
+                ObjectType::Swapchain => resources
+                    .add_physical_swapchain(unsafe { id.parametrize() })?
+                    .erase(),
+                _ => unreachable!(),
+            };
+        }
 
-        self.iter().any(|resource_access| {
-            matches!(resource_access, ResourceAccess::Buffer(a) if a.id == id
-                && a.access_type == access_type
-                && a.range.start <= range.start
-                && range.end <= a.range.end)
-        })
+        let access = self
+            .iter_mut()
+            .find_map(|(x, access)| (x == id).then_some(access));
+
+        Ok((id, access))
     }
 
-    pub(crate) fn contains_image_access(
-        &self,
-        id: Id<Image>,
-        subresource_range: ImageSubresourceRange,
-        access_type: AccessType,
-        layout_type: ImageLayoutType,
-    ) -> bool {
-        debug_assert!(!subresource_range.aspects.is_empty());
-        debug_assert!(!subresource_range.mip_levels.is_empty());
-        debug_assert!(!subresource_range.array_layers.is_empty());
-
-        self.iter().any(|resource_access| {
-            matches!(resource_access, ResourceAccess::Image(a) if a.id == id
-                && a.access_type == access_type
-                && a.layout_type == layout_type
-                && a.subresource_range.aspects.contains(subresource_range.aspects)
-                && a.subresource_range.mip_levels.start <= subresource_range.mip_levels.start
-                && subresource_range.mip_levels.end <= a.subresource_range.mip_levels.end
-                && a.subresource_range.array_layers.start <= subresource_range.array_layers.start
-                && subresource_range.array_layers.end <= a.subresource_range.array_layers.end)
-        })
+    fn iter(&self) -> impl Iterator<Item = (Id, &ResourceAccess)> {
+        self.inner.iter().map(|(id, access)| (*id, access))
     }
 
-    pub(crate) fn contains_swapchain_access(
-        &self,
-        id: Id<Swapchain>,
-        array_layers: Range<u32>,
-        access_type: AccessType,
-        layout_type: ImageLayoutType,
-    ) -> bool {
-        debug_assert!(!array_layers.is_empty());
-
-        self.iter().any(|resource_access| {
-            matches!(resource_access, ResourceAccess::Swapchain(a) if a.id == id
-                && a.access_type == access_type
-                && a.layout_type == layout_type
-                && a.array_layers.start <= array_layers.start
-                && array_layers.end <= a.array_layers.end)
-        })
+    fn iter_mut(&mut self) -> impl Iterator<Item = (Id, &mut ResourceAccess)> {
+        self.inner.iter_mut().map(|(id, access)| (*id, access))
     }
 }
 
@@ -719,7 +644,7 @@ impl ResourceAccesses {
 pub struct TaskNodeBuilder<'a, W: ?Sized> {
     id: NodeId,
     task_node: &'a mut TaskNode<W>,
-    resources: &'a Resources,
+    resources: &'a mut Resources,
 }
 
 impl<W: ?Sized> TaskNodeBuilder<'_, W> {
@@ -727,48 +652,27 @@ impl<W: ?Sized> TaskNodeBuilder<'_, W> {
     ///
     /// # Panics
     ///
-    /// - Panics if `id` is not a valid virtual resource ID.
-    /// - Panics if `range` doesn't denote a valid range of the buffer.
+    /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
     /// - Panics if `access_type` isn't a valid buffer access type.
-    pub fn buffer_access(
-        &mut self,
-        id: Id<Buffer>,
-        range: BufferRange,
-        access_type: AccessType,
-    ) -> &mut Self {
-        let buffer = self.resources.buffer(id).expect("invalid buffer");
-
-        assert!(range.end <= buffer.size);
-        assert!(!range.is_empty());
+    pub fn buffer_access(&mut self, id: Id<Buffer>, access_type: AccessType) -> &mut Self {
+        let (id, access) = self.access_mut(id.erase()).expect("invalid buffer");
 
         assert!(access_type.is_valid_buffer_access_type());
 
-        // SAFETY: We checked the safety preconditions above.
-        unsafe { self.buffer_access_unchecked(id, range, access_type) }
-    }
-
-    /// Adds a buffer access to this task node without doing any checks.
-    ///
-    /// # Safety
-    ///
-    /// - `id` must be a valid virtual resource ID.
-    /// - `range` must denote a valid range of the buffer.
-    /// - `access_type` must be a valid buffer access type.
-    #[inline]
-    pub unsafe fn buffer_access_unchecked(
-        &mut self,
-        id: Id<Buffer>,
-        range: BufferRange,
-        access_type: AccessType,
-    ) -> &mut Self {
-        self.task_node
-            .accesses
-            .inner
-            .push(ResourceAccess::Buffer(BufferAccess {
-                id,
-                range,
-                access_type,
-            }));
+        if let Some(access) = access {
+            access.stage_mask |= access_type.stage_mask();
+            access.access_mask |= access_type.access_mask();
+        } else {
+            self.task_node.accesses.inner.push((
+                id.erase(),
+                ResourceAccess {
+                    stage_mask: access_type.stage_mask(),
+                    access_mask: access_type.access_mask(),
+                    image_layout: ImageLayout::Undefined,
+                    queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                },
+            ));
+        }
 
         self
     }
@@ -777,136 +681,52 @@ impl<W: ?Sized> TaskNodeBuilder<'_, W> {
     ///
     /// # Panics
     ///
-    /// - Panics if `id` is not a valid virtual resource ID.
-    /// - Panics if `subresource_range` doesn't denote a valid subresource range of the image.
+    /// - Panics if `id` is not a valid virtual resource ID nor a valid physical ID.
     /// - Panics if `access_type` isn't a valid image access type.
+    /// - Panics if an access for `id` was already added and its image layout doesn't equal
+    ///   `access_type.image_layout(layout_type)`.
     pub fn image_access(
         &mut self,
         id: Id<Image>,
-        mut subresource_range: ImageSubresourceRange,
         access_type: AccessType,
         layout_type: ImageLayoutType,
     ) -> &mut Self {
-        let image = self.resources.image(id).expect("invalid image");
-
-        if image.flags.contains(ImageCreateFlags::DISJOINT) {
-            subresource_range.aspects -= ImageAspects::COLOR;
-            subresource_range.aspects |= match image.format.planes().len() {
-                2 => ImageAspects::PLANE_0 | ImageAspects::PLANE_1,
-                3 => ImageAspects::PLANE_0 | ImageAspects::PLANE_1 | ImageAspects::PLANE_2,
-                _ => unreachable!(),
-            };
-        }
-
-        assert!(image.format.aspects().contains(subresource_range.aspects));
-        assert!(subresource_range.mip_levels.end <= image.mip_levels);
-        assert!(subresource_range.array_layers.end <= image.array_layers);
-        assert!(!subresource_range.aspects.is_empty());
-        assert!(!subresource_range.mip_levels.is_empty());
-        assert!(!subresource_range.array_layers.is_empty());
+        let (id, access) = self.access_mut(id.erase()).expect("invalid image");
 
         assert!(access_type.is_valid_image_access_type());
 
-        // SAFETY: We checked the safety preconditions above.
-        unsafe { self.image_access_unchecked(id, subresource_range, access_type, layout_type) }
-    }
+        let image_layout = access_type.image_layout(layout_type);
 
-    /// Adds an image access to this task node without doing any checks.
-    ///
-    /// # Safety
-    ///
-    /// - `id` must be a valid virtual resource ID.
-    /// - `subresource_range` must denote a valid subresource range of the image. If the image
-    ///   flags contain `ImageCreateFlags::DISJOINT`, then the color aspect is not considered
-    ///   valid.
-    /// - `access_type` must be a valid image access type.
-    #[inline]
-    pub unsafe fn image_access_unchecked(
-        &mut self,
-        id: Id<Image>,
-        subresource_range: ImageSubresourceRange,
-        access_type: AccessType,
-        mut layout_type: ImageLayoutType,
-    ) -> &mut Self {
-        // Normalize the layout type so that comparisons of accesses are predictable.
-        if access_type.image_layout() == ImageLayout::General {
-            layout_type = ImageLayoutType::Optimal;
+        if let Some(access) = access {
+            assert_eq!(access.image_layout, image_layout);
+
+            access.stage_mask |= access_type.stage_mask();
+            access.access_mask |= access_type.access_mask();
+        } else {
+            self.task_node.accesses.inner.push((
+                id.erase(),
+                ResourceAccess {
+                    stage_mask: access_type.stage_mask(),
+                    access_mask: access_type.access_mask(),
+                    image_layout,
+                    queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                },
+            ));
         }
-
-        self.task_node
-            .accesses
-            .inner
-            .push(ResourceAccess::Image(ImageAccess {
-                id,
-                subresource_range,
-                access_type,
-                layout_type,
-            }));
 
         self
     }
 
-    /// Adds a swapchain image access to this task node.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `id` is not a valid virtual resource ID.
-    /// - Panics if `array_layers` doesn't denote a valid range of array layers of the swapchain.
-    /// - Panics if `access_type` isn't a valid image access type.
-    pub fn swapchain_access(
+    fn access_mut(
         &mut self,
-        id: Id<Swapchain>,
-        array_layers: Range<u32>,
-        access_type: AccessType,
-        layout_type: ImageLayoutType,
-    ) -> &mut Self {
-        let swapchain = self.resources.swapchain(id).expect("invalid swapchain");
-
-        assert!(array_layers.end <= swapchain.image_array_layers);
-        assert!(!array_layers.is_empty());
-
-        assert!(access_type.is_valid_image_access_type());
-
-        // SAFETY: We checked the safety preconditions above.
-        unsafe { self.swapchain_access_unchecked(id, array_layers, access_type, layout_type) }
-    }
-
-    /// Adds a swapchain image access to this task node without doing any checks.
-    ///
-    /// # Safety
-    ///
-    /// - `id` must be a valid virtual resource ID.
-    /// - `array_layers` must denote a valid range of array layers of the swapchain.
-    /// - `access_type` must be a valid image access type.
-    #[inline]
-    pub unsafe fn swapchain_access_unchecked(
-        &mut self,
-        id: Id<Swapchain>,
-        array_layers: Range<u32>,
-        access_type: AccessType,
-        mut layout_type: ImageLayoutType,
-    ) -> &mut Self {
-        // Normalize the layout type so that comparisons of accesses are predictable.
-        if access_type.image_layout() == ImageLayout::General {
-            layout_type = ImageLayoutType::Optimal;
-        }
-
-        self.task_node
-            .accesses
-            .inner
-            .push(ResourceAccess::Swapchain(SwapchainAccess {
-                id,
-                access_type,
-                layout_type,
-                array_layers,
-            }));
-
-        self
+        id: Id,
+    ) -> Result<(Id, Option<&mut ResourceAccess>), InvalidSlotError> {
+        self.task_node.accesses.get_mut(self.resources, id)
     }
 
     /// Finishes building the task node and returns the ID of the built node.
     #[inline]
-    pub fn build(self) -> NodeId {
+    pub fn build(&mut self) -> NodeId {
         self.id
     }
 }
@@ -914,16 +734,19 @@ impl<W: ?Sized> TaskNodeBuilder<'_, W> {
 /// A [`TaskGraph`] that has been compiled into an executable form.
 pub struct ExecutableTaskGraph<W: ?Sized> {
     graph: TaskGraph<W>,
+    flight_id: Id<Flight>,
     instructions: Vec<Instruction>,
     submissions: Vec<Submission>,
     buffer_barriers: Vec<BufferMemoryBarrier>,
     image_barriers: Vec<ImageMemoryBarrier>,
-    semaphores: RefCell<Vec<Semaphore>>,
+    semaphores: RefCell<Vec<Arc<Semaphore>>>,
     swapchains: SmallVec<[Id<Swapchain>; 1]>,
     present_queue: Option<Arc<Queue>>,
+    last_accesses: Vec<ResourceAccess>,
 }
 
 // FIXME: Initial queue family ownership transfers
+#[derive(Debug)]
 struct Submission {
     queue: Arc<Queue>,
     initial_buffer_barrier_range: Range<BarrierIndex>,
@@ -933,7 +756,7 @@ struct Submission {
 
 type InstructionIndex = usize;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Instruction {
     WaitAcquire {
         swapchain_id: Id<Swapchain>,
@@ -965,6 +788,14 @@ enum Instruction {
         semaphore_index: SemaphoreIndex,
         stage_mask: PipelineStages,
     },
+    SignalPrePresent {
+        swapchain_id: Id<Swapchain>,
+        stage_mask: PipelineStages,
+    },
+    WaitPrePresent {
+        swapchain_id: Id<Swapchain>,
+        stage_mask: PipelineStages,
+    },
     SignalPresent {
         swapchain_id: Id<Swapchain>,
         stage_mask: PipelineStages,
@@ -977,6 +808,7 @@ type SemaphoreIndex = usize;
 
 type BarrierIndex = u32;
 
+#[derive(Clone, Debug)]
 struct BufferMemoryBarrier {
     src_stage_mask: PipelineStages,
     src_access_mask: AccessFlags,
@@ -985,9 +817,9 @@ struct BufferMemoryBarrier {
     src_queue_family_index: u32,
     dst_queue_family_index: u32,
     buffer: Id<Buffer>,
-    range: BufferRange,
 }
 
+#[derive(Clone, Debug)]
 struct ImageMemoryBarrier {
     src_stage_mask: PipelineStages,
     src_access_mask: AccessFlags,
@@ -997,15 +829,7 @@ struct ImageMemoryBarrier {
     new_layout: ImageLayout,
     src_queue_family_index: u32,
     dst_queue_family_index: u32,
-    image: ImageReference,
-    subresource_range: ImageSubresourceRange,
-}
-
-// TODO: This really ought not to be necessary.
-#[derive(Clone, Copy)]
-enum ImageReference {
-    Normal(Id<Image>),
-    Swapchain(Id<Swapchain>),
+    image: Id,
 }
 
 impl<W: ?Sized> ExecutableTaskGraph<W> {
@@ -1032,12 +856,36 @@ impl<W: ?Sized> ExecutableTaskGraph<W> {
     pub fn task_nodes_mut(&mut self) -> TaskNodesMut<'_, W> {
         self.graph.task_nodes_mut()
     }
+
+    /// Returns the flight ID that the task graph was compiled with.
+    #[inline]
+    pub fn flight_id(&self) -> Id<Flight> {
+        self.flight_id
+    }
+}
+
+impl<W: ?Sized> fmt::Debug for ExecutableTaskGraph<W> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("ExecutableTaskGraph");
+
+        debug
+            .field("graph", &self.graph)
+            .field("flight_id", &self.flight_id)
+            .field("instructions", &self.instructions)
+            .field("submissions", &self.submissions)
+            .field("buffer_barriers", &self.buffer_barriers)
+            .field("image_barriers", &self.image_barriers)
+            .field("semaphores", &self.semaphores)
+            .field("swapchains", &self.swapchains)
+            .field("present_queue", &self.present_queue)
+            .finish_non_exhaustive()
+    }
 }
 
 unsafe impl<W: ?Sized> DeviceOwned for ExecutableTaskGraph<W> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.submissions[0].queue.device()
+        self.graph.device()
     }
 }
 
@@ -1172,27 +1020,19 @@ impl Error for TaskGraphError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{TaskContext, TaskResult};
-
-    struct DummyTask;
-
-    impl Task for DummyTask {
-        type World = ();
-
-        unsafe fn execute(&self, _tcx: &mut TaskContext<'_>, _world: &Self::World) -> TaskResult {
-            Ok(())
-        }
-    }
+    use crate::tests::test_queues;
+    use std::marker::PhantomData;
 
     #[test]
     fn basic_usage1() {
-        let mut graph = TaskGraph::new(10, 0);
+        let (resources, _) = test_queues!();
+        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
 
         let x = graph
-            .create_task_node("", QueueFamilyType::Graphics, DummyTask)
+            .create_task_node("X", QueueFamilyType::Graphics, PhantomData)
             .build();
         let y = graph
-            .create_task_node("", QueueFamilyType::Graphics, DummyTask)
+            .create_task_node("Y", QueueFamilyType::Graphics, PhantomData)
             .build();
 
         graph.add_edge(x, y).unwrap();
@@ -1220,16 +1060,17 @@ mod tests {
 
     #[test]
     fn basic_usage2() {
-        let mut graph = TaskGraph::new(10, 0);
+        let (resources, _) = test_queues!();
+        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
 
         let x = graph
-            .create_task_node("", QueueFamilyType::Graphics, DummyTask)
+            .create_task_node("X", QueueFamilyType::Graphics, PhantomData)
             .build();
         let y = graph
-            .create_task_node("", QueueFamilyType::Graphics, DummyTask)
+            .create_task_node("Y", QueueFamilyType::Graphics, PhantomData)
             .build();
         let z = graph
-            .create_task_node("", QueueFamilyType::Graphics, DummyTask)
+            .create_task_node("Z", QueueFamilyType::Graphics, PhantomData)
             .build();
 
         assert!(graph.task_node(x).is_ok());
@@ -1256,10 +1097,11 @@ mod tests {
 
     #[test]
     fn self_referential_node() {
-        let mut graph = TaskGraph::new(10, 0);
+        let (resources, _) = test_queues!();
+        let mut graph = TaskGraph::<()>::new(&resources, 10, 0);
 
         let x = graph
-            .create_task_node("", QueueFamilyType::Graphics, DummyTask)
+            .create_task_node("X", QueueFamilyType::Graphics, PhantomData)
             .build();
 
         assert_eq!(graph.add_edge(x, x), Err(TaskGraphError::InvalidNode));

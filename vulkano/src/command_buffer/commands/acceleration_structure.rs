@@ -12,8 +12,8 @@ use crate::{
     buffer::{BufferUsage, Subbuffer},
     command_buffer::{
         auto::{Resource, ResourceUseRef2},
-        sys::RawRecordingCommandBuffer,
-        RecordingCommandBuffer, ResourceInCommand,
+        sys::RecordingCommandBuffer,
+        AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{DeviceOwned, QueueFlags},
     query::{QueryPool, QueryType},
@@ -24,7 +24,7 @@ use smallvec::SmallVec;
 use std::{mem::size_of, sync::Arc};
 
 /// # Commands to do operations on acceleration structures.
-impl RecordingCommandBuffer {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Builds or updates an acceleration structure.
     ///
     /// # Safety
@@ -118,7 +118,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "build_acceleration_structure",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.build_acceleration_structure_unchecked(&info, &build_range_infos);
             },
         );
@@ -247,7 +247,7 @@ impl RecordingCommandBuffer {
         self.add_command(
             "build_acceleration_structure_indirect",
             used_resources,
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.build_acceleration_structure_indirect_unchecked(
                     &info,
                     &indirect_buffer,
@@ -336,7 +336,7 @@ impl RecordingCommandBuffer {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_acceleration_structure_unchecked(&info);
             },
         );
@@ -420,7 +420,7 @@ impl RecordingCommandBuffer {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_acceleration_structure_to_memory_unchecked(&info);
             },
         );
@@ -507,7 +507,7 @@ impl RecordingCommandBuffer {
             ]
             .into_iter()
             .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.copy_memory_to_acceleration_structure_unchecked(&info);
             },
         );
@@ -603,7 +603,7 @@ impl RecordingCommandBuffer {
                     },
                 )
             }).collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.write_acceleration_structures_properties_unchecked(
                     &acceleration_structures,
                     &query_pool,
@@ -790,7 +790,7 @@ fn add_indirect_buffer_resources(
     ));
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn build_acceleration_structure(
         &mut self,
@@ -1539,30 +1539,12 @@ impl RawRecordingCommandBuffer {
         info: &AccelerationStructureBuildGeometryInfo,
         build_range_infos: &[AccelerationStructureBuildRangeInfo],
     ) -> &mut Self {
-        let (mut info_vk, geometries_vk) = info.to_vulkan();
-        info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-            geometry_count: geometries_vk.len() as u32,
-            p_geometries: geometries_vk.as_ptr(),
-            ..info_vk
-        };
+        let info_fields1_vk = info.to_vk_fields1();
+        let info_vk = info.to_vk(&info_fields1_vk);
 
         let build_range_info_elements_vk: SmallVec<[_; 8]> = build_range_infos
             .iter()
-            .map(|build_range_info| {
-                let &AccelerationStructureBuildRangeInfo {
-                    primitive_count,
-                    primitive_offset,
-                    first_vertex,
-                    transform_offset,
-                } = build_range_info;
-
-                ash::vk::AccelerationStructureBuildRangeInfoKHR {
-                    primitive_count,
-                    primitive_offset,
-                    first_vertex,
-                    transform_offset,
-                }
-            })
+            .map(AccelerationStructureBuildRangeInfo::to_vk)
             .collect();
         let build_range_info_pointers_vk: SmallVec<[_; 8]> = build_range_info_elements_vk
             .iter()
@@ -2182,12 +2164,8 @@ impl RawRecordingCommandBuffer {
         stride: u32,
         max_primitive_counts: &[u32],
     ) -> &mut Self {
-        let (mut info_vk, geometries_vk) = info.to_vulkan();
-        info_vk = ash::vk::AccelerationStructureBuildGeometryInfoKHR {
-            geometry_count: geometries_vk.len() as u32,
-            p_geometries: geometries_vk.as_ptr(),
-            ..info_vk
-        };
+        let info_fields1_vk = info.to_vk_fields1();
+        let info_vk = info.to_vk(&info_fields1_vk);
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure
@@ -2242,19 +2220,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         info: &CopyAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyAccelerationStructureInfoKHR {
-            src: src.handle(),
-            dst: dst.handle(),
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure
@@ -2311,21 +2277,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         info: &CopyAccelerationStructureToMemoryInfo,
     ) -> &mut Self {
-        let &CopyAccelerationStructureToMemoryInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyAccelerationStructureToMemoryInfoKHR {
-            src: src.handle(),
-            dst: ash::vk::DeviceOrHostAddressKHR {
-                device_address: dst.device_address().unwrap().get(),
-            },
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure
@@ -2382,21 +2334,7 @@ impl RawRecordingCommandBuffer {
         &mut self,
         info: &CopyMemoryToAccelerationStructureInfo,
     ) -> &mut Self {
-        let &CopyMemoryToAccelerationStructureInfo {
-            ref src,
-            ref dst,
-            mode,
-            _ne: _,
-        } = info;
-
-        let info_vk = ash::vk::CopyMemoryToAccelerationStructureInfoKHR {
-            src: ash::vk::DeviceOrHostAddressConstKHR {
-                device_address: src.device_address().unwrap().get(),
-            },
-            dst: dst.handle(),
-            mode: mode.into(),
-            ..Default::default()
-        };
+        let info_vk = info.to_vk();
 
         let fns = self.device().fns();
         (fns.khr_acceleration_structure

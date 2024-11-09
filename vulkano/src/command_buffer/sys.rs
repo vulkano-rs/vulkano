@@ -1,20 +1,15 @@
 use super::{
     allocator::{CommandBufferAlloc, CommandBufferAllocator},
-    CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsage,
+    CommandBufferInheritanceInfo, CommandBufferInheritanceInfoExtensionsVk,
+    CommandBufferInheritanceInfoFields1Vk, CommandBufferLevel, CommandBufferUsage,
 };
 use crate::{
-    command_buffer::{
-        CommandBufferInheritanceRenderPassInfo, CommandBufferInheritanceRenderPassType,
-        CommandBufferInheritanceRenderingInfo,
-    },
     device::{Device, DeviceOwned, QueueFamilyProperties},
-    query::QueryControlFlags,
     Validated, ValidationError, VulkanError, VulkanObject,
 };
-use smallvec::SmallVec;
-use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
+use std::{fmt::Debug, mem::ManuallyDrop, sync::Arc};
 
-/// A raw command buffer in the recording state.
+/// A command buffer in the recording state.
 ///
 /// This type corresponds directly to a `VkCommandBuffer` after it has been allocated and started
 /// recording. It doesn't keep track of synchronization or resource lifetimes. As such, all
@@ -24,7 +19,7 @@ use std::{fmt::Debug, mem::ManuallyDrop, ptr, sync::Arc};
 ///
 /// Note that command buffers in the recording state don't implement the `Send` and `Sync` traits.
 /// Once a command buffer has finished recording, however, it *does* implement `Send` and `Sync`.
-pub struct RawRecordingCommandBuffer {
+pub struct RecordingCommandBuffer {
     allocation: ManuallyDrop<CommandBufferAlloc>,
     allocator: Arc<dyn CommandBufferAllocator>,
     queue_family_index: u32,
@@ -33,7 +28,7 @@ pub struct RawRecordingCommandBuffer {
     pub(super) usage: CommandBufferUsage,
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     /// Allocates and begins recording a new command buffer.
     #[inline]
     pub fn new(
@@ -82,109 +77,13 @@ impl RawRecordingCommandBuffer {
     ) -> Result<Self, Validated<VulkanError>> {
         let allocation = allocator.allocate(queue_family_index, level)?;
 
-        let CommandBufferBeginInfo {
-            usage,
-            inheritance_info,
-            _ne: _,
-        } = begin_info;
-
         {
-            let mut flags = ash::vk::CommandBufferUsageFlags::from(usage);
-            let mut inheritance_info_vk = None;
-            let mut inheritance_rendering_info_vk = None;
-            let mut color_attachment_formats_vk: SmallVec<[_; 4]> = SmallVec::new();
-
-            if let Some(inheritance_info) = &inheritance_info {
-                let &CommandBufferInheritanceInfo {
-                    ref render_pass,
-                    occlusion_query,
-                    pipeline_statistics,
-                    _ne: _,
-                } = inheritance_info;
-
-                let inheritance_info_vk =
-                    inheritance_info_vk.insert(ash::vk::CommandBufferInheritanceInfo {
-                        render_pass: ash::vk::RenderPass::null(),
-                        subpass: 0,
-                        framebuffer: ash::vk::Framebuffer::null(),
-                        occlusion_query_enable: ash::vk::FALSE,
-                        query_flags: ash::vk::QueryControlFlags::empty(),
-                        pipeline_statistics: pipeline_statistics.into(),
-                        ..Default::default()
-                    });
-
-                if let Some(flags) = occlusion_query {
-                    inheritance_info_vk.occlusion_query_enable = ash::vk::TRUE;
-
-                    if flags.intersects(QueryControlFlags::PRECISE) {
-                        inheritance_info_vk.query_flags = ash::vk::QueryControlFlags::PRECISE;
-                    }
-                }
-
-                if let Some(render_pass) = render_pass {
-                    flags |= ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE;
-
-                    match render_pass {
-                        CommandBufferInheritanceRenderPassType::BeginRenderPass(
-                            render_pass_info,
-                        ) => {
-                            let &CommandBufferInheritanceRenderPassInfo {
-                                ref subpass,
-                                ref framebuffer,
-                            } = render_pass_info;
-
-                            inheritance_info_vk.render_pass = subpass.render_pass().handle();
-                            inheritance_info_vk.subpass = subpass.index();
-                            inheritance_info_vk.framebuffer = framebuffer
-                                .as_ref()
-                                .map(|fb| fb.handle())
-                                .unwrap_or_default();
-                        }
-                        CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
-                            let &CommandBufferInheritanceRenderingInfo {
-                                view_mask,
-                                ref color_attachment_formats,
-                                depth_attachment_format,
-                                stencil_attachment_format,
-                                rasterization_samples,
-                            } = rendering_info;
-
-                            color_attachment_formats_vk.extend(
-                                color_attachment_formats.iter().map(|format| {
-                                    format.map_or(ash::vk::Format::UNDEFINED, Into::into)
-                                }),
-                            );
-
-                            let inheritance_rendering_info_vk = inheritance_rendering_info_vk
-                                .insert(ash::vk::CommandBufferInheritanceRenderingInfo {
-                                    flags: ash::vk::RenderingFlags::empty(),
-                                    view_mask,
-                                    color_attachment_count: color_attachment_formats_vk.len()
-                                        as u32,
-                                    p_color_attachment_formats: color_attachment_formats_vk
-                                        .as_ptr(),
-                                    depth_attachment_format: depth_attachment_format
-                                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
-                                    stencil_attachment_format: stencil_attachment_format
-                                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
-                                    rasterization_samples: rasterization_samples.into(),
-                                    ..Default::default()
-                                });
-
-                            inheritance_info_vk.p_next =
-                                <*const _>::cast(inheritance_rendering_info_vk);
-                        }
-                    }
-                }
-            }
-
-            let begin_info_vk = ash::vk::CommandBufferBeginInfo {
-                flags,
-                p_inheritance_info: inheritance_info_vk
-                    .as_ref()
-                    .map_or(ptr::null(), |info| info),
-                ..Default::default()
-            };
+            let begin_info_fields2_vk = begin_info.to_vk_fields2();
+            let mut begin_info_fields1_extensions_vk =
+                begin_info.to_vk_fields1_extensions(&begin_info_fields2_vk);
+            let begin_info_fields1_vk =
+                begin_info.to_vk_fields1(&mut begin_info_fields1_extensions_vk);
+            let begin_info_vk = begin_info.to_vk(&begin_info_fields1_vk);
 
             let fns = allocation.inner.device().fns();
             (fns.v1_0.begin_command_buffer)(allocation.inner.handle(), &begin_info_vk)
@@ -192,7 +91,13 @@ impl RawRecordingCommandBuffer {
                 .map_err(VulkanError::from)?;
         }
 
-        Ok(RawRecordingCommandBuffer {
+        let CommandBufferBeginInfo {
+            usage,
+            inheritance_info,
+            _ne: _,
+        } = begin_info;
+
+        Ok(RecordingCommandBuffer {
             allocation: ManuallyDrop::new(allocation),
             allocator,
             inheritance_info,
@@ -203,13 +108,13 @@ impl RawRecordingCommandBuffer {
 
     /// Ends the recording, returning a command buffer which can be submitted.
     #[inline]
-    pub unsafe fn end(self) -> Result<RawCommandBuffer, VulkanError> {
+    pub unsafe fn end(self) -> Result<CommandBuffer, VulkanError> {
         let fns = self.device().fns();
         (fns.v1_0.end_command_buffer)(self.handle())
             .result()
             .map_err(VulkanError::from)?;
 
-        Ok(RawCommandBuffer { inner: self })
+        Ok(CommandBuffer { inner: self })
     }
 
     /// Returns the queue family index that this command buffer was created for.
@@ -241,7 +146,7 @@ impl RawRecordingCommandBuffer {
     }
 }
 
-impl Drop for RawRecordingCommandBuffer {
+impl Drop for RecordingCommandBuffer {
     #[inline]
     fn drop(&mut self) {
         let allocation = unsafe { ManuallyDrop::take(&mut self.allocation) };
@@ -249,7 +154,7 @@ impl Drop for RawRecordingCommandBuffer {
     }
 }
 
-unsafe impl VulkanObject for RawRecordingCommandBuffer {
+unsafe impl VulkanObject for RecordingCommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -258,16 +163,16 @@ unsafe impl VulkanObject for RawRecordingCommandBuffer {
     }
 }
 
-unsafe impl DeviceOwned for RawRecordingCommandBuffer {
+unsafe impl DeviceOwned for RecordingCommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.allocation.inner.device()
     }
 }
 
-impl Debug for RawRecordingCommandBuffer {
+impl Debug for RecordingCommandBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RawRecordingCommandBuffer")
+        f.debug_struct("RecordingCommandBuffer")
             .field("handle", &self.level())
             .field("level", &self.level())
             .field("usage", &self.usage)
@@ -323,24 +228,122 @@ impl CommandBufferBeginInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a BeginInfoFields1Vk<'_>,
+    ) -> ash::vk::CommandBufferBeginInfo<'a> {
+        let &Self {
+            usage: _,
+            ref inheritance_info,
+            _ne: _,
+        } = self;
+
+        let flags_vk = inheritance_info
+            .as_ref()
+            .and_then(|inheritance_info| {
+                inheritance_info
+                    .render_pass
+                    .is_some()
+                    .then_some(ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE)
+            })
+            .unwrap_or_default();
+
+        let mut val_vk = ash::vk::CommandBufferBeginInfo::default().flags(flags_vk);
+
+        let BeginInfoFields1Vk {
+            inheritance_info_vk,
+        } = fields1_vk;
+
+        if let Some(inheritance_info_vk) = inheritance_info_vk {
+            val_vk = val_vk.inheritance_info(inheritance_info_vk);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields1_extensions_vk: &'a mut BeginInfoFields1ExtensionsVk<'_>,
+    ) -> BeginInfoFields1Vk<'a> {
+        let BeginInfoFields1ExtensionsVk {
+            inheritance_info_vk,
+        } = fields1_extensions_vk;
+
+        let inheritance_info_vk = self
+            .inheritance_info
+            .as_ref()
+            .zip(inheritance_info_vk.as_mut())
+            .map(|(inheritance_info, inheritance_info_extensions_vk)| {
+                inheritance_info.to_vk(inheritance_info_extensions_vk)
+            });
+
+        BeginInfoFields1Vk {
+            inheritance_info_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1_extensions<'a>(
+        &self,
+        fields2_vk: &'a BeginInfoFields2Vk,
+    ) -> BeginInfoFields1ExtensionsVk<'a> {
+        let BeginInfoFields2Vk {
+            inheritance_info_fields1_vk,
+        } = fields2_vk;
+
+        let inheritance_info_vk = self
+            .inheritance_info
+            .as_ref()
+            .zip(inheritance_info_fields1_vk.as_ref())
+            .map(|(inheritance_info, inheritance_info_fields1_vk)| {
+                inheritance_info.to_vk_extensions(inheritance_info_fields1_vk)
+            });
+
+        BeginInfoFields1ExtensionsVk {
+            inheritance_info_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> BeginInfoFields2Vk {
+        let inheritance_info_fields1_vk = self
+            .inheritance_info
+            .as_ref()
+            .map(|inheritance_info| inheritance_info.to_vk_fields1());
+
+        BeginInfoFields2Vk {
+            inheritance_info_fields1_vk,
+        }
+    }
 }
 
-/// A raw command buffer that has finished recording.
+pub(crate) struct BeginInfoFields1Vk<'a> {
+    pub(crate) inheritance_info_vk: Option<ash::vk::CommandBufferInheritanceInfo<'a>>,
+}
+
+pub(crate) struct BeginInfoFields1ExtensionsVk<'a> {
+    pub(crate) inheritance_info_vk: Option<CommandBufferInheritanceInfoExtensionsVk<'a>>,
+}
+
+pub(crate) struct BeginInfoFields2Vk {
+    pub(crate) inheritance_info_fields1_vk: Option<CommandBufferInheritanceInfoFields1Vk>,
+}
+
+/// A command buffer that has finished recording.
 #[derive(Debug)]
-pub struct RawCommandBuffer {
-    inner: RawRecordingCommandBuffer,
+pub struct CommandBuffer {
+    inner: RecordingCommandBuffer,
 }
 
-// `RawRecordingCommandBuffer` is `!Send + !Sync` so that the implementation of
+// `RecordingCommandBuffer` is `!Send + !Sync` so that the implementation of
 // `CommandBufferAllocator::allocate` can assume that a command buffer in the recording state
 // doesn't leave the thread it was allocated on. However, as the safety contract states,
 // `CommandBufferAllocator::deallocate` must account for the possibility that a command buffer is
 // moved between threads after the recording is finished, and thus deallocated from another thread.
 // That's why this is sound.
-unsafe impl Send for RawCommandBuffer {}
-unsafe impl Sync for RawCommandBuffer {}
+unsafe impl Send for CommandBuffer {}
+unsafe impl Sync for CommandBuffer {}
 
-impl RawCommandBuffer {
+impl CommandBuffer {
     /// Returns the queue family index that this command buffer was created for.
     #[inline]
     pub fn queue_family_index(&self) -> u32 {
@@ -366,7 +369,7 @@ impl RawCommandBuffer {
     }
 }
 
-unsafe impl VulkanObject for RawCommandBuffer {
+unsafe impl VulkanObject for CommandBuffer {
     type Handle = ash::vk::CommandBuffer;
 
     #[inline]
@@ -375,7 +378,7 @@ unsafe impl VulkanObject for RawCommandBuffer {
     }
 }
 
-unsafe impl DeviceOwned for RawCommandBuffer {
+unsafe impl DeviceOwned for CommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.allocation.inner.device()

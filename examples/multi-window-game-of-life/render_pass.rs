@@ -1,17 +1,16 @@
-use crate::{app::App, pixels_draw::PixelsDrawPipeline};
+use crate::{pixels_draw::PixelsDrawPipeline, App};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo,
-        SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
     },
     device::Queue,
     image::view::ImageView,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
-use vulkano_util::renderer::VulkanoWindowRenderer;
+use winit::window::WindowId;
 
 /// A render pass which places an incoming image over the frame, filling it.
 pub struct RenderPassPlaceOverFrame {
@@ -23,11 +22,8 @@ pub struct RenderPassPlaceOverFrame {
 }
 
 impl RenderPassPlaceOverFrame {
-    pub fn new(
-        app: &App,
-        gfx_queue: Arc<Queue>,
-        window_renderer: &VulkanoWindowRenderer,
-    ) -> RenderPassPlaceOverFrame {
+    pub fn new(app: &App, gfx_queue: Arc<Queue>, window_id: WindowId) -> RenderPassPlaceOverFrame {
+        let window_renderer = app.windows.get_renderer(window_id).unwrap();
         let render_pass = vulkano::single_pass_renderpass!(
             gfx_queue.device().clone(),
             attachments: {
@@ -72,14 +68,10 @@ impl RenderPassPlaceOverFrame {
         let img_dims: [u32; 2] = target.image().extent()[0..2].try_into().unwrap();
 
         // Create a primary command buffer builder.
-        let mut command_buffer_builder = RecordingCommandBuffer::new(
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             self.command_buffer_allocator.clone(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
@@ -111,7 +103,7 @@ impl RenderPassPlaceOverFrame {
             .unwrap();
 
         // Build the command buffer.
-        let command_buffer = command_buffer_builder.end().unwrap();
+        let command_buffer = command_buffer_builder.build().unwrap();
 
         // Execute primary command buffer.
         let after_future = before_future

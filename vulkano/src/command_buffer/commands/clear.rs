@@ -1,7 +1,7 @@
 use crate::{
     buffer::{BufferContents, BufferUsage, Subbuffer},
     command_buffer::{
-        auto::Resource, sys::RawRecordingCommandBuffer, RecordingCommandBuffer, ResourceInCommand,
+        auto::Resource, sys::RecordingCommandBuffer, AutoCommandBufferBuilder, ResourceInCommand,
     },
     device::{Device, DeviceOwned, QueueFlags},
     format::{ClearColorValue, ClearDepthStencilValue, FormatFeatures},
@@ -14,7 +14,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{mem::size_of_val, sync::Arc};
 
 /// # Commands to fill resources with new data.
-impl RecordingCommandBuffer {
+impl<L> AutoCommandBufferBuilder<L> {
     /// Clears a color image with a specific value.
     pub fn clear_color_image(
         &mut self,
@@ -73,7 +73,7 @@ impl RecordingCommandBuffer {
                     )]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.clear_color_image_unchecked(&clear_info);
             },
         );
@@ -139,7 +139,7 @@ impl RecordingCommandBuffer {
                     )]
                 })
                 .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.clear_depth_stencil_image_unchecked(&clear_info);
             },
         );
@@ -197,7 +197,7 @@ impl RecordingCommandBuffer {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.fill_buffer_unchecked(&dst_buffer, data);
             },
         );
@@ -263,7 +263,7 @@ impl RecordingCommandBuffer {
             )]
             .into_iter()
             .collect(),
-            move |out: &mut RawRecordingCommandBuffer| {
+            move |out: &mut RecordingCommandBuffer| {
                 out.update_buffer_unchecked(&dst_buffer, &data);
             },
         );
@@ -272,7 +272,7 @@ impl RecordingCommandBuffer {
     }
 }
 
-impl RawRecordingCommandBuffer {
+impl RecordingCommandBuffer {
     #[inline]
     pub unsafe fn clear_color_image(
         &mut self,
@@ -313,31 +313,19 @@ impl RawRecordingCommandBuffer {
         &mut self,
         clear_info: &ClearColorImageInfo,
     ) -> &mut Self {
-        let &ClearColorImageInfo {
-            ref image,
-            image_layout,
-            clear_value,
-            ref regions,
-            _ne: _,
-        } = clear_info;
-
-        if regions.is_empty() {
+        if clear_info.regions.is_empty() {
             return self;
         }
 
-        let clear_value_vk = clear_value.into();
-        let ranges_vk: SmallVec<[_; 8]> = regions
-            .iter()
-            .cloned()
-            .map(ash::vk::ImageSubresourceRange::from)
-            .collect();
+        let clear_info_vk = clear_info.to_vk();
+        let ranges_vk = clear_info.to_vk_ranges();
 
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_color_image)(
             self.handle(),
-            image.handle(),
-            image_layout.into(),
-            &clear_value_vk,
+            clear_info_vk.image,
+            clear_info_vk.image_layout,
+            &clear_info_vk.color,
             ranges_vk.len() as u32,
             ranges_vk.as_ptr(),
         );
@@ -385,31 +373,19 @@ impl RawRecordingCommandBuffer {
         &mut self,
         clear_info: &ClearDepthStencilImageInfo,
     ) -> &mut Self {
-        let &ClearDepthStencilImageInfo {
-            ref image,
-            image_layout,
-            clear_value,
-            ref regions,
-            _ne: _,
-        } = clear_info;
-
-        if regions.is_empty() {
+        if clear_info.regions.is_empty() {
             return self;
         }
 
-        let clear_value_vk = clear_value.into();
-        let ranges_vk: SmallVec<[_; 8]> = regions
-            .iter()
-            .cloned()
-            .map(ash::vk::ImageSubresourceRange::from)
-            .collect();
+        let clear_info_vk = clear_info.to_vk();
+        let ranges_vk = clear_info.to_vk_ranges();
 
         let fns = self.device().fns();
         (fns.v1_0.cmd_clear_depth_stencil_image)(
             self.handle(),
-            image.handle(),
-            image_layout.into(),
-            &clear_value_vk,
+            clear_info_vk.image,
+            clear_info_vk.image_layout,
+            &clear_info_vk.depth_stencil,
             ranges_vk.len() as u32,
             ranges_vk.as_ptr(),
         );
@@ -814,6 +790,35 @@ impl ClearColorImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ClearColorImageInfoVk {
+        let &Self {
+            ref image,
+            image_layout,
+            clear_value,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ClearColorImageInfoVk {
+            image: image.handle(),
+            image_layout: image_layout.into(),
+            color: clear_value.to_vk(),
+        }
+    }
+
+    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[ash::vk::ImageSubresourceRange; 8]> {
+        self.regions
+            .iter()
+            .map(ImageSubresourceRange::to_vk)
+            .collect()
+    }
+}
+
+pub(crate) struct ClearColorImageInfoVk {
+    pub(crate) image: ash::vk::Image,
+    pub(crate) image_layout: ash::vk::ImageLayout,
+    pub(crate) color: ash::vk::ClearColorValue,
 }
 
 /// Parameters to clear a depth/stencil image.
@@ -1020,4 +1025,33 @@ impl ClearDepthStencilImageInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk(&self) -> ClearDepthStencilImageInfoVk {
+        let &Self {
+            ref image,
+            image_layout,
+            clear_value,
+            regions: _,
+            _ne: _,
+        } = self;
+
+        ClearDepthStencilImageInfoVk {
+            image: image.handle(),
+            image_layout: image_layout.into(),
+            depth_stencil: clear_value.to_vk(),
+        }
+    }
+
+    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[ash::vk::ImageSubresourceRange; 8]> {
+        self.regions
+            .iter()
+            .map(ImageSubresourceRange::to_vk)
+            .collect()
+    }
+}
+
+pub(crate) struct ClearDepthStencilImageInfoVk {
+    pub(crate) image: ash::vk::Image,
+    pub(crate) image_layout: ash::vk::ImageLayout,
+    pub(crate) depth_stencil: ash::vk::ClearDepthStencilValue,
 }

@@ -11,9 +11,8 @@
 
 - [ash](https://crates.io/crates/ash) 0.38.0 (Vulkan 1.3.281)
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
-- [winit](https://crates.io/crates/winit) 0.29
-- [regex](https://crates.io/crates/regex) has been replaced with [nom](https://crates.io/crates/nom) 7.1
-- Rust version: 1.72.0
+- [winit](https://crates.io/crates/winit) 0.30
+- Rust version: 1.75.0
 
 ### Breaking changes
 
@@ -25,17 +24,17 @@ Changes to (physical) device:
 Changes to memory allocation:
 - `Suballocator::{allocate,deallocate}` now take `&mut self`.
 - `Suballocator` has new required items `Suballocations` and `suballocations` for iterating over suballocations.
+- `Suballocator::cleanup` was replaced with `Suballocator::reset`, allowing any suballocator to deallocate all suballocations at once, not just the bump allocator.
+- `BumpAllocator::reset` was removed.
 
 Changes to command buffers:
-- Renamed `AutoCommandBufferBuilder` to `RecordingCommandBuffer` and `AutoCommandBufferBuilder::build` to `end`.
-- Merged `{Primary,Secondary}AutoCommandBuffer` into `CommandBuffer` and the corresponding `RecordingCommandBuffer::{primary,secondary}` into `new`.
-- `RecordingCommandBuffer` no longer has a type parameter for the command buffer level.
-- Renamed `UnsafeCommandBufferBuilder` to `RawRecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
-- Renamed `UnsafeCommandBuffer` to `RawCommandBuffer`.
-- `RecordingCommandBuffer` and `RawRecordingCommandBuffer` now take an `Arc<dyn CommandBufferAllocator>` on construction.
-- `RecordingCommandBuffer`, `CommandBuffer`, `RawRecordingCommandBuffer` and `RawCommandBuffer` no longer have a type parameter for the type of allocator.
+- Renamed `UnsafeCommandBufferBuilder` to `RecordingCommandBuffer` and `UnsafeCommandBufferBuilder::build` to `end`.
+- Renamed `UnsafeCommandBuffer` to `CommandBuffer`.
+- `RecordingCommandBuffer` and `CommandBuffer` were moved to the `command_buffer` module; the `command_buffer::sys` module was removed.
+- `AutoCommandBufferBuilder`, `PrimaryAutoCommandBuffer`, `SecondaryAutoCommandBuffer`, `RecordingCommandBuffer` and `CommandBuffer` no longer have a type parameter for the type of allocator.
+- `RecordingCommandBuffer::execute_commands` now takes `&CommandBuffer`s as argument.
 - The `PrimaryCommandBufferAbstract` and `SecondaryCommandBufferAbstract` traits were removed.
-- `RawRecordingCommandBuffer::execute_commands` now takes `&RawCommandBuffer`s as argument.
+- `RecordingCommandBuffer::bind_descriptor_sets` now takes `&RawDescriptorSet`s as argument.
 
 Changes to command buffer allocation:
 - `CommandBufferAllocator` no longer has any associated types in order to make the trait object-safe.
@@ -56,6 +55,8 @@ Changes to descriptor set allocation:
 Changes to `Surface`:
 - `Surface::required_extensions` now returns a result.
 - `Surface::from_window[_ref]` now take `HasWindowHandle + HasDisplayHandle` as the window and return a new error type.
+- `Surface::update_ios_sublayer_on_resize` was removed as it is no longer necessary.
+- `Surface::from_window[_ref]` was changed to use `VK_EXT_metal_surface` internally on macOS and iOS.
 
 Changes to surface creation and support functions:
 - Where handles to foreign window system objects are passed, Vulkano no longer takes a generic pointer, but takes the same pointer type that Ash does.
@@ -106,11 +107,13 @@ Changes to vulkano-shaders:
 Changes to vulkano-util:
 - `VulkanoWindowRenderer::acquire` now takes in an `FnOnce(&[Arc<ImageView>])`. This means that a closure can be called when the swapchain gets recreated.
 - `VulkanoWindowRenderer::acquire` now also takes in `Option<Duration>` for the swapchain acquire timeout.
+- `VulkanoWindows::create_window` now takes `&ActiveEventLoop` as argument.
 
 ### Additions
 
 Extensions:
 - `khr_draw_indirect_count`
+- `khr_fragment_shading_rate` (partially)
 - `khr_timeline_semaphore`
 - `ext_conservative_rasterization`
 - `ext_host_query_reset`
@@ -141,9 +144,14 @@ Other:
 - Added `DescriptorSet::invalidate()` to make vulkano forget about resources that bound to a descriptor_set, so they can be freed.
 - Added `memory::allocator::{align_down, align_up}`.
 - Added `Sharing::{is_exclusive,is_concurrent}`.
+- Added `AccessFlags::{contains_reads,contains_writes}`.
+- Added `PhysicalDevice::presentation_support` for determining presentation support to the surface of any window of a given event loop.
+- Added support for tvOS.
+- Added `Suballocation[Node]::as[_usize]_range` for cleaner slicing.
 - Vulkano-shaders: Support for Vulkan 1.3 target environment.
 - Vulkano-shaders: Added `generate_structs: true` option that may be used to disable rust structs from generating. Useful in e.g. rust-gpu contexts where such functionality is not needed.
 - Vulkano-util: `VulkanoWindowsRenderer::swapchain_image_views` allows access to the swapchain images.
+- Vulkano-util: Added a `transfer_queue` method to `VulkanoContext`.
 
 ### Bugs fixed
 
@@ -154,7 +162,7 @@ Other:
 - Improved and more accurate validation of vertex input.
 - [#1738](https://github.com/vulkano-rs/vulkano/issues/1738): Validation of shader interface matching is insufficient.
 - Improved and more accurate validation of fragment output.
-- `RawRecordingCommandBuffer::end` being safe to call.
+- `RecordingCommandBuffer::end` being safe to call.
 - Fix wrong comparison in push constant size validation check.
 - Unnecessarily strict validation that disallowed providing a single DRM format modifier without an explicit layout.
 - Fixed the alignment check when (sub)allocating buffers that would limit the alignment to 64 at maximum, even though some applications might need buffers with higher alignments that aren't read/written by the host. The check is now only present when reading/writing a buffer.
@@ -163,6 +171,10 @@ Other:
 - Fixed descriptor sets with `UPDATE_AFTER_BIND` or `PARTIALLY_BOUND` being wrongly validated on bind.
 - Fixed non-default image view usage being ignored.
 - Fixed an off-by-one error in `SubpassDescription::validate`.
+- Made resizing smooth on macOS and iOS, and let it interoperate better with windowing libraries.
+- Fixed compiling on iOS.
+- Fixed UB in `GenericMemoryAllocator::deallocate` arising due to invalid pointer provenance given out on allocation.
+- Fixed UB in `impl VertexBufferCollection for Vec<Subbuffer<T>>` where a `Vec` was being transmuted.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)

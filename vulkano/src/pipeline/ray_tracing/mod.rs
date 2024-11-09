@@ -19,7 +19,8 @@ use crate::{
 
 use super::{
     cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
-    PipelineLayout, PipelineShaderStageCreateInfo,
+    PipelineLayout, PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
+    PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 
 #[derive(Debug)]
@@ -65,62 +66,13 @@ impl RayTracingPipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: RayTracingPipelineCreateInfo,
     ) -> Result<Arc<Self>, VulkanError> {
-        let RayTracingPipelineCreateInfo {
-            flags,
-            stages,
-            groups,
-            max_pipeline_ray_recursion_depth,
-            dynamic_state,
-            layout,
-            base_pipeline,
-            ..
-        } = &create_info;
-
-        let owned_stages_vk: SmallVec<[_; 5]> =
-            stages.iter().map(|s| s.to_owned_vulkan()).collect();
-        let stages_vk: SmallVec<[_; 5]> = owned_stages_vk.iter().map(|s| s.to_vulkan()).collect();
-
-        let groups_vk: SmallVec<[_; 5]> = groups
-            .iter()
-            .map(|g| ash::vk::RayTracingShaderGroupCreateInfoKHR {
-                ty: g.group_type,
-                general_shader: g.general_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR),
-                closest_hit_shader: g.closest_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR),
-                any_hit_shader: g.any_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR),
-                intersection_shader: g.intersection_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR),
-                // TODO: RayTracing: p_shader_group_capture_replay_handle
-                ..Default::default()
-            })
-            .collect();
-
-        let dynamic_state_list_vk: SmallVec<[_; 4]> =
-            dynamic_state.iter().copied().map(Into::into).collect();
-        let dynamic_state_vk =
-            (!dynamic_state_list_vk.is_empty()).then(|| ash::vk::PipelineDynamicStateCreateInfo {
-                flags: ash::vk::PipelineDynamicStateCreateFlags::empty(),
-                dynamic_state_count: dynamic_state_list_vk.len() as u32,
-                p_dynamic_states: dynamic_state_list_vk.as_ptr(),
-                ..Default::default()
-            });
-
-        let create_infos_vk = ash::vk::RayTracingPipelineCreateInfoKHR {
-            flags: (*flags).into(),
-            stage_count: stages_vk.len() as u32,
-            p_stages: stages_vk.as_ptr(),
-            group_count: groups_vk.len() as u32,
-            p_groups: groups_vk.as_ptr(),
-            max_pipeline_ray_recursion_depth: *max_pipeline_ray_recursion_depth,
-            layout: layout.handle(),
-            base_pipeline_handle: base_pipeline
-                .as_deref()
-                .map_or(ash::vk::Pipeline::null(), |p| p.handle()),
-            base_pipeline_index: 0,
-            p_dynamic_state: dynamic_state_vk.as_ref().map_or(ptr::null(), |d| d),
-            // TODO: RayTracing: library
-            ..Default::default()
-        };
-
         let handle = {
+            let fields3_vk = create_info.to_vk_fields3();
+            let fields2_vk = create_info.to_vk_fields2(&fields3_vk);
+            let mut fields1_extensions_vk = create_info.to_vk_fields1_extensions();
+            let fields1_vk = create_info.to_vk_fields1(&fields2_vk, &mut fields1_extensions_vk);
+            let create_infos_vk = create_info.to_vk(&fields1_vk);
+
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
 
@@ -314,6 +266,133 @@ impl RayTracingPipelineCreateInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a RayTracingPipelineCreateInfoFields1Vk<'_>,
+    ) -> ash::vk::RayTracingPipelineCreateInfoKHR<'a> {
+        let &Self {
+            flags,
+            max_pipeline_ray_recursion_depth,
+
+            ref layout,
+            ref base_pipeline,
+            ..
+        } = self;
+
+        let RayTracingPipelineCreateInfoFields1Vk {
+            stages_vk,
+            groups_vk,
+            dynamic_state_vk,
+        } = fields1_vk;
+
+        let mut val_vk = ash::vk::RayTracingPipelineCreateInfoKHR::default()
+            .flags(flags.into())
+            .stages(stages_vk)
+            .groups(groups_vk)
+            .layout(layout.handle())
+            .max_pipeline_ray_recursion_depth(max_pipeline_ray_recursion_depth)
+            .base_pipeline_handle(
+                base_pipeline
+                    .as_ref()
+                    .map_or(ash::vk::Pipeline::null(), |p| p.handle()),
+            )
+            .base_pipeline_index(-1);
+
+        if let Some(dynamic_state_vk) = dynamic_state_vk {
+            val_vk = val_vk.dynamic_state(dynamic_state_vk);
+        }
+
+        return val_vk;
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a RayTracingPipelineCreateInfoFields2Vk<'_>,
+        extensions_vk: &'a mut RayTracingPipelineCreateInfoFields1ExtensionsVk,
+    ) -> RayTracingPipelineCreateInfoFields1Vk<'a> {
+        let Self { stages, groups, .. } = self;
+        let RayTracingPipelineCreateInfoFields2Vk {
+            stages_fields1_vk,
+            dynamic_states_vk,
+        } = fields2_vk;
+        let RayTracingPipelineCreateInfoFields1ExtensionsVk {
+            stages_extensions_vk,
+        } = extensions_vk;
+
+        let stages_vk: SmallVec<[_; 5]> = stages
+            .iter()
+            .zip(stages_fields1_vk)
+            .zip(stages_extensions_vk)
+            .map(|((stage, fields1), fields1_extensions_vk)| {
+                stage.to_vk(fields1, fields1_extensions_vk)
+            })
+            .collect();
+
+        let groups_vk = groups
+            .iter()
+            .map(RayTracingShaderGroupCreateInfo::to_vk)
+            .collect();
+
+        let dynamic_state_vk = (!dynamic_states_vk.is_empty()).then(|| {
+            ash::vk::PipelineDynamicStateCreateInfo::default()
+                .flags(ash::vk::PipelineDynamicStateCreateFlags::empty())
+                .dynamic_states(dynamic_states_vk)
+        });
+
+        RayTracingPipelineCreateInfoFields1Vk {
+            stages_vk,
+            groups_vk,
+            dynamic_state_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1_extensions(
+        &self,
+    ) -> RayTracingPipelineCreateInfoFields1ExtensionsVk {
+        let Self { stages, .. } = self;
+
+        let stages_extensions_vk = stages
+            .iter()
+            .map(|stage| stage.to_vk_extensions())
+            .collect();
+
+        RayTracingPipelineCreateInfoFields1ExtensionsVk {
+            stages_extensions_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields2<'a>(
+        &self,
+        fields3_vk: &'a RayTracingPipelineCreateInfoFields3Vk,
+    ) -> RayTracingPipelineCreateInfoFields2Vk<'a> {
+        let Self {
+            stages,
+            dynamic_state,
+            ..
+        } = self;
+
+        let stages_fields1_vk = stages
+            .iter()
+            .zip(fields3_vk.stages_fields2_vk.iter())
+            .map(|(stage, fields3)| stage.to_vk_fields1(fields3))
+            .collect();
+
+        let dynamic_states_vk = dynamic_state.iter().copied().map(Into::into).collect();
+
+        RayTracingPipelineCreateInfoFields2Vk {
+            stages_fields1_vk,
+            dynamic_states_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields3<'a>(&self) -> RayTracingPipelineCreateInfoFields3Vk {
+        let Self { stages, .. } = self;
+
+        let stages_fields2_vk = stages.iter().map(|stage| stage.to_vk_fields2()).collect();
+
+        RayTracingPipelineCreateInfoFields3Vk { stages_fields2_vk }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -325,6 +404,42 @@ pub struct RayTracingShaderGroupCreateInfo {
     pub intersection_shader: Option<u32>,
 }
 
+impl RayTracingShaderGroupCreateInfo {
+    pub(crate) fn to_vk(&self) -> ash::vk::RayTracingShaderGroupCreateInfoKHR<'static> {
+        // We are not using pointers in the struct, so 'static is used.
+        ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
+            .ty(self.group_type)
+            .general_shader(self.general_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
+            .closest_hit_shader(
+                self.closest_hit_shader
+                    .unwrap_or(ash::vk::SHADER_UNUSED_KHR),
+            )
+            .any_hit_shader(self.any_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
+            .intersection_shader(
+                self.intersection_shader
+                    .unwrap_or(ash::vk::SHADER_UNUSED_KHR),
+            )
+    }
+}
+
+pub struct RayTracingPipelineCreateInfoFields1Vk<'a> {
+    pub(crate) stages_vk: SmallVec<[ash::vk::PipelineShaderStageCreateInfo<'a>; 5]>,
+    pub(crate) groups_vk: SmallVec<[ash::vk::RayTracingShaderGroupCreateInfoKHR<'static>; 5]>,
+    pub(crate) dynamic_state_vk: Option<ash::vk::PipelineDynamicStateCreateInfo<'a>>,
+}
+
+pub struct RayTracingPipelineCreateInfoFields1ExtensionsVk {
+    pub(crate) stages_extensions_vk: SmallVec<[PipelineShaderStageCreateInfoExtensionsVk; 5]>,
+}
+
+pub struct RayTracingPipelineCreateInfoFields2Vk<'a> {
+    pub(crate) stages_fields1_vk: SmallVec<[PipelineShaderStageCreateInfoFields1Vk<'a>; 5]>,
+    pub(crate) dynamic_states_vk: SmallVec<[ash::vk::DynamicState; 4]>,
+}
+
+pub struct RayTracingPipelineCreateInfoFields3Vk {
+    pub(crate) stages_fields2_vk: SmallVec<[PipelineShaderStageCreateInfoFields2Vk; 5]>,
+}
 #[derive(Debug, Clone)]
 pub struct ShaderBindingTable {
     raygen: StridedDeviceAddressRegionKHR,

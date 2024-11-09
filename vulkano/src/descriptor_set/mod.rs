@@ -65,7 +65,6 @@
 //!
 //! [`StandardDescriptorSetAllocator`]: allocator::StandardDescriptorSetAllocator
 
-pub(crate) use self::update::DescriptorWriteInfo;
 use self::{
     allocator::DescriptorSetAllocator,
     layout::DescriptorSetLayout,
@@ -143,6 +142,12 @@ impl DescriptorSet {
         set.update(descriptor_writes, descriptor_copies)?;
 
         Ok(Arc::new(set))
+    }
+
+    /// Returns the inner raw descriptor set.
+    #[inline]
+    pub fn as_raw(&self) -> &RawDescriptorSet {
+        &self.inner
     }
 
     /// Returns the allocation of the descriptor set.

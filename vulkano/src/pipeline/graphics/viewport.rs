@@ -225,6 +225,50 @@ impl ViewportState {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a ViewportStateFields1Vk,
+    ) -> ash::vk::PipelineViewportStateCreateInfo<'a> {
+        let ViewportStateFields1Vk {
+            viewports_vk,
+            scissors_vk,
+        } = fields1_vk;
+
+        let mut val_vk = ash::vk::PipelineViewportStateCreateInfo::default()
+            .flags(ash::vk::PipelineViewportStateCreateFlags::empty());
+
+        if !viewports_vk.is_empty() {
+            val_vk = val_vk.viewports(viewports_vk);
+        }
+
+        if !scissors_vk.is_empty() {
+            val_vk = val_vk.scissors(scissors_vk);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> ViewportStateFields1Vk {
+        let Self {
+            viewports,
+            scissors,
+            _ne: _,
+        } = self;
+
+        let viewports_vk = viewports.iter().map(Viewport::to_vk).collect();
+        let scissors_vk = scissors.iter().map(Scissor::to_vk).collect();
+
+        ViewportStateFields1Vk {
+            viewports_vk,
+            scissors_vk,
+        }
+    }
+}
+
+pub(crate) struct ViewportStateFields1Vk {
+    pub(crate) viewports_vk: SmallVec<[ash::vk::Viewport; 2]>,
+    pub(crate) scissors_vk: SmallVec<[ash::vk::Rect2D; 2]>,
 }
 
 /// State of a single viewport.
@@ -397,18 +441,22 @@ impl Viewport {
 
         Ok(())
     }
-}
 
-impl From<&Viewport> for ash::vk::Viewport {
-    #[inline]
-    fn from(val: &Viewport) -> Self {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::Viewport {
+        let &Self {
+            offset,
+            extent,
+            ref depth_range,
+        } = self;
+
         ash::vk::Viewport {
-            x: val.offset[0],
-            y: val.offset[1],
-            width: val.extent[0],
-            height: val.extent[1],
-            min_depth: *val.depth_range.start(),
-            max_depth: *val.depth_range.end(),
+            x: offset[0],
+            y: offset[1],
+            width: extent[0],
+            height: extent[1],
+            min_depth: *depth_range.start(),
+            max_depth: *depth_range.end(),
         }
     }
 }
@@ -445,30 +493,21 @@ impl Scissor {
     pub fn irrelevant() -> Scissor {
         Self::default()
     }
-}
 
-impl From<&Scissor> for ash::vk::Rect2D {
-    #[inline]
-    fn from(val: &Scissor) -> Self {
+    #[allow(clippy::wrong_self_convention)]
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::Rect2D {
+        let &Self { offset, extent } = self;
+
         ash::vk::Rect2D {
             offset: ash::vk::Offset2D {
-                x: val.offset[0] as i32,
-                y: val.offset[1] as i32,
+                x: offset[0] as i32,
+                y: offset[1] as i32,
             },
             extent: ash::vk::Extent2D {
-                width: val.extent[0],
-                height: val.extent[1],
+                width: extent[0],
+                height: extent[1],
             },
-        }
-    }
-}
-
-impl From<ash::vk::Rect2D> for Scissor {
-    #[inline]
-    fn from(val: ash::vk::Rect2D) -> Self {
-        Scissor {
-            offset: [val.offset.x as u32, val.offset.y as u32],
-            extent: [val.extent.width, val.extent.height],
         }
     }
 }

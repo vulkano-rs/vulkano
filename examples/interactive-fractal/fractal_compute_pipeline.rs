@@ -4,8 +4,7 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -136,11 +135,10 @@ impl FractalComputePipeline {
     ) -> Box<dyn GpuFuture> {
         // Resize image if needed.
         let image_extent = image_view.image().extent();
-        let pipeline_layout = self.pipeline.layout();
-        let desc_layout = &pipeline_layout.set_layouts()[0];
-        let set = DescriptorSet::new(
+        let layout = &self.pipeline.layout().set_layouts()[0];
+        let descriptor_set = DescriptorSet::new(
             self.descriptor_set_allocator.clone(),
-            desc_layout.clone(),
+            layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, image_view),
                 WriteDescriptorSet::buffer(1, self.palette.clone()),
@@ -148,14 +146,10 @@ impl FractalComputePipeline {
             [],
         )
         .unwrap();
-        let mut builder = RecordingCommandBuffer::new(
+        let mut builder = AutoCommandBufferBuilder::primary(
             self.command_buffer_allocator.clone(),
             self.queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
@@ -172,18 +166,18 @@ impl FractalComputePipeline {
         builder
             .bind_pipeline_compute(self.pipeline.clone())
             .unwrap()
-            .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.pipeline.layout().clone(),
+                0,
+                descriptor_set,
+            )
             .unwrap()
-            .push_constants(pipeline_layout.clone(), 0, push_constants)
+            .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap();
+        unsafe { builder.dispatch([image_extent[0] / 8, image_extent[1] / 8, 1]) }.unwrap();
 
-        unsafe {
-            builder
-                .dispatch([image_extent[0] / 8, image_extent[1] / 8, 1])
-                .unwrap();
-        }
-
-        let command_buffer = builder.end().unwrap();
+        let command_buffer = builder.build().unwrap();
         let finished = command_buffer.execute(self.queue.clone()).unwrap();
         finished.then_signal_fence_and_flush().unwrap().boxed()
     }

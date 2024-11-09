@@ -106,29 +106,14 @@ impl PipelineCache {
         device: Arc<Device>,
         create_info: PipelineCacheCreateInfo,
     ) -> Result<Arc<PipelineCache>, VulkanError> {
-        let &PipelineCacheCreateInfo {
-            flags,
-            ref initial_data,
-            _ne: _,
-        } = &create_info;
-
-        let infos = ash::vk::PipelineCacheCreateInfo {
-            flags: flags.into(),
-            initial_data_size: initial_data.len(),
-            p_initial_data: if initial_data.is_empty() {
-                ptr::null()
-            } else {
-                initial_data.as_ptr().cast()
-            },
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_pipeline_cache)(
                 device.handle(),
-                &infos,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -360,6 +345,22 @@ impl PipelineCacheCreateInfo {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PipelineCacheCreateInfo<'_> {
+        let &Self {
+            flags,
+            ref initial_data,
+            _ne: _,
+        } = self;
+
+        let mut val_vk = ash::vk::PipelineCacheCreateInfo::default().flags(flags.into());
+
+        if !initial_data.is_empty() {
+            val_vk = val_vk.initial_data(initial_data);
+        }
+
+        val_vk
     }
 }
 

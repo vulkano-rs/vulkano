@@ -1,5 +1,5 @@
 use crate::buffer::Subbuffer;
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 
 /// A collection of vertex buffers.
 pub trait VertexBuffersCollection {
@@ -32,8 +32,13 @@ impl<T: ?Sized> VertexBuffersCollection for Vec<Subbuffer<T>> {
             mem::align_of::<Subbuffer<[u8]>>(),
         );
 
+        let mut this = ManuallyDrop::new(self);
+        let cap = this.capacity();
+        let len = this.len();
+        let ptr = this.as_mut_ptr();
+
         // SAFETY: All `Subbuffer`s share the same layout.
-        unsafe { mem::transmute::<Vec<Subbuffer<T>>, Vec<Subbuffer<[u8]>>>(self) }
+        unsafe { Vec::from_raw_parts(ptr.cast(), len, cap) }
     }
 }
 

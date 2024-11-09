@@ -8,11 +8,14 @@ members = [
     "vulkano-util",
     # "vulkano-win",
 ]
+# NOTE(Marc): Linux CI is failing because of a transitive dependency of the old winit that this
+# example depends on. I don't know how to update glium to the new version.
+exclude = ["examples/gl-interop"]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.72.0"
+rust-version = "1.75.0"
 license = "MIT OR Apache-2.0"
 homepage = "https://vulkano.rs"
 keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
@@ -31,6 +34,10 @@ path = "vulkano-macros"
 version = "0.34"
 path = "vulkano-shaders"
 
+[workspace.dependencies.vulkano-taskgraph]
+version = "0.34"
+path = "vulkano-taskgraph"
+
 [workspace.dependencies.vulkano-util]
 version = "0.34"
 path = "vulkano-util"
@@ -42,34 +49,35 @@ ahash = "0.8"
 # https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml
 ash = "0.38.0"
 bytemuck = "1.9"
-concurrent-slotmap = { git = "https://github.com/vulkano-rs/concurrent-slotmap", rev = "bf52f0a55713bb29dde3e38bc3497b03473d1628" }
-core-graphics-types = "0.1"
+concurrent-slotmap = "0.1.0-alpha.1"
 crossbeam-queue = "0.3"
 half = "2.0"
 heck = "0.4"
 indexmap = "2.0"
 libloading = "0.8"
 nom = "7.1"
-objc = "0.2.5"
 once_cell = "1.17"
 parking_lot = "0.12"
 proc-macro2 = "1.0"
-proc-macro-crate = "2.0"
+proc-macro-crate = "3.0"
 quote = "1.0"
 rangemap = "1.5"
 raw-window-handle = "0.6"
+raw-window-metal = "1.0"
 serde = "1.0"
 serde_json = "1.0"
 shaderc = "0.8.3"
-slabbin = "1.0"
+slabbin = "1.1"
 smallvec = "1.8"
 syn = "2.0"
 thread_local = "1.1"
-vk-parse = "0.12"
-winit = { version = "0.29", default-features = false }
+vk-parse = "0.15"
+winit = { version = "0.30", default-features = false }
+x11-dl = "2.0"
+x11rb = "0.13"
 
 # Only used in examples
-glam = "0.25"
+glam = "0.29"
 png = "0.17"
 rand = "0.8"
 ron = "0.8"

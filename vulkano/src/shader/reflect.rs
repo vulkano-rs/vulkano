@@ -1214,22 +1214,57 @@ pub(crate) fn get_constant_float_composite(spirv: &Spirv, id: Id) -> Option<Smal
     }
 }
 
-pub(crate) fn get_constant_maybe_composite(spirv: &Spirv, id: Id) -> Option<SmallVec<[u64; 4]>> {
+fn integer_constant_to_i64(spirv: &Spirv, value: &[u32], result_type_id: Id) -> i64 {
+    let type_id_instruction = spirv.id(result_type_id).instruction();
+    match type_id_instruction {
+        Instruction::TypeInt {
+            width, signedness, ..
+        } => {
+            if *width == 64 {
+                assert_eq!(value.len(), 2);
+            } else {
+                assert_eq!(value.len(), 1);
+            }
+
+            match (signedness, width) {
+                (0, 8) => value[0] as u8 as i64,
+                (0, 16) => value[0] as u16 as i64,
+                (0, 32) => value[0] as i64,
+                (0, 64) => i64::try_from((value[0] as u64) | ((value[1] as u64) << 32)).unwrap(),
+                (1, 8) => value[0] as i8 as i64,
+                (1, 16) => value[0] as i16 as i64,
+                (1, 32) => value[0] as i32 as i64,
+                (1, 64) => (value[0] as i64) | ((value[1] as i64) << 32),
+                _ => unimplemented!(),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) fn get_constant_signed_maybe_composite(
+    spirv: &Spirv,
+    id: Id,
+) -> Option<SmallVec<[i64; 4]>> {
     match spirv.id(id).instruction() {
-        Instruction::Constant { value, .. } => match value.len() {
-            1 => Some(smallvec![value[0] as u64]),
-            2 => Some(smallvec![value[0] as u64 | (value[1] as u64) << 32]),
-            _ => panic!("constant {} is larger than 64 bits", id),
-        },
+        Instruction::Constant {
+            value,
+            result_type_id,
+            ..
+        } => Some(smallvec![integer_constant_to_i64(
+            spirv,
+            value,
+            *result_type_id
+        )]),
         Instruction::ConstantComposite { constituents, .. } => Some(
             constituents
                 .iter()
                 .map(|&id| match spirv.id(id).instruction() {
-                    Instruction::Constant { value, .. } => match value.len() {
-                        1 => value[0] as u64,
-                        2 => value[0] as u64 | (value[1] as u64) << 32,
-                        _ => panic!("constant {} is larger than 64 bits", id),
-                    },
+                    Instruction::Constant {
+                        value,
+                        result_type_id,
+                        ..
+                    } => integer_constant_to_i64(spirv, value, *result_type_id),
                     _ => unreachable!(),
                 })
                 .collect(),
@@ -1238,10 +1273,10 @@ pub(crate) fn get_constant_maybe_composite(spirv: &Spirv, id: Id) -> Option<Smal
     }
 }
 
-pub(crate) fn get_constant_composite_composite(
+pub(crate) fn get_constant_signed_composite_composite(
     spirv: &Spirv,
     id: Id,
-) -> Option<SmallVec<[SmallVec<[u64; 4]>; 4]>> {
+) -> Option<SmallVec<[SmallVec<[i64; 4]>; 4]>> {
     match spirv.id(id).instruction() {
         Instruction::ConstantComposite { constituents, .. } => Some(
             constituents
@@ -1250,11 +1285,11 @@ pub(crate) fn get_constant_composite_composite(
                     Instruction::ConstantComposite { constituents, .. } => constituents
                         .iter()
                         .map(|&id| match spirv.id(id).instruction() {
-                            Instruction::Constant { value, .. } => match value.len() {
-                                1 => value[0] as u64,
-                                2 => value[0] as u64 | (value[1] as u64) << 32,
-                                _ => panic!("constant {} is larger than 64 bits", id),
-                            },
+                            Instruction::Constant {
+                                value,
+                                result_type_id,
+                                ..
+                            } => integer_constant_to_i64(spirv, value, *result_type_id),
                             _ => unreachable!(),
                         })
                         .collect(),

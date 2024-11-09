@@ -45,6 +45,7 @@ use std::iter::FusedIterator;
 /// Allocation is *O*(1), and so is resetting the allocator (freeing all allocations).
 ///
 /// [suballocator]: Suballocator
+/// [`FreeListAllocator`]: super::FreeListAllocator
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
 /// [region]: Suballocator#regions
 /// [free-list]: Suballocator#free-lists
@@ -59,15 +60,6 @@ pub struct BumpAllocator {
 }
 
 impl BumpAllocator {
-    /// Resets the free-start back to the beginning of the [region].
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    pub fn reset(&mut self) {
-        self.free_start = 0;
-        self.prev_allocation_type = AllocationType::Unknown;
-    }
-
     fn suballocation_node(&self, part: usize) -> SuballocationNode {
         if part == 0 {
             SuballocationNode {
@@ -152,14 +144,18 @@ unsafe impl Suballocator for BumpAllocator {
         // such complex, very wow
     }
 
+    /// Resets the free-start back to the beginning of the [region].
+    ///
+    /// [region]: Suballocator#regions
     #[inline]
-    fn free_size(&self) -> DeviceSize {
-        self.region.size() - self.free_start
+    fn reset(&mut self) {
+        self.free_start = 0;
+        self.prev_allocation_type = AllocationType::Unknown;
     }
 
     #[inline]
-    fn cleanup(&mut self) {
-        self.reset();
+    fn free_size(&self) -> DeviceSize {
+        self.region.size() - self.free_start
     }
 
     #[inline]

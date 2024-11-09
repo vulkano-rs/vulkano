@@ -1,14 +1,13 @@
-use std::{ffi::CString, ptr, sync::Arc};
-
 use crate::{
     device::Device,
     macros::vulkan_bitflags,
     shader::{
         spirv::{BuiltIn, Decoration, ExecutionMode, Id, Instruction},
-        EntryPoint, ShaderStage, SpecializedShaderModule,
+        EntryPoint, ShaderStage,
     },
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
+use std::ffi::CString;
 
 pub(crate) mod inout_interface;
 pub(crate) mod validate_runtime;
@@ -497,94 +496,136 @@ impl PipelineShaderStageCreateInfo {
         Ok(())
     }
 
-    pub(crate) fn to_owned_vulkan(&self) -> OwnedVkPipelineShaderStageCreateInfo {
-        let &PipelineShaderStageCreateInfo {
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a PipelineShaderStageCreateInfoFields1Vk<'_>,
+        extensions_vk: &'a mut PipelineShaderStageCreateInfoExtensionsVk,
+    ) -> ash::vk::PipelineShaderStageCreateInfo<'a> {
+        let &Self {
             flags,
             ref entry_point,
-            ref required_subgroup_size,
+            required_subgroup_size: _,
+            _ne: _,
+        } = self;
+        let PipelineShaderStageCreateInfoFields1Vk {
+            name_vk,
+            specialization_info_vk,
+        } = fields1_vk;
+
+        let entry_point_info = entry_point.info();
+        let stage = ShaderStage::from(entry_point_info.execution_model);
+
+        let mut val_vk = ash::vk::PipelineShaderStageCreateInfo::default()
+            .flags(flags.into())
+            .stage(stage.into())
+            .module(entry_point.module().handle())
+            .name(name_vk);
+
+        if specialization_info_vk.data_size != 0 {
+            val_vk = val_vk.specialization_info(specialization_info_vk)
+        }
+
+        let PipelineShaderStageCreateInfoExtensionsVk {
+            required_subgroup_size_vk,
+        } = extensions_vk;
+
+        if let Some(next) = required_subgroup_size_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> PipelineShaderStageCreateInfoExtensionsVk {
+        let &Self {
+            flags: _,
+            entry_point: _,
+            required_subgroup_size,
             _ne: _,
         } = self;
 
-        let entry_point_info = entry_point.info();
-        let name = CString::new(entry_point_info.name.as_str()).unwrap();
+        let required_subgroup_size_vk = required_subgroup_size.map(|required_subgroup_size| {
+            ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo::default()
+                .required_subgroup_size(required_subgroup_size)
+        });
 
-        let mut specialization_data: Vec<u8> = Vec::new();
-        let specialization_map_entries: Vec<ash::vk::SpecializationMapEntry> = entry_point
+        PipelineShaderStageCreateInfoExtensionsVk {
+            required_subgroup_size_vk,
+        }
+    }
+
+    pub(crate) fn to_vk_fields1<'a>(
+        &self,
+        fields2_vk: &'a PipelineShaderStageCreateInfoFields2Vk,
+    ) -> PipelineShaderStageCreateInfoFields1Vk<'a> {
+        let &Self {
+            flags: _,
+            ref entry_point,
+            required_subgroup_size: _,
+            _ne: _,
+        } = self;
+        let PipelineShaderStageCreateInfoFields2Vk {
+            specialization_map_entries_vk,
+            specialization_data_vk,
+        } = fields2_vk;
+
+        let entry_point_info = entry_point.info();
+
+        PipelineShaderStageCreateInfoFields1Vk {
+            name_vk: CString::new(entry_point_info.name.as_str()).unwrap(),
+            specialization_info_vk: ash::vk::SpecializationInfo::default()
+                .map_entries(specialization_map_entries_vk)
+                .data(specialization_data_vk),
+        }
+    }
+
+    pub(crate) fn to_vk_fields2(&self) -> PipelineShaderStageCreateInfoFields2Vk {
+        let &Self {
+            flags: _,
+            ref entry_point,
+            required_subgroup_size: _,
+            _ne: _,
+        } = self;
+
+        let mut specialization_data_vk: Vec<u8> = Vec::new();
+        let specialization_map_entries_vk = entry_point
             .module()
             .specialization_info()
             .iter()
             .map(|(&constant_id, value)| {
                 let data = value.as_bytes();
-                let offset = specialization_data.len() as u32;
-                specialization_data.extend(data);
+                let offset = specialization_data_vk.len() as u32;
+                let size = data.len();
+                specialization_data_vk.extend(data);
 
                 ash::vk::SpecializationMapEntry {
                     constant_id,
                     offset,
-                    size: data.len(),
+                    size,
                 }
             })
             .collect();
 
-        let specialization_info = ash::vk::SpecializationInfo {
-            map_entry_count: specialization_map_entries.len() as u32,
-            p_map_entries: specialization_map_entries.as_ptr() as *const _,
-            data_size: specialization_data.len(),
-            p_data: specialization_data.as_ptr().cast(),
-            ..Default::default()
-        };
-
-        let required_subgroup_size_info = required_subgroup_size.map(|size| {
-            ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo {
-                required_subgroup_size: size,
-                ..Default::default()
-            }
-        });
-
-        OwnedVkPipelineShaderStageCreateInfo {
-            name,
-            _specialization_data: specialization_data,
-            _specialization_map_entries: specialization_map_entries,
-            flags,
-            stage: ShaderStage::from(entry_point_info.execution_model),
-            specialized_shader_module: entry_point.module().clone(),
-            specialization_info: Some(specialization_info),
-            required_subgroup_size_info,
+        PipelineShaderStageCreateInfoFields2Vk {
+            specialization_map_entries_vk,
+            specialization_data_vk,
         }
     }
 }
 
-pub(crate) struct OwnedVkPipelineShaderStageCreateInfo {
-    name: CString,
-    _specialization_data: Vec<u8>,
-    _specialization_map_entries: Vec<ash::vk::SpecializationMapEntry>,
-    flags: PipelineShaderStageCreateFlags,
-    stage: ShaderStage,
-    specialized_shader_module: Arc<SpecializedShaderModule>,
-    // Includes pointers to _specialization_data and _specialization_map_entries.
-    specialization_info: Option<ash::vk::SpecializationInfo<'static>>,
-    required_subgroup_size_info:
+pub(crate) struct PipelineShaderStageCreateInfoExtensionsVk {
+    pub(crate) required_subgroup_size_vk:
         Option<ash::vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo<'static>>,
 }
 
-impl OwnedVkPipelineShaderStageCreateInfo {
-    pub fn to_vulkan(&self) -> ash::vk::PipelineShaderStageCreateInfo<'_> {
-        ash::vk::PipelineShaderStageCreateInfo {
-            p_next: self
-                .required_subgroup_size_info
-                .as_ref()
-                .map_or(ptr::null(), |info| info as *const _ as *const _),
-            flags: self.flags.into(),
-            stage: self.stage.into(),
-            module: self.specialized_shader_module.handle(),
-            p_name: self.name.as_ptr(),
-            p_specialization_info: self
-                .specialization_info
-                .as_ref()
-                .map_or(ptr::null(), |info| info as *const _),
-            ..Default::default()
-        }
-    }
+pub(crate) struct PipelineShaderStageCreateInfoFields1Vk<'a> {
+    pub(crate) name_vk: CString,
+    pub(crate) specialization_info_vk: ash::vk::SpecializationInfo<'a>,
+}
+
+pub(crate) struct PipelineShaderStageCreateInfoFields2Vk {
+    pub(crate) specialization_map_entries_vk: Vec<ash::vk::SpecializationMapEntry>,
+    pub(crate) specialization_data_vk: Vec<u8>,
 }
 
 vulkan_bitflags! {

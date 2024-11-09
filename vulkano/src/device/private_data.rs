@@ -69,12 +69,7 @@ impl PrivateDataSlot {
         device: Arc<Device>,
         create_info: PrivateDataSlotCreateInfo,
     ) -> Result<Self, VulkanError> {
-        let &PrivateDataSlotCreateInfo { _ne: _ } = &create_info;
-
-        let create_info_vk = ash::vk::PrivateDataSlotCreateInfo {
-            flags: ash::vk::PrivateDataSlotCreateFlags::empty(),
-            ..Default::default()
-        };
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
             let fns = device.fns();
@@ -263,5 +258,12 @@ impl Default for PrivateDataSlotCreateInfo {
 impl PrivateDataSlotCreateInfo {
     pub(crate) fn validate(&self, _device: &Device) -> Result<(), Box<ValidationError>> {
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::PrivateDataSlotCreateInfo<'static> {
+        let &Self { _ne: _ } = self;
+
+        ash::vk::PrivateDataSlotCreateInfo::default()
+            .flags(ash::vk::PrivateDataSlotCreateFlags::empty())
     }
 }

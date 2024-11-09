@@ -224,7 +224,7 @@
 //! ## Mesh shading
 //!
 //! - If the shader declares the `OutputPoints` execution mode with a value greater than 0, and the
-//!   [`maintenance5`](Features::maintenance5) feature is not enabled on the device, then the
+//!   [`maintenance5`](DeviceFeatures::maintenance5) feature is not enabled on the device, then the
 //!   shader must write to a variable decorated with `PointSize` for each output point.
 //!   <sup>[\[09218\]]</sup>
 //!
@@ -434,7 +434,7 @@ use smallvec::SmallVec;
 use spirv::ExecutionModel;
 use std::{
     collections::hash_map::Entry,
-    mem::{discriminant, size_of_val, MaybeUninit},
+    mem::{discriminant, MaybeUninit},
     num::NonZeroU64,
     ptr,
     sync::Arc,
@@ -507,21 +507,14 @@ impl ShaderModule {
         create_info: ShaderModuleCreateInfo<'_>,
         spirv: Spirv,
     ) -> Result<Arc<ShaderModule>, VulkanError> {
-        let &ShaderModuleCreateInfo { code, _ne: _ } = &create_info;
+        let create_info_vk = create_info.to_vk();
 
         let handle = {
-            let infos = ash::vk::ShaderModuleCreateInfo {
-                flags: ash::vk::ShaderModuleCreateFlags::empty(),
-                code_size: size_of_val(code),
-                p_code: code.as_ptr(),
-                ..Default::default()
-            };
-
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_shader_module)(
                 device.handle(),
-                &infos,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -845,6 +838,14 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         // Unsafe
 
         Ok(())
+    }
+
+    pub(crate) fn to_vk(&self) -> ash::vk::ShaderModuleCreateInfo<'_> {
+        let &Self { code, _ne: _ } = self;
+
+        ash::vk::ShaderModuleCreateInfo::default()
+            .flags(ash::vk::ShaderModuleCreateFlags::empty())
+            .code(code)
     }
 }
 

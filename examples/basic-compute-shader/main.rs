@@ -8,8 +8,7 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, RecordingCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
@@ -196,14 +195,10 @@ fn main() {
     .unwrap();
 
     // In order to execute our operation, we have to build a command buffer.
-    let mut builder = RecordingCommandBuffer::new(
+    let mut builder = AutoCommandBufferBuilder::primary(
         command_buffer_allocator,
         queue.queue_family_index(),
-        CommandBufferLevel::Primary,
-        CommandBufferBeginInfo {
-            usage: CommandBufferUsage::OneTimeSubmit,
-            ..Default::default()
-        },
+        CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
 
@@ -222,14 +217,12 @@ fn main() {
         )
         .unwrap();
 
-    unsafe {
-        // The command buffer only does one thing: execute the compute pipeline. This is called a
-        // *dispatch* operation.
-        builder.dispatch([1024, 1, 1]).unwrap();
-    }
+    // The command buffer only does one thing: execute the compute pipeline. This is called a
+    // *dispatch* operation.
+    unsafe { builder.dispatch([1024, 1, 1]) }.unwrap();
 
     // Finish building the command buffer by calling `build`.
-    let command_buffer = builder.end().unwrap();
+    let command_buffer = builder.build().unwrap();
 
     // Let's execute this command buffer now.
     let future = sync::now(device)

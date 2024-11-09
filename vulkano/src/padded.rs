@@ -8,7 +8,7 @@ use std::{
     cmp::Ordering,
     fmt::{Debug, Display, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
-    mem::{size_of, MaybeUninit},
+    mem::MaybeUninit,
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
@@ -287,16 +287,9 @@ unsafe impl<T, const N: usize> BufferContents for Padded<T, N>
 where
     T: BufferContents,
 {
-    const LAYOUT: BufferContentsLayout =
-        if let Some(layout) = BufferContentsLayout::from_sized(Layout::new::<Self>()) {
-            layout
-        } else {
-            panic!("zero-sized types are not valid buffer contents");
-        };
+    const LAYOUT: BufferContentsLayout = BufferContentsLayout::from_sized(Layout::new::<Self>());
 
     unsafe fn ptr_from_slice(slice: NonNull<[u8]>) -> *mut Self {
-        debug_assert!(slice.len() == size_of::<Padded<T, N>>());
-
         <*mut [u8]>::cast::<Padded<T, N>>(slice.as_ptr())
     }
 }

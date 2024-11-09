@@ -61,43 +61,10 @@ impl DescriptorPool {
         device: Arc<Device>,
         create_info: DescriptorPoolCreateInfo,
     ) -> Result<DescriptorPool, VulkanError> {
-        let &DescriptorPoolCreateInfo {
-            flags,
-            max_sets,
-            ref pool_sizes,
-            max_inline_uniform_block_bindings,
-            _ne: _,
-        } = &create_info;
-
-        let pool_sizes_vk: SmallVec<[_; 8]> = pool_sizes
-            .iter()
-            .map(|(&ty, &descriptor_count)| ash::vk::DescriptorPoolSize {
-                ty: ty.into(),
-                descriptor_count,
-            })
-            .collect();
-
-        let mut create_info_vk = ash::vk::DescriptorPoolCreateInfo {
-            flags: flags.into(),
-            max_sets,
-            pool_size_count: pool_sizes_vk.len() as u32,
-            p_pool_sizes: pool_sizes_vk.as_ptr(),
-            ..Default::default()
-        };
-
-        let mut inline_uniform_block_create_info_vk = None;
-
-        if max_inline_uniform_block_bindings != 0 {
-            let next = inline_uniform_block_create_info_vk.insert(
-                ash::vk::DescriptorPoolInlineUniformBlockCreateInfo {
-                    max_inline_uniform_block_bindings,
-                    ..Default::default()
-                },
-            );
-
-            next.p_next = create_info_vk.p_next;
-            create_info_vk.p_next = <*const _>::cast(next);
-        }
+        let create_info_fields1_vk = create_info.to_vk_fields1();
+        let mut create_info_extensions_vk = create_info.to_vk_extensions();
+        let create_info_vk =
+            create_info.to_vk(&create_info_fields1_vk, &mut create_info_extensions_vk);
 
         let handle = unsafe {
             let fns = device.fns();
@@ -270,30 +237,22 @@ impl DescriptorPool {
         let mut output: SmallVec<[_; 1]> = SmallVec::new();
 
         if !layouts_vk.is_empty() {
-            let variable_desc_count_alloc_info = if (self.device.api_version() >= Version::V1_2
+            let mut variable_desc_count_alloc_info = None;
+
+            let mut info_vk = ash::vk::DescriptorSetAllocateInfo::default()
+                .descriptor_pool(self.handle)
+                .set_layouts(&layouts_vk);
+
+            if (self.device.api_version() >= Version::V1_2
                 || self.device.enabled_extensions().ext_descriptor_indexing)
                 && variable_descriptor_counts.iter().any(|c| *c != 0)
             {
-                Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
-                    descriptor_set_count: layouts_vk.len() as u32,
-                    p_descriptor_counts: variable_descriptor_counts.as_ptr(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
-
-            let info_vk = ash::vk::DescriptorSetAllocateInfo {
-                descriptor_pool: self.handle,
-                descriptor_set_count: layouts_vk.len() as u32,
-                p_set_layouts: layouts_vk.as_ptr(),
-                p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
-                    <*const _>::cast(next)
-                } else {
-                    ptr::null()
-                },
-                ..Default::default()
-            };
+                let next = variable_desc_count_alloc_info.insert(
+                    ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
+                        .descriptor_counts(&variable_descriptor_counts),
+                );
+                info_vk = info_vk.push_next(next);
+            }
 
             output.reserve(layouts_vk.len());
 
@@ -564,6 +523,69 @@ impl DescriptorPoolCreateInfo {
 
         Ok(())
     }
+
+    pub(crate) fn to_vk<'a>(
+        &self,
+        fields1_vk: &'a DescriptorPoolCreateInfoFields1Vk,
+        extensions_vk: &'a mut DescriptorPoolCreateInfoExtensionsVk,
+    ) -> ash::vk::DescriptorPoolCreateInfo<'a> {
+        let &Self {
+            flags,
+            max_sets,
+            pool_sizes: _,
+            max_inline_uniform_block_bindings: _,
+            _ne: _,
+        } = self;
+        let DescriptorPoolCreateInfoFields1Vk { pool_sizes_vk } = fields1_vk;
+
+        let mut val_vk = ash::vk::DescriptorPoolCreateInfo::default()
+            .flags(flags.into())
+            .max_sets(max_sets)
+            .pool_sizes(pool_sizes_vk);
+
+        let DescriptorPoolCreateInfoExtensionsVk {
+            inline_uniform_block_vk,
+        } = extensions_vk;
+
+        if let Some(next) = inline_uniform_block_vk {
+            val_vk = val_vk.push_next(next);
+        }
+
+        val_vk
+    }
+
+    pub(crate) fn to_vk_fields1(&self) -> DescriptorPoolCreateInfoFields1Vk {
+        let pool_sizes_vk = self
+            .pool_sizes
+            .iter()
+            .map(|(&ty, &descriptor_count)| ash::vk::DescriptorPoolSize {
+                ty: ty.into(),
+                descriptor_count,
+            })
+            .collect();
+
+        DescriptorPoolCreateInfoFields1Vk { pool_sizes_vk }
+    }
+
+    pub(crate) fn to_vk_extensions(&self) -> DescriptorPoolCreateInfoExtensionsVk {
+        let inline_uniform_block_vk = (self.max_inline_uniform_block_bindings != 0).then(|| {
+            ash::vk::DescriptorPoolInlineUniformBlockCreateInfo::default()
+                .max_inline_uniform_block_bindings(self.max_inline_uniform_block_bindings)
+        });
+
+        DescriptorPoolCreateInfoExtensionsVk {
+            inline_uniform_block_vk,
+        }
+    }
+}
+
+pub(crate) struct DescriptorPoolCreateInfoExtensionsVk {
+    pub(crate) inline_uniform_block_vk:
+        Option<ash::vk::DescriptorPoolInlineUniformBlockCreateInfo<'static>>,
+}
+
+pub(crate) struct DescriptorPoolCreateInfoFields1Vk {
+    pub(crate) pool_sizes_vk: SmallVec<[ash::vk::DescriptorPoolSize; 8]>,
 }
 
 vulkan_bitflags! {
