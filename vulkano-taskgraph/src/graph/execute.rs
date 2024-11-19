@@ -24,7 +24,11 @@ use vulkano::{
     device::{Device, DeviceOwned, Queue},
     image::Image,
     swapchain::{AcquireNextImageInfo, AcquiredImage, Swapchain},
-    sync::{fence::Fence, semaphore::Semaphore, AccessFlags, PipelineStages},
+    sync::{
+        fence::{Fence, FenceCreateFlags, FenceCreateInfo},
+        semaphore::Semaphore,
+        AccessFlags, PipelineStages,
+    },
     Validated, Version, VulkanError, VulkanObject,
 };
 
@@ -103,7 +107,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         // SAFETY: We checked that `resource_map` maps the virtual IDs exhaustively.
         unsafe { self.acquire_images_khr(&resource_map, current_frame_index) }?;
 
-        let current_fence = flight.current_fence().write();
+        let mut current_fence = flight.current_fence().write();
 
         // SAFETY: We checked that the fence has been signalled.
         unsafe { current_fence.reset_unchecked() }?;
@@ -114,6 +118,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
         let mut state_guard = StateGuard {
             executable: self,
             resource_map: &resource_map,
+            current_fence: &mut current_fence,
             submission_count: 0,
         };
 
@@ -130,7 +135,7 @@ impl<W: ?Sized + 'static> ExecutableTaskGraph<W> {
                 &resource_map,
                 death_row,
                 current_frame_index,
-                &current_fence,
+                state_guard.current_fence,
                 &mut state_guard.submission_count,
                 world,
             )
@@ -1556,12 +1561,43 @@ fn convert_access_mask(mut access_mask: AccessFlags) -> vk::AccessFlags {
 struct StateGuard<'a, W: ?Sized + 'static> {
     executable: &'a ExecutableTaskGraph<W>,
     resource_map: &'a ResourceMap<'a>,
+    current_fence: &'a mut Fence,
     submission_count: usize,
 }
 
 impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
     #[cold]
     fn drop(&mut self) {
+        let device = self.executable.device();
+
+        // SAFETY: The parameters are valid.
+        match unsafe {
+            Fence::new_unchecked(
+                device.clone(),
+                FenceCreateInfo {
+                    flags: FenceCreateFlags::SIGNALED,
+                    ..Default::default()
+                },
+            )
+        } {
+            Ok(new_fence) => {
+                drop(mem::replace(self.current_fence, new_fence));
+            }
+            Err(err) => {
+                // Device loss is already a form of poisoning built into Vulkan. There's no
+                // invalid state that can be observed by design.
+                if err == VulkanError::DeviceLost {
+                    return;
+                }
+
+                eprintln!(
+                    "failed to recreate the current fence after failed execution rendering \
+                    recovery impossible: {err}; aborting",
+                );
+                std::process::abort();
+            }
+        }
+
         if self.submission_count == 0 {
             return;
         }
@@ -1573,8 +1609,6 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
         // signal operations.
         for submission in &submissions[0..self.submission_count] {
             if let Err(err) = submission.queue.with(|mut guard| guard.wait_idle()) {
-                // Device loss is already a form of poisoning built into Vulkan. There's no
-                // invalid state that can be observed by design.
                 if err == VulkanError::DeviceLost {
                     return;
                 }
@@ -1586,8 +1620,6 @@ impl<W: ?Sized + 'static> Drop for StateGuard<'_, W> {
                 std::process::abort();
             }
         }
-
-        let device = self.executable.device();
 
         // But even after waiting for idle, the state of the graph is invalid because some
         // semaphores are still signalled, so we have to recreate them.
