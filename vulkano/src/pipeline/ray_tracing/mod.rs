@@ -580,6 +580,7 @@ impl ShaderBindingTable {
                 offset += callable.stride as usize;
             }
         }
+        // TODO: RayTracing: Add unit test for copy algorithm
 
         Ok(Self {
             raygen,
