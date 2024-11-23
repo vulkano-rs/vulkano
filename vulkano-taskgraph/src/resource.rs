@@ -1641,12 +1641,12 @@ access_types! {
     // }
 
     // TODO:
-    // RayTracingShaderStorageWrite {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: SHADER_STORAGE_WRITE,
-    //     image_layout: General,
-    //     valid_for: BUFFER | IMAGE,
-    // }
+    RayTracingShaderStorageWrite {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: SHADER_STORAGE_WRITE,
+        image_layout: General,
+        valid_for: BUFFER | IMAGE,
+    }
 
     // TODO:
     // RayTracingShaderBindingTableRead {

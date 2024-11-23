@@ -1630,16 +1630,6 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
-    fn validate_trace_rays(
-        &self,
-        shader_binding_table: &ShaderBindingTable,
-        width: u32,
-        height: u32,
-        depth: u32,
-    ) -> Result<(), Box<ValidationError>> {
-        todo!()
-    }
-
     fn validate_pipeline_descriptor_sets<Pl: Pipeline>(
         &self,
         vuid_type: VUIDType,
@@ -5022,10 +5012,6 @@ impl RecordingCommandBuffer {
         // TODO: RayTracing: Validation
 
         Ok(self.trace_rays_unchecked(shader_binding_table, width, height, depth))
-    }
-
-    fn validate_trace_rays(&self) -> Result<(), Box<ValidationError>> {
-        todo!()
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]

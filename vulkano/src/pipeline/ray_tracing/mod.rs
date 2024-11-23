@@ -14,7 +14,7 @@ use crate::{
         DeviceAlignment,
     },
     shader::DescriptorBindingRequirements,
-    Validated, ValidationError, VulkanError, VulkanObject,
+    Validated, VulkanError, VulkanObject,
 };
 
 use super::{
@@ -50,14 +50,6 @@ impl RayTracingPipeline {
         // Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
-    }
-
-    fn validate_new(
-        device: &Device,
-        cache: Option<&PipelineCache>,
-        create_info: &RayTracingPipelineCreateInfo,
-    ) -> Result<(), Box<ValidationError>> {
-        todo!()
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
