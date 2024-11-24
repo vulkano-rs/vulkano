@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::{iter, mem::size_of};
 
 use glam::{Mat4, Vec3};
 use vulkano::{
@@ -219,7 +220,6 @@ impl SceneTask {
             },
             raygen::Camera {
                 viewInverse: view.inverse().to_cols_array_2d(),
-                // 90 degree FOV perspective projection
                 projInverse: proj.inverse().to_cols_array_2d(),
                 viewProj: (proj * view).to_cols_array_2d(),
             },
@@ -282,7 +282,7 @@ impl Task for SceneTask {
         &self,
         cbf: &mut RecordingCommandBuffer<'_>,
         tcx: &mut TaskContext<'_>,
-        rcx: &Self::World,
+        _rcx: &Self::World,
     ) -> TaskResult {
         let swapchain_state = tcx.swapchain(self.virtual_swapchain_id)?;
         let image_index = swapchain_state.current_image_index().unwrap();
@@ -346,8 +346,10 @@ fn window_size_dependent_setup(
     swapchain_image_sets
 }
 
-unsafe fn build_acceleration_structure_triangles(
-    vertex_buffer: Subbuffer<[MyVertex]>,
+unsafe fn build_acceleration_structure_common(
+    geometries: AccelerationStructureGeometries,
+    primitive_count: u32,
+    ty: AccelerationStructureType,
     memory_allocator: Arc<dyn MemoryAllocator>,
     command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
     device: Arc<Device>,
@@ -360,22 +362,10 @@ unsafe fn build_acceleration_structure_triangles(
     )
     .unwrap();
 
-    let primitive_count = (vertex_buffer.len() / 3) as u32;
-    let as_geometry_triangles_data = AccelerationStructureGeometryTrianglesData {
-        // TODO: Modify constructor?
-        max_vertex: vertex_buffer.len() as _,
-        vertex_data: Some(vertex_buffer.into_bytes()),
-        vertex_stride: size_of::<MyVertex>() as _,
-        ..AccelerationStructureGeometryTrianglesData::new(Format::R32G32B32_SFLOAT)
-    };
-
-    let as_geometries =
-        AccelerationStructureGeometries::Triangles(vec![as_geometry_triangles_data]);
-
     let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
         mode: BuildAccelerationStructureMode::Build,
         flags: BuildAccelerationStructureFlags::PREFER_FAST_TRACE,
-        ..AccelerationStructureBuildGeometryInfo::new(as_geometries)
+        ..AccelerationStructureBuildGeometryInfo::new(geometries)
     };
 
     let as_build_sizes_info = device
@@ -398,7 +388,7 @@ unsafe fn build_acceleration_structure_triangles(
     .unwrap();
 
     let as_create_info = AccelerationStructureCreateInfo {
-        ty: AccelerationStructureType::BottomLevel,
+        ty,
         ..AccelerationStructureCreateInfo::new(
             Buffer::new_slice::<u8>(
                 memory_allocator,
@@ -413,6 +403,7 @@ unsafe fn build_acceleration_structure_triangles(
             .unwrap(),
         )
     };
+
     let acceleration = unsafe { AccelerationStructure::new(device, as_create_info).unwrap() };
 
     as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
@@ -426,7 +417,7 @@ unsafe fn build_acceleration_structure_triangles(
     builder
         .build_acceleration_structure(
             as_build_geometry_info,
-            [as_build_range_info].into_iter().collect(),
+            iter::once(as_build_range_info).collect(),
         )
         .unwrap();
 
@@ -443,6 +434,34 @@ unsafe fn build_acceleration_structure_triangles(
     acceleration
 }
 
+unsafe fn build_acceleration_structure_triangles(
+    vertex_buffer: Subbuffer<[MyVertex]>,
+    memory_allocator: Arc<dyn MemoryAllocator>,
+    command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+) -> Arc<AccelerationStructure> {
+    let primitive_count = (vertex_buffer.len() / 3) as u32;
+    let as_geometry_triangles_data = AccelerationStructureGeometryTrianglesData {
+        max_vertex: vertex_buffer.len() as _,
+        vertex_data: Some(vertex_buffer.into_bytes()),
+        vertex_stride: size_of::<MyVertex>() as _,
+        ..AccelerationStructureGeometryTrianglesData::new(Format::R32G32B32_SFLOAT)
+    };
+
+    let geometries = AccelerationStructureGeometries::Triangles(vec![as_geometry_triangles_data]);
+
+    build_acceleration_structure_common(
+        geometries,
+        primitive_count,
+        AccelerationStructureType::BottomLevel,
+        memory_allocator,
+        command_buffer_allocator,
+        device,
+        queue,
+    )
+}
+
 unsafe fn build_top_level_acceleration_structure(
     acceleration_structure: Arc<AccelerationStructure>,
     allocator: Arc<dyn MemoryAllocator>,
@@ -450,16 +469,8 @@ unsafe fn build_top_level_acceleration_structure(
     device: Arc<Device>,
     queue: Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
-    let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    )
-    .unwrap();
-
-    let primitive_count = 1;
     let as_instance = AccelerationStructureInstance {
-        acceleration_structure_reference: acceleration_structure.device_address().into(), // TODO: Need to hold AS
+        acceleration_structure_reference: acceleration_structure.device_address().into(),
         ..Default::default()
     };
 
@@ -483,74 +494,15 @@ unsafe fn build_top_level_acceleration_structure(
         AccelerationStructureGeometryInstancesDataType::Values(Some(instance_buffer)),
     );
 
-    let as_geometries = AccelerationStructureGeometries::Instances(as_geometry_instances_data);
+    let geometries = AccelerationStructureGeometries::Instances(as_geometry_instances_data);
 
-    let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
-        mode: BuildAccelerationStructureMode::Build,
-        flags: BuildAccelerationStructureFlags::PREFER_FAST_TRACE,
-        ..AccelerationStructureBuildGeometryInfo::new(as_geometries)
-    };
-
-    let as_build_sizes_info = device
-        .acceleration_structure_build_sizes(
-            AccelerationStructureBuildType::Device,
-            &as_build_geometry_info,
-            &[primitive_count],
-        )
-        .unwrap();
-
-    let scratch_buffer = Buffer::new_slice::<u8>(
-        allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::SHADER_DEVICE_ADDRESS | BufferUsage::STORAGE_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo::default(),
-        as_build_sizes_info.build_scratch_size,
+    build_acceleration_structure_common(
+        geometries,
+        1,
+        AccelerationStructureType::TopLevel,
+        allocator,
+        command_buffer_allocator,
+        device,
+        queue,
     )
-    .unwrap();
-
-    let as_create_info = AccelerationStructureCreateInfo {
-        ty: AccelerationStructureType::TopLevel,
-        ..AccelerationStructureCreateInfo::new(
-            Buffer::new_slice::<u8>(
-                allocator,
-                BufferCreateInfo {
-                    usage: BufferUsage::ACCELERATION_STRUCTURE_STORAGE
-                        | BufferUsage::SHADER_DEVICE_ADDRESS,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-                as_build_sizes_info.acceleration_structure_size,
-            )
-            .unwrap(),
-        )
-    };
-    let acceleration = unsafe { AccelerationStructure::new(device, as_create_info).unwrap() };
-
-    as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
-    as_build_geometry_info.scratch_data = Some(scratch_buffer);
-
-    let as_build_range_info = AccelerationStructureBuildRangeInfo {
-        primitive_count,
-        ..Default::default()
-    };
-
-    builder
-        .build_acceleration_structure(
-            as_build_geometry_info,
-            [as_build_range_info].into_iter().collect(),
-        )
-        .unwrap();
-    builder
-        .build()
-        .unwrap()
-        .execute(queue)
-        .unwrap()
-        .then_signal_fence_and_flush()
-        .unwrap()
-        .wait(None)
-        .unwrap();
-
-    acceleration
 }

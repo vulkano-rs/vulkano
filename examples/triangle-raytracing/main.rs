@@ -213,7 +213,7 @@ impl ApplicationHandler for App {
                         min_image_count: surface_capabilities.min_image_count.max(3),
                         image_format: swapchain_format,
                         image_extent: window.inner_size().into(),
-                        image_usage: ImageUsage::STORAGE,
+                        image_usage: ImageUsage::STORAGE | ImageUsage::COLOR_ATTACHMENT,
                         image_color_space: swapchain_color_space,
                         composite_alpha: surface_capabilities
                             .supported_composite_alpha
@@ -408,7 +408,6 @@ impl ApplicationHandler for App {
                         panic!("failed to execute next frame: {e:?}");
                     }
                 }
-                // panic!()
             }
             _ => {}
         }
