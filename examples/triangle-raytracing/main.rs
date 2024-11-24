@@ -12,16 +12,15 @@ use vulkano::{
         },
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
-        QueueCreateInfo, QueueFlags,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures,
+        Queue, QueueCreateInfo, QueueFlags,
     },
-    format::NumericFormat,
-    image::ImageUsage,
+    image::{ImageFormatInfo, ImageUsage},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{layout::PipelineLayoutCreateInfo, PipelineLayout},
     shader::ShaderStages,
-    swapchain::{ColorSpace, Surface, Swapchain, SwapchainCreateInfo},
+    swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     Validated, Version, VulkanError, VulkanLibrary,
 };
 use vulkano_taskgraph::{
@@ -59,7 +58,6 @@ struct App {
 pub struct RenderContext {
     window: Arc<Window>,
     swapchain_id: Id<Swapchain>,
-    pipeline_layout: Arc<PipelineLayout>,
     recreate_swapchain: bool,
     task_graph: ExecutableTaskGraph<Self>,
     scene_node_id: NodeId,
@@ -76,8 +74,10 @@ impl App {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 enabled_extensions: InstanceExtensions {
                     ext_debug_utils: true,
+                    ext_swapchain_colorspace: true,
                     ..required_extensions
                 },
+                enabled_layers: vec!["VK_LAYER_KHRONOS_validation".to_owned()],
                 ..Default::default()
             },
         )
@@ -118,12 +118,6 @@ impl App {
             })
             .unwrap();
 
-        println!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
-
         let (device, mut queues) = Device::new(
             physical_device,
             DeviceCreateInfo {
@@ -132,6 +126,13 @@ impl App {
                     queue_family_index,
                     ..Default::default()
                 }],
+                enabled_features: DeviceFeatures {
+                    acceleration_structure: true,
+                    ray_tracing_pipeline: true,
+                    buffer_device_address: true,
+                    synchronization2: true,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         )
@@ -164,24 +165,45 @@ impl ApplicationHandler for App {
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
         let window_size = window.inner_size();
 
-        let swapchain_format;
+        let physical_device = self.device.physical_device();
+        let supported_surface_formats = physical_device
+            .surface_formats(&surface, Default::default())
+            .unwrap();
+
+        // For each supported format, check if it is supported for storage images
+        let supported_storage_formats = supported_surface_formats
+            .into_iter()
+            .filter(|(format, _)| {
+                physical_device
+                    .image_format_properties(ImageFormatInfo {
+                        format: *format,
+                        usage: ImageUsage::STORAGE,
+                        ..Default::default()
+                    })
+                    .unwrap()
+                    .is_some()
+            })
+            .collect::<Vec<_>>();
+        println!("Supported storage formats: {:?}", supported_storage_formats);
+
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
         let swapchain_id = {
             let surface_capabilities = self
                 .device
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
-            (swapchain_format, _) = self
-                .device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()
-                .into_iter()
-                .find(|&(format, color_space)| {
-                    format.numeric_format_color() == Some(NumericFormat::SRGB)
-                        && color_space == ColorSpace::SrgbNonLinear
-                })
+
+            let (swapchain_format, swapchain_color_space) = supported_storage_formats
+                .get(0)
+                .map(|(format, color_space)| (*format, *color_space))
                 .unwrap();
+            println!("Using swapchain format: {:?}", swapchain_format);
 
             self.resources
                 .create_swapchain(
@@ -191,7 +213,8 @@ impl ApplicationHandler for App {
                         min_image_count: surface_capabilities.min_image_count.max(3),
                         image_format: swapchain_format,
                         image_extent: window.inner_size().into(),
-                        image_usage: ImageUsage::COLOR_ATTACHMENT,
+                        image_usage: ImageUsage::STORAGE,
+                        image_color_space: swapchain_color_space,
                         composite_alpha: surface_capabilities
                             .supported_composite_alpha
                             .into_iter()
@@ -266,10 +289,7 @@ impl ApplicationHandler for App {
             Default::default(),
         ));
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new(
-            self.device.clone(),
-            Default::default(),
-        ));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
 
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             self.device.clone(),
@@ -297,7 +317,7 @@ impl ApplicationHandler for App {
             .image_access(
                 virtual_swapchain_id.current_image_id(),
                 AccessType::RayTracingShaderStorageWrite,
-                ImageLayoutType::Optimal,
+                ImageLayoutType::General,
             )
             .build();
 
@@ -315,7 +335,6 @@ impl ApplicationHandler for App {
             window,
             swapchain_id,
             virtual_swapchain_id,
-            pipeline_layout,
             recreate_swapchain: false,
             task_graph,
             scene_node_id,
@@ -389,6 +408,7 @@ impl ApplicationHandler for App {
                         panic!("failed to execute next frame: {e:?}");
                     }
                 }
+                // panic!()
             }
             _ => {}
         }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use glam::{Mat4, Vec3};
 use vulkano::{
     acceleration_structure::{
         AccelerationStructure, AccelerationStructureBuildGeometryInfo,
@@ -17,7 +18,7 @@ use vulkano::{
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, sys::RawDescriptorSet, WriteDescriptorSet,
     },
-    device::{Device, Queue},
+    device::{Device, DeviceOwnedVulkanObject, Queue},
     format::Format,
     image::view::ImageView,
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
@@ -146,6 +147,9 @@ impl SceneTask {
             )
             .unwrap()
         };
+        pipeline
+            .set_debug_utils_object_name("Ray Tracing Pipeline".into())
+            .unwrap();
 
         let vertices = [
             MyVertex {
@@ -195,6 +199,13 @@ impl SceneTask {
             )
         };
 
+        let proj = Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, 4.0 / 3.0, 0.01, 100.0);
+        let view = Mat4::look_at_rh(
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, -1.0, 0.0),
+        );
+
         let uniform_buffer = Buffer::from_data(
             memory_allocator.clone(),
             BufferCreateInfo {
@@ -207,9 +218,10 @@ impl SceneTask {
                 ..Default::default()
             },
             raygen::Camera {
-                projInverse: Default::default(),
-                viewInverse: Default::default(),
-                viewProj: Default::default(),
+                viewInverse: view.inverse().to_cols_array_2d(),
+                // 90 degree FOV perspective projection
+                projInverse: proj.inverse().to_cols_array_2d(),
+                viewProj: (proj * view).to_cols_array_2d(),
             },
         )
         .unwrap();
@@ -276,8 +288,8 @@ impl Task for SceneTask {
         let image_index = swapchain_state.current_image_index().unwrap();
 
         cbf.as_raw().bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
-            &rcx.pipeline_layout,
+            PipelineBindPoint::RayTracing, // Changed from Graphics to RayTracing
+            &self.pipeline_layout, // Changed from rcx.pipeline_layout to self.pipeline_layout
             0,
             &[
                 &self.descriptor_set_0,
@@ -296,6 +308,9 @@ impl Task for SceneTask {
             cbf.destroy_object(descriptor_set.clone());
             cbf.destroy_object(image_view.clone());
         }
+        cbf.destroy_object(self.blas.clone());
+        cbf.destroy_object(self.tlas.clone());
+        cbf.destroy_object(self.uniform_buffer.clone().into());
         cbf.destroy_object(self.descriptor_set_0.clone());
 
         Ok(())

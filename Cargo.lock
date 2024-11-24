@@ -1737,6 +1737,7 @@ name = "triangle-raytracing"
 version = "0.0.0"
 dependencies = [
  "ash",
+ "glam",
  "vulkano",
  "vulkano-shaders",
  "vulkano-taskgraph",
