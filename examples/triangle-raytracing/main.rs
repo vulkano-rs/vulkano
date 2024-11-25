@@ -163,7 +163,6 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
-        let window_size = window.inner_size();
 
         let physical_device = self.device.physical_device();
         let supported_surface_formats = physical_device

@@ -117,21 +117,11 @@ impl SceneTask {
             ];
 
             let groups = [
-                RayTracingShaderGroupCreateInfo {
-                    // Raygen
-                    general_shader: Some(0),
-                    ..Default::default()
-                },
-                RayTracingShaderGroupCreateInfo {
-                    // Miss
-                    general_shader: Some(1),
-                    ..Default::default()
-                },
-                RayTracingShaderGroupCreateInfo {
-                    // Closest Hit
-                    group_type: ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+                RayTracingShaderGroupCreateInfo::General { general_shader: 0 },
+                RayTracingShaderGroupCreateInfo::General { general_shader: 1 },
+                RayTracingShaderGroupCreateInfo::TrianglesHit {
                     closest_hit_shader: Some(2),
-                    ..Default::default()
+                    any_hit_shader: None,
                 },
             ];
 
@@ -249,7 +239,7 @@ impl SceneTask {
         );
 
         let shader_binding_table =
-            ShaderBindingTable::new(memory_allocator.clone(), &pipeline, 1, 1, 0).unwrap();
+            ShaderBindingTable::new(memory_allocator.clone(), &pipeline).unwrap();
 
         SceneTask {
             descriptor_set_0: Arc::new(descriptor_set_0),
@@ -288,8 +278,8 @@ impl Task for SceneTask {
         let image_index = swapchain_state.current_image_index().unwrap();
 
         cbf.as_raw().bind_descriptor_sets(
-            PipelineBindPoint::RayTracing, // Changed from Graphics to RayTracing
-            &self.pipeline_layout, // Changed from rcx.pipeline_layout to self.pipeline_layout
+            PipelineBindPoint::RayTracing,
+            &self.pipeline_layout,
             0,
             &[
                 &self.descriptor_set_0,
@@ -302,7 +292,14 @@ impl Task for SceneTask {
 
         let extent = self.swapchain_image_sets[0].0.image().extent();
 
-        unsafe { cbf.trace_rays(&self.shader_binding_table, extent[0], extent[1], 1) }?;
+        unsafe {
+            cbf.trace_rays(
+                self.shader_binding_table.addresses(),
+                extent[0],
+                extent[1],
+                1,
+            )
+        }?;
 
         for (image_view, descriptor_set) in self.swapchain_image_sets.iter() {
             cbf.destroy_object(descriptor_set.clone());

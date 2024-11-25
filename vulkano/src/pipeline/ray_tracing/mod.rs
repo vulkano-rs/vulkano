@@ -6,14 +6,14 @@ use smallvec::SmallVec;
 
 use crate::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper, DeviceOwnedVulkanObject},
+    device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
         allocator::{align_up, AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
         DeviceAlignment,
     },
-    shader::DescriptorBindingRequirements,
+    shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, VulkanError, VulkanObject,
 };
 
@@ -152,6 +152,10 @@ impl RayTracingPipeline {
 
     pub fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+
+    pub fn flags(&self) -> PipelineCreateFlags {
+        self.flags
     }
 }
 
@@ -387,30 +391,54 @@ impl RayTracingPipelineCreateInfo {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct RayTracingShaderGroupCreateInfo {
-    pub group_type: ash::vk::RayTracingShaderGroupTypeKHR, // TODO: Custom type
-    pub general_shader: Option<u32>,
-    pub closest_hit_shader: Option<u32>,
-    pub any_hit_shader: Option<u32>,
-    pub intersection_shader: Option<u32>,
+/// Enum representing different types of Ray Tracing Shader Groups.
+#[derive(Debug, Clone)]
+pub enum RayTracingShaderGroupCreateInfo {
+    General {
+        general_shader: u32,
+    },
+    ProceduralHit {
+        closest_hit_shader: Option<u32>,
+        any_hit_shader: Option<u32>,
+        intersection_shader: u32,
+    },
+    TrianglesHit {
+        closest_hit_shader: Option<u32>,
+        any_hit_shader: Option<u32>,
+    },
 }
 
 impl RayTracingShaderGroupCreateInfo {
     pub(crate) fn to_vk(&self) -> ash::vk::RayTracingShaderGroupCreateInfoKHR<'static> {
-        // We are not using pointers in the struct, so 'static is used.
-        ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .ty(self.group_type)
-            .general_shader(self.general_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
-            .closest_hit_shader(
-                self.closest_hit_shader
-                    .unwrap_or(ash::vk::SHADER_UNUSED_KHR),
-            )
-            .any_hit_shader(self.any_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
-            .intersection_shader(
-                self.intersection_shader
-                    .unwrap_or(ash::vk::SHADER_UNUSED_KHR),
-            )
+        match self {
+            RayTracingShaderGroupCreateInfo::General { general_shader } => {
+                ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
+                    .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                    .general_shader(*general_shader)
+                    .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
+                    .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
+                    .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
+            }
+            RayTracingShaderGroupCreateInfo::ProceduralHit {
+                closest_hit_shader,
+                any_hit_shader,
+                intersection_shader,
+            } => ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
+                .ty(ash::vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP)
+                .general_shader(ash::vk::SHADER_UNUSED_KHR)
+                .closest_hit_shader(closest_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
+                .any_hit_shader(any_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
+                .intersection_shader(*intersection_shader),
+            RayTracingShaderGroupCreateInfo::TrianglesHit {
+                closest_hit_shader,
+                any_hit_shader,
+            } => ash::vk::RayTracingShaderGroupCreateInfoKHR::default()
+                .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
+                .general_shader(ash::vk::SHADER_UNUSED_KHR)
+                .closest_hit_shader(closest_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
+                .any_hit_shader(any_hit_shader.unwrap_or(ash::vk::SHADER_UNUSED_KHR))
+                .intersection_shader(ash::vk::SHADER_UNUSED_KHR),
+        }
     }
 }
 
@@ -432,43 +460,95 @@ pub struct RayTracingPipelineCreateInfoFields2Vk<'a> {
 pub struct RayTracingPipelineCreateInfoFields3Vk {
     pub(crate) stages_fields2_vk: SmallVec<[PipelineShaderStageCreateInfoFields2Vk; 5]>,
 }
+
+#[derive(Debug, Clone)]
+pub struct ShaderBindingTableAddresses {
+    pub raygen: StridedDeviceAddressRegionKHR,
+    pub miss: StridedDeviceAddressRegionKHR,
+    pub hit: StridedDeviceAddressRegionKHR,
+    pub callable: StridedDeviceAddressRegionKHR,
+}
+
 #[derive(Debug, Clone)]
 pub struct ShaderBindingTable {
-    raygen: StridedDeviceAddressRegionKHR,
-    miss: StridedDeviceAddressRegionKHR,
-    hit: StridedDeviceAddressRegionKHR,
-    callable: StridedDeviceAddressRegionKHR,
-    buffer: Subbuffer<[u8]>,
+    addresses: ShaderBindingTableAddresses,
+    _buffer: Subbuffer<[u8]>,
 }
 
 impl ShaderBindingTable {
-    pub fn raygen(&self) -> &StridedDeviceAddressRegionKHR {
-        &self.raygen
-    }
-
-    pub fn miss(&self) -> &StridedDeviceAddressRegionKHR {
-        &self.miss
-    }
-
-    pub fn hit(&self) -> &StridedDeviceAddressRegionKHR {
-        &self.hit
-    }
-
-    pub fn callable(&self) -> &StridedDeviceAddressRegionKHR {
-        &self.callable
-    }
-
-    pub(crate) fn buffer(&self) -> &Subbuffer<[u8]> {
-        &self.buffer
+    pub fn addresses(&self) -> &ShaderBindingTableAddresses {
+        &self.addresses
     }
 
     pub fn new(
         allocator: Arc<dyn MemoryAllocator>,
         ray_tracing_pipeline: &RayTracingPipeline,
-        miss_shader_count: u64,
-        hit_shader_count: u64,
-        callable_shader_count: u64,
     ) -> Result<Self, Validated<VulkanError>> {
+        let mut miss_shader_count: u64 = 0;
+        let mut hit_shader_count: u64 = 0;
+        let mut callable_shader_count: u64 = 0;
+
+        let get_shader_type = |shader: u32| {
+            ray_tracing_pipeline.stages()[shader as usize]
+                .entry_point
+                .info()
+                .execution_model
+        };
+
+        for group in ray_tracing_pipeline.groups() {
+            match group {
+                RayTracingShaderGroupCreateInfo::General { general_shader } => {
+                    match get_shader_type(*general_shader) {
+                        ExecutionModel::RayGenerationKHR => {}
+                        ExecutionModel::MissKHR => miss_shader_count += 1,
+                        ExecutionModel::CallableKHR => callable_shader_count += 1,
+                        _ => {
+                            panic!("Unexpected shader type in general shader group");
+                        }
+                    }
+                }
+                RayTracingShaderGroupCreateInfo::ProceduralHit {
+                    intersection_shader,
+                    any_hit_shader,
+                    closest_hit_shader,
+                } => {
+                    if get_shader_type(*intersection_shader) != ExecutionModel::IntersectionKHR {
+                        panic!("Unexpected shader type in procedural hit shader group");
+                    }
+                    if let Some(any_hit_shader) = any_hit_shader {
+                        if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
+                            panic!("Unexpected shader type in procedural hit shader group");
+                        }
+                    }
+                    if let Some(closest_hit_shader) = closest_hit_shader {
+                        if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
+                            panic!("Unexpected shader type in procedural hit shader group");
+                        }
+                    }
+                    hit_shader_count += 1;
+                }
+                RayTracingShaderGroupCreateInfo::TrianglesHit {
+                    any_hit_shader,
+                    closest_hit_shader,
+                } => {
+                    if any_hit_shader.is_none() && closest_hit_shader.is_none() {
+                        panic!("Triangles hit shader group must have at least one hit shader");
+                    }
+                    if let Some(any_hit_shader) = any_hit_shader {
+                        if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
+                            panic!("Unexpected shader type in triangles hit shader group");
+                        }
+                    }
+                    if let Some(closest_hit_shader) = closest_hit_shader {
+                        if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
+                            panic!("Unexpected shader type in triangles hit shader group");
+                        }
+                    }
+                    hit_shader_count += 1;
+                }
+            }
+        }
+
         let handle_data = ray_tracing_pipeline
             .device()
             .get_ray_tracing_shader_group_handles(
@@ -536,10 +616,6 @@ impl ShaderBindingTable {
             raygen.size + miss.size + hit.size + callable.size,
         )
         .expect("todo: raytracing: better error type");
-        sbt_buffer
-            .buffer()
-            .set_debug_utils_object_name("Shader Binding Table Buffer".into())
-            .unwrap();
 
         raygen.device_address = sbt_buffer.buffer().device_address().unwrap().get();
         miss.device_address = raygen.device_address + raygen.size;
@@ -572,14 +648,15 @@ impl ShaderBindingTable {
                 offset += callable.stride as usize;
             }
         }
-        // TODO: RayTracing: Add unit test for copy algorithm
 
         Ok(Self {
-            raygen,
-            miss,
-            hit,
-            callable,
-            buffer: sbt_buffer,
+            addresses: ShaderBindingTableAddresses {
+                raygen,
+                miss,
+                hit,
+                callable,
+            },
+            _buffer: sbt_buffer,
         })
     }
 }
