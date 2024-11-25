@@ -378,6 +378,31 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
+    pub fn bind_pipeline_ray_tracing(
+        &mut self,
+        pipeline: Arc<RayTracingPipeline>,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        // TODO: RayTracing: Validation
+        Ok(unsafe { self.bind_pipeline_ray_tracing_unchecked(pipeline) })
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn bind_pipeline_ray_tracing_unchecked(
+        &mut self,
+        pipeline: Arc<RayTracingPipeline>,
+    ) -> &mut Self {
+        self.builder_state.pipeline_ray_tracing = Some(pipeline.clone());
+        self.add_command(
+            "bind_pipeline_ray_tracing",
+            Default::default(),
+            move |out: &mut RecordingCommandBuffer| {
+                out.bind_pipeline_ray_tracing_unchecked(&pipeline);
+            },
+        );
+
+        self
+    }
+
     /// Binds vertex buffers for future draw calls.
     pub fn bind_vertex_buffers(
         &mut self,

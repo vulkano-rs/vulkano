@@ -1,0 +1,19 @@
+[package]
+name = "triangle-raytracing-auto"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "triangle-raytracing-auto"
+path = "main.rs"
+test = false
+bench = false
+doc = false
+
+[dependencies]
+vulkano = { workspace = true, default-features = true }
+vulkano-shaders = { workspace = true }
+winit = { workspace = true, default-features = true }
+ash = { workspace = true }
+glam = { workspace = true }

@@ -1745,6 +1745,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "triangle-raytracing-auto"
+version = "0.0.0"
+dependencies = [
+ "ash",
+ "glam",
+ "vulkano",
+ "vulkano-shaders",
+ "winit",
+]
+
+[[package]]
 name = "triangle-util"
 version = "0.0.0"
 dependencies = [
