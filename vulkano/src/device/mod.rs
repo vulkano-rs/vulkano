@@ -2199,6 +2199,10 @@ pub struct ShaderGroupHandlesData {
 }
 
 impl ShaderGroupHandlesData {
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
     pub fn handle_size(&self) -> u32 {
         self.handle_size
     }

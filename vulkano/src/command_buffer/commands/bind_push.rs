@@ -382,7 +382,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         pipeline: Arc<RayTracingPipeline>,
     ) -> Result<&mut Self, Box<ValidationError>> {
-        // TODO: RayTracing: Validation
+        self.inner.validate_bind_pipeline_ray_tracing(&pipeline)?;
         Ok(unsafe { self.bind_pipeline_ray_tracing_unchecked(pipeline) })
     }
 
@@ -820,7 +820,23 @@ impl RecordingCommandBuffer {
                 }
             }
             PipelineBindPoint::RayTracing => {
-                // TODO: RayTracing: Validation
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::COMPUTE)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "pipeline_bind_point".into(),
+                        problem: "is `PipelineBindPoint::RayTracing`, but \
+                            the queue family of the command buffer does not support \
+                            compute operations"
+                            .into(),
+                        vuids: &[
+                            "VUID-vkCmdBindDescriptorSets-pipelineBindPoint-02391",
+                            "VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool",
+                        ],
+                        ..Default::default()
+                    }));
+                }
             }
         }
 
@@ -1046,9 +1062,38 @@ impl RecordingCommandBuffer {
         self
     }
 
-    pub unsafe fn bind_pipeline_ray_tracing(&mut self, pipeline: &RayTracingPipeline) -> &mut Self {
-        // TODO: RayTracing: Validation
-        self.bind_pipeline_ray_tracing_unchecked(pipeline)
+    pub unsafe fn bind_pipeline_ray_tracing(
+        &mut self,
+        pipeline: &RayTracingPipeline,
+    ) -> Result<&mut Self, Box<ValidationError>> {
+        self.validate_bind_pipeline_ray_tracing(pipeline)?;
+        Ok(self.bind_pipeline_ray_tracing_unchecked(pipeline))
+    }
+
+    fn validate_bind_pipeline_ray_tracing(
+        &self,
+        pipeline: &RayTracingPipeline,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::COMPUTE)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of the command buffer does not support \
+                    compute operations"
+                    .into(),
+                vuids: &["VUID-vkCmdBindPipeline-pipelineBindPoint-02391"],
+                ..Default::default()
+            }));
+        }
+
+        // VUID-vkCmdBindPipeline-commonparent
+        assert_eq!(self.device(), pipeline.device());
+
+        // TODO: VUID-vkCmdBindPipeline-pipelineBindPoint-06721
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -1444,7 +1489,23 @@ impl RecordingCommandBuffer {
                 }
             }
             PipelineBindPoint::RayTracing => {
-                // TODO: RayTracing
+                if !queue_family_properties
+                    .queue_flags
+                    .intersects(QueueFlags::COMPUTE)
+                {
+                    return Err(Box::new(ValidationError {
+                        context: "self".into(),
+                        problem:
+                            "`pipeline_bind_point` is `PipelineBindPoint::RayTracing`, and the \
+                            queue family does not support compute operations"
+                                .into(),
+                        vuids: &[
+                            "VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-02391",
+                            "VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool",
+                        ],
+                        ..Default::default()
+                    }));
+                }
             }
         }
 

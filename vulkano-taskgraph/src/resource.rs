@@ -1600,47 +1600,41 @@ access_types! {
     //     valid_for: IMAGE,
     // }
 
-    // TODO:
-    // RayTracingShaderUniformRead {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: UNIFORM_READ,
-    //     image_layout: Undefined,
-    //     valid_for: BUFFER,
-    // }
+    RayTracingShaderUniformRead {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: UNIFORM_READ,
+        image_layout: Undefined,
+        valid_for: BUFFER,
+    }
 
-    // TODO:
-    // RayTracingShaderColorInputAttachmentRead {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: INPUT_ATTACHMENT_READ,
-    //     image_layout: ShaderReadOnlyOptimal,
-    //     valid_for: IMAGE,
-    // }
+    RayTracingShaderColorInputAttachmentRead {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: INPUT_ATTACHMENT_READ,
+        image_layout: ShaderReadOnlyOptimal,
+        valid_for: IMAGE,
+    }
 
-    // TODO:
-    // RayTracingShaderDepthStencilInputAttachmentRead {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: INPUT_ATTACHMENT_READ,
-    //     image_layout: DepthStencilReadOnlyOptimal,
-    //     valid_for: IMAGE,
-    // }
+    RayTracingShaderDepthStencilInputAttachmentRead {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: INPUT_ATTACHMENT_READ,
+        image_layout: DepthStencilReadOnlyOptimal,
+        valid_for: IMAGE,
+    }
 
-    // TODO:
-    // RayTracingShaderSampledRead {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: SHADER_SAMPLED_READ,
-    //     image_layout: ShaderReadOnlyOptimal,
-    //     valid_for: BUFFER | IMAGE,
-    // }
+    RayTracingShaderSampledRead {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: SHADER_SAMPLED_READ,
+        image_layout: ShaderReadOnlyOptimal,
+        valid_for: BUFFER | IMAGE,
+    }
 
-    // TODO:
-    // RayTracingShaderStorageRead {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: SHADER_STORAGE_READ,
-    //     image_layout: General,
-    //     valid_for: BUFFER | IMAGE,
-    // }
+    RayTracingShaderStorageRead {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: SHADER_STORAGE_READ,
+        image_layout: General,
+        valid_for: BUFFER | IMAGE,
+    }
 
-    // TODO:
     RayTracingShaderStorageWrite {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
@@ -1648,21 +1642,19 @@ access_types! {
         valid_for: BUFFER | IMAGE,
     }
 
-    // TODO:
-    // RayTracingShaderBindingTableRead {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: SHADER_BINDING_TABLE_READ,
-    //     image_layout: Undefined,
-    //     valid_for: BUFFER,
-    // }
+    RayTracingShaderBindingTableRead {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: SHADER_BINDING_TABLE_READ,
+        image_layout: Undefined,
+        valid_for: BUFFER,
+    }
 
-    // TODO:
-    // RayTracingShaderAccelerationStructureRead {
-    //     stage_mask: RAY_TRACING_SHADER,
-    //     access_mask: ACCELERATION_STRUCTURE_READ,
-    //     image_layout: Undefined,
-    //     valid_for: BUFFER,
-    // }
+    RayTracingShaderAccelerationStructureRead {
+        stage_mask: RAY_TRACING_SHADER,
+        access_mask: ACCELERATION_STRUCTURE_READ,
+        image_layout: Undefined,
+        valid_for: BUFFER,
+    }
 
     TaskShaderUniformRead {
         stage_mask: TASK_SHADER,
