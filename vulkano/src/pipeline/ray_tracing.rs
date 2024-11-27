@@ -527,7 +527,7 @@ impl RayTracingPipelineCreateInfo {
         }
     }
 
-    pub(crate) fn to_vk_fields3<'a>(&self) -> RayTracingPipelineCreateInfoFields3Vk {
+    pub(crate) fn to_vk_fields3(&self) -> RayTracingPipelineCreateInfoFields3Vk {
         let Self { stages, .. } = self;
 
         let stages_fields2_vk = stages.iter().map(|stage| stage.to_vk_fields2()).collect();
