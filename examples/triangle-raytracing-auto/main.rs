@@ -1,6 +1,4 @@
-// TODO: document
-
-use scene::SceneTask;
+use scene::Scene;
 use std::{error::Error, sync::Arc};
 use vulkano::{
     command_buffer::{
@@ -56,7 +54,7 @@ pub struct RenderContext {
     window: Arc<Window>,
     swapchain: Arc<Swapchain>,
     recreate_swapchain: bool,
-    scene_task: SceneTask,
+    scene: Scene,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
 }
 
@@ -69,11 +67,9 @@ impl App {
             InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 enabled_extensions: InstanceExtensions {
-                    ext_debug_utils: true,
                     ext_swapchain_colorspace: true,
                     ..required_extensions
                 },
-                enabled_layers: vec!["VK_LAYER_KHRONOS_validation".to_owned()],
                 ..Default::default()
             },
         )
@@ -205,7 +201,10 @@ impl ApplicationHandler for App {
                     image_format: swapchain_format,
                     image_color_space: swapchain_color_space,
                     image_extent: window.inner_size().into(),
-                    image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::STORAGE,
+                    // To simplify the example, we will directly write to the swapchain images
+                    // from the ray tracing shader. This requires the images to support storage
+                    // usage.
+                    image_usage: ImageUsage::STORAGE,
                     composite_alpha: surface_capabilities
                         .supported_composite_alpha
                         .into_iter()
@@ -269,7 +268,6 @@ impl ApplicationHandler for App {
                     )
                     .unwrap(),
                 ],
-                push_constant_ranges: vec![],
                 ..Default::default()
             },
         )
@@ -282,7 +280,7 @@ impl ApplicationHandler for App {
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
 
-        let scene_task = SceneTask::new(
+        let scene = Scene::new(
             &self,
             &images,
             pipeline_layout,
@@ -295,7 +293,7 @@ impl ApplicationHandler for App {
             swapchain,
             recreate_swapchain: false,
             previous_frame_end: None,
-            scene_task,
+            scene,
         });
     }
 
@@ -338,7 +336,7 @@ impl ApplicationHandler for App {
                         };
 
                     rcx.swapchain = new_swapchain;
-                    rcx.scene_task.handle_resize(&new_images);
+                    rcx.scene.handle_resize(&new_images);
                     rcx.recreate_swapchain = false;
                 }
 
@@ -364,7 +362,7 @@ impl ApplicationHandler for App {
                 )
                 .unwrap();
 
-                rcx.scene_task.record_commands(image_index, &mut builder);
+                rcx.scene.record_commands(image_index, &mut builder);
 
                 let command_buffer = builder.build().unwrap();
 

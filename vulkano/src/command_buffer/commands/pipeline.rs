@@ -5026,8 +5026,12 @@ impl RecordingCommandBuffer {
 
         let device_properties = self.device().physical_device().properties();
 
-        let max_width = device_properties.max_compute_work_group_count[0]
-            * device_properties.max_compute_work_group_size[0];
+        let width = width as u64;
+        let height = height as u64;
+        let depth = depth as u64;
+
+        let max_width = device_properties.max_compute_work_group_count[0] as u64
+            * device_properties.max_compute_work_group_size[0] as u64;
 
         if width > max_width {
             return Err(Box::new(ValidationError {
@@ -5038,8 +5042,8 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        let max_height = device_properties.max_compute_work_group_count[1]
-            * device_properties.max_compute_work_group_size[1];
+        let max_height = device_properties.max_compute_work_group_count[1] as u64
+            * device_properties.max_compute_work_group_size[1] as u64;
 
         if height > max_height {
             return Err(Box::new(ValidationError {
@@ -5050,8 +5054,8 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        let max_depth = device_properties.max_compute_work_group_count[2]
-            * device_properties.max_compute_work_group_size[2];
+        let max_depth = device_properties.max_compute_work_group_count[2] as u64
+            * device_properties.max_compute_work_group_size[2] as u64;
 
         if depth > max_depth {
             return Err(Box::new(ValidationError {
@@ -5062,7 +5066,7 @@ impl RecordingCommandBuffer {
             }));
         }
 
-        let total_invocations = width as u64 * height as u64 * depth as u64;
+        let total_invocations = width * height * depth;
         let max_invocations = device_properties.max_ray_dispatch_invocation_count.unwrap() as u64;
 
         if total_invocations > max_invocations {

@@ -19,7 +19,7 @@ use vulkano::{
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, sys::RawDescriptorSet, WriteDescriptorSet,
     },
-    device::{Device, DeviceOwnedVulkanObject, Queue},
+    device::{Device, Queue},
     format::Format,
     image::view::ImageView,
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
@@ -138,9 +138,6 @@ impl SceneTask {
             )
             .unwrap()
         };
-        pipeline
-            .set_debug_utils_object_name("Ray Tracing Pipeline".into())
-            .unwrap();
 
         let vertices = [
             MyVertex {

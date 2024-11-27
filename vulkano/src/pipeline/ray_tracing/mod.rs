@@ -14,7 +14,7 @@ use crate::{
         DeviceAlignment,
     },
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
-    Validated, VulkanError, VulkanObject,
+    Validated, ValidationError, VulkanError, VulkanObject,
 };
 
 use super::{
@@ -23,6 +23,9 @@ use super::{
     PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 
+/// Defines how the implementation should perform ray tracing operations.
+///
+/// This object uses the `VK_KHR_ray_tracing_pipeline` extension.
 #[derive(Debug)]
 pub struct RayTracingPipeline {
     handle: ash::vk::Pipeline,
@@ -47,9 +50,24 @@ impl RayTracingPipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: RayTracingPipelineCreateInfo,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        // Self::validate_new(&device, cache.as_deref(), &create_info)?;
+        Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
         unsafe { Ok(Self::new_unchecked(device, cache, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Arc<Device>,
+        cache: Option<&PipelineCache>,
+        create_info: &RayTracingPipelineCreateInfo,
+    ) -> Result<(), Validated<VulkanError>> {
+        if let Some(cache) = &cache {
+            assert_eq!(device, cache.device());
+        }
+        create_info
+            .validate(device)
+            .map_err(|err| err.add_context("create_info"))?;
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -219,15 +237,23 @@ pub struct RayTracingPipelineCreateInfo {
     /// The default value is empty.
     pub flags: PipelineCreateFlags,
 
-    /// The compute shader stage to use.
+    /// The ray tracing shader stages to use.
     ///
     /// There is no default value.
     pub stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
 
     pub groups: SmallVec<[RayTracingShaderGroupCreateInfo; 5]>,
 
+    /// The maximum recursion depth of the pipeline.
+    ///
+    /// The default value is 1.
     pub max_pipeline_ray_recursion_depth: u32,
 
+    /// The dynamic state to use.
+    ///
+    /// May only contain `DynamicState::RayTracingPipelineStackSize`.
+    ///
+    /// The default value is empty.
     pub dynamic_state: HashSet<DynamicState>,
 
     /// The pipeline layout to use.
@@ -253,7 +279,7 @@ impl RayTracingPipelineCreateInfo {
             flags: PipelineCreateFlags::empty(),
             stages: SmallVec::new(),
             groups: SmallVec::new(),
-            max_pipeline_ray_recursion_depth: 0,
+            max_pipeline_ray_recursion_depth: 1,
             dynamic_state: Default::default(),
 
             layout,
@@ -261,6 +287,127 @@ impl RayTracingPipelineCreateInfo {
             base_pipeline: None,
             _ne: crate::NonExhaustive(()),
         }
+    }
+
+    fn validate(&self, device: &Arc<Device>) -> Result<(), Box<ValidationError>> {
+        let &Self {
+            flags,
+            ref stages,
+            ref groups,
+            ref layout,
+            ref base_pipeline,
+            ref dynamic_state,
+            max_pipeline_ray_recursion_depth,
+            _ne: _,
+        } = self;
+
+        flags.validate_device(device).map_err(|err| {
+            err.add_context("flags")
+                .set_vuids(&["VUID-VkRayTracingPipelineCreateInfoKHR-flags-parameter"])
+        })?;
+
+        if flags.intersects(PipelineCreateFlags::DERIVATIVE) {
+            let base_pipeline = base_pipeline.as_ref().ok_or_else(|| {
+                Box::new(ValidationError {
+                    problem: "`flags` contains `PipelineCreateFlags::DERIVATIVE`, but \
+                        `base_pipeline` is `None`"
+                        .into(),
+                    vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-flags-07984
+"],
+                    ..Default::default()
+                })
+            })?;
+
+            if !base_pipeline
+                .flags()
+                .intersects(PipelineCreateFlags::ALLOW_DERIVATIVES)
+            {
+                return Err(Box::new(ValidationError {
+                    context: "base_pipeline.flags()".into(),
+                    problem: "does not contain `PipelineCreateFlags::ALLOW_DERIVATIVES`".into(),
+                    vuids: &["VUID-vkCreateRayTracingPipelinesKHR-flags-03416"],
+                    ..Default::default()
+                }));
+            }
+        } else if base_pipeline.is_some() {
+            return Err(Box::new(ValidationError {
+                problem: "`flags` does not contain `PipelineCreateFlags::DERIVATIVE`, but \
+                    `base_pipeline` is `Some`"
+                    .into(),
+                ..Default::default()
+            }));
+        }
+
+        for stage in stages {
+            stage.validate(device).map_err(|err| {
+                err.add_context("stages")
+                    .set_vuids(&["VUID-VkRayTracingPipelineCreateInfoKHR-pStages-parameter"])
+            })?;
+
+            let entry_point_info = stage.entry_point.info();
+
+            layout
+                .ensure_compatible_with_shader(
+                    entry_point_info
+                        .descriptor_binding_requirements
+                        .iter()
+                        .map(|(k, v)| (*k, v)),
+                    entry_point_info.push_constant_requirements.as_ref(),
+                )
+                .map_err(|err| {
+                    Box::new(ValidationError {
+                        context: "stage.entry_point".into(),
+                        vuids: &[
+                            "VUID-VkRayTracingPipelineCreateInfoKHR-layout-07987",
+                            "VUID-VkRayTracingPipelineCreateInfoKHR-layout-07988",
+                            "VUID-VkRayTracingPipelineCreateInfoKHR-layout-07990",
+                            "VUID-VkRayTracingPipelineCreateInfoKHR-layout-07991",
+                        ],
+                        ..ValidationError::from_error(err)
+                    })
+                })?;
+        }
+
+        for group in groups {
+            group.validate(stages).map_err(|err| {
+                err.add_context("groups")
+                    .set_vuids(&["VUID-VkRayTracingPipelineCreateInfoKHR-pGroups-parameter"])
+            })?;
+        }
+
+        // TODO: Enable
+        // if dynamic_state
+        //     .iter()
+        //     .any(|&state| state != DynamicState::RayTracingPipelineStackSize)
+        // {
+        //     return Err(Box::new(ValidationError {
+        //         problem:
+        //             format!("`dynamic_state` contains a dynamic state other than RayTracingPipelineStackSize: {:?}", dynamic_state).into(),
+        //         vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-pDynamicStates-03602"],
+        //         ..Default::default()
+        //     }));
+        // }
+        if dynamic_state.len() > 0 {
+            todo!("Dynamic state for ray tracing pipelines is not yet supported");
+        }
+
+        let max_ray_recursion_depth = device
+            .physical_device()
+            .properties()
+            .max_ray_recursion_depth
+            .unwrap();
+        if max_pipeline_ray_recursion_depth > max_ray_recursion_depth {
+            return Err(Box::new(ValidationError {
+                problem: format!(
+                    "`max_pipeline_ray_recursion_depth` is greater than the device's max value of {}",
+                    max_ray_recursion_depth
+                ).into(),
+                vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-maxPipelineRayRecursionDepth-03589"],
+                ..Default::default()
+            }));
+        }
+
+        Ok(())
     }
 
     pub(crate) fn to_vk<'a>(
@@ -392,6 +539,9 @@ impl RayTracingPipelineCreateInfo {
 }
 
 /// Enum representing different types of Ray Tracing Shader Groups.
+///
+/// Contains the index of the shader to use for each type of shader group.
+/// The index corresponds to the position of the shader in the `stages` field of the `RayTracingPipelineCreateInfo`.
 #[derive(Debug, Clone)]
 pub enum RayTracingShaderGroupCreateInfo {
     General {
@@ -409,6 +559,96 @@ pub enum RayTracingShaderGroupCreateInfo {
 }
 
 impl RayTracingShaderGroupCreateInfo {
+    fn validate(
+        &self,
+        stages: &[PipelineShaderStageCreateInfo],
+    ) -> Result<(), Box<ValidationError>> {
+        let get_shader_type =
+            |shader: u32| stages[shader as usize].entry_point.info().execution_model;
+
+        match self {
+            RayTracingShaderGroupCreateInfo::General { general_shader } => {
+                match get_shader_type(*general_shader) {
+                    ExecutionModel::RayGenerationKHR
+                    | ExecutionModel::MissKHR
+                    | ExecutionModel::CallableKHR => Ok(()),
+                    _ => Err(Box::new(ValidationError {
+                        problem: "general shader in GENERAL group must be a RayGeneration, Miss, or Callable shader".into(),
+                        vuids: &["VUID-VkRayTracingShaderGroupCreateInfoKHR-type-03474"],
+                        ..Default::default()
+                    })),
+                }?;
+            }
+            RayTracingShaderGroupCreateInfo::ProceduralHit {
+                intersection_shader,
+                any_hit_shader,
+                closest_hit_shader,
+            } => {
+                if get_shader_type(*intersection_shader) != ExecutionModel::IntersectionKHR {
+                    return Err(Box::new(ValidationError {
+                        problem: "intersection shader in PROCEDURAL_HIT_GROUP must be an Intersection shader".into(),
+                        vuids: &["VUID-VkRayTracingShaderGroupCreateInfoKHR-type-03476"],
+                        ..Default::default()
+                    }));
+                }
+
+                if let Some(any_hit_shader) = any_hit_shader {
+                    if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
+                        return Err(Box::new(ValidationError {
+                            problem: "any hit shader must be an AnyHit shader".into(),
+                            vuids: &[
+                                "VUID-VkRayTracingShaderGroupCreateInfoKHR-anyHitShader-03479",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+
+                if let Some(closest_hit_shader) = closest_hit_shader {
+                    if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
+                        return Err(Box::new(ValidationError {
+                            problem: "closest hit shader must be a ClosestHit shader".into(),
+                            vuids: &[
+                                "VUID-VkRayTracingShaderGroupCreateInfoKHR-closestHitShader-03478",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+            RayTracingShaderGroupCreateInfo::TrianglesHit {
+                any_hit_shader,
+                closest_hit_shader,
+            } => {
+                if let Some(any_hit_shader) = any_hit_shader {
+                    if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
+                        return Err(Box::new(ValidationError {
+                            problem: "any hit shader must be an AnyHit shader".into(),
+                            vuids: &[
+                                "VUID-VkRayTracingShaderGroupCreateInfoKHR-anyHitShader-03479",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+
+                if let Some(closest_hit_shader) = closest_hit_shader {
+                    if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
+                        return Err(Box::new(ValidationError {
+                            problem: "closest hit shader must be a ClosestHit shader".into(),
+                            vuids: &[
+                                "VUID-VkRayTracingShaderGroupCreateInfoKHR-closestHitShader-03478",
+                            ],
+                            ..Default::default()
+                        }));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn to_vk(&self) -> ash::vk::RayTracingShaderGroupCreateInfoKHR<'static> {
         match self {
             RayTracingShaderGroupCreateInfo::General { general_shader } => {
@@ -461,6 +701,7 @@ pub struct RayTracingPipelineCreateInfoFields3Vk {
     pub(crate) stages_fields2_vk: SmallVec<[PipelineShaderStageCreateInfoFields2Vk; 5]>,
 }
 
+/// An object that holds the addresses of the shader groups in a shader binding table.
 #[derive(Debug, Clone)]
 pub struct ShaderBindingTableAddresses {
     pub raygen: StridedDeviceAddressRegionKHR,
@@ -469,6 +710,7 @@ pub struct ShaderBindingTableAddresses {
     pub callable: StridedDeviceAddressRegionKHR,
 }
 
+/// An object that holds the shader binding table buffer and its addresses.
 #[derive(Debug, Clone)]
 pub struct ShaderBindingTable {
     addresses: ShaderBindingTableAddresses,
@@ -480,6 +722,7 @@ impl ShaderBindingTable {
         &self.addresses
     }
 
+    /// Automatically creates a shader binding table from a ray tracing pipeline.
     pub fn new(
         allocator: Arc<dyn MemoryAllocator>,
         ray_tracing_pipeline: &RayTracingPipeline,
@@ -488,17 +731,14 @@ impl ShaderBindingTable {
         let mut hit_shader_count: u64 = 0;
         let mut callable_shader_count: u64 = 0;
 
-        let get_shader_type = |shader: u32| {
-            ray_tracing_pipeline.stages()[shader as usize]
-                .entry_point
-                .info()
-                .execution_model
-        };
-
         for group in ray_tracing_pipeline.groups() {
             match group {
                 RayTracingShaderGroupCreateInfo::General { general_shader } => {
-                    match get_shader_type(*general_shader) {
+                    match ray_tracing_pipeline.stages()[*general_shader as usize]
+                        .entry_point
+                        .info()
+                        .execution_model
+                    {
                         ExecutionModel::RayGenerationKHR => {}
                         ExecutionModel::MissKHR => miss_shader_count += 1,
                         ExecutionModel::CallableKHR => callable_shader_count += 1,
@@ -507,43 +747,8 @@ impl ShaderBindingTable {
                         }
                     }
                 }
-                RayTracingShaderGroupCreateInfo::ProceduralHit {
-                    intersection_shader,
-                    any_hit_shader,
-                    closest_hit_shader,
-                } => {
-                    if get_shader_type(*intersection_shader) != ExecutionModel::IntersectionKHR {
-                        panic!("Unexpected shader type in procedural hit shader group");
-                    }
-                    if let Some(any_hit_shader) = any_hit_shader {
-                        if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
-                            panic!("Unexpected shader type in procedural hit shader group");
-                        }
-                    }
-                    if let Some(closest_hit_shader) = closest_hit_shader {
-                        if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
-                            panic!("Unexpected shader type in procedural hit shader group");
-                        }
-                    }
-                    hit_shader_count += 1;
-                }
-                RayTracingShaderGroupCreateInfo::TrianglesHit {
-                    any_hit_shader,
-                    closest_hit_shader,
-                } => {
-                    if any_hit_shader.is_none() && closest_hit_shader.is_none() {
-                        panic!("Triangles hit shader group must have at least one hit shader");
-                    }
-                    if let Some(any_hit_shader) = any_hit_shader {
-                        if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
-                            panic!("Unexpected shader type in triangles hit shader group");
-                        }
-                    }
-                    if let Some(closest_hit_shader) = closest_hit_shader {
-                        if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
-                            panic!("Unexpected shader type in triangles hit shader group");
-                        }
-                    }
+                RayTracingShaderGroupCreateInfo::ProceduralHit { .. }
+                | RayTracingShaderGroupCreateInfo::TrianglesHit { .. } => {
                     hit_shader_count += 1;
                 }
             }
@@ -560,13 +765,11 @@ impl ShaderBindingTable {
         let properties = ray_tracing_pipeline.device().physical_device().properties();
         let handle_size_aligned = align_up(
             handle_data.handle_size() as u64,
-            DeviceAlignment::new(properties.shader_group_handle_alignment.unwrap() as u64)
-                .expect("unexpected shader_group_handle_alignment"),
+            DeviceAlignment::new(properties.shader_group_handle_alignment.unwrap() as u64).unwrap(),
         );
 
         let shader_group_base_alignment =
-            DeviceAlignment::new(properties.shader_group_base_alignment.unwrap() as u64)
-                .expect("unexpected shader_group_base_alignment");
+            DeviceAlignment::new(properties.shader_group_base_alignment.unwrap() as u64).unwrap();
 
         let raygen_stride = align_up(handle_size_aligned, shader_group_base_alignment);
 
@@ -615,7 +818,7 @@ impl ShaderBindingTable {
             },
             raygen.size + miss.size + hit.size + callable.size,
         )
-        .expect("todo: raytracing: better error type");
+        .expect("todo: raytracing: better error type for buffer errors");
 
         raygen.device_address = sbt_buffer.buffer().device_address().unwrap().get();
         miss.device_address = raygen.device_address + raygen.size;

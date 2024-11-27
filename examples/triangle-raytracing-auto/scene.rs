@@ -20,7 +20,7 @@ use vulkano::{
         PrimaryCommandBufferAbstract,
     },
     descriptor_set::{allocator::StandardDescriptorSetAllocator, WriteDescriptorSet},
-    device::{Device, DeviceOwnedVulkanObject, Queue},
+    device::{Device, Queue},
     format::Format,
     image::{view::ImageView, Image},
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
@@ -66,18 +66,20 @@ struct MyVertex {
     position: [f32; 3],
 }
 
-pub struct SceneTask {
+pub struct Scene {
     descriptor_set_0: Arc<DescriptorSet>,
     swapchain_image_sets: Vec<(Arc<ImageView>, Arc<DescriptorSet>)>,
     pipeline_layout: Arc<PipelineLayout>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     shader_binding_table: ShaderBindingTable,
     pipeline: Arc<RayTracingPipeline>,
+    // The bottom-level acceleration structure is required to be kept alive
+    // as we reference it in the top-level acceleration structure.
     _blas: Arc<AccelerationStructure>,
     _tlas: Arc<AccelerationStructure>,
 }
 
-impl SceneTask {
+impl Scene {
     pub fn new(
         app: &App,
         images: &[Arc<Image>],
@@ -108,6 +110,8 @@ impl SceneTask {
                 PipelineShaderStageCreateInfo::new(closest_hit),
             ];
 
+            // Define the shader groups that will eventually turn into the shader binding table.
+            // The numbers are the indices of the stages in the `stages` array.
             let groups = [
                 RayTracingShaderGroupCreateInfo::General { general_shader: 0 },
                 RayTracingShaderGroupCreateInfo::General { general_shader: 1 },
@@ -130,9 +134,6 @@ impl SceneTask {
             )
             .unwrap()
         };
-        pipeline
-            .set_debug_utils_object_name("Ray Tracing Pipeline".into())
-            .unwrap();
 
         let vertices = [
             MyVertex {
@@ -162,6 +163,11 @@ impl SceneTask {
         )
         .unwrap();
 
+        // Build the bottom-level acceleration structure and then the top-level acceleration structure.
+        // Acceleration structures are used to accelerate ray tracing.
+        // The bottom-level acceleration structure contains the geometry data.
+        // The top-level acceleration structure contains the instances of the bottom-level acceleration structures.
+        // In our shader, we will trace rays against the top-level acceleration structure.
         let blas = unsafe {
             build_acceleration_structure_triangles(
                 vertex_buffer,
@@ -225,7 +231,7 @@ impl SceneTask {
         let shader_binding_table =
             ShaderBindingTable::new(memory_allocator.clone(), &pipeline).unwrap();
 
-        SceneTask {
+        Scene {
             descriptor_set_0,
             swapchain_image_sets,
             descriptor_set_allocator,
@@ -305,6 +311,10 @@ fn window_size_dependent_setup(
     swapchain_image_sets
 }
 
+/// A helper function to build a acceleration structure and wait for its completion.
+/// # SAFETY
+/// - If you are referencing a bottom-level acceleration structure in a top-level acceleration structure,
+/// you must ensure that the bottom-level acceleration structure is kept alive.
 unsafe fn build_acceleration_structure_common(
     geometries: AccelerationStructureGeometries,
     primitive_count: u32,
@@ -314,13 +324,6 @@ unsafe fn build_acceleration_structure_common(
     device: Arc<Device>,
     queue: Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
-    let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    )
-    .unwrap();
-
     let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
         mode: BuildAccelerationStructureMode::Build,
         flags: BuildAccelerationStructureFlags::PREFER_FAST_TRACE,
@@ -335,6 +338,8 @@ unsafe fn build_acceleration_structure_common(
         )
         .unwrap();
 
+    // We build a new scratch buffer for each acceleration structure for simplicity.
+    // You may want to reuse scratch buffers if you need to build many acceleration structures.
     let scratch_buffer = Buffer::new_slice::<u8>(
         memory_allocator.clone(),
         BufferCreateInfo {
@@ -372,6 +377,16 @@ unsafe fn build_acceleration_structure_common(
         primitive_count,
         ..Default::default()
     };
+
+    // For simplicity, we build a single command buffer
+    // that builds the acceleration structure, then waits
+    // for its execution to complete.
+    let mut builder = AutoCommandBufferBuilder::primary(
+        command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
 
     builder
         .build_acceleration_structure(
