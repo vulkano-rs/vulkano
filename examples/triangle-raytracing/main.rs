@@ -199,7 +199,7 @@ impl ApplicationHandler for App {
                 .unwrap();
 
             let (swapchain_format, swapchain_color_space) = supported_storage_formats
-                .get(0)
+                .first()
                 .map(|(format, color_space)| (*format, *color_space))
                 .unwrap();
             println!("Using swapchain format: {:?}", swapchain_format);

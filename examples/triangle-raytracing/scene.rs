@@ -1,7 +1,6 @@
-use std::sync::Arc;
-use std::{iter, mem::size_of};
-
+use crate::{App, RenderContext};
 use glam::{Mat4, Vec3};
+use std::{iter, mem::size_of, sync::Arc};
 use vulkano::{
     acceleration_structure::{
         AccelerationStructure, AccelerationStructureBuildGeometryInfo,
@@ -37,8 +36,6 @@ use vulkano::{
 use vulkano_taskgraph::{
     command_buffer::RecordingCommandBuffer, resource::Resources, Id, Task, TaskContext, TaskResult,
 };
-
-use crate::{App, RenderContext};
 
 mod raygen {
     vulkano_shaders::shader! {

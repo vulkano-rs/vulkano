@@ -1,10 +1,6 @@
-use std::sync::Arc;
-use std::{iter, mem::size_of};
-
 use crate::App;
 use glam::{Mat4, Vec3};
-use vulkano::command_buffer::PrimaryAutoCommandBuffer;
-use vulkano::descriptor_set::DescriptorSet;
+use std::{iter, mem::size_of, sync::Arc};
 use vulkano::{
     acceleration_structure::{
         AccelerationStructure, AccelerationStructureBuildGeometryInfo,
@@ -17,9 +13,11 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        PrimaryCommandBufferAbstract,
+        PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
     },
-    descriptor_set::{allocator::StandardDescriptorSetAllocator, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
+    },
     device::{Device, Queue},
     format::Format,
     image::{view::ImageView, Image},
@@ -163,11 +161,12 @@ impl Scene {
         )
         .unwrap();
 
-        // Build the bottom-level acceleration structure and then the top-level acceleration structure.
-        // Acceleration structures are used to accelerate ray tracing.
+        // Build the bottom-level acceleration structure and then the top-level acceleration
+        // structure. Acceleration structures are used to accelerate ray tracing.
         // The bottom-level acceleration structure contains the geometry data.
-        // The top-level acceleration structure contains the instances of the bottom-level acceleration structures.
-        // In our shader, we will trace rays against the top-level acceleration structure.
+        // The top-level acceleration structure contains the instances of the bottom-level
+        // acceleration structures. In our shader, we will trace rays against the top-level
+        // acceleration structure.
         let blas = unsafe {
             build_acceleration_structure_triangles(
                 vertex_buffer,
@@ -313,7 +312,8 @@ fn window_size_dependent_setup(
 
 /// A helper function to build a acceleration structure and wait for its completion.
 /// # SAFETY
-/// - If you are referencing a bottom-level acceleration structure in a top-level acceleration structure,
+/// - If you are referencing a bottom-level acceleration structure in a top-level acceleration
+///   structure,
 /// you must ensure that the bottom-level acceleration structure is kept alive.
 unsafe fn build_acceleration_structure_common(
     geometries: AccelerationStructureGeometries,

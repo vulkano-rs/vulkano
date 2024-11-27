@@ -190,7 +190,7 @@ impl ApplicationHandler for App {
                 .unwrap();
 
             let (swapchain_format, swapchain_color_space) = supported_storage_formats
-                .get(0)
+                .first()
                 .map(|(format, color_space)| (*format, *color_space))
                 .unwrap();
             Swapchain::new(
@@ -281,7 +281,7 @@ impl ApplicationHandler for App {
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
 
         let scene = Scene::new(
-            &self,
+            self,
             &images,
             pipeline_layout,
             descriptor_set_allocator.clone(),

@@ -1,9 +1,8 @@
-use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
-
-use ahash::{HashMap, HashSet};
-use ash::vk::StridedDeviceAddressRegionKHR;
-use smallvec::SmallVec;
-
+use super::{
+    cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
+    PipelineLayout, PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
+    PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
+};
 use crate::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
@@ -16,12 +15,10 @@ use crate::{
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
-
-use super::{
-    cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
-    PipelineLayout, PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
-    PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
-};
+use ahash::{HashMap, HashSet};
+use ash::vk::StridedDeviceAddressRegionKHR;
+use smallvec::SmallVec;
+use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// Defines how the implementation should perform ray tracing operations.
 ///
@@ -382,12 +379,13 @@ impl RayTracingPipelineCreateInfo {
         // {
         //     return Err(Box::new(ValidationError {
         //         problem:
-        //             format!("`dynamic_state` contains a dynamic state other than RayTracingPipelineStackSize: {:?}", dynamic_state).into(),
-        //         vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-pDynamicStates-03602"],
+        //             format!("`dynamic_state` contains a dynamic state other than
+        // RayTracingPipelineStackSize: {:?}", dynamic_state).into(),         vuids:
+        // &["VUID-VkRayTracingPipelineCreateInfoKHR-pDynamicStates-03602"],
         //         ..Default::default()
         //     }));
         // }
-        if dynamic_state.len() > 0 {
+        if !dynamic_state.is_empty() {
             todo!("Dynamic state for ray tracing pipelines is not yet supported");
         }
 
@@ -446,7 +444,7 @@ impl RayTracingPipelineCreateInfo {
             val_vk = val_vk.dynamic_state(dynamic_state_vk);
         }
 
-        return val_vk;
+        val_vk
     }
 
     pub(crate) fn to_vk_fields1<'a>(
@@ -541,7 +539,8 @@ impl RayTracingPipelineCreateInfo {
 /// Enum representing different types of Ray Tracing Shader Groups.
 ///
 /// Contains the index of the shader to use for each type of shader group.
-/// The index corresponds to the position of the shader in the `stages` field of the `RayTracingPipelineCreateInfo`.
+/// The index corresponds to the position of the shader in the `stages` field of the
+/// `RayTracingPipelineCreateInfo`.
 #[derive(Debug, Clone)]
 pub enum RayTracingShaderGroupCreateInfo {
     General {
@@ -757,7 +756,7 @@ impl ShaderBindingTable {
         let handle_data = ray_tracing_pipeline
             .device()
             .get_ray_tracing_shader_group_handles(
-                &ray_tracing_pipeline,
+                ray_tracing_pipeline,
                 0,
                 ray_tracing_pipeline.groups().len() as u32,
             )?;
