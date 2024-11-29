@@ -69,6 +69,11 @@ impl RawBuffer {
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
 
+        // TODO: sparse_address_space_size and extended_sparse_address_space_size limits
+        // VUID-vkCreateBuffer-flags-00911
+        // VUID-vkCreateBuffer-flags-09383
+        // VUID-vkCreateBuffer-flags-09384
+
         Ok(())
     }
 
@@ -245,6 +250,7 @@ impl RawBuffer {
     }
 
     /// Binds device memory to this buffer.
+    #[inline]
     pub fn bind_memory(
         self,
         allocation: ResourceMemory,
@@ -261,6 +267,15 @@ impl RawBuffer {
         &self,
         allocation: &ResourceMemory,
     ) -> Result<(), Box<ValidationError>> {
+        if self.flags().intersects(BufferCreateFlags::SPARSE_BINDING) {
+            return Err(Box::new(ValidationError {
+                context: "self.flags()".into(),
+                problem: "contains `BufferCreateFlags::SPARSE_BINDING`".into(),
+                vuids: &["VUID-VkBindBufferMemoryInfo-buffer-01030"],
+                ..Default::default()
+            }));
+        }
+
         assert_ne!(allocation.allocation_type(), AllocationType::NonLinear);
 
         let physical_device = self.device().physical_device();
@@ -276,10 +291,6 @@ impl RawBuffer {
 
         // VUID-VkBindBufferMemoryInfo-buffer-07459
         // Ensured by taking ownership of `RawBuffer`.
-
-        // VUID-VkBindBufferMemoryInfo-buffer-01030
-        // Currently ensured by not having sparse binding flags, but this needs to be checked once
-        // those are enabled.
 
         // VUID-VkBindBufferMemoryInfo-memoryOffset-01031
         // Assume that `allocation` was created correctly.
@@ -520,6 +531,34 @@ impl RawBuffer {
         Buffer::from_raw(self, BufferMemory::External)
     }
 
+    /// Converts a raw buffer, that was created with the [`BufferCreateInfo::SPARSE_BINDING`] flag,
+    /// into a full buffer without binding any memory.
+    ///
+    /// # Safety
+    ///
+    /// - If `self.flags()` does not contain [`BufferCreateFlags::SPARSE_RESIDENCY`], then the
+    ///   buffer must be fully bound with memory before its memory is accessed by the device.
+    /// - If `self.flags()` contains [`BufferCreateFlags::SPARSE_RESIDENCY`], then you must ensure
+    ///   that any reads from the buffer are prepared to handle unexpected or inconsistent values,
+    ///   as determined by the [`Properties::residency_non_resident_strict`] device property.
+    ///
+    /// [`Properties::residency_non_resident_strict`]: crate::device::Properties::residency_non_resident_strict
+    pub unsafe fn into_buffer_sparse(self) -> Result<Buffer, (Validated<VulkanError>, RawBuffer)> {
+        if !self.flags().intersects(BufferCreateFlags::SPARSE_BINDING) {
+            return Err((
+                Box::new(ValidationError {
+                    context: "self.flags()".into(),
+                    problem: "does not contain `BufferCreateFlags::SPARSE_BINDING`".into(),
+                    ..Default::default()
+                })
+                .into(),
+                self,
+            ));
+        }
+
+        Ok(Buffer::from_raw(self, BufferMemory::Sparse))
+    }
+
     /// Returns the memory requirements for this buffer.
     pub fn memory_requirements(&self) -> &MemoryRequirements {
         &self.memory_requirements
@@ -678,45 +717,6 @@ impl BufferCreateInfo {
             }));
         }
 
-        /* Enable when sparse binding is properly handled
-        if let Some(sparse_level) = sparse {
-            if !device.enabled_features().sparse_binding {
-                return Err(Box::new(ValidationError {
-                    context: "sparse".into(),
-                    problem: "is `Some`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "sparse_binding",
-                    )])]),
-                    vuids: &["VUID-VkBufferCreateInfo-flags-00915"],
-                }));
-            }
-
-            if sparse_level.sparse_residency && !device.enabled_features().sparse_residency_buffer {
-                return Err(Box::new(ValidationError {
-                    context: "sparse".into(),
-                    problem: "contains `BufferCreateFlags::SPARSE_RESIDENCY`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "sparse_residency_buffer",
-                    )])]),
-                    vuids: &["VUID-VkBufferCreateInfo-flags-00916"],
-                }));
-            }
-
-            if sparse_level.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
-                return Err(Box::new(ValidationError {
-                    context: "sparse".into(),
-                    problem: "contains `BufferCreateFlags::SPARSE_ALIASED`".into(),
-                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::Feature(
-                        "sparse_residency_aliased",
-                    )])]),
-                    vuids: &["VUID-VkBufferCreateInfo-flags-00917"],
-                }));
-            }
-
-            // TODO:
-            // VUID-VkBufferCreateInfo-flags-00918
-        }*/
-
         match sharing {
             Sharing::Exclusive => (),
             Sharing::Concurrent(queue_family_indices) => {
@@ -758,6 +758,43 @@ impl BufferCreateInfo {
                         }));
                     }
                 }
+            }
+        }
+
+        if flags.intersects(BufferCreateFlags::SPARSE_BINDING) {
+            if !device.enabled_features().sparse_binding {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `BufferCreateFlags::SPARSE_BINDING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "sparse_binding",
+                    )])]),
+                    vuids: &["VUID-VkBufferCreateInfo-flags-00915"],
+                }));
+            }
+        }
+
+        if flags.intersects(BufferCreateFlags::SPARSE_RESIDENCY) {
+            if !flags.intersects(BufferCreateFlags::SPARSE_BINDING) {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `BufferCreateFlags::SPARSE_RESIDENCY`, but does not also \
+                        contain `BufferCreateFlags::SPARSE_BINDING`"
+                        .into(),
+                    vuids: &["VUID-VkBufferCreateInfo-flags-00918"],
+                    ..Default::default()
+                }));
+            }
+
+            if !device.enabled_features().sparse_residency_buffer {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `BufferCreateFlags::SPARSE_RESIDENCY`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "sparse_residency_buffer",
+                    )])]),
+                    vuids: &["VUID-VkBufferCreateInfo-flags-00916"],
+                }));
             }
         }
 

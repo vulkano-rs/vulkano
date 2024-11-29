@@ -980,20 +980,21 @@ vulkan_bitflags! {
     /// Flags specifying additional properties of an image.
     ImageCreateFlags = ImageCreateFlags(u32);
 
-    /* TODO: enable
-    /// The image will be backed by sparse memory binding (through queue commands) instead of
-    /// regular binding (through [`bind_memory`]).
+    /// The image will be backed by sparse memory binding (through the [`bind_sparse`] queue
+    /// command) instead of regular binding (through [`bind_memory`]).
     ///
     /// The [`sparse_binding`] feature must be enabled on the device.
     ///
+    /// [`bind_sparse`]: crate::device::queue::QueueGuard::bind_sparse
     /// [`bind_memory`]: sys::RawImage::bind_memory
     /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
-    SPARSE_BINDING = SPARSE_BINDING,*/
+    SPARSE_BINDING = SPARSE_BINDING,
 
-    /* TODO: enable
     /// The image can be used without being fully resident in memory at the time of use.
+    /// It also allows non-opaque sparse binding operations, using the dimensions of the image,
+    /// to be performed.
     ///
-    /// This requires the `sparse_binding` flag as well.
+    /// This requires the [`ImageCreateFlags::SPARSE_BINDING`] flag as well.
     ///
     /// Depending on the image type, either the [`sparse_residency_image2_d`] or the
     /// [`sparse_residency_image3_d`] feature must be enabled on the device.
@@ -1009,7 +1010,7 @@ vulkan_bitflags! {
     /// [`sparse_residency4_samples`]: crate::device::DeviceFeatures::sparse_residency4_samples
     /// [`sparse_residency8_samples`]: crate::device::DeviceFeatures::sparse_residency8_samples
     /// [`sparse_residency16_samples`]: crate::device::DeviceFeatures::sparse_residency16_samples
-    SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
 
     /* TODO: enable
     /// The buffer's memory can alias with another image or a different part of the same image.

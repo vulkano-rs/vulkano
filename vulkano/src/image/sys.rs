@@ -93,6 +93,11 @@ impl RawImage {
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
 
+        // TODO: sparse_address_space_size and extended_sparse_address_space_size limits
+        // VUID-vkCreateImage-flags-00939
+        // VUID-vkCreateImage-flags-09385
+        // VUID-vkCreateImage-flags-09386
+
         Ok(())
     }
 
@@ -355,8 +360,11 @@ impl RawImage {
         )
     }
 
-    #[allow(dead_code)] // Remove when sparse memory is implemented
     fn get_sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
+        if !self.flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY) {
+            return Vec::new();
+        }
+
         let device = &self.device;
         let fns = self.device.fns();
 
@@ -512,6 +520,15 @@ impl RawImage {
         &self,
         allocations: &[ResourceMemory],
     ) -> Result<(), Box<ValidationError>> {
+        if self.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+            return Err(Box::new(ValidationError {
+                context: "self.flags()".into(),
+                problem: "contains `ImageCreateFlags::SPARSE_BINDING`".into(),
+                vuids: &["VUID-VkBindImageMemoryInfo-image-01045"],
+                ..Default::default()
+            }));
+        }
+
         let physical_device = self.device().physical_device();
 
         if self.flags.intersects(ImageCreateFlags::DISJOINT) {
@@ -600,10 +617,6 @@ impl RawImage {
 
             // VUID-VkBindImageMemoryInfo-image-07460
             // Ensured by taking ownership of `RawImage`.
-
-            // VUID-VkBindImageMemoryInfo-image-01045
-            // Currently ensured by not having sparse binding flags, but this needs to be checked
-            // once those are enabled.
 
             // VUID-VkBindImageMemoryInfo-memoryOffset-01046
             // Assume that `allocation` was created correctly.
@@ -947,11 +960,59 @@ impl RawImage {
             return Err((VulkanError::from(err), self, allocations.into_iter()));
         }
 
+        let layout = self.default_layout();
+
+        Ok(Image::from_raw(
+            self,
+            ImageMemory::Normal(allocations),
+            layout,
+        ))
+    }
+
+    /// Converts a raw image, that was created with the [`ImageCreateInfo::SPARSE_BINDING`] flag,
+    /// into a full image without binding any memory.
+    ///
+    /// # Safety
+    ///
+    /// - If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_RESIDENCY`], then the image
+    ///   must be fully bound with memory before any memory is accessed by the device.
+    /// - If `self.flags()` contains [`ImageCreateFlags::SPARSE_RESIDENCY`], then if the sparse
+    ///   memory requirements include [`ImageAspects::METADATA`], then the metadata mip tail must
+    ///   be fully bound with memory before any memory is accessed by the device.
+    /// - If `self.flags()` contains [`ImageCreateFlags::SPARSE_RESIDENCY`], then you must ensure
+    ///   that any reads from the image are prepared to handle unexpected or inconsistent values,
+    ///   as determined by the [`Properties::residency_non_resident_strict`] device property.
+    ///
+    /// [`Properties::residency_non_resident_strict`]: crate::device::Properties::residency_non_resident_strict
+    pub unsafe fn into_image_sparse(self) -> Result<Image, (Validated<VulkanError>, RawImage)> {
+        if !self.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+            return Err((
+                Box::new(ValidationError {
+                    context: "self.flags()".into(),
+                    problem: "does not contain `ImageCreateFlags::SPARSE_BINDING`".into(),
+                    ..Default::default()
+                })
+                .into(),
+                self,
+            ));
+        }
+
+        let sparse_image_memory_requirements = self.get_sparse_memory_requirements();
+        let layout = self.default_layout();
+
+        Ok(Image::from_raw(
+            self,
+            ImageMemory::Sparse(sparse_image_memory_requirements),
+            layout,
+        ))
+    }
+
+    fn default_layout(&self) -> ImageLayout {
         let usage = self
             .usage
             .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
 
-        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
+        if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
             && usage
                 .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
                 .is_empty()
@@ -969,13 +1030,7 @@ impl RawImage {
             ImageLayout::DepthStencilAttachmentOptimal
         } else {
             ImageLayout::General
-        };
-
-        Ok(Image::from_raw(
-            self,
-            ImageMemory::Normal(allocations),
-            layout,
-        ))
+        }
     }
 
     /// Assume that this image already has memory backing it.
@@ -1826,6 +1881,16 @@ impl ImageCreateInfo {
                         ..Default::default()
                     }));
                 }
+
+                if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY) {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim1d`, but `flags` contains \
+                            `ImageCreateFlags::SPARSE_RESIDENCY`"
+                            .into(),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00970"],
+                        ..Default::default()
+                    }));
+                }
             }
             ImageType::Dim2d => {
                 if extent[2] != 1 {
@@ -1836,6 +1901,21 @@ impl ImageCreateInfo {
                         ..Default::default()
                     }));
                 }
+
+                if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY)
+                    && !device.enabled_features().sparse_residency_image2_d
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim2d`, and `flags` contains \
+                            `ImageCreateFlags::SPARSE_RESIDENCY`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("sparse_residency_image2_d"),
+                        ])]),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00971"],
+                        ..Default::default()
+                    }));
+                }
             }
             ImageType::Dim3d => {
                 if array_layers != 1 {
@@ -1843,6 +1923,21 @@ impl ImageCreateInfo {
                         problem: "`image_type` is `ImageType::Dim3d`, but `array_layers` is not 1"
                             .into(),
                         vuids: &["VUID-VkImageCreateInfo-imageType-00961"],
+                        ..Default::default()
+                    }));
+                }
+
+                if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY)
+                    && !device.enabled_features().sparse_residency_image3_d
+                {
+                    return Err(Box::new(ValidationError {
+                        problem: "`image_type` is `ImageType::Dim3d`, and `flags` contains \
+                            `ImageCreateFlags::SPARSE_RESIDENCY`"
+                            .into(),
+                        requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                            Requires::DeviceFeature("sparse_residency_image3_d"),
+                        ])]),
+                        vuids: &["VUID-VkImageCreateInfo-imageType-00972"],
                         ..Default::default()
                     }));
                 }
@@ -2287,6 +2382,113 @@ impl ImageCreateInfo {
 
         /* Check flags requirements */
 
+        if flags.intersects(ImageCreateFlags::SPARSE_BINDING) {
+            if !device.enabled_features().sparse_binding {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::SPARSE_BINDING`".into(),
+                    requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                        "sparse_binding",
+                    )])]),
+                    vuids: &["VUID-VkImageCreateInfo-flags-00969"],
+                }));
+            }
+
+            if usage.intersects(ImageUsage::TRANSIENT_ATTACHMENT) {
+                return Err(Box::new(ValidationError {
+                    problem: "`flags` contains `ImageCreateFlags::SPARSE_BINDING`, but \
+                        `usage` contains `ImageUsage::TRANSIENT_ATTACHMENT`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-None-01925"],
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY) {
+            if !flags.intersects(ImageCreateFlags::SPARSE_BINDING) {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::SPARSE_RESIDENCY`, but does not also \
+                        contain `ImageCreateFlags::SPARSE_BINDING`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-00987"],
+                    ..Default::default()
+                }));
+            }
+
+            if tiling == ImageTiling::Linear {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::SPARSE_RESIDENCY`, but `tiling` is \
+                        `ImageTiling::Linear`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-tiling-04121"],
+                    ..Default::default()
+                }));
+            }
+
+            match samples {
+                SampleCount::Sample2 => {
+                    if !device.enabled_features().sparse_residency2_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample2`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency2_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00973"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample4 => {
+                    if !device.enabled_features().sparse_residency4_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample4`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency4_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00974"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample8 => {
+                    if !device.enabled_features().sparse_residency8_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample8`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency8_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00975"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample16 => {
+                    if !device.enabled_features().sparse_residency16_samples {
+                        return Err(Box::new(ValidationError {
+                            problem: "`flags` contains `ImageCreateFlags::SPARSE_RESIDENCY`, and \
+                                `samples` is `SampleCount::Sample16`"
+                                .into(),
+                            requires_one_of: RequiresOneOf(&[RequiresAllOf(&[
+                                Requires::DeviceFeature("sparse_residency16_samples"),
+                            ])]),
+                            vuids: &["VUID-VkImageCreateInfo-imageType-00976"],
+                            ..Default::default()
+                        }));
+                    }
+                }
+                SampleCount::Sample1 | SampleCount::Sample32 | SampleCount::Sample64 => (),
+            }
+        }
+
         if flags.intersects(ImageCreateFlags::CUBE_COMPATIBLE) {
             if image_type != ImageType::Dim2d {
                 return Err(Box::new(ValidationError {
@@ -2320,6 +2522,17 @@ impl ImageCreateInfo {
         }
 
         if flags.intersects(ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE) {
+            if flags.intersects(ImageCreateFlags::SPARSE_BINDING) {
+                return Err(Box::new(ValidationError {
+                    context: "flags".into(),
+                    problem: "contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`, but \
+                        also contains `ImageCreateFlags::SPARSE_BINDING`"
+                        .into(),
+                    vuids: &["VUID-VkImageCreateInfo-flags-09403"],
+                    ..Default::default()
+                }));
+            }
+
             if image_type != ImageType::Dim3d {
                 return Err(Box::new(ValidationError {
                     problem: "`flags` contains `ImageCreateFlags::DIM2D_ARRAY_COMPATIBLE`, but \
