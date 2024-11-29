@@ -2482,7 +2482,7 @@ pub(crate) struct SurfaceCapabilities2ExtensionsVk<'a> {
     pub(crate) protected_vk: Option<ash::vk::SurfaceProtectedCapabilitiesKHR<'static>>,
 }
 
-impl<'a> SurfaceCapabilities2ExtensionsVk<'a> {
+impl SurfaceCapabilities2ExtensionsVk<'_> {
     pub(crate) fn unborrow(self) -> SurfaceCapabilities2ExtensionsVk<'static> {
         let Self {
             full_screen_exclusive_vk,

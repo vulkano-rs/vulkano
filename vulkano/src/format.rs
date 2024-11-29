@@ -1077,7 +1077,7 @@ pub(crate) struct FormatProperties2ExtensionsVk<'a> {
     pub(crate) format_properties3_vk: Option<ash::vk::FormatProperties3<'static>>,
 }
 
-impl<'a> FormatProperties2ExtensionsVk<'a> {
+impl FormatProperties2ExtensionsVk<'_> {
     pub(crate) fn unborrow(self) -> FormatProperties2ExtensionsVk<'static> {
         let Self {
             drm_format_modifier_properties_list_vk,

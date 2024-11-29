@@ -431,8 +431,8 @@ where
     }
 }
 
-impl<'a, K, V> FusedIterator for Iter<'a, K, V> where K: Ord + Clone {}
-impl<'a, K, V> ExactSizeIterator for Iter<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for Iter<'_, K, V> where K: Ord + Clone {}
+impl<K, V> ExactSizeIterator for Iter<'_, K, V> where K: Ord + Clone {}
 
 /// An iterator over the entries of a `RangeMap`, ordered by key range.
 ///
@@ -464,8 +464,8 @@ where
     }
 }
 
-impl<'a, K, V> FusedIterator for IterMut<'a, K, V> where K: Ord + Clone {}
-impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for IterMut<'_, K, V> where K: Ord + Clone {}
+impl<K, V> ExactSizeIterator for IterMut<'_, K, V> where K: Ord + Clone {}
 
 /// An owning iterator over the entries of a `RangeMap`, ordered by key range.
 ///
@@ -556,7 +556,7 @@ pub struct RangeIter<'a, K, V> {
     inner: btree_map::Range<'a, K, Entry<K, V>>,
 }
 
-impl<'a, K, V> FusedIterator for RangeIter<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for RangeIter<'_, K, V> where K: Ord + Clone {}
 
 impl<'a, K, V> Iterator for RangeIter<'a, K, V>
 where
@@ -588,7 +588,7 @@ pub struct RangeMutIter<'a, K, V> {
     inner: btree_map::RangeMut<'a, K, Entry<K, V>>,
 }
 
-impl<'a, K, V> FusedIterator for RangeMutIter<'a, K, V> where K: Ord + Clone {}
+impl<K, V> FusedIterator for RangeMutIter<'_, K, V> where K: Ord + Clone {}
 
 impl<'a, K, V> Iterator for RangeMutIter<'a, K, V>
 where

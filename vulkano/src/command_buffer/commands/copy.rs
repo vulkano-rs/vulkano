@@ -5033,11 +5033,11 @@ impl BufferImageCopy {
 
         // Scale down from texels to texel blocks, rounding up if needed.
         let block_extent = format.block_extent();
-        buffer_row_length = (buffer_row_length + block_extent[0] - 1) / block_extent[0];
-        buffer_image_height = (buffer_image_height + block_extent[1] - 1) / block_extent[1];
+        buffer_row_length = buffer_row_length.div_ceil(block_extent[0]);
+        buffer_image_height = buffer_image_height.div_ceil(block_extent[1]);
 
         for i in 0..3 {
-            image_extent[i] = (image_extent[i] + block_extent[i] - 1) / block_extent[i];
+            image_extent[i] = image_extent[i].div_ceil(block_extent[i]);
         }
 
         // Only one of these is greater than 1, take the greater number.
@@ -7048,7 +7048,7 @@ mod tests {
             .map(|(extent, block_extent)| {
                 let extent = extent as DeviceSize;
                 let block_extent = block_extent as DeviceSize;
-                (extent + block_extent - 1) / block_extent
+                extent.div_ceil(block_extent)
             })
             .product::<DeviceSize>()
             * layer_count as DeviceSize;
