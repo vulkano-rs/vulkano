@@ -314,7 +314,7 @@ fn window_size_dependent_setup(
 /// # SAFETY
 /// - If you are referencing a bottom-level acceleration structure in a top-level acceleration
 ///   structure,
-/// you must ensure that the bottom-level acceleration structure is kept alive.
+///   you must ensure that the bottom-level acceleration structure is kept alive.
 unsafe fn build_acceleration_structure_common(
     geometries: AccelerationStructureGeometries,
     primitive_count: u32,
