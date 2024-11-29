@@ -894,9 +894,8 @@ fn copy_shader_handles(
 
 #[cfg(test)]
 mod tests {
-    use crate::device::ShaderGroupHandlesData;
-
     use super::*;
+    use crate::device::ShaderGroupHandlesData;
 
     #[test]
     fn test_copy_shader_handles_single_raygen() {
