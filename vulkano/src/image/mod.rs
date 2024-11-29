@@ -2586,8 +2586,8 @@ pub struct SparseImageMemoryRequirements {
     /// The memory offset that must be used to bind the mip tail region.
     pub image_mip_tail_offset: DeviceSize,
 
-    /// If `format_properties.flags.single_miptail` is not set, specifies the stride between
-    /// the mip tail regions of each array layer.
+    /// If `format_properties.flags` does not contain `SparseImageFormatFlags::SINGLE_MIPTAIL`,
+    /// then this specifies the stride between the mip tail regions of each array layer.
     pub image_mip_tail_stride: Option<DeviceSize>,
 }
 

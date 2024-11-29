@@ -97,7 +97,7 @@ use crate::{
     },
     device::{DeviceOwned, Queue},
     image::{Image, ImageLayout, ImageState},
-    memory::BindSparseInfo,
+    memory::sparse::BindSparseInfo,
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
     DeviceSize, Validated, ValidationError, VulkanError, VulkanObject,
 };
@@ -556,7 +556,7 @@ pub(crate) unsafe fn queue_bind_sparse(
     fence: Option<Arc<Fence>>,
 ) -> Result<(), Validated<VulkanError>> {
     let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
-    queue.with(|mut queue_guard| queue_guard.bind_sparse_unchecked(&bind_infos, fence.as_ref()))?;
+    queue.with(|mut queue_guard| queue_guard.bind_sparse(&bind_infos, fence.as_ref()))?;
 
     Ok(())
 }
