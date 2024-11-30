@@ -1221,11 +1221,13 @@ impl SparseImageMemoryBindInfo {
                 }));
             }
 
-            if !(extent[1] == subresource_extent[1] || extent[1] % image_granularity[1] == 0) {
+            if !(offset[1] + extent[1] == subresource_extent[1]
+                || extent[1] % image_granularity[1] == 0)
+            {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`binds[{}].extent[1]` is not equal to the height of the selected \
-                        subresource of `image`, but it is not a multiple of \
+                        "`binds[{0}].offset[1]` + `binds[{0}].extent[1]` is not equal to the \
+                        height of the selected subresource of `image`, but it is not a multiple of \
                         `SparseImageMemoryRequirements::format_properties.image_granularity[1]` \
                         for `image`",
                         index
