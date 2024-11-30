@@ -125,7 +125,7 @@ pub enum ImageMemory {
     /// The image is backed by sparse memory, bound with [`bind_sparse`].
     ///
     /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
-    Sparse(Vec<SparseImageMemoryRequirements>),
+    Sparse,
 
     /// The image is backed by memory owned by a [`Swapchain`].
     Swapchain {
@@ -247,12 +247,22 @@ impl Image {
     /// Returns the memory requirements for this image.
     ///
     /// - If the image is a swapchain image, this returns a slice with a length of 0.
-    /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
-    /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
-    ///   `self.format().planes().len()`.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, this returns a slice
+    ///   with a length of 1.
+    /// - If `self.flags()` does contain `ImageCreateFlags::DISJOINT`, this returns a slice with a
+    ///   length equal to `self.format().unwrap().planes().len()`.
     #[inline]
     pub fn memory_requirements(&self) -> &[MemoryRequirements] {
         self.inner.memory_requirements()
+    }
+
+    /// Returns the sparse memory requirements for this image.
+    ///
+    /// If `self.flags()` does not contain both `ImageCreateFlags::SPARSE_BINDING` and
+    /// `ImageCreateFlags::SPARSE_RESIDENCY`, this returns an empty slice.
+    #[inline]
+    pub fn sparse_memory_requirements(&self) -> &[SparseImageMemoryRequirements] {
+        self.inner.sparse_memory_requirements()
     }
 
     /// Returns the flags the image was created with.
@@ -510,7 +520,7 @@ impl Image {
 
     pub(crate) unsafe fn layout_initialized(&self) {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) | ImageMemory::External => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse | ImageMemory::External => {
                 self.is_layout_initialized.store(true, Ordering::Release);
             }
             ImageMemory::Swapchain {
@@ -524,7 +534,7 @@ impl Image {
 
     pub(crate) fn is_layout_initialized(&self) -> bool {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) | ImageMemory::External => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse | ImageMemory::External => {
                 self.is_layout_initialized.load(Ordering::Acquire)
             }
             ImageMemory::Swapchain {

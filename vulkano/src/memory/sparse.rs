@@ -3,8 +3,8 @@ use crate::{
     buffer::{Buffer, BufferCreateFlags},
     device::{Device, DeviceOwned},
     image::{
-        mip_level_extent, Image, ImageAspects, ImageCreateFlags, ImageMemory,
-        SparseImageFormatProperties, SparseImageMemoryRequirements,
+        mip_level_extent, Image, ImageAspects, ImageCreateFlags, SparseImageFormatProperties,
+        SparseImageMemoryRequirements,
     },
     memory::{is_aligned, MemoryRequirements},
     sync::semaphore::Semaphore,
@@ -599,16 +599,11 @@ impl SparseImageOpaqueMemoryBindInfo {
             prefers_dedicated_allocation: _,
             requires_dedicated_allocation: _,
         } = &image.memory_requirements()[0]; // TODO: https://github.com/KhronosGroup/Vulkan-Docs/issues/2259
-        let metadata_memory_requirements = match image.memory() {
-            ImageMemory::Sparse(sparse_memory_requirements) => {
-                sparse_memory_requirements.iter().find(|reqs| {
-                    reqs.format_properties
-                        .aspects
-                        .intersects(ImageAspects::METADATA)
-                })
-            }
-            _ => unreachable!(),
-        };
+        let metadata_memory_requirements = image.sparse_memory_requirements().iter().find(|reqs| {
+            reqs.format_properties
+                .aspects
+                .intersects(ImageAspects::METADATA)
+        });
         let external_memory_handle_types = image.external_memory_handle_types();
 
         for (index, bind) in binds.iter().enumerate() {
@@ -1060,10 +1055,6 @@ impl SparseImageMemoryBindInfo {
             }));
         }
 
-        let sparse_memory_requirements = match image.memory() {
-            ImageMemory::Sparse(sparse_memory_requirements) => sparse_memory_requirements,
-            _ => unreachable!(),
-        };
         let image_format_subsampled_extent = image
             .format()
             .ycbcr_chroma_sampling()
@@ -1131,7 +1122,8 @@ impl SparseImageMemoryBindInfo {
                 image_mip_tail_size: _,
                 image_mip_tail_offset: _,
                 image_mip_tail_stride: _,
-            } = sparse_memory_requirements
+            } = image
+                .sparse_memory_requirements()
                 .iter()
                 .find(|reqs| reqs.format_properties.aspects == aspects)
                 .ok_or_else(|| {

@@ -522,19 +522,15 @@ impl RawBuffer {
         Ok(Buffer::from_raw(self, BufferMemory::Normal(allocation)))
     }
 
-    /// Assume this buffer has memory bound to it.
+    /// Converts a raw buffer into a full buffer without binding any memory.
     ///
     /// # Safety
     ///
-    /// - The buffer must have memory bound to it.
-    pub unsafe fn assume_bound(self) -> Buffer {
-        Buffer::from_raw(self, BufferMemory::External)
-    }
-
-    /// Converts a raw buffer, that was created with the [`BufferCreateInfo::SPARSE_BINDING`] flag,
-    /// into a full buffer without binding any memory.
+    /// If `self.flags()` does not contain [`BufferCreateFlags::SPARSE_BINDING`]:
     ///
-    /// # Safety
+    /// - The buffer must already have a suitable memory allocation bound to it.
+    ///
+    /// If `self.flags()` does contain [`BufferCreateFlags::SPARSE_BINDING`]:
     ///
     /// - If `self.flags()` does not contain [`BufferCreateFlags::SPARSE_RESIDENCY`], then the
     ///   buffer must be fully bound with memory before its memory is accessed by the device.
@@ -543,20 +539,14 @@ impl RawBuffer {
     ///   as determined by the [`Properties::residency_non_resident_strict`] device property.
     ///
     /// [`Properties::residency_non_resident_strict`]: crate::device::Properties::residency_non_resident_strict
-    pub unsafe fn into_buffer_sparse(self) -> Result<Buffer, (Validated<VulkanError>, RawBuffer)> {
-        if !self.flags().intersects(BufferCreateFlags::SPARSE_BINDING) {
-            return Err((
-                Box::new(ValidationError {
-                    context: "self.flags()".into(),
-                    problem: "does not contain `BufferCreateFlags::SPARSE_BINDING`".into(),
-                    ..Default::default()
-                })
-                .into(),
-                self,
-            ));
-        }
+    pub unsafe fn assume_bound(self) -> Buffer {
+        let memory = if self.flags().intersects(BufferCreateFlags::SPARSE_BINDING) {
+            BufferMemory::Sparse
+        } else {
+            BufferMemory::External
+        };
 
-        Ok(Buffer::from_raw(self, BufferMemory::Sparse))
+        Buffer::from_raw(self, memory)
     }
 
     /// Returns the memory requirements for this buffer.

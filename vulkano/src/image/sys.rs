@@ -69,6 +69,7 @@ pub struct RawImage {
     external_memory_handle_types: ExternalMemoryHandleTypes,
 
     memory_requirements: SmallVec<[MemoryRequirements; 4]>,
+    sparse_memory_requirements: Vec<SparseImageMemoryRequirements>,
     needs_destruction: bool, // `vkDestroyImage` is called only if true.
     subresource_layout: OnceCache<(ImageAspect, u32, u32), SubresourceLayout>,
 }
@@ -235,6 +236,14 @@ impl RawImage {
             smallvec![]
         };
 
+        let sparse_memory_requirements = if flags
+            .contains(ImageCreateFlags::SPARSE_BINDING | ImageCreateFlags::SPARSE_RESIDENCY)
+        {
+            Self::get_sparse_memory_requirements(&device, handle)
+        } else {
+            Vec::new()
+        };
+
         Ok(RawImage {
             handle,
             device: InstanceOwnedDebugWrapper(device),
@@ -258,6 +267,7 @@ impl RawImage {
             external_memory_handle_types,
 
             memory_requirements,
+            sparse_memory_requirements,
             needs_destruction,
             subresource_layout: OnceCache::new(),
         })
@@ -360,19 +370,16 @@ impl RawImage {
         )
     }
 
-    fn get_sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
-        if !self.flags.intersects(ImageCreateFlags::SPARSE_RESIDENCY) {
-            return Vec::new();
-        }
-
-        let device = &self.device;
-        let fns = self.device.fns();
+    unsafe fn get_sparse_memory_requirements(
+        device: &Device,
+        handle: ash::vk::Image,
+    ) -> Vec<SparseImageMemoryRequirements> {
+        let fns = device.fns();
 
         if device.api_version() >= Version::V1_1
             || device.enabled_extensions().khr_get_memory_requirements2
         {
-            let info2_vk =
-                ash::vk::ImageSparseMemoryRequirementsInfo2::default().image(self.handle);
+            let info2_vk = ash::vk::ImageSparseMemoryRequirementsInfo2::default().image(handle);
 
             let mut count = 0;
 
@@ -403,7 +410,7 @@ impl RawImage {
             if device.api_version() >= Version::V1_1 {
                 unsafe {
                     (fns.v1_1.get_image_sparse_memory_requirements2)(
-                        self.device.handle(),
+                        device.handle(),
                         &info2_vk,
                         &mut count,
                         requirements2_vk.as_mut_ptr(),
@@ -413,7 +420,7 @@ impl RawImage {
                 unsafe {
                     (fns.khr_get_memory_requirements2
                         .get_image_sparse_memory_requirements2_khr)(
-                        self.device.handle(),
+                        device.handle(),
                         &info2_vk,
                         &mut count,
                         requirements2_vk.as_mut_ptr(),
@@ -432,7 +439,7 @@ impl RawImage {
             unsafe {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
-                    self.handle,
+                    handle,
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -444,7 +451,7 @@ impl RawImage {
             unsafe {
                 (fns.v1_0.get_image_sparse_memory_requirements)(
                     device.handle(),
-                    self.handle,
+                    handle,
                     &mut count,
                     requirements_vk.as_mut_ptr(),
                 )
@@ -969,10 +976,15 @@ impl RawImage {
         ))
     }
 
-    /// Converts a raw image, that was created with the [`ImageCreateInfo::SPARSE_BINDING`] flag,
-    /// into a full image without binding any memory.
+    /// Converts a raw image into a full image without binding any memory.
     ///
     /// # Safety
+    ///
+    /// - The image must already have a suitable memory allocation bound to it.
+    ///
+    /// If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_BINDING`]:
+    ///
+    /// If `self.flags()` does contain [`ImageCreateFlags::SPARSE_BINDING`]:
     ///
     /// - If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_RESIDENCY`], then the image
     ///   must be fully bound with memory before any memory is accessed by the device.
@@ -984,27 +996,15 @@ impl RawImage {
     ///   as determined by the [`Properties::residency_non_resident_strict`] device property.
     ///
     /// [`Properties::residency_non_resident_strict`]: crate::device::Properties::residency_non_resident_strict
-    pub unsafe fn into_image_sparse(self) -> Result<Image, (Validated<VulkanError>, RawImage)> {
-        if !self.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
-            return Err((
-                Box::new(ValidationError {
-                    context: "self.flags()".into(),
-                    problem: "does not contain `ImageCreateFlags::SPARSE_BINDING`".into(),
-                    ..Default::default()
-                })
-                .into(),
-                self,
-            ));
-        }
-
-        let sparse_image_memory_requirements = self.get_sparse_memory_requirements();
+    pub unsafe fn assume_bound(self) -> Image {
+        let memory = if self.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+            ImageMemory::Sparse
+        } else {
+            ImageMemory::External
+        };
         let layout = self.default_layout();
 
-        Ok(Image::from_raw(
-            self,
-            ImageMemory::Sparse(sparse_image_memory_requirements),
-            layout,
-        ))
+        Image::from_raw(self, memory, layout)
     }
 
     fn default_layout(&self) -> ImageLayout {
@@ -1033,48 +1033,25 @@ impl RawImage {
         }
     }
 
-    /// Assume that this image already has memory backing it.
-    ///
-    /// # Safety
-    ///
-    /// - The image must be backed by suitable memory allocations.
-    pub unsafe fn assume_bound(self) -> Image {
-        let usage = self
-            .usage
-            .difference(ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST);
-
-        let layout = if usage.intersects(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-            && usage
-                .difference(ImageUsage::SAMPLED | ImageUsage::INPUT_ATTACHMENT)
-                .is_empty()
-        {
-            ImageLayout::ShaderReadOnlyOptimal
-        } else if usage.intersects(ImageUsage::COLOR_ATTACHMENT)
-            && usage.difference(ImageUsage::COLOR_ATTACHMENT).is_empty()
-        {
-            ImageLayout::ColorAttachmentOptimal
-        } else if usage.intersects(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-            && usage
-                .difference(ImageUsage::DEPTH_STENCIL_ATTACHMENT)
-                .is_empty()
-        {
-            ImageLayout::DepthStencilAttachmentOptimal
-        } else {
-            ImageLayout::General
-        };
-
-        Image::from_raw(self, ImageMemory::External, layout)
-    }
-
     /// Returns the memory requirements for this image.
     ///
     /// - If the image is a swapchain image, this returns a slice with a length of 0.
-    /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
-    /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
-    ///   `self.format().unwrap().planes().len()`.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, this returns a slice
+    ///   with a length of 1.
+    /// - If `self.flags()` does contain `ImageCreateFlags::DISJOINT`, this returns a slice with a
+    ///   length equal to `self.format().unwrap().planes().len()`.
     #[inline]
     pub fn memory_requirements(&self) -> &[MemoryRequirements] {
         &self.memory_requirements
+    }
+
+    /// Returns the sparse memory requirements for this image.
+    ///
+    /// If `self.flags()` does not contain both `ImageCreateFlags::SPARSE_BINDING` and
+    /// `ImageCreateFlags::SPARSE_RESIDENCY`, this returns an empty slice.
+    #[inline]
+    pub fn sparse_memory_requirements(&self) -> &[SparseImageMemoryRequirements] {
+        &self.sparse_memory_requirements
     }
 
     /// Returns the flags the image was created with.
