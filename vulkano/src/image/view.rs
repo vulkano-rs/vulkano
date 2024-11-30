@@ -127,6 +127,17 @@ impl ImageView {
         if matches!(view_type, ImageViewType::Dim2d | ImageViewType::Dim2dArray)
             && image_type == ImageType::Dim3d
         {
+            if image.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+                return Err(Box::new(ValidationError {
+                    problem: "`create_info.view_type` is `ImageViewType::Dim2d` or \
+                        `ImageViewType::Dim2d`, and `image.image_type()` is `ImageType::Dim3d`, \
+                        but `image.flags()` contains `ImageCreateFlags::SPARSE_BINDING`"
+                        .into(),
+                    vuids: &["VUID-VkImageViewCreateInfo-image-04971"],
+                    ..Default::default()
+                }));
+            }
+
             match view_type {
                 ImageViewType::Dim2d => {
                     if !image

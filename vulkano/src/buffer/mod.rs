@@ -377,8 +377,9 @@ impl Buffer {
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
     ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
-        // TODO: Enable once sparse binding materializes
-        // assert!(!allocate_info.flags.contains(BufferCreateFlags::SPARSE_BINDING));
+        assert!(!create_info
+            .flags
+            .contains(BufferCreateFlags::SPARSE_BINDING));
 
         assert_eq!(
             create_info.size, 0,
@@ -802,25 +803,24 @@ vulkan_bitflags! {
     /// Flags specifying additional properties of a buffer.
     BufferCreateFlags = BufferCreateFlags(u32);
 
-    /* TODO: enable
-    /// The buffer will be backed by sparse memory binding (through queue commands) instead of
-    /// regular binding (through [`bind_memory`]).
+    /// The buffer will be backed by sparse memory binding (through the [`bind_sparse`] queue
+    /// command) instead of regular binding (through [`bind_memory`]).
     ///
     /// The [`sparse_binding`] feature must be enabled on the device.
     ///
+    /// [`bind_sparse`]: crate::device::queue::QueueGuard::bind_sparse
     /// [`bind_memory`]: sys::RawBuffer::bind_memory
     /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
-    SPARSE_BINDING = SPARSE_BINDING,*/
+    SPARSE_BINDING = SPARSE_BINDING,
 
-    /* TODO: enable
     /// The buffer can be used without being fully resident in memory at the time of use.
     ///
-    /// This requires the `sparse_binding` flag as well.
+    /// This requires the [`BufferCreateFlags::SPARSE_BINDING`] flag as well.
     ///
     /// The [`sparse_residency_buffer`] feature must be enabled on the device.
     ///
     /// [`sparse_residency_buffer`]: crate::device::DeviceFeatures::sparse_residency_buffer
-    SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
 
     /* TODO: enable
     /// The buffer's memory can alias with another buffer or a different part of the same buffer.
