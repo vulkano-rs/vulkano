@@ -984,6 +984,8 @@ impl RawImage {
     ///
     /// If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_BINDING`]:
     ///
+    /// - The image must already have a suitable memory allocation bound to it.
+    ///
     /// If `self.flags()` does contain [`ImageCreateFlags::SPARSE_BINDING`]:
     ///
     /// - If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_RESIDENCY`], then the image
