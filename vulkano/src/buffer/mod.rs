@@ -377,7 +377,6 @@ impl Buffer {
         allocation_info: AllocationCreateInfo,
         layout: DeviceLayout,
     ) -> Result<Arc<Self>, Validated<AllocateBufferError>> {
-        assert!(layout.alignment().as_devicesize() <= 64);
         assert!(!create_info
             .flags
             .contains(BufferCreateFlags::SPARSE_BINDING));
