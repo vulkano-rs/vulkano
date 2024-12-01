@@ -1100,7 +1100,7 @@ impl RecordingCommandBuffer {
                         if primitive_offset as DeviceSize
                             + 3 * primitive_count as DeviceSize
                                 * index_data.index_type().size() as DeviceSize
-                            > vertex_data.size()
+                            > index_data.as_bytes().size()
                         {
                             return Err(Box::new(ValidationError {
                                 problem: format!(
