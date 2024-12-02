@@ -2194,8 +2194,8 @@ impl<T> Deref for DeviceOwnedDebugWrapper<T> {
 
 #[derive(Clone, Debug)]
 pub struct ShaderGroupHandlesData {
-    pub(crate) data: Vec<u8>,
-    pub(crate) handle_size: u32,
+    data: Vec<u8>,
+    handle_size: u32,
 }
 
 impl ShaderGroupHandlesData {
