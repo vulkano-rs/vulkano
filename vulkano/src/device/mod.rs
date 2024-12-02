@@ -2228,7 +2228,7 @@ impl<'a> Iterator for ShaderGroupHandlesDataIter<'a> {
         }
     }
 }
-impl<'a> ExactSizeIterator for ShaderGroupHandlesDataIter<'a> {}
+impl ExactSizeIterator for ShaderGroupHandlesDataIter<'_> {}
 
 impl ShaderGroupHandlesData {
     pub fn iter(&self) -> ShaderGroupHandlesDataIter<'_> {
