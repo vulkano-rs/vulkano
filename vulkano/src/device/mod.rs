@@ -114,6 +114,7 @@ use crate::{
     instance::{Instance, InstanceOwned, InstanceOwnedDebugWrapper},
     macros::{impl_id_counter, vulkan_bitflags},
     memory::{ExternalMemoryHandleType, MemoryFdProperties, MemoryRequirements},
+    pipeline::ray_tracing::RayTracingPipeline,
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
@@ -1304,6 +1305,63 @@ impl Device {
 
         Ok(())
     }
+
+    pub fn get_ray_tracing_shader_group_handles(
+        &self,
+        ray_tracing_pipeline: &RayTracingPipeline,
+        first_group: u32,
+        group_count: u32,
+    ) -> Result<ShaderGroupHandlesData, Validated<VulkanError>> {
+        if !self.enabled_features().ray_tracing_pipeline
+            || self
+                .physical_device()
+                .properties()
+                .shader_group_handle_size
+                .is_none()
+        {
+            Err(Box::new(ValidationError {
+                problem: "device property `shader_group_handle_size` is empty".into(),
+                requires_one_of: RequiresOneOf(&[RequiresAllOf(&[Requires::DeviceFeature(
+                    "ray_tracing_pipeline",
+                )])]),
+                ..Default::default()
+            }))?;
+        };
+
+        if (first_group + group_count) as usize > ray_tracing_pipeline.groups().len() {
+            Err(Box::new(ValidationError {
+                problem: "the sum of `first_group` and `group_count` must be less than or equal\
+                 to the number of shader groups in pipeline"
+                    .into(),
+                vuids: &["VUID-vkGetRayTracingShaderGroupHandlesKHR-firstGroup-02419"],
+                ..Default::default()
+            }))?
+        }
+        // TODO: VUID-vkGetRayTracingShaderGroupHandlesKHR-pipeline-07828
+
+        let handle_size = self
+            .physical_device()
+            .properties()
+            .shader_group_handle_size
+            .unwrap();
+
+        let mut data = vec![0u8; (handle_size * group_count) as usize];
+        let fns = self.fns();
+        unsafe {
+            (fns.khr_ray_tracing_pipeline
+                .get_ray_tracing_shader_group_handles_khr)(
+                self.handle,
+                ray_tracing_pipeline.handle(),
+                first_group,
+                group_count,
+                data.len(),
+                data.as_mut_ptr().cast(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+        }
+        Ok(ShaderGroupHandlesData { data, handle_size })
+    }
 }
 
 impl Debug for Device {
@@ -2131,6 +2189,54 @@ impl<T> Deref for DeviceOwnedDebugWrapper<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ShaderGroupHandlesData {
+    data: Vec<u8>,
+    handle_size: u32,
+}
+
+impl ShaderGroupHandlesData {
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn handle_size(&self) -> u32 {
+        self.handle_size
+    }
+}
+
+pub struct ShaderGroupHandlesDataIter<'a> {
+    data: &'a [u8],
+    handle_size: usize,
+    index: usize,
+}
+
+impl<'a> Iterator for ShaderGroupHandlesDataIter<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.data.len() {
+            None
+        } else {
+            let end = self.index + self.handle_size;
+            let slice = &self.data[self.index..end];
+            self.index = end;
+            Some(slice)
+        }
+    }
+}
+impl ExactSizeIterator for ShaderGroupHandlesDataIter<'_> {}
+
+impl ShaderGroupHandlesData {
+    pub fn iter(&self) -> ShaderGroupHandlesDataIter<'_> {
+        ShaderGroupHandlesDataIter {
+            data: &self.data,
+            handle_size: self.handle_size as usize,
+            index: 0,
+        }
     }
 }
 
