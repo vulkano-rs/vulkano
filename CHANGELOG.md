@@ -177,6 +177,7 @@ Other:
 - Fixed UB in `GenericMemoryAllocator::deallocate` arising due to invalid pointer provenance given out on allocation.
 - Fixed UB in `impl VertexBufferCollection for Vec<Subbuffer<T>>` where a `Vec` was being transmuted.
 - Fixed `AllocationHandle::as_index` being a const fn, as it is UB to observe the address of a pointer in const eval.
+- [#2607](https://github.com/vulkano-rs/vulkano/issues/2607): Incorrect buffer used in acceleration structure build validation
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 
 # Version 0.34.1 (2023-10-29)
