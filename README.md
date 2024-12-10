@@ -130,7 +130,7 @@ of unreleased and breaking changes in `master`
 This repository contains four libraries:
 
 - `vulkano` is the main one.
-- `vulkano-shaders` provides the `shader!` macro for compiling glsl shaders.
+- `vulkano-shaders` provides the `shader!` macro for compiling shaders.
 - `vulkano-util` provides a variety of utility functions to streamline certain common operations such as device and swapchain creation.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.

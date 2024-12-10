@@ -1,174 +1,148 @@
-use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
+use crate::{bail, LinAlgTypes, MacroOptions};
 use ahash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use std::{cmp::Ordering, num::NonZeroUsize};
-use syn::{Error, Ident, Result};
-use vulkano::shader::spirv::{Decoration, Id, Instruction};
+use syn::{Error, Ident, LitStr, Result};
+use vulkano::shader::spirv::{Decoration, Id, Instruction, Spirv};
 
-#[derive(Default)]
-pub struct TypeRegistry {
-    registered_structs: HashMap<Ident, RegisteredType>,
+struct Shader {
+    spirv: Spirv,
+    name: String,
+    source: LitStr,
 }
 
-impl TypeRegistry {
-    fn register_struct(&mut self, shader: &Shader, ty: &TypeStruct) -> Result<bool> {
-        // Checking with registry if this struct is already registered by another shader, and if
-        // their signatures match.
-        if let Some(registered) = self.registered_structs.get(&ty.ident) {
-            registered.validate_signatures(&shader.name, ty)?;
-
-            // If the struct is already registered and matches this one, skip the duplicate.
-            Ok(false)
-        } else {
-            self.registered_structs.insert(
-                ty.ident.clone(),
-                RegisteredType {
-                    shader: shader.name.clone(),
-                    ty: ty.clone(),
-                },
-            );
-
-            Ok(true)
-        }
-    }
+pub(super) struct RegisteredStruct {
+    members: Vec<Member>,
+    shader_name: String,
 }
 
-struct RegisteredType {
-    shader: String,
-    ty: TypeStruct,
-}
-
-impl RegisteredType {
-    fn validate_signatures(&self, other_shader: &str, other_ty: &TypeStruct) -> Result<()> {
-        let (shader, struct_ident) = (&self.shader, &self.ty.ident);
-
-        if self.ty.members.len() > other_ty.members.len() {
-            let member_ident = &self.ty.members[other_ty.members.len()].ident;
-            bail!(
-                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                `{struct_ident}`, but the struct from shader `{shader}` contains an extra field \
-                `{member_ident}`",
-            );
-        }
-
-        if self.ty.members.len() < other_ty.members.len() {
-            let member_ident = &other_ty.members[self.ty.members.len()].ident;
-            bail!(
-                "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                `{struct_ident}`, but the struct from shader `{other_shader}` contains an extra \
-                field `{member_ident}`",
-            );
-        }
-
-        for (index, (member, other_member)) in self
-            .ty
-            .members
-            .iter()
-            .zip(other_ty.members.iter())
-            .enumerate()
-        {
-            if member.ty != other_member.ty {
-                let (member_ty, other_member_ty) = (&member.ty, &other_member.ty);
-                bail!(
-                    "shaders `{shader}` and `{other_shader}` declare structs with the same name \
-                    `{struct_ident}`, but the struct from shader `{shader}` contains a field of \
-                    type `{member_ty:?}` at index `{index}`, whereas the same struct from shader \
-                    `{other_shader}` contains a field of type `{other_member_ty:?}` in the same \
-                    position",
-                );
-            }
-        }
-
-        Ok(())
-    }
-}
-
-/// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-pub(super) fn write_structs(
-    input: &MacroInput,
-    shader: &Shader,
-    type_registry: &mut TypeRegistry,
+/// Generates Rust structs from structs declared in SPIR-V bytecode.
+pub(super) fn generate_structs(
+    macro_options: &MacroOptions,
+    spirv: Spirv,
+    shader_name: String,
+    shader_source: LitStr,
+    registered_structs: &mut HashMap<Ident, RegisteredStruct>,
 ) -> Result<TokenStream> {
-    if !input.generate_structs {
-        return Ok(TokenStream::new());
-    }
+    let mut structs_code = TokenStream::new();
 
-    let mut structs = TokenStream::new();
+    let shader = Shader {
+        spirv,
+        name: shader_name,
+        source: shader_source,
+    };
 
-    for (struct_id, member_type_ids) in shader
+    let structs = shader
         .spirv
         .types()
         .iter()
-        .filter_map(|instruction| match *instruction {
+        .filter_map(|instruction| match instruction {
             Instruction::TypeStruct {
                 result_id,
-                ref member_types,
-            } => Some((result_id, member_types)),
+                member_types,
+            } => Some((*result_id, member_types)),
             _ => None,
         })
-        .filter(|&(struct_id, _)| has_defined_layout(shader, struct_id))
-    {
-        let struct_ty = TypeStruct::new(shader, struct_id, member_type_ids)?;
+        .filter(|&(id, _)| struct_has_defined_layout(&shader.spirv, id));
 
-        // Register the type if needed.
-        if !type_registry.register_struct(shader, &struct_ty)? {
-            continue;
-        }
+    for (struct_id, member_type_ids) in structs {
+        let ty = TypeStruct::new(&shader, struct_id, member_type_ids)?;
 
-        let custom_derives = if struct_ty.size().is_some() {
-            input.custom_derives.as_slice()
+        if let Some(registered) = registered_structs.get(&ty.ident) {
+            validate_members(
+                &ty.ident,
+                &ty.members,
+                &registered.members,
+                &shader.name,
+                &registered.shader_name,
+            )?;
         } else {
-            &[]
-        };
-        let struct_ser = Serializer(&struct_ty, input);
+            let custom_derives = if ty.size().is_some() {
+                macro_options.custom_derives.as_slice()
+            } else {
+                &[]
+            };
 
-        structs.extend(quote! {
-            #[allow(non_camel_case_types, non_snake_case)]
-            #[derive(::vulkano::buffer::BufferContents #(, #custom_derives )* )]
-            #[repr(C)]
-            #struct_ser
-        })
-    }
+            let struct_ser = Serializer(&ty, macro_options);
 
-    Ok(structs)
-}
+            structs_code.extend(quote! {
+                #[allow(non_camel_case_types, non_snake_case)]
+                #[derive(::vulkano::buffer::BufferContents #(, #custom_derives )* )]
+                #[repr(C)]
+                #struct_ser
+            });
 
-fn has_defined_layout(shader: &Shader, struct_id: Id) -> bool {
-    for member_info in shader.spirv.id(struct_id).members() {
-        let mut offset_found = false;
-
-        for instruction in member_info.decorations() {
-            match instruction {
-                Instruction::MemberDecorate {
-                    decoration: Decoration::BuiltIn { .. },
-                    ..
-                } => {
-                    // Ignore the whole struct if a member is built in, which includes
-                    // `gl_Position` for example.
-                    return false;
-                }
-                Instruction::MemberDecorate {
-                    decoration: Decoration::Offset { .. },
-                    ..
-                } => {
-                    offset_found = true;
-                }
-                _ => (),
-            }
-        }
-
-        // Some structs don't have `Offset` decorations, in that case they are used as local
-        // variables only. Ignoring these.
-        if !offset_found {
-            return false;
+            registered_structs.insert(
+                ty.ident,
+                RegisteredStruct {
+                    members: ty.members,
+                    shader_name: shader.name.clone(),
+                },
+            );
         }
     }
 
-    true
+    Ok(structs_code)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+fn struct_has_defined_layout(spirv: &Spirv, id: Id) -> bool {
+    spirv.id(id).members().iter().all(|member_info| {
+        let decorations = member_info
+            .decorations()
+            .iter()
+            .map(|instruction| match instruction {
+                Instruction::MemberDecorate { decoration, .. } => decoration,
+                _ => unreachable!(),
+            });
+
+        let has_offset_decoration = decorations
+            .clone()
+            .any(|decoration| matches!(decoration, Decoration::Offset { .. }));
+
+        let has_builtin_decoration = decorations
+            .clone()
+            .any(|decoration| matches!(decoration, Decoration::BuiltIn { .. }));
+
+        has_offset_decoration && !has_builtin_decoration
+    })
+}
+
+fn validate_members(
+    ident: &Ident,
+    first_members: &[Member],
+    second_members: &[Member],
+    first_shader: &str,
+    second_shader: &str,
+) -> Result<()> {
+    match first_members.len().cmp(&second_members.len()) {
+        Ordering::Greater => bail!(
+            "the declaration of struct `{ident}` in shader `{first_shader}` has more fields than \
+            the declaration in shader `{second_shader}`"
+        ),
+        Ordering::Less => bail!(
+            "the declaration of struct `{ident}` in shader `{second_shader}` has more fields than \
+            the declaration in shader `{first_shader}`"
+        ),
+        _ => {}
+    }
+
+    for (index, (first_member, second_member)) in
+        first_members.iter().zip(second_members).enumerate()
+    {
+        let (first_type, second_type) = (&first_member.ty, &second_member.ty);
+        if first_type != second_type {
+            bail!(
+                "field {index} of struct `{ident}` is of type `{first_type:?}` in shader \
+                `{first_shader}` but of type `{second_type:?}` in shader `{second_shader}`"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 enum Alignment {
     A1 = 1,
@@ -188,20 +162,8 @@ impl Alignment {
             8 => Alignment::A8,
             16 => Alignment::A16,
             32 => Alignment::A32,
-            _ => unreachable!(),
+            _ => panic!(),
         }
-    }
-}
-
-impl PartialOrd for Alignment {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Alignment {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (*self as usize).cmp(&(*other as usize))
     }
 }
 
@@ -228,7 +190,10 @@ impl Type {
         let id_info = shader.spirv.id(type_id);
 
         let ty = match *id_info.instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.source, "can't put booleans in structs"),
+            Instruction::TypeBool { .. } => bail!(
+                shader.source,
+                "SPIR-V Boolean types don't have a defined layout"
+            ),
             Instruction::TypeInt {
                 width, signedness, ..
             } => Type::Scalar(TypeScalar::Int(TypeInt::new(shader, width, signedness)?)),
@@ -345,7 +310,7 @@ impl TypeInt {
         let signed = match signedness {
             0 => false,
             1 => true,
-            _ => bail!(shader.source, "signedness must be 0 or 1"),
+            _ => bail!(shader.source, "signedness must be either 0 or 1"),
         };
 
         Ok(TypeInt { width, signed })
@@ -473,14 +438,17 @@ impl TypeVector {
         let component_count = ComponentCount::new(shader, component_count)?;
 
         let component_type = match *shader.spirv.id(component_type_id).instruction() {
-            Instruction::TypeBool { .. } => bail!(shader.source, "can't put booleans in structs"),
+            Instruction::TypeBool { .. } => bail!(
+                shader.source,
+                "SPIR-V Boolean types don't have a defined layout"
+            ),
             Instruction::TypeInt {
                 width, signedness, ..
             } => TypeScalar::Int(TypeInt::new(shader, width, signedness)?),
             Instruction::TypeFloat { width, .. } => {
                 TypeScalar::Float(TypeFloat::new(shader, width)?)
             }
-            _ => bail!(shader.source, "vector components must be scalars"),
+            _ => bail!(shader.source, "vector components must be scalar"),
         };
 
         Ok(TypeVector {
@@ -616,48 +584,45 @@ impl TypeArray {
             })
             .transpose()?;
 
-        let stride = {
-            let mut strides =
-                shader
-                    .spirv
-                    .id(array_id)
-                    .decorations()
-                    .iter()
-                    .filter_map(|instruction| match *instruction {
-                        Instruction::Decorate {
-                            decoration: Decoration::ArrayStride { array_stride },
-                            ..
-                        } => Some(array_stride as usize),
-                        _ => None,
-                    });
-            let stride = strides.next().ok_or_else(|| {
-                Error::new_spanned(
-                    &shader.source,
-                    "arrays inside structs must have an `ArrayStride` decoration",
-                )
-            })?;
+        let mut strides =
+            shader
+                .spirv
+                .id(array_id)
+                .decorations()
+                .iter()
+                .filter_map(|instruction| match *instruction {
+                    Instruction::Decorate {
+                        decoration: Decoration::ArrayStride { array_stride },
+                        ..
+                    } => Some(array_stride as usize),
+                    _ => None,
+                });
 
-            if !strides.all(|s| s == stride) {
-                bail!(shader.source, "found conflicting `ArrayStride` decorations");
-            }
+        let stride = strides.next().ok_or_else(|| {
+            Error::new_spanned(
+                &shader.source,
+                "arrays inside structs must have an `ArrayStride` decoration",
+            )
+        })?;
 
-            if !is_aligned(stride, element_type.scalar_alignment()) {
-                bail!(
-                    shader.source,
-                    "array strides must be aligned for the element type",
-                );
-            }
+        if !strides.all(|s| s == stride) {
+            bail!(shader.source, "found conflicting `ArrayStride` decorations");
+        }
 
-            let element_size = element_type.size().ok_or_else(|| {
-                Error::new_spanned(&shader.source, "array elements must be sized")
-            })?;
+        if !is_aligned(stride, element_type.scalar_alignment()) {
+            bail!(
+                shader.source,
+                "array strides must be aligned to the element type's alignment",
+            );
+        }
 
-            if stride < element_size {
-                bail!(shader.source, "array elements must not overlap");
-            }
-
-            stride
+        let Some(element_size) = element_type.size() else {
+            bail!(shader.source, "array elements must be sized");
         };
+
+        if stride < element_size {
+            bail!(shader.source, "array elements must not overlap");
+        }
 
         Ok(TypeArray {
             element_type,
@@ -690,16 +655,18 @@ impl TypeStruct {
             .iter()
             .find_map(|instruction| match instruction {
                 Instruction::Name { name, .. } => {
-                    // Replace chars that could potentially cause the ident to be invalid with "_".
-                    // For example, Rust-GPU names structs by their fully qualified rust name (e.g.
-                    // "foo::bar::MyStruct") in which the ":" is an invalid character for idents.
+                    // Replace non-alphanumeric and non-ascii characters with '_' to ensure the name
+                    // is a valid identifier. For example, Rust-GPU names structs by their fully
+                    // qualified rust name (e.g. `foo::bar::MyStruct`) in which `:` makes it an
+                    // invalid identifier.
                     let mut name =
-                        name.replace(|c: char| !(c.is_ascii_alphanumeric() || c == '_'), "_");
-                    if name.starts_with(|c: char| !c.is_ascii_alphabetic()) {
+                        name.replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', "_");
+
+                    if name.starts_with(|c: char| c.is_ascii_digit()) {
                         name.insert(0, '_');
                     }
 
-                    // Worst case: invalid idents will get the UnnamedX name below
+                    // Fall-back to `Unnamed{Id}` if it's still invalid
                     syn::parse_str(&name).ok()
                 }
                 _ => None,
@@ -725,9 +692,7 @@ impl TypeStruct {
             let mut ty = Type::new(shader, member_id)?;
 
             {
-                // If the member is an array, then matrix-decorations can be applied to it if the
-                // innermost type of the array is a matrix. Else this will stay being the type of
-                // the member.
+                // Matrix decorations can be applied to an array if its innermost type is a matrix.
                 let mut ty = &mut ty;
                 while let Type::Array(TypeArray { element_type, .. }) = ty {
                     ty = element_type;
@@ -744,6 +709,7 @@ impl TypeStruct {
                                 _ => None,
                             },
                         );
+
                     matrix.stride = strides.next().ok_or_else(|| {
                         Error::new_spanned(
                             &shader.source,
@@ -766,7 +732,7 @@ impl TypeStruct {
                         );
                     }
 
-                    let mut majornessess = member_info.decorations().iter().filter_map(
+                    let mut majornesses = member_info.decorations().iter().filter_map(
                         |instruction| match *instruction {
                             Instruction::MemberDecorate {
                                 decoration: Decoration::ColMajor,
@@ -779,7 +745,8 @@ impl TypeStruct {
                             _ => None,
                         },
                     );
-                    matrix.majorness = majornessess.next().ok_or_else(|| {
+
+                    matrix.majorness = majornesses.next().ok_or_else(|| {
                         Error::new_spanned(
                             &shader.source,
                             "matrices inside structs must have a `ColMajor` or `RowMajor` \
@@ -787,7 +754,7 @@ impl TypeStruct {
                         )
                     })?;
 
-                    if !majornessess.all(|m| m == matrix.majorness) {
+                    if !majornesses.all(|m| m == matrix.majorness) {
                         bail!(
                             shader.source,
                             "found conflicting matrix majorness decorations",
@@ -822,26 +789,27 @@ impl TypeStruct {
             if !is_aligned(offset, ty.scalar_alignment()) {
                 bail!(
                     shader.source,
-                    "struct member offsets must be aligned for the member type",
+                    "struct member offsets must be aligned to their type's alignment",
                 );
             }
 
-            if let Some(last) = members.last() {
-                if !is_aligned(offset, last.ty.scalar_alignment()) {
+            if let Some(previous_member) = members.last() {
+                if !is_aligned(offset, previous_member.ty.scalar_alignment()) {
                     bail!(
                         shader.source,
-                        "expected struct member offset to be aligned for the preceding member type",
+                        "expected struct member offset to be aligned to the preceding member \
+                        type's alignment",
                     );
                 }
 
-                let last_size = last.ty.size().ok_or_else(|| {
+                let last_size = previous_member.ty.size().ok_or_else(|| {
                     Error::new_spanned(
                         &shader.source,
                         "all members except the last member of a struct must be sized",
                     )
                 })?;
 
-                if last.offset + last_size > offset {
+                if previous_member.offset + last_size > offset {
                     bail!(shader.source, "struct members must not overlap");
                 }
             }
@@ -888,8 +856,8 @@ impl PartialEq for Member {
 
 impl Eq for Member {}
 
-/// Helper for serializing a type to tokens with respect to macro input.
-struct Serializer<'a, T>(&'a T, &'a MacroInput);
+/// Helper for serializing a type as tokens according to the macro options.
+struct Serializer<'a, T>(&'a T, &'a MacroOptions);
 
 impl ToTokens for Serializer<'_, Type> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -909,18 +877,16 @@ impl ToTokens for Serializer<'_, TypeVector> {
         let component_type = &self.0.component_type;
         let component_count = self.0.component_count as usize;
 
-        match self.1.linalg_type {
-            LinAlgType::Std => {
+        match self.1.linalg_types {
+            LinAlgTypes::Std => {
                 tokens.extend(quote! { [#component_type; #component_count] });
             }
-            LinAlgType::CgMath => {
+            LinAlgTypes::Cgmath => {
                 let vector = format_ident!("Vector{}", component_count);
                 tokens.extend(quote! { ::cgmath::#vector<#component_type> });
             }
-            LinAlgType::Nalgebra => {
-                tokens.extend(quote! {
-                    ::nalgebra::base::SVector<#component_type, #component_count>
-                });
+            LinAlgTypes::Nalgebra => {
+                tokens.extend(quote! { ::nalgebra::SVector<#component_type, #component_count> });
             }
         }
     }
@@ -936,22 +902,22 @@ impl ToTokens for Serializer<'_, TypeMatrix> {
         // This can't overflow because the stride must be at least the vector size.
         let padding = self.0.stride - self.0.vector_size();
 
-        match self.1.linalg_type {
-            // cgmath only has column-major matrices. It also only has square matrices, and its 3x3
-            // matrix is not padded right. Fall back to std for anything else.
-            LinAlgType::CgMath
+        match self.1.linalg_types {
+            // cgmath only supports column-major square matrices, and its 3x3 matrix is not padded
+            // correctly.
+            LinAlgTypes::Cgmath
                 if majorness == MatrixMajorness::ColumnMajor
-                    && padding == 0
-                    && vector_count == component_count =>
+                    && vector_count == component_count
+                    && padding == 0 =>
             {
                 let matrix = format_ident!("Matrix{}", component_count);
                 tokens.extend(quote! { ::cgmath::#matrix<#component_type> });
             }
-            // nalgebra only has column-major matrices, and its 3xN matrices are not padded right.
-            // Fall back to std for anything else.
-            LinAlgType::Nalgebra if majorness == MatrixMajorness::ColumnMajor && padding == 0 => {
+            // nalgebra only supports column-major matrices, and its 3xN matrices are not padded
+            // correctly.
+            LinAlgTypes::Nalgebra if majorness == MatrixMajorness::ColumnMajor && padding == 0 => {
                 tokens.extend(quote! {
-                    ::nalgebra::base::SMatrix<#component_type, #component_count, #vector_count>
+                    ::nalgebra::SMatrix<#component_type, #component_count, #vector_count>
                 });
             }
             _ => {
@@ -964,7 +930,7 @@ impl ToTokens for Serializer<'_, TypeMatrix> {
 
 impl ToTokens for Serializer<'_, TypeArray> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let element_type = &*self.0.element_type;
+        let element_type = self.0.element_type.as_ref();
         // This can't panic because array elements must be sized.
         let element_size = element_type.size().unwrap();
         // This can't overflow because the stride must be at least the element size.
@@ -1047,7 +1013,8 @@ impl ToTokens for Serializer<'_, TypeStruct> {
     }
 }
 
-/// Helper for wrapping tokens in `Padded`. Doesn't wrap if the padding is `0`.
+/// Helper for wrapping tokens in [Padded][struct@vulkano::padded::Padded].
+/// Doesn't wrap if the padding is `0`.
 struct Padded<T>(T, usize);
 
 impl<T: ToTokens> ToTokens for Padded<T> {
