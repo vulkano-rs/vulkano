@@ -9,7 +9,9 @@ use vulkano::{
     self,
     buffer::{Buffer, BufferContents, IndexType},
     device::DeviceOwned,
-    pipeline::{ComputePipeline, GraphicsPipeline, PipelineLayout},
+    pipeline::{
+        ray_tracing::RayTracingPipeline, ComputePipeline, GraphicsPipeline, PipelineLayout,
+    },
     DeviceSize, Version, VulkanObject,
 };
 
@@ -106,6 +108,31 @@ impl RecordingCommandBuffer<'_> {
             (fns.v1_0.cmd_bind_pipeline)(
                 self.handle(),
                 vk::PipelineBindPoint::GRAPHICS,
+                pipeline.handle(),
+            )
+        };
+
+        self.death_row.push(pipeline.clone());
+
+        self
+    }
+
+    pub unsafe fn bind_pipeline_ray_tracing(
+        &mut self,
+        pipeline: &Arc<RayTracingPipeline>,
+    ) -> Result<&mut Self> {
+        Ok(unsafe { self.bind_pipeline_ray_tracing_unchecked(pipeline) })
+    }
+
+    pub unsafe fn bind_pipeline_ray_tracing_unchecked(
+        &mut self,
+        pipeline: &Arc<RayTracingPipeline>,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+        unsafe {
+            (fns.v1_0.cmd_bind_pipeline)(
+                self.handle(),
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
                 pipeline.handle(),
             )
         };
