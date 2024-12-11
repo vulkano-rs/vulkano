@@ -1,5 +1,5 @@
 use crate::{context::VulkanoContext, window::WindowDescriptor};
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::{sync::Arc, time::Duration};
 use vulkano::{
     device::{Device, Queue},

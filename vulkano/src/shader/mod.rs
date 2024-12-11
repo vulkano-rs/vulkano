@@ -427,8 +427,8 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use ahash::{HashMap, HashSet};
 use bytemuck::bytes_of;
+use foldhash::{HashMap, HashSet};
 use half::f16;
 use smallvec::SmallVec;
 use spirv::ExecutionModel;

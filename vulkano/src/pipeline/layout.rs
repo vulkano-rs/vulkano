@@ -67,7 +67,7 @@ use crate::{
     shader::{DescriptorBindingRequirements, ShaderStage, ShaderStages},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
     array,

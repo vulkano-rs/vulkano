@@ -227,7 +227,7 @@
 #![recursion_limit = "1024"]
 
 use crate::codegen::ShaderKind;
-use ahash::HashMap;
+use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use shaderc::{EnvVersion, SpirvVersion};
