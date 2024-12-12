@@ -9,7 +9,7 @@ use crate::{
     shader::ShaderStages,
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, VulkanObject,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};

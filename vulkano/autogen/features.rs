@@ -1,5 +1,5 @@
 use super::{write_file, IndexMap, VkRegistryData};
-use ahash::HashMap;
+use foldhash::HashMap;
 use heck::ToSnakeCase;
 use nom::{bytes::complete::tag, character::complete::digit1, combinator::eof, sequence::tuple};
 use proc_macro2::{Ident, TokenStream};

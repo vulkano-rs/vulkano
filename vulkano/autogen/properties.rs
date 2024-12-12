@@ -1,5 +1,5 @@
 use super::{write_file, IndexMap, VkRegistryData};
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use heck::ToSnakeCase;
 use nom::{
     bytes::complete::{tag, take_until, take_while1},

@@ -16,7 +16,7 @@ use crate::{
     macros::{vulkan_bitflags, vulkan_enum},
     shader::DescriptorBindingRequirements,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::sync::Arc;
 
 pub mod cache;

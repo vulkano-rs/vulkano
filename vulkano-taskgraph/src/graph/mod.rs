@@ -8,9 +8,9 @@ use crate::{
     resource::{self, AccessType, Flight, HostAccessType, ImageLayoutType},
     Id, InvalidSlotError, Object, ObjectType, QueueFamilyType, Task,
 };
-use ahash::HashMap;
 use ash::vk;
 use concurrent_slotmap::{IterMut, IterUnprotected, SlotId, SlotMap};
+use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
     borrow::Cow, cell::RefCell, error::Error, fmt, hint, iter::FusedIterator, ops::Range, sync::Arc,

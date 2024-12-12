@@ -7,7 +7,7 @@ use crate::{
     },
     ValidationError,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::{collections::hash_map::Entry, convert::Infallible};
 
 pub(crate) fn validate_interfaces_compatible(

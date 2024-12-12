@@ -14,9 +14,9 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-ahash = { workspace = true }
 ash = { workspace = true }
 concurrent-slotmap = { workspace = true }
+foldhash = { workspace = true }
 parking_lot = { workspace = true }
 smallvec = { workspace = true }
 thread_local = { workspace = true }
