@@ -7,24 +7,24 @@
 //!
 //! # Shader Types
 //!
-//! ## Ray Generation Shader (rgen)
+//! ## Ray Generation Shader
 //! - Entry point for ray tracing
 //! - Generates and traces primary rays
 //! - Controls the overall ray tracing process
 //!
 //! ## Intersection Shaders
 //! - **Built-in Triangle Intersection**: Handles standard triangle geometry intersection
-//! - **Custom Intersection (intersection)**: Implements custom geometry intersection testing
+//! - **Custom Intersection**: Implements custom geometry intersection testing
 //!
 //! ## Hit Shaders
-//! - **Closest Hit (chit)**: Executes when a ray finds its closest intersection
-//! - **Any Hit (ahit)**: Optional shader that runs on every potential intersection
+//! - **Closest Hit**: Executes when a ray finds its closest intersection
+//! - **Any Hit**: Optional shader that runs on every potential intersection
 //!
-//! ## Miss Shader (miss)
+//! ## Miss Shader
 //! - Executes when a ray doesn't intersect any geometry
 //! - Typically handles environment mapping or background colors
 //!
-//! ## Callable Shader (rcall)
+//! ## Callable Shader
 //! - Utility shader that can be called from other shader stages
 //! - Enables code reuse across different shader stages
 //!
@@ -54,8 +54,8 @@ use crate::{
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::{HashMap, HashSet};
 use ash::vk::StridedDeviceAddressRegionKHR;
+use foldhash::{HashMap, HashSet};
 use smallvec::SmallVec;
 use std::{collections::hash_map::Entry, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -588,9 +588,9 @@ pub enum RayTracingShaderGroupCreateInfo {
     /// General shader group type, typically used for ray generation and miss shaders.
     ///
     /// Contains a single shader stage that can be:
-    /// - Ray generation shader (rgen)
-    /// - Miss shader (rmiss)
-    /// - Callable shader (rcall)
+    /// - Ray generation shader
+    /// - Miss shader
+    /// - Callable shader
     General {
         /// Index of the general shader stage
         general_shader: u32,
