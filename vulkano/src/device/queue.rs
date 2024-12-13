@@ -199,7 +199,7 @@ pub struct QueueGuard<'a> {
     _state: MutexGuard<'a, QueueState>,
 }
 
-impl<'a> QueueGuard<'a> {
+impl QueueGuard<'_> {
     /// Waits until all work on this queue has finished, then releases ownership of all resources
     /// that were in use by the queue.
     ///

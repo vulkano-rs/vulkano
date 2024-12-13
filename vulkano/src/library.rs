@@ -51,31 +51,27 @@ impl VulkanLibrary {
         #[cfg(not(any(target_os = "ios", target_os = "tvos")))]
         fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
             #[cfg(windows)]
-            fn get_paths() -> [&'static Path; 1] {
-                [Path::new("vulkan-1.dll")]
-            }
+            const PATHS: [&str; 1] = ["vulkan-1.dll"];
             #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-            fn get_paths() -> [&'static Path; 1] {
-                [Path::new("libvulkan.so.1")]
-            }
+            const PATHS: [&str; 1] = ["libvulkan.so.1"];
             #[cfg(target_os = "macos")]
-            fn get_paths() -> [&'static Path; 3] {
-                [
-                    Path::new("libvulkan.dylib"),
-                    Path::new("libvulkan.1.dylib"),
-                    Path::new("libMoltenVK.dylib"),
-                ]
-            }
+            const PATHS: [&str; 6] = [
+                "libvulkan.dylib",
+                "libvulkan.1.dylib",
+                "libMoltenVK.dylib",
+                "vulkan.framework/vulkan",
+                "MoltenVK.framework/MoltenVK",
+                // Stock macOS no longer has `/usr/local/lib` in `LD_LIBRARY_PATH` like it used to,
+                // but libraries (including MoltenVK installed through the Vulkan SDK) are still
+                // installed here. Try the absolute path as a last resort.
+                "/usr/local/lib/libvulkan.dylib",
+            ];
             #[cfg(target_os = "android")]
-            fn get_paths() -> [&'static Path; 2] {
-                [Path::new("libvulkan.so.1"), Path::new("libvulkan.so")]
-            }
-
-            let paths = get_paths();
+            const PATHS: [&str; 2] = ["libvulkan.so.1", "libvulkan.so"];
 
             let mut err: Option<LoadingError> = None;
 
-            for path in paths {
+            for path in PATHS {
                 match unsafe { DynamicLibraryLoader::new(path) } {
                     Ok(library) => return Ok(Box::new(library)),
                     Err(e) => err = Some(e),

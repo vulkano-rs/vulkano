@@ -1,5 +1,5 @@
 use self::spirv_grammar::SpirvGrammar;
-use ahash::HashMap;
+use foldhash::HashMap;
 use nom::{
     bytes::complete::{tag, take_until},
     character::complete::{self, multispace0, multispace1},
@@ -34,7 +34,7 @@ mod spirv_parse;
 mod spirv_reqs;
 mod version;
 
-pub type IndexMap<K, V> = indexmap::IndexMap<K, V, ahash::RandomState>;
+pub type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
 
 pub fn autogen() {
     let registry = get_vk_registry("vk.xml");

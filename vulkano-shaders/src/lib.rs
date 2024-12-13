@@ -227,7 +227,7 @@
 #![recursion_limit = "1024"]
 
 use crate::codegen::ShaderKind;
-use ahash::HashMap;
+use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use shaderc::{EnvVersion, SpirvVersion};
@@ -348,7 +348,9 @@ fn shader_inner(mut input: MacroInput) -> Result<TokenStream> {
                 let words = vulkano::shader::spirv::bytes_to_words(&bytes)
                     .or_else(|err| bail!(path, "failed to read source `{full_path:?}`: {err}"))?;
 
-                codegen::reflect(&input, path, name, &words, Vec::new(), &mut type_registry)?
+                let includes = vec![full_path.into_os_string().into_string().unwrap()];
+
+                codegen::reflect(&input, path, name, &words, includes, &mut type_registry)?
             }
         };
 

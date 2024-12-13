@@ -18,7 +18,7 @@ use crate::{
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::{cmp::max, convert::Infallible};
 
 pub(crate) fn validate_runtime(
@@ -69,7 +69,7 @@ struct RuntimeValidator<'a> {
     output_primitives: Option<&'a ExecutionMode>,
 }
 
-impl<'a> RuntimeValidator<'a> {
+impl RuntimeValidator<'_> {
     fn validate_capabilities(&self) -> Result<(), Box<ValidationError>> {
         for instruction in self.spirv.capabilities() {
             let capability = match *instruction {

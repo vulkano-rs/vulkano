@@ -42,7 +42,7 @@ use crate::{
     },
     DeviceSize, Validated, ValidationError, VulkanError,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{

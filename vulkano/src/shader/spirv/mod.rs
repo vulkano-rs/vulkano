@@ -7,7 +7,7 @@
 //! [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html).
 
 use crate::{shader::SpecializationConstant, Version};
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use smallvec::{smallvec, SmallVec};
 use std::{
     borrow::Cow,

@@ -216,7 +216,7 @@ extern crate self as vulkano;
 
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}
-unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
+unsafe impl<T: ?Sized> SafeDeref for &T {}
 unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
 unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
 

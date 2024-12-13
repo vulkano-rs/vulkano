@@ -3,7 +3,7 @@
 # [Vulkano](https://vulkano.rs)
 
 [![Build Status](https://github.com/vulkano-rs/vulkano/workflows/Rust/badge.svg)](https://github.com/vulkano-rs/vulkano/actions?query=workflow%3ARust)
-[![Discord](https://img.shields.io/discord/937149253296476201?label=discord)](https://discord.gg/bncB9W2VDV)
+[![Discord](https://img.shields.io/discord/937149253296476201?label=discord)](https://discord.gg/xjHzXQp8hw)
 [![Website/guide](https://img.shields.io/badge/-website/guide-%23555.svg)](https://vulkano.rs/)
 <br/>
 [![vulkano crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)

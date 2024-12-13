@@ -20,7 +20,7 @@ use crate::{
     pipeline::inout_interface::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
     Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::iter;
 

@@ -1734,7 +1734,7 @@ impl<'a, S> Iterator for DeviceMemoryBlocks<'a, S> {
     }
 }
 
-impl<'a, S> DoubleEndedIterator for DeviceMemoryBlocks<'a, S> {
+impl<S> DoubleEndedIterator for DeviceMemoryBlocks<'_, S> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(|block| &**block)
@@ -1746,7 +1746,7 @@ impl<'a, S> DoubleEndedIterator for DeviceMemoryBlocks<'a, S> {
     }
 }
 
-impl<'a, S> ExactSizeIterator for DeviceMemoryBlocks<'a, S> {
+impl<S> ExactSizeIterator for DeviceMemoryBlocks<'_, S> {
     #[inline]
     fn len(&self) -> usize {
         self.inner.len()

@@ -1,5 +1,5 @@
 use super::{write_file, SpirvGrammar};
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use heck::ToSnakeCase;
 use once_cell::sync::Lazy;
 use proc_macro2::{Ident, TokenStream};

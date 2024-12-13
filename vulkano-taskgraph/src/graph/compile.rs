@@ -2223,7 +2223,7 @@ mod tests {
     struct MatchingState {
         submission_index: usize,
         instruction_index: usize,
-        semaphores: ahash::HashMap<&'static str, SemaphoreIndex>,
+        semaphores: foldhash::HashMap<&'static str, SemaphoreIndex>,
     }
 
     macro_rules! assert_matches_instructions {

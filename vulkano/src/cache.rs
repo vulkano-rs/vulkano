@@ -1,4 +1,4 @@
-use ahash::HashMap;
+use foldhash::HashMap;
 use parking_lot::RwLock;
 use std::{
     collections::hash_map::Entry,

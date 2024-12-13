@@ -104,7 +104,7 @@ use crate::{
     pipeline::inout_interface::{ShaderInterfaceLocationInfo, ShaderInterfaceLocationWidth},
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use smallvec::SmallVec;
 
 mod buffers;

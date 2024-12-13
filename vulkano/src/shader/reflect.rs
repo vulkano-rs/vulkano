@@ -12,7 +12,7 @@ use crate::{
     },
     DeviceSize, Version,
 };
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use half::f16;
 use smallvec::{smallvec, SmallVec};
 
@@ -121,7 +121,7 @@ fn inspect_entry_point(
         result: HashMap<Id, DescriptorBindingVariable>,
     }
 
-    impl<'a> Context<'a> {
+    impl Context<'_> {
         fn instruction_chain<const N: usize>(
             &mut self,
             chain: [fn(&Spirv, Id) -> Option<Id>; N],

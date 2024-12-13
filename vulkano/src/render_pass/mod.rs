@@ -27,7 +27,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
     cmp::max,

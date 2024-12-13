@@ -3,7 +3,7 @@
 // https://github.com/bevyengine/bevy/blob/main/LICENSE-APACHE
 
 use crate::{context::VulkanoContext, renderer::VulkanoWindowRenderer};
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::collections::hash_map::{Iter, IterMut};
 use vulkano::swapchain::{PresentMode, SwapchainCreateInfo};
 use winit::{

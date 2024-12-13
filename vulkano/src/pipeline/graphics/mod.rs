@@ -113,7 +113,7 @@ use crate::{
     },
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use fragment_shading_rate::FragmentShadingRateState;
 use smallvec::SmallVec;
 use std::{
