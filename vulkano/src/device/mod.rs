@@ -1306,12 +1306,33 @@ impl Device {
         Ok(())
     }
 
-    pub fn get_ray_tracing_shader_group_handles(
+    pub fn ray_tracing_shader_group_handles(
         &self,
         ray_tracing_pipeline: &RayTracingPipeline,
         first_group: u32,
         group_count: u32,
     ) -> Result<ShaderGroupHandlesData, Validated<VulkanError>> {
+        self.validate_ray_tracing_pipeline_properties(
+            ray_tracing_pipeline,
+            first_group,
+            group_count,
+        )?;
+
+        unsafe {
+            Ok(self.ray_tracing_shader_group_handles_unchecked(
+                ray_tracing_pipeline,
+                first_group,
+                group_count,
+            )?)
+        }
+    }
+
+    fn validate_ray_tracing_pipeline_properties(
+        &self,
+        ray_tracing_pipeline: &RayTracingPipeline,
+        first_group: u32,
+        group_count: u32,
+    ) -> Result<(), Box<ValidationError>> {
         if !self.enabled_features().ray_tracing_pipeline
             || self
                 .physical_device()
@@ -1339,6 +1360,16 @@ impl Device {
         }
         // TODO: VUID-vkGetRayTracingShaderGroupHandlesKHR-pipeline-07828
 
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn ray_tracing_shader_group_handles_unchecked(
+        &self,
+        ray_tracing_pipeline: &RayTracingPipeline,
+        first_group: u32,
+        group_count: u32,
+    ) -> Result<ShaderGroupHandlesData, VulkanError> {
         let handle_size = self
             .physical_device()
             .properties()
@@ -2192,6 +2223,7 @@ impl<T> Deref for DeviceOwnedDebugWrapper<T> {
     }
 }
 
+/// Holds the data returned by [`Device::ray_tracing_shader_group_handles`].
 #[derive(Clone, Debug)]
 pub struct ShaderGroupHandlesData {
     data: Vec<u8>,
@@ -2208,35 +2240,10 @@ impl ShaderGroupHandlesData {
     }
 }
 
-pub struct ShaderGroupHandlesDataIter<'a> {
-    data: &'a [u8],
-    handle_size: usize,
-    index: usize,
-}
-
-impl<'a> Iterator for ShaderGroupHandlesDataIter<'a> {
-    type Item = &'a [u8];
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.data.len() {
-            None
-        } else {
-            let end = self.index + self.handle_size;
-            let slice = &self.data[self.index..end];
-            self.index = end;
-            Some(slice)
-        }
-    }
-}
-impl ExactSizeIterator for ShaderGroupHandlesDataIter<'_> {}
-
 impl ShaderGroupHandlesData {
-    pub fn iter(&self) -> ShaderGroupHandlesDataIter<'_> {
-        ShaderGroupHandlesDataIter {
-            data: &self.data,
-            handle_size: self.handle_size as usize,
-            index: 0,
-        }
+    /// Returns an iterator over the handles in the data.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &[u8]> {
+        self.data().chunks_exact(self.handle_size as usize)
     }
 }
 

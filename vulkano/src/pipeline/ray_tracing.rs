@@ -1,3 +1,42 @@
+//! Ray tracing pipeline functionality for GPU-accelerated ray tracing.
+//!
+//! # Overview
+//! Ray tracing pipelines enable high-performance ray tracing by defining a set of shader stages that
+//! handle ray generation, intersection testing, and shading calculations. The pipeline consists of
+//! different shader stages organized into shader groups.
+//!
+//! # Shader Types
+//!
+//! ## Ray Generation Shader (rgen)
+//! - Entry point for ray tracing
+//! - Generates and traces primary rays
+//! - Controls the overall ray tracing process
+//!
+//! ## Intersection Shaders
+//! - **Built-in Triangle Intersection**: Handles standard triangle geometry intersection
+//! - **Custom Intersection (intersection)**: Implements custom geometry intersection testing
+//!
+//! ## Hit Shaders
+//! - **Closest Hit (chit)**: Executes when a ray finds its closest intersection
+//! - **Any Hit (ahit)**: Optional shader that runs on every potential intersection
+//!
+//! ## Miss Shader (miss)
+//! - Executes when a ray doesn't intersect any geometry
+//! - Typically handles environment mapping or background colors
+//!
+//! ## Callable Shader (rcall)
+//! - Utility shader that can be called from other shader stages
+//! - Enables code reuse across different shader stages
+//!
+//! # Pipeline Organization
+//! Shaders are organized into groups:
+//! - General groups: Contains ray generation, miss, or callable shaders
+//! - Triangle hit groups: Contains closest-hit and optional any-hit shaders
+//! - Procedural hit groups: Contains intersection, closest-hit, and optional any-hit shaders
+//!
+//! The ray tracing pipeline uses a Shader Binding Table (SBT) to organize and access
+//! these shader groups during execution.
+
 use super::{
     cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
     PipelineLayout, PipelineShaderStageCreateInfo, PipelineShaderStageCreateInfoExtensionsVk,
@@ -239,6 +278,9 @@ pub struct RayTracingPipelineCreateInfo {
     /// There is no default value.
     pub stages: SmallVec<[PipelineShaderStageCreateInfo; 5]>,
 
+    /// The shader groups to use. They reference the shader stages in `stages`.
+    ///
+    /// The default value is empty.
     pub groups: SmallVec<[RayTracingShaderGroupCreateInfo; 5]>,
 
     /// The maximum recursion depth of the pipeline.
@@ -543,16 +585,39 @@ impl RayTracingPipelineCreateInfo {
 /// `RayTracingPipelineCreateInfo`.
 #[derive(Debug, Clone)]
 pub enum RayTracingShaderGroupCreateInfo {
+    /// General shader group type, typically used for ray generation and miss shaders.
+    ///
+    /// Contains a single shader stage that can be:
+    /// - Ray generation shader (rgen)
+    /// - Miss shader (rmiss)
+    /// - Callable shader (rcall)
     General {
+        /// Index of the general shader stage
         general_shader: u32,
     },
+
+    /// Procedural hit shader group type, used for custom intersection testing.
+    ///
+    /// Used when implementing custom intersection shapes or volumes.
+    /// Requires an intersection shader and can optionally include closest hit
+    /// and any hit shaders.
     ProceduralHit {
+        /// Optional index of the closest hit shader stage
         closest_hit_shader: Option<u32>,
+        /// Optional index of the any hit shader stage
         any_hit_shader: Option<u32>,
+        /// Index of the intersection shader stage
         intersection_shader: u32,
     },
+
+    /// Triangle hit shader group type, used for built-in triangle intersection.
+    ///
+    /// Used for standard triangle geometry intersection testing.
+    /// Can optionally include closest hit and any hit shaders.
     TrianglesHit {
+        /// Optional index of the closest hit shader stage
         closest_hit_shader: Option<u32>,
+        /// Optional index of the any hit shader stage
         any_hit_shader: Option<u32>,
     },
 }
@@ -755,7 +820,7 @@ impl ShaderBindingTable {
 
         let handle_data = ray_tracing_pipeline
             .device()
-            .get_ray_tracing_shader_group_handles(
+            .ray_tracing_shader_group_handles(
                 ray_tracing_pipeline,
                 0,
                 ray_tracing_pipeline.groups().len() as u32,
