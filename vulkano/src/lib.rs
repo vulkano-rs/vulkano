@@ -179,6 +179,9 @@ pub use ash::vk::DeviceAddress;
 /// A [`DeviceAddress`] that is known not to equal zero.
 pub type NonNullDeviceAddress = NonZeroU64;
 
+/// Represents a region of device addresses with a stride.
+pub use ash::vk::StridedDeviceAddressRegionKHR as StridedDeviceAddressRegion;
+
 /// Holds 24 bits in the least significant bits of memory,
 /// and 8 bytes in the most significant bits of that memory,
 /// occupying a single [`u32`] in total.
