@@ -1759,8 +1759,6 @@ dependencies = [
 name = "triangle-util"
 version = "0.0.0"
 dependencies = [
- "ash",
- "glam",
  "vulkano",
  "vulkano-shaders",
  "vulkano-util",

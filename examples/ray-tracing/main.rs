@@ -77,7 +77,6 @@ impl App {
                     ext_swapchain_colorspace: true,
                     ..required_extensions
                 },
-                enabled_layers: vec!["VK_LAYER_KHRONOS_validation".to_owned()],
                 ..Default::default()
             },
         )
