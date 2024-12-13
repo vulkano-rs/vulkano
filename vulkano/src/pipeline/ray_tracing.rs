@@ -1,9 +1,9 @@
 //! Ray tracing pipeline functionality for GPU-accelerated ray tracing.
 //!
 //! # Overview
-//! Ray tracing pipelines enable high-performance ray tracing by defining a set of shader stages that
-//! handle ray generation, intersection testing, and shading calculations. The pipeline consists of
-//! different shader stages organized into shader groups.
+//! Ray tracing pipelines enable high-performance ray tracing by defining a set of shader stages
+//! that handle ray generation, intersection testing, and shading calculations. The pipeline
+//! consists of different shader stages organized into shader groups.
 //!
 //! # Shader Types
 //!
