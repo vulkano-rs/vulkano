@@ -1,11 +1,11 @@
 [package]
-name = "triangle-raytracing-auto"
+name = "ray-tracing-auto"
 version = "0.0.0"
 edition = "2021"
 publish = false
 
 [[bin]]
-name = "triangle-raytracing-auto"
+name = "ray-tracing-auto"
 path = "main.rs"
 test = false
 bench = false

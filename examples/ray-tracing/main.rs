@@ -182,7 +182,6 @@ impl ApplicationHandler for App {
                     .is_some()
             })
             .collect::<Vec<_>>();
-        println!("Supported storage formats: {:?}", supported_storage_formats);
 
         println!(
             "Using device: {} (type: {:?})",
@@ -201,7 +200,6 @@ impl ApplicationHandler for App {
                 .first()
                 .map(|(format, color_space)| (*format, *color_space))
                 .unwrap();
-            println!("Using swapchain format: {:?}", swapchain_format);
 
             self.resources
                 .create_swapchain(
