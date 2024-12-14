@@ -57,7 +57,7 @@ impl ComputePipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
     ) -> Result<Arc<ComputePipeline>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
+        Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }

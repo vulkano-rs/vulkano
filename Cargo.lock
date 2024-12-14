@@ -1321,6 +1321,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ray-tracing"
+version = "0.0.0"
+dependencies = [
+ "ash",
+ "glam",
+ "vulkano",
+ "vulkano-shaders",
+ "vulkano-taskgraph",
+ "winit",
+]
+
+[[package]]
+name = "ray-tracing-auto"
+version = "0.0.0"
+dependencies = [
+ "ash",
+ "glam",
+ "vulkano",
+ "vulkano-shaders",
+ "winit",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

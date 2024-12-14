@@ -7,7 +7,10 @@ use vulkano::command_buffer::{
     DispatchIndirectCommand, DrawIndexedIndirectCommand, DrawIndirectCommand,
     DrawMeshTasksIndirectCommand,
 };
-use vulkano::{buffer::Buffer, device::DeviceOwned, DeviceSize, Version, VulkanObject};
+use vulkano::{
+    buffer::Buffer, device::DeviceOwned, pipeline::ray_tracing::ShaderBindingTableAddresses,
+    DeviceSize, Version, VulkanObject,
+};
 
 /// # Commands to execute a bound pipeline
 ///
@@ -655,6 +658,47 @@ impl RecordingCommandBuffer<'_> {
                 stride,
             )
         };
+
+        self
+    }
+
+    pub unsafe fn trace_rays(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> Result<&mut Self> {
+        Ok(unsafe {
+            self.trace_rays_unchecked(shader_binding_table_addresses, width, height, depth)
+        })
+    }
+
+    pub unsafe fn trace_rays_unchecked(
+        &mut self,
+        shader_binding_table_addresses: &ShaderBindingTableAddresses,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> &mut Self {
+        let fns = self.device().fns();
+
+        let raygen = shader_binding_table_addresses.raygen.to_vk();
+        let miss = shader_binding_table_addresses.miss.to_vk();
+        let hit = shader_binding_table_addresses.hit.to_vk();
+        let callable = shader_binding_table_addresses.callable.to_vk();
+        unsafe {
+            (fns.khr_ray_tracing_pipeline.cmd_trace_rays_khr)(
+                self.handle(),
+                &raygen,
+                &miss,
+                &hit,
+                &callable,
+                width,
+                height,
+                depth,
+            );
+        }
 
         self
     }
