@@ -15,10 +15,10 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-ahash = { workspace = true }
 ash = { workspace = true }
 bytemuck = { workspace = true, features = ["min_const_generics"] }
 crossbeam-queue = { workspace = true }
+foldhash = { workspace = true }
 half = { workspace = true, features = ["bytemuck"] }
 libloading = { workspace = true }
 once_cell = { workspace = true }
@@ -38,7 +38,7 @@ x11-dl = { workspace = true, optional = true }
 x11rb = { workspace = true, features = ["allow-unsafe-code"], optional = true }
 
 [build-dependencies]
-ahash = { workspace = true }
+foldhash = { workspace = true }
 heck = { workspace = true }
 indexmap = { workspace = true }
 nom = { workspace = true }

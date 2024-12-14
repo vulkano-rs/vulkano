@@ -18,7 +18,7 @@ use crate::{
     },
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::{cmp::max, convert::Infallible};
 
 pub(crate) fn validate_runtime(

@@ -1,5 +1,5 @@
 use crate::{bail, codegen::Shader, LinAlgType, MacroInput};
-use ahash::HashMap;
+use foldhash::HashMap;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use std::{cmp::Ordering, num::NonZeroUsize};

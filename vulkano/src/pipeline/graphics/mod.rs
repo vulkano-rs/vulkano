@@ -113,7 +113,7 @@ use crate::{
     },
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use fragment_shading_rate::FragmentShadingRateState;
 use smallvec::SmallVec;
 use std::{
@@ -178,7 +178,7 @@ impl GraphicsPipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: GraphicsPipelineCreateInfo,
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
+        Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }

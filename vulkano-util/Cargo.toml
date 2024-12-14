@@ -14,7 +14,7 @@ keywords = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-ahash = { workspace = true }
+foldhash = { workspace = true }
 vulkano = { workspace = true }
 winit = { workspace = true }
 

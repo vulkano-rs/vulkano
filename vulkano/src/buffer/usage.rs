@@ -97,13 +97,13 @@ vulkan_bitflags! {
         RequiresAllOf([DeviceExtension(khr_acceleration_structure)]),
     ]),
 
-    /* TODO: enable
+
     // TODO: document
     SHADER_BINDING_TABLE = SHADER_BINDING_TABLE_KHR
     RequiresOneOf([
         RequiresAllOf([DeviceExtension(khr_ray_tracing_pipeline)]),
         RequiresAllOf([DeviceExtension(nv_ray_tracing)]),
-    ]),*/
+    ]),
 
     /* TODO: enable
     // TODO: document

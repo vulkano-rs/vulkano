@@ -12,7 +12,7 @@ use crate::{
     },
     DeviceSize, Version,
 };
-use ahash::{HashMap, HashSet};
+use foldhash::{HashMap, HashSet};
 use half::f16;
 use smallvec::{smallvec, SmallVec};
 

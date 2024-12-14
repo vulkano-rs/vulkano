@@ -101,7 +101,7 @@ use crate::{
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
     DeviceSize, Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use parking_lot::MutexGuard;
 use smallvec::{smallvec, SmallVec};
 use std::{

@@ -16,7 +16,7 @@ use crate::{
     },
     ValidationError,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::{borrow::Cow, collections::hash_map::Entry};
 
 /// Trait for types that can create a [`VertexInputState`] from an [`EntryPoint`].

@@ -2,7 +2,7 @@ use crate::shader::{
     spirv::{Decoration, Id, IdInfo, Instruction, SpecConstantInstruction},
     SpecializationConstant,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use half::f16;
 use smallvec::{smallvec, SmallVec};
 

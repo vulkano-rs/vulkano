@@ -125,8 +125,8 @@ use crate::{
     device::{DeviceFeatures, DeviceProperties},
     pipeline::graphics::vertex_input::VertexInputRate,
 };
-use ahash::HashMap;
 use bytemuck::{Pod, Zeroable};
+use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{ops::Range, sync::Arc};
 
@@ -1617,6 +1617,7 @@ pub enum ResourceInCommand {
     SecondaryCommandBuffer { index: u32 },
     Source,
     VertexBuffer { binding: u32 },
+    ShaderBindingTableBuffer,
 }
 
 #[doc(hidden)]

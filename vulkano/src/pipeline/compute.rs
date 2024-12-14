@@ -25,7 +25,7 @@ use crate::{
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use std::{fmt::Debug, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
@@ -57,7 +57,7 @@ impl ComputePipeline {
         cache: Option<Arc<PipelineCache>>,
         create_info: ComputePipelineCreateInfo,
     ) -> Result<Arc<ComputePipeline>, Validated<VulkanError>> {
-        Self::validate_new(&device, cache.as_ref().map(AsRef::as_ref), &create_info)?;
+        Self::validate_new(&device, cache.as_deref(), &create_info)?;
 
         Ok(unsafe { Self::new_unchecked(device, cache, create_info) }?)
     }

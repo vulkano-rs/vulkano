@@ -29,6 +29,7 @@ use crate::{
             vertex_input::VertexInputState,
             viewport::{Scissor, Viewport},
         },
+        ray_tracing::RayTracingPipeline,
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     query::{QueryControlFlags, QueryPool, QueryType},
@@ -41,7 +42,7 @@ use crate::{
     },
     DeviceSize, Validated, ValidationError, VulkanError,
 };
-use ahash::HashMap;
+use foldhash::HashMap;
 use parking_lot::{Mutex, RwLockReadGuard};
 use smallvec::SmallVec;
 use std::{
@@ -1292,6 +1293,7 @@ pub(in crate::command_buffer) struct CommandBufferBuilderState {
     pub(in crate::command_buffer) index_buffer: Option<IndexBuffer>,
     pub(in crate::command_buffer) pipeline_compute: Option<Arc<ComputePipeline>>,
     pub(in crate::command_buffer) pipeline_graphics: Option<Arc<GraphicsPipeline>>,
+    pub(in crate::command_buffer) pipeline_ray_tracing: Option<Arc<RayTracingPipeline>>,
     pub(in crate::command_buffer) vertex_buffers: HashMap<u32, Subbuffer<[u8]>>,
     pub(in crate::command_buffer) push_constants: RangeSet<u32>,
     pub(in crate::command_buffer) push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
