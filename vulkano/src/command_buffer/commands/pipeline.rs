@@ -5091,12 +5091,17 @@ impl RecordingCommandBuffer {
     ) -> &mut Self {
         let fns = self.device().fns();
 
+        let raygen = shader_binding_table_addresses.raygen.to_vk();
+        let miss = shader_binding_table_addresses.miss.to_vk();
+        let hit = shader_binding_table_addresses.hit.to_vk();
+        let callable = shader_binding_table_addresses.callable.to_vk();
+
         (fns.khr_ray_tracing_pipeline.cmd_trace_rays_khr)(
             self.handle(),
-            &shader_binding_table_addresses.raygen,
-            &shader_binding_table_addresses.miss,
-            &shader_binding_table_addresses.hit,
-            &shader_binding_table_addresses.callable,
+            &raygen,
+            &miss,
+            &hit,
+            &callable,
             width,
             height,
             depth,
