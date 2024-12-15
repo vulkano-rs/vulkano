@@ -200,6 +200,11 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_portability_subset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_portability_subset.html) (provisional)
 	- Check for `tessellationIsolines`
 	- Check for `tessellationPointMode`
+- [`VK_KHR_ray_tracing_pipeline`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_pipeline.html)
+	- `vkCmdSetRayTracingPipelineStackSizeKHR`
+	- `vkCmdTraceRaysIndirectKHR` / `VkTraceRaysIndirectCommandKHR`
+	- `vkGetRayTracingCaptureReplayShaderGroupHandlesKHR`
+	- deferred host operations
 - [`VK_KHR_ray_tracing_maintenance1`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_maintenance1.html)
 	- `vkCmdTraceRaysIndirect2KHR`
 	- `VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR`
@@ -224,7 +229,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 - [`VK_KHR_performance_query`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_performance_query.html)
 - [`VK_KHR_pipeline_executable_properties`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_pipeline_executable_properties.html)
 - [`VK_KHR_pipeline_library`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_pipeline_library.html)
-- [`VK_KHR_ray_tracing_pipeline`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_pipeline.html)
 - [`VK_KHR_ray_tracing_position_fetch`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_ray_tracing_position_fetch.html)
 - [`VK_KHR_shader_clock`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_clock.html)
 - [`VK_KHR_shader_subgroup_uniform_control_flow`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_subgroup_uniform_control_flow.html)
