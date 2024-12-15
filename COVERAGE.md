@@ -119,7 +119,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 	- Suspend/resume
 - [`VK_KHR_maintenance4`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance4.html)
 	- `maxBufferSize` limit
-	- `vkGetDeviceBufferMemoryRequirementsKHR`, `vkGetDeviceImageMemoryRequirementsKHR`, `vkGetDeviceImageSparseMemoryRequirementsKHR`
+	- `vkGetDeviceImageSparseMemoryRequirementsKHR`
 	- Push constant initialization
 - [`VK_KHR_synchronization2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_synchronization2.html)
 	- `vkQueueSubmit2KHR` / `VkSemaphoreSubmitInfoKHR` (missing parameters related to device groups)
