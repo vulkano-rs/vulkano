@@ -2,7 +2,7 @@ use super::{AccessCheckError, GpuFuture};
 use crate::{
     buffer::Buffer,
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
-    device::{Device, DeviceOwned, Queue, QueueFlags},
+    device::{Device, DeviceOwned, Queue},
     image::{Image, ImageLayout},
     swapchain::Swapchain,
     sync::{
@@ -282,10 +282,6 @@ where
                 debug_assert!(!partially_flushed);
                 // Same remark as `CommandBuffer`.
                 assert!(fence.is_none());
-                debug_assert!(queue.device().physical_device().queue_family_properties()
-                    [queue.queue_family_index() as usize]
-                    .queue_flags
-                    .intersects(QueueFlags::SPARSE_BINDING));
 
                 unsafe { queue_bind_sparse(&queue, bind_infos, Some(new_fence.clone())) }
                     .map_err(OutcomeErr::Full)

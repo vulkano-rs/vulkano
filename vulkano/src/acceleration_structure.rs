@@ -85,7 +85,7 @@
 //! [`WriteDescriptorSet::acceleration_structure`]: crate::descriptor_set::WriteDescriptorSet::acceleration_structure
 
 use crate::{
-    buffer::{BufferUsage, IndexBuffer, Subbuffer},
+    buffer::{BufferCreateFlags, BufferUsage, IndexBuffer, Subbuffer},
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
     instance::InstanceOwnedDebugWrapper,
@@ -375,6 +375,19 @@ impl AccelerationStructureCreateInfo {
                     usage"
                     .into(),
                 vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-buffer-03614"],
+                ..Default::default()
+            }));
+        }
+
+        if buffer
+            .buffer()
+            .flags()
+            .intersects(BufferCreateFlags::SPARSE_RESIDENCY)
+        {
+            return Err(Box::new(ValidationError {
+                context: "buffer.buffer().flags()".into(),
+                problem: "contains `BufferCreateFlags::SPARSE_RESIDENCY`".into(),
+                vuids: &["VUID-VkAccelerationStructureCreateInfoKHR-buffer-03615"],
                 ..Default::default()
             }));
         }

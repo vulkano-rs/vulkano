@@ -3,7 +3,7 @@ use crate::{
     command_buffer::{CommandBufferSubmitInfo, SemaphoreSubmitInfo, SubmitInfo},
     instance::{debug::DebugUtilsLabel, InstanceOwnedDebugWrapper},
     macros::vulkan_bitflags,
-    memory::BindSparseInfo,
+    memory::sparse::BindSparseInfo,
     swapchain::{PresentInfo, SwapchainPresentInfo},
     sync::{fence::Fence, PipelineStages},
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
@@ -112,6 +112,10 @@ impl Queue {
             _state: self.state.lock(),
         })
     }
+
+    fn queue_family_properties(&self) -> &QueueFamilyProperties {
+        &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
+    }
 }
 
 impl Drop for Queue {
@@ -214,6 +218,85 @@ impl QueueGuard<'_> {
         unsafe { (fns.v1_0.queue_wait_idle)(self.queue.handle) }
             .result()
             .map_err(VulkanError::from)
+    }
+
+    /// Bind or unbind memory to resources with sparse memory.
+    ///
+    /// # Safety
+    ///
+    /// For every semaphore in the `wait_semaphores` elements of every `bind_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - The semaphore must be already in the signaled state, or there must be a previously
+    ///   submitted operation that will signal it.
+    /// - When the wait operation is executed, no other queue must be waiting on the same
+    ///   semaphore.
+    ///
+    /// For every element in the `buffer_binds`, `image_opaque_binds` and `image_binds`
+    /// elements of every `bind_infos` element:
+    /// - The buffers and images must be kept alive while the command is being executed.
+    /// - The memory allocations must be kept alive while they are bound to a buffer or image.
+    /// - Access to the affected regions of each buffer or image must be synchronized.
+    ///
+    /// For every semaphore in the `signal_semaphores` elements of every `bind_infos` element:
+    /// - The semaphore must be kept alive while the command is being executed.
+    /// - When the signal operation is executed, the semaphore must be in the unsignaled state.
+    ///
+    /// If `fence` is `Some`:
+    /// - The fence must be kept alive while the command is being executed.
+    /// - The fence must be unsignaled and must not be associated with any other command that is
+    ///   still executing.
+    #[inline]
+    pub unsafe fn bind_sparse(
+        &mut self,
+        bind_infos: &[BindSparseInfo],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), Validated<VulkanError>> {
+        self.validate_bind_sparse(bind_infos, fence)?;
+
+        Ok(self.bind_sparse_unchecked(bind_infos, fence)?)
+    }
+
+    fn validate_bind_sparse(
+        &self,
+        bind_infos: &[BindSparseInfo],
+        fence: Option<&Arc<Fence>>,
+    ) -> Result<(), Box<ValidationError>> {
+        if !self
+            .queue
+            .queue_family_properties()
+            .queue_flags
+            .intersects(QueueFlags::SPARSE_BINDING)
+        {
+            return Err(Box::new(ValidationError {
+                problem: "the queue family of this queue does not support \
+                    sparse binding operations"
+                    .into(),
+                vuids: &["VUID-vkQueueBindSparse-queuetype"],
+                ..Default::default()
+            }));
+        }
+
+        let device = self.queue.device();
+
+        if let Some(fence) = fence {
+            // VUID-vkQueueBindSparse-commonparent
+            assert_eq!(device, fence.device());
+        }
+
+        for (index, bind_sparse_info) in bind_infos.iter().enumerate() {
+            bind_sparse_info
+                .validate(device)
+                .map_err(|err| err.add_context(format!("bind_infos[{}]", index)))?;
+        }
+
+        // unsafe
+        // VUID-vkQueueBindSparse-fence-01113
+        // VUID-vkQueueBindSparse-fence-01114
+        // VUID-vkQueueBindSparse-pSignalSemaphores-01115
+        // VUID-vkQueueBindSparse-pWaitSemaphores-01116
+        // VUID-vkQueueBindSparse-pWaitSemaphores-03245
+
+        Ok(())
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
