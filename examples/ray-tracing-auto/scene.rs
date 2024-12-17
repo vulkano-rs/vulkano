@@ -187,7 +187,7 @@ impl Scene {
             )
         };
 
-        let proj = Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, 4.0 / 3.0, 0.01, 100.0);
+        let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 4.0 / 3.0, 0.01, 100.0);
         let view = Mat4::look_at_rh(
             Vec3::new(0.0, 0.0, 1.0),
             Vec3::new(0.0, 0.0, 0.0),
