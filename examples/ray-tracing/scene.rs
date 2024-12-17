@@ -56,7 +56,7 @@ mod closest_hit {
 mod miss {
     vulkano_shaders::shader! {
         ty: "miss",
-        path: "raytrace.miss",
+        path: "raytrace.rmiss",
         vulkan_version: "1.2"
     }
 }
