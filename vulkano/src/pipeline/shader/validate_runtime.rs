@@ -2577,7 +2577,7 @@ impl RuntimeValidator<'_> {
                     if let Some(scope) = scope {
                         match scope {
                             Scope::Subgroup => {
-                                if self.device.enabled_features().shader_subgroup_clock {
+                                if !self.device.enabled_features().shader_subgroup_clock {
                                     return Err(Box::new(ValidationError {
                                         problem: "an `OpReadClockKHR` instruction is performed \
                                             with a scope of `Scope::Subgroup`"
@@ -2591,7 +2591,7 @@ impl RuntimeValidator<'_> {
                                 }
                             }
                             Scope::Device => {
-                                if self.device.enabled_features().shader_device_clock {
+                                if !self.device.enabled_features().shader_device_clock {
                                     return Err(Box::new(ValidationError {
                                         problem: "an `OpReadClockKHR` instruction is performed \
                                         with a scope of `Scope::Device`"
