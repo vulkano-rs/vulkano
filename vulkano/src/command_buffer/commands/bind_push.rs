@@ -378,6 +378,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
+    /// Binds a ray tracing pipeline for future ray tracing calls.
     pub fn bind_pipeline_ray_tracing(
         &mut self,
         pipeline: Arc<RayTracingPipeline>,

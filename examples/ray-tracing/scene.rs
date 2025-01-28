@@ -257,14 +257,7 @@ impl Task for SceneTask {
 
         let extent = self.swapchain_image_sets[0].0.image().extent();
 
-        unsafe {
-            cbf.trace_rays(
-                self.shader_binding_table.addresses(),
-                extent[0],
-                extent[1],
-                1,
-            )
-        }?;
+        unsafe { cbf.trace_rays(self.shader_binding_table.addresses(), extent) }?;
 
         for (_, descriptor_set) in self.swapchain_image_sets.iter() {
             cbf.destroy_object(descriptor_set.clone());

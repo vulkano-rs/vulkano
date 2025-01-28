@@ -1,41 +1,48 @@
 //! Ray tracing pipeline functionality for GPU-accelerated ray tracing.
 //!
 //! # Overview
+//!
 //! Ray tracing pipelines enable high-performance ray tracing by defining a set of shader stages
 //! that handle ray generation, intersection testing, and shading calculations. The pipeline
 //! consists of different shader stages organized into shader groups.
 //!
-//! # Shader Types
+//! # Shader types
 //!
-//! ## Ray Generation Shader
-//! - Entry point for ray tracing
-//! - Generates and traces primary rays
-//! - Controls the overall ray tracing process
+//! ## Ray generation shader
 //!
-//! ## Intersection Shaders
-//! - **Built-in Triangle Intersection**: Handles standard triangle geometry intersection
-//! - **Custom Intersection**: Implements custom geometry intersection testing
+//! - Entry point for ray tracing.
+//! - Generates and traces primary rays.
+//! - Controls the overall ray tracing process.
 //!
-//! ## Hit Shaders
-//! - **Closest Hit**: Executes when a ray finds its closest intersection
-//! - **Any Hit**: Optional shader that runs on every potential intersection
+//! ## Intersection shaders
 //!
-//! ## Miss Shader
-//! - Executes when a ray doesn't intersect any geometry
-//! - Typically handles environment mapping or background colors
+//! - **Built-in triangle intersection** handles standard triangle geometry intersection.
+//! - **Custom intersection** implements custom geometry intersection testing.
 //!
-//! ## Callable Shader
-//! - Utility shader that can be called from other shader stages
-//! - Enables code reuse across different shader stages
+//! ## Hit shaders
 //!
-//! # Pipeline Organization
+//! - **Closest hit** executes when a ray finds its closest intersection.
+//! - **Any hit** is an optional shader that runs on every potential intersection.
+//!
+//! ## Miss shader
+//!
+//! - Executes when a ray doesn't intersect any geometry.
+//! - Typically handles environment mapping or background colors.
+//!
+//! ## Callable shader
+//!
+//! - Utility shader that can be called from other shader stages.
+//! - Enables code reuse across different shader stages.
+//!
+//! # Pipeline organization
+//!
 //! Shaders are organized into groups:
-//! - General groups: Contains ray generation, miss, or callable shaders
-//! - Triangle hit groups: Contains closest-hit and optional any-hit shaders
-//! - Procedural hit groups: Contains intersection, closest-hit, and optional any-hit shaders
+//! - **General groups** contain ray generation, miss, or callable shaders.
+//! - **Triangle hit groups** contain closest-hit and optional any-hit shaders.
+//! - **Procedural hit groups** contain intersection, closest-hit, and optional any-hit shaders.
 //!
-//! The ray tracing pipeline uses a Shader Binding Table (SBT) to organize and access
-//! these shader groups during execution.
+//! The ray tracing pipeline uses a Shader Binding Table (SBT) to organize and access these shader
+//! groups during execution.
 
 use super::{
     cache::PipelineCache, DynamicState, Pipeline, PipelineBindPoint, PipelineCreateFlags,
@@ -100,6 +107,7 @@ impl RayTracingPipeline {
         if let Some(cache) = &cache {
             assert_eq!(device, cache.device());
         }
+
         create_info
             .validate(device)
             .map_err(|err| err.add_context("create_info"))?;
@@ -135,6 +143,7 @@ impl RayTracingPipeline {
             )
             .result()
             .map_err(VulkanError::from)?;
+
             output.assume_init()
         };
 
@@ -164,6 +173,7 @@ impl RayTracingPipeline {
             (u32, u32),
             DescriptorBindingRequirements,
         > = HashMap::default();
+
         for stage in &stages {
             for (&loc, reqs) in stage
                 .entry_point
@@ -173,7 +183,10 @@ impl RayTracingPipeline {
             {
                 match descriptor_binding_requirements.entry(loc) {
                     Entry::Occupied(entry) => {
-                        entry.into_mut().merge(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                        entry.into_mut().merge(reqs).expect(
+                            "could not produce an intersection of the shader descriptor \
+                            requirements",
+                        );
                     }
                     Entry::Vacant(entry) => {
                         entry.insert(reqs.clone());
@@ -181,12 +194,14 @@ impl RayTracingPipeline {
                 }
             }
         }
+
         let num_used_descriptor_sets = descriptor_binding_requirements
             .keys()
             .map(|loc| loc.0)
             .max()
             .map(|x| x + 1)
             .unwrap_or(0);
+
         Arc::new(Self {
             handle,
             device: InstanceOwnedDebugWrapper(device),
@@ -203,22 +218,26 @@ impl RayTracingPipeline {
         })
     }
 
-    // Returns the shader groups that the pipeline was created with.
+    /// Returns the shader groups that the pipeline was created with.
+    #[inline]
     pub fn groups(&self) -> &[RayTracingShaderGroupCreateInfo] {
         &self.groups
     }
 
-    // Returns the shader stages that the pipeline was created with.
+    /// Returns the shader stages that the pipeline was created with.
+    #[inline]
     pub fn stages(&self) -> &[PipelineShaderStageCreateInfo] {
         &self.stages
     }
 
     /// Returns the `Device` that the pipeline was created with.
+    #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 
     /// Returns the flags that the pipeline was created with.
+    #[inline]
     pub fn flags(&self) -> PipelineCreateFlags {
         self.flags
     }
@@ -296,7 +315,7 @@ pub struct RayTracingPipelineCreateInfo {
 
     /// The maximum recursion depth of the pipeline.
     ///
-    /// The default value is 1.
+    /// The default value is `1`.
     pub max_pipeline_ray_recursion_depth: u32,
 
     /// The dynamic state to use.
@@ -324,6 +343,8 @@ pub struct RayTracingPipelineCreateInfo {
 }
 
 impl RayTracingPipelineCreateInfo {
+    /// Returns a `RayTracingPipelineCreateInfo` with the specified `layout`.
+    #[inline]
     pub fn layout(layout: Arc<PipelineLayout>) -> Self {
         Self {
             flags: PipelineCreateFlags::empty(),
@@ -331,9 +352,7 @@ impl RayTracingPipelineCreateInfo {
             groups: SmallVec::new(),
             max_pipeline_ray_recursion_depth: 1,
             dynamic_state: Default::default(),
-
             layout,
-
             base_pipeline: None,
             _ne: crate::NonExhaustive(()),
         }
@@ -359,11 +378,11 @@ impl RayTracingPipelineCreateInfo {
         if flags.intersects(PipelineCreateFlags::DERIVATIVE) {
             let base_pipeline = base_pipeline.as_ref().ok_or_else(|| {
                 Box::new(ValidationError {
-                    problem: "`flags` contains `PipelineCreateFlags::DERIVATIVE`, but \
-                        `base_pipeline` is `None`"
+                    context: "flags".into(),
+                    problem: "contains `PipelineCreateFlags::DERIVATIVE`, but `base_pipeline` is \
+                        `None`"
                         .into(),
-                    vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-flags-07984
-"],
+                    vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-flags-07984"],
                     ..Default::default()
                 })
             })?;
@@ -381,8 +400,9 @@ impl RayTracingPipelineCreateInfo {
             }
         } else if base_pipeline.is_some() {
             return Err(Box::new(ValidationError {
-                problem: "`flags` does not contain `PipelineCreateFlags::DERIVATIVE`, but \
-                    `base_pipeline` is `Some`"
+                context: "flags".into(),
+                problem: "does not contain `PipelineCreateFlags::DERIVATIVE`, but `base_pipeline` \
+                    is `Some`"
                     .into(),
                 ..Default::default()
             }));
@@ -390,7 +410,8 @@ impl RayTracingPipelineCreateInfo {
 
         if stages.is_empty() {
             return Err(Box::new(ValidationError {
-                problem: "`stages` is empty".into(),
+                context: "stages".into(),
+                problem: "is empty".into(),
                 vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-pLibraryInfo-07999"],
                 ..Default::default()
             }));
@@ -408,9 +429,9 @@ impl RayTracingPipelineCreateInfo {
             }));
         }
 
-        for stage in stages {
+        for (stage_index, stage) in stages.iter().enumerate() {
             stage.validate(device).map_err(|err| {
-                err.add_context("stages")
+                err.add_context(format!("stages[{}]", stage_index))
                     .set_vuids(&["VUID-VkRayTracingPipelineCreateInfoKHR-pStages-parameter"])
             })?;
 
@@ -426,7 +447,7 @@ impl RayTracingPipelineCreateInfo {
                 )
                 .map_err(|err| {
                     Box::new(ValidationError {
-                        context: "stage.entry_point".into(),
+                        context: format!("stages[{}].entry_point", stage_index).into(),
                         vuids: &[
                             "VUID-VkRayTracingPipelineCreateInfoKHR-layout-07987",
                             "VUID-VkRayTracingPipelineCreateInfoKHR-layout-07988",
@@ -440,11 +461,13 @@ impl RayTracingPipelineCreateInfo {
 
         if groups.is_empty() {
             return Err(Box::new(ValidationError {
-                problem: "`groups` is empty".into(),
+                context: "groups".into(),
+                problem: "is empty".into(),
                 vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-flags-08700"],
                 ..Default::default()
             }));
         }
+
         for group in groups {
             group.validate(stages).map_err(|err| {
                 err.add_context("groups")
@@ -465,8 +488,9 @@ impl RayTracingPipelineCreateInfo {
         //         ..Default::default()
         //     }));
         // }
+
         if !dynamic_state.is_empty() {
-            todo!("Dynamic state for ray tracing pipelines is not yet supported");
+            todo!("dynamic state for ray tracing pipelines is not yet supported");
         }
 
         let max_ray_recursion_depth = device
@@ -474,13 +498,14 @@ impl RayTracingPipelineCreateInfo {
             .properties()
             .max_ray_recursion_depth
             .unwrap();
+
         if max_pipeline_ray_recursion_depth > max_ray_recursion_depth {
             return Err(Box::new(ValidationError {
-                problem: format!(
-                    "`max_pipeline_ray_recursion_depth` is greater than the device's max value of {}",
-                    max_ray_recursion_depth
-                ).into(),
-                vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-maxPipelineRayRecursionDepth-03589"],
+                context: "max_pipeline_ray_recursion_depth".into(),
+                problem: "is greater than the `max_ray_recursion_depth` device property".into(),
+                vuids: &[
+                    "VUID-VkRayTracingPipelineCreateInfoKHR-maxPipelineRayRecursionDepth-03589",
+                ],
                 ..Default::default()
             }));
         }
@@ -618,9 +643,10 @@ impl RayTracingPipelineCreateInfo {
 
 /// Enum representing different types of Ray Tracing Shader Groups.
 ///
-/// Contains the index of the shader to use for each type of shader group.
-/// The index corresponds to the position of the shader in the `stages` field of the
-/// `RayTracingPipelineCreateInfo`.
+/// Contains the index of the shader to use for each type of shader group. The index corresponds to
+/// the position of the shader in the [`stages`] field of the [`RayTracingPipelineCreateInfo`].
+///
+/// [`stages`]: RayTracingPipelineCreateInfo::stages
 #[derive(Debug, Clone)]
 pub enum RayTracingShaderGroupCreateInfo {
     /// General shader group type, typically used for ray generation and miss shaders.
@@ -630,32 +656,31 @@ pub enum RayTracingShaderGroupCreateInfo {
     /// - Miss shader
     /// - Callable shader
     General {
-        /// Index of the general shader stage
+        /// Index of the general shader stage.
         general_shader: u32,
     },
 
     /// Procedural hit shader group type, used for custom intersection testing.
     ///
-    /// Used when implementing custom intersection shapes or volumes.
-    /// Requires an intersection shader and can optionally include closest hit
-    /// and any hit shaders.
+    /// Used when implementing custom intersection shapes or volumes. Requires an intersection
+    /// shader and can optionally include closest hit and any hit shaders.
     ProceduralHit {
-        /// Optional index of the closest hit shader stage
+        /// Optional index of the closest hit shader stage.
         closest_hit_shader: Option<u32>,
-        /// Optional index of the any hit shader stage
+        /// Optional index of the any hit shader stage.
         any_hit_shader: Option<u32>,
-        /// Index of the intersection shader stage
+        /// Index of the intersection shader stage.
         intersection_shader: u32,
     },
 
     /// Triangle hit shader group type, used for built-in triangle intersection.
     ///
-    /// Used for standard triangle geometry intersection testing.
-    /// Can optionally include closest hit and any hit shaders.
+    /// Used for standard triangle geometry intersection testing. Can optionally include closest
+    /// hit and any hit shaders.
     TrianglesHit {
-        /// Optional index of the closest hit shader stage
+        /// Optional index of the closest hit shader stage.
         closest_hit_shader: Option<u32>,
-        /// Optional index of the any hit shader stage
+        /// Optional index of the any hit shader stage.
         any_hit_shader: Option<u32>,
     },
 }
@@ -675,7 +700,9 @@ impl RayTracingShaderGroupCreateInfo {
                     | ExecutionModel::MissKHR
                     | ExecutionModel::CallableKHR => Ok(()),
                     _ => Err(Box::new(ValidationError {
-                        problem: "general shader in GENERAL group must be a RayGeneration, Miss, or Callable shader".into(),
+                        problem: "general shader in `GENERAL` group must be a `RayGeneration`, \
+                            `Miss`, or `Callable` shader"
+                            .into(),
                         vuids: &["VUID-VkRayTracingShaderGroupCreateInfoKHR-type-03474"],
                         ..Default::default()
                     })),
@@ -688,7 +715,9 @@ impl RayTracingShaderGroupCreateInfo {
             } => {
                 if get_shader_type(*intersection_shader) != ExecutionModel::IntersectionKHR {
                     return Err(Box::new(ValidationError {
-                        problem: "intersection shader in PROCEDURAL_HIT_GROUP must be an Intersection shader".into(),
+                        problem: "intersection shader in `PROCEDURAL_HIT_GROUP` must be an \
+                            `Intersection` shader"
+                            .into(),
                         vuids: &["VUID-VkRayTracingShaderGroupCreateInfoKHR-type-03476"],
                         ..Default::default()
                     }));
@@ -697,7 +726,7 @@ impl RayTracingShaderGroupCreateInfo {
                 if let Some(any_hit_shader) = any_hit_shader {
                     if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
                         return Err(Box::new(ValidationError {
-                            problem: "any hit shader must be an AnyHit shader".into(),
+                            problem: "any hit shader must be an `AnyHit` shader".into(),
                             vuids: &[
                                 "VUID-VkRayTracingShaderGroupCreateInfoKHR-anyHitShader-03479",
                             ],
@@ -709,7 +738,7 @@ impl RayTracingShaderGroupCreateInfo {
                 if let Some(closest_hit_shader) = closest_hit_shader {
                     if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
                         return Err(Box::new(ValidationError {
-                            problem: "closest hit shader must be a ClosestHit shader".into(),
+                            problem: "closest hit shader must be a `ClosestHit` shader".into(),
                             vuids: &[
                                 "VUID-VkRayTracingShaderGroupCreateInfoKHR-closestHitShader-03478",
                             ],
@@ -725,7 +754,7 @@ impl RayTracingShaderGroupCreateInfo {
                 if let Some(any_hit_shader) = any_hit_shader {
                     if get_shader_type(*any_hit_shader) != ExecutionModel::AnyHitKHR {
                         return Err(Box::new(ValidationError {
-                            problem: "any hit shader must be an AnyHit shader".into(),
+                            problem: "any hit shader must be an `AnyHit` shader".into(),
                             vuids: &[
                                 "VUID-VkRayTracingShaderGroupCreateInfoKHR-anyHitShader-03479",
                             ],
@@ -737,7 +766,7 @@ impl RayTracingShaderGroupCreateInfo {
                 if let Some(closest_hit_shader) = closest_hit_shader {
                     if get_shader_type(*closest_hit_shader) != ExecutionModel::ClosestHitKHR {
                         return Err(Box::new(ValidationError {
-                            problem: "closest hit shader must be a ClosestHit shader".into(),
+                            problem: "closest hit shader must be a `ClosestHit` shader".into(),
                             vuids: &[
                                 "VUID-VkRayTracingShaderGroupCreateInfoKHR-closestHitShader-03478",
                             ],
@@ -824,11 +853,6 @@ pub struct ShaderBindingTable {
 }
 
 impl ShaderBindingTable {
-    /// Returns the addresses of the shader groups in the shader binding table.
-    pub fn addresses(&self) -> &ShaderBindingTableAddresses {
-        &self.addresses
-    }
-
     /// Automatically creates a shader binding table from a ray tracing pipeline.
     pub fn new(
         allocator: Arc<dyn MemoryAllocator>,
@@ -977,6 +1001,12 @@ impl ShaderBindingTable {
             },
             _buffer: sbt_buffer,
         })
+    }
+
+    /// Returns the addresses of the shader groups in the shader binding table.
+    #[inline]
+    pub fn addresses(&self) -> &ShaderBindingTableAddresses {
+        &self.addresses
     }
 }
 

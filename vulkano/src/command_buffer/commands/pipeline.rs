@@ -1593,26 +1593,34 @@ impl<L> AutoCommandBufferBuilder<L> {
         self
     }
 
+    /// Performs a single ray tracing operation using a ray tracing pipeline.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
     pub unsafe fn trace_rays(
         &mut self,
         shader_binding_table_addresses: ShaderBindingTableAddresses,
-        width: u32,
-        height: u32,
-        depth: u32,
+        dimensions: [u32; 3],
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.inner
-            .validate_trace_rays(&shader_binding_table_addresses, width, height, depth)?;
+            .validate_trace_rays(&shader_binding_table_addresses, dimensions)?;
 
-        Ok(self.trace_rays_unchecked(shader_binding_table_addresses, width, height, depth))
+        Ok(self.trace_rays_unchecked(shader_binding_table_addresses, dimensions))
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn trace_rays_unchecked(
         &mut self,
         shader_binding_table_addresses: ShaderBindingTableAddresses,
-        width: u32,
-        height: u32,
-        depth: u32,
+        dimensions: [u32; 3],
     ) -> &mut Self {
         let pipeline = self.builder_state.pipeline_ray_tracing.as_deref().unwrap();
 
@@ -1620,7 +1628,7 @@ impl<L> AutoCommandBufferBuilder<L> {
         self.add_descriptor_sets_resources(&mut used_resources, pipeline);
 
         self.add_command("trace_rays", used_resources, move |out| {
-            out.trace_rays_unchecked(&shader_binding_table_addresses, width, height, depth);
+            out.trace_rays_unchecked(&shader_binding_table_addresses, dimensions);
         });
 
         self
@@ -4985,21 +4993,17 @@ impl RecordingCommandBuffer {
     pub unsafe fn trace_rays(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        width: u32,
-        height: u32,
-        depth: u32,
+        dimensions: [u32; 3],
     ) -> Result<&mut Self, Box<ValidationError>> {
-        self.validate_trace_rays(shader_binding_table_addresses, width, height, depth)?;
+        self.validate_trace_rays(shader_binding_table_addresses, dimensions)?;
 
-        Ok(self.trace_rays_unchecked(shader_binding_table_addresses, width, height, depth))
+        Ok(self.trace_rays_unchecked(shader_binding_table_addresses, dimensions))
     }
 
     fn validate_trace_rays(
         &self,
         _shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        width: u32,
-        height: u32,
-        depth: u32,
+        dimensions: [u32; 3],
     ) -> Result<(), Box<ValidationError>> {
         if !self.device().enabled_features().ray_tracing_pipeline {
             return Err(Box::new(ValidationError {
@@ -5026,9 +5030,9 @@ impl RecordingCommandBuffer {
 
         let device_properties = self.device().physical_device().properties();
 
-        let width = width as u64;
-        let height = height as u64;
-        let depth = depth as u64;
+        let width = dimensions[0] as u64;
+        let height = dimensions[1] as u64;
+        let depth = dimensions[2] as u64;
 
         let max_width = device_properties.max_compute_work_group_count[0] as u64
             * device_properties.max_compute_work_group_size[0] as u64;
@@ -5036,7 +5040,9 @@ impl RecordingCommandBuffer {
         if width > max_width {
             return Err(Box::new(ValidationError {
                 context: "width".into(),
-                problem: "exceeds maxComputeWorkGroupCount[0] * maxComputeWorkGroupSize[0]".into(),
+                problem: "exceeds `max_compute_work_group_count[0] * \
+                    max_compute_work_group_size[0]`"
+                    .into(),
                 vuids: &["VUID-vkCmdTraceRaysKHR-width-03638"],
                 ..Default::default()
             }));
@@ -5048,7 +5054,9 @@ impl RecordingCommandBuffer {
         if height > max_height {
             return Err(Box::new(ValidationError {
                 context: "height".into(),
-                problem: "exceeds maxComputeWorkGroupCount[1] * maxComputeWorkGroupSize[1]".into(),
+                problem: "exceeds `max_compute_work_group_count[1] * \
+                    max_compute_work_group_size[1]`"
+                    .into(),
                 vuids: &["VUID-vkCmdTraceRaysKHR-height-03639"],
                 ..Default::default()
             }));
@@ -5060,7 +5068,9 @@ impl RecordingCommandBuffer {
         if depth > max_depth {
             return Err(Box::new(ValidationError {
                 context: "depth".into(),
-                problem: "exceeds maxComputeWorkGroupCount[2] * maxComputeWorkGroupSize[2]".into(),
+                problem: "exceeds `max_compute_work_group_count[2] * \
+                    max_compute_work_group_size[2]`"
+                    .into(),
                 vuids: &["VUID-vkCmdTraceRaysKHR-depth-03640"],
                 ..Default::default()
             }));
@@ -5072,7 +5082,7 @@ impl RecordingCommandBuffer {
         if total_invocations > max_invocations {
             return Err(Box::new(ValidationError {
                 context: "width * height * depth".into(),
-                problem: "exceeds maxRayDispatchInvocationCount".into(),
+                problem: "exceeds `max_ray_dispatch_invocation_count`".into(),
                 vuids: &["VUID-vkCmdTraceRaysKHR-width-03641"],
                 ..Default::default()
             }));
@@ -5085,26 +5095,23 @@ impl RecordingCommandBuffer {
     pub unsafe fn trace_rays_unchecked(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        width: u32,
-        height: u32,
-        depth: u32,
+        dimensions: [u32; 3],
     ) -> &mut Self {
-        let fns = self.device().fns();
-
         let raygen = shader_binding_table_addresses.raygen.to_vk();
         let miss = shader_binding_table_addresses.miss.to_vk();
         let hit = shader_binding_table_addresses.hit.to_vk();
         let callable = shader_binding_table_addresses.callable.to_vk();
 
+        let fns = self.device().fns();
         (fns.khr_ray_tracing_pipeline.cmd_trace_rays_khr)(
             self.handle(),
             &raygen,
             &miss,
             &hit,
             &callable,
-            width,
-            height,
-            depth,
+            dimensions[0],
+            dimensions[1],
+            dimensions[2],
         );
 
         self

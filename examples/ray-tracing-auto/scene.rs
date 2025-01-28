@@ -239,15 +239,8 @@ impl Scene {
 
         let extent = self.swapchain_image_sets[0].0.image().extent();
 
-        unsafe {
-            builder.trace_rays(
-                self.shader_binding_table.addresses().clone(),
-                extent[0],
-                extent[1],
-                1,
-            )
-        }
-        .unwrap();
+        unsafe { builder.trace_rays(self.shader_binding_table.addresses().clone(), extent) }
+            .unwrap();
     }
 }
 

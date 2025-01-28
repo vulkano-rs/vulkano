@@ -1318,13 +1318,13 @@ impl Device {
             group_count,
         )?;
 
-        unsafe {
-            Ok(self.ray_tracing_shader_group_handles_unchecked(
+        Ok(unsafe {
+            self.ray_tracing_shader_group_handles_unchecked(
                 ray_tracing_pipeline,
                 first_group,
                 group_count,
-            )?)
-        }
+            )
+        }?)
     }
 
     fn validate_ray_tracing_pipeline_properties(
@@ -1351,13 +1351,14 @@ impl Device {
 
         if (first_group + group_count) as usize > ray_tracing_pipeline.groups().len() {
             Err(Box::new(ValidationError {
-                problem: "the sum of `first_group` and `group_count` must be less than or equal\
-                 to the number of shader groups in pipeline"
+                problem: "the sum of `first_group` and `group_count` must be less than or equal \
+                    to the number of shader groups in the pipeline"
                     .into(),
                 vuids: &["VUID-vkGetRayTracingShaderGroupHandlesKHR-firstGroup-02419"],
                 ..Default::default()
             }))?
         }
+
         // TODO: VUID-vkGetRayTracingShaderGroupHandlesKHR-pipeline-07828
 
         Ok(())
@@ -1388,9 +1389,10 @@ impl Device {
                 data.len(),
                 data.as_mut_ptr().cast(),
             )
-            .result()
-            .map_err(VulkanError::from)?;
         }
+        .result()
+        .map_err(VulkanError::from)?;
+
         Ok(ShaderGroupHandlesData { data, handle_size })
     }
 }
@@ -2231,10 +2233,12 @@ pub struct ShaderGroupHandlesData {
 }
 
 impl ShaderGroupHandlesData {
+    #[inline]
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 
+    #[inline]
     pub fn handle_size(&self) -> u32 {
         self.handle_size
     }
@@ -2242,6 +2246,7 @@ impl ShaderGroupHandlesData {
 
 impl ShaderGroupHandlesData {
     /// Returns an iterator over the handles in the data.
+    #[inline]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &[u8]> {
         self.data().chunks_exact(self.handle_size as usize)
     }

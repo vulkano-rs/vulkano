@@ -117,6 +117,7 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Binds a ray tracing pipeline for future ray tracing calls.
     pub unsafe fn bind_pipeline_ray_tracing(
         &mut self,
         pipeline: &Arc<RayTracingPipeline>,
