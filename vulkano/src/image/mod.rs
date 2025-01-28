@@ -1015,7 +1015,7 @@ vulkan_bitflags! {
     ///
     /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
     /// [`sparse_residency_image2_d`]: crate::device::DeviceFeatures::sparse_residency_image2_d
-    /// [`sparse_residency_image2_3`]: crate::device::DeviceFeatures::sparse_residency_image3_d
+    /// [`sparse_residency_image2_d`]: crate::device::DeviceFeatures::sparse_residency_image3_d
     /// [`sparse_residency2_samples`]: crate::device::DeviceFeatures::sparse_residency2_samples
     /// [`sparse_residency4_samples`]: crate::device::DeviceFeatures::sparse_residency4_samples
     /// [`sparse_residency8_samples`]: crate::device::DeviceFeatures::sparse_residency8_samples
