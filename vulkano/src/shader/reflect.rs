@@ -140,6 +140,9 @@ fn inspect_entry_point(
 
             while let Instruction::AccessChain {
                 base, ref indexes, ..
+            }
+            | Instruction::InBoundsAccessChain {
+                base, ref indexes, ..
             } = *self.spirv.id(id).instruction()
             {
                 id = base;
