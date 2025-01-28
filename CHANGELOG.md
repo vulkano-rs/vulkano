@@ -180,6 +180,7 @@ Other:
 - Fixed `AllocationHandle::as_index` being a const fn, as it is UB to observe the address of a pointer in const eval.
 - [#2607](https://github.com/vulkano-rs/vulkano/issues/2607): Incorrect buffer used in acceleration structure build validation
 - [#2619](https://github.com/vulkano-rs/vulkano/issues/2619): `DescriptorBindingRequirements` not including bindings referenced via `OpInBoundsAccessChain`.
+- Validation error when using `OpReadClockKHR` in shaders with device feature `shader_subgroup_clock` or `shader_device_clock` enabled.
 - Vulkano-shaders: Fixed shader struct names that are invalid rust idents from panicking the shader! macro. Rust-gpu emitted struct names such as `foo::bar::MyStruct` now work.
 - Vulkano-shaders: Fixed `shader!` invocations using the `bytes` option not getting recompiled automatically when the source file changes.
 
