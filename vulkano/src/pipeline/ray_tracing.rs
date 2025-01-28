@@ -241,6 +241,74 @@ impl RayTracingPipeline {
     pub fn flags(&self) -> PipelineCreateFlags {
         self.flags
     }
+
+    /// Retrieves the opaque handles of shaders in the ray tracing pipeline.
+    ///
+    /// Handles for `group_count` groups are retrieved, starting at `first_group`. The group
+    /// indices correspond to the [`groups`] the pipeline was created with.
+    ///
+    /// [`groups`]: Self::groups
+    pub fn group_handles(
+        &self,
+        first_group: u32,
+        group_count: u32,
+    ) -> Result<ShaderGroupHandlesData, Validated<VulkanError>> {
+        self.validate_group_handles(first_group, group_count)?;
+
+        Ok(unsafe { self.group_handles_unchecked(first_group, group_count) }?)
+    }
+
+    fn validate_group_handles(
+        &self,
+        first_group: u32,
+        group_count: u32,
+    ) -> Result<(), Box<ValidationError>> {
+        if (first_group + group_count) as usize > self.groups().len() {
+            Err(Box::new(ValidationError {
+                problem: "the sum of `first_group` and `group_count` must be less than or equal \
+                    to the number of shader groups in the pipeline"
+                    .into(),
+                vuids: &["VUID-vkGetRayTracingShaderGroupHandlesKHR-firstGroup-02419"],
+                ..Default::default()
+            }))?
+        }
+
+        // TODO: VUID-vkGetRayTracingShaderGroupHandlesKHR-pipeline-07828
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn group_handles_unchecked(
+        &self,
+        first_group: u32,
+        group_count: u32,
+    ) -> Result<ShaderGroupHandlesData, VulkanError> {
+        let handle_size = self
+            .device()
+            .physical_device()
+            .properties()
+            .shader_group_handle_size
+            .unwrap();
+
+        let mut data = vec![0u8; (handle_size * group_count) as usize];
+        let fns = self.device().fns();
+        unsafe {
+            (fns.khr_ray_tracing_pipeline
+                .get_ray_tracing_shader_group_handles_khr)(
+                self.device().handle(),
+                self.handle(),
+                first_group,
+                group_count,
+                data.len(),
+                data.as_mut_ptr().cast(),
+            )
+        }
+        .result()
+        .map_err(VulkanError::from)?;
+
+        Ok(ShaderGroupHandlesData { data, handle_size })
+    }
 }
 
 impl Pipeline for RayTracingPipeline {
@@ -832,6 +900,33 @@ pub(crate) struct RayTracingPipelineCreateInfoFields3Vk {
     pub(crate) stages_fields2_vk: SmallVec<[PipelineShaderStageCreateInfoFields2Vk; 5]>,
 }
 
+/// Holds the data returned by [`RayTracingPipeline::group_handles`].
+#[derive(Clone, Debug)]
+pub struct ShaderGroupHandlesData {
+    data: Vec<u8>,
+    handle_size: u32,
+}
+
+impl ShaderGroupHandlesData {
+    /// Returns the opaque handle data as one blob.
+    #[inline]
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Returns the shader group handle size of the device.
+    #[inline]
+    pub fn handle_size(&self) -> u32 {
+        self.handle_size
+    }
+
+    /// Returns an iterator over the data of each group handle.
+    #[inline]
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &[u8]> {
+        self.data().chunks_exact(self.handle_size as usize)
+    }
+}
+
 /// An object that holds the strided addresses of the shader groups in a shader binding table.
 #[derive(Debug, Clone)]
 pub struct ShaderBindingTableAddresses {
@@ -865,13 +960,8 @@ impl ShaderBindingTable {
         let mut hit_shader_handles = Vec::new();
         let mut callable_shader_handles = Vec::new();
 
-        let handle_data = ray_tracing_pipeline
-            .device()
-            .ray_tracing_shader_group_handles(
-                ray_tracing_pipeline,
-                0,
-                ray_tracing_pipeline.groups().len() as u32,
-            )?;
+        let handle_data =
+            ray_tracing_pipeline.group_handles(0, ray_tracing_pipeline.groups().len() as u32)?;
         let mut handle_iter = handle_data.iter();
 
         for group in ray_tracing_pipeline.groups() {
