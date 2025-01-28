@@ -536,9 +536,9 @@ impl RawBuffer {
     ///   buffer must be fully bound with memory before its memory is accessed by the device.
     /// - If `self.flags()` contains [`BufferCreateFlags::SPARSE_RESIDENCY`], then you must ensure
     ///   that any reads from the buffer are prepared to handle unexpected or inconsistent values,
-    ///   as determined by the [`Properties::residency_non_resident_strict`] device property.
+    ///   as determined by the [`residency_non_resident_strict`] device property.
     ///
-    /// [`Properties::residency_non_resident_strict`]: crate::device::Properties::residency_non_resident_strict
+    /// [`residency_non_resident_strict`]: crate::device::DeviceProperties::residency_non_resident_strict
     pub unsafe fn assume_bound(self) -> Buffer {
         let memory = if self.flags().intersects(BufferCreateFlags::SPARSE_BINDING) {
             BufferMemory::Sparse
