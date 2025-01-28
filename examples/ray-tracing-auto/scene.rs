@@ -209,9 +209,9 @@ impl Scene {
                 ..Default::default()
             },
             raygen::Camera {
-                viewInverse: view.inverse().to_cols_array_2d(),
-                projInverse: proj.inverse().to_cols_array_2d(),
-                viewProj: (proj * view).to_cols_array_2d(),
+                view_proj: (proj * view).to_cols_array_2d(),
+                view_inverse: view.inverse().to_cols_array_2d(),
+                proj_inverse: proj.inverse().to_cols_array_2d(),
             },
         )
         .unwrap();
