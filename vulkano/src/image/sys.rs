@@ -980,8 +980,6 @@ impl RawImage {
     ///
     /// # Safety
     ///
-    /// - The image must already have a suitable memory allocation bound to it.
-    ///
     /// If `self.flags()` does not contain [`ImageCreateFlags::SPARSE_BINDING`]:
     ///
     /// - The image must already have a suitable memory allocation bound to it.
@@ -995,9 +993,9 @@ impl RawImage {
     ///   be fully bound with memory before any memory is accessed by the device.
     /// - If `self.flags()` contains [`ImageCreateFlags::SPARSE_RESIDENCY`], then you must ensure
     ///   that any reads from the image are prepared to handle unexpected or inconsistent values,
-    ///   as determined by the [`Properties::residency_non_resident_strict`] device property.
+    ///   as determined by the [`residency_non_resident_strict`] device property.
     ///
-    /// [`Properties::residency_non_resident_strict`]: crate::device::Properties::residency_non_resident_strict
+    /// [`residency_non_resident_strict`]: crate::device::DeviceProperties::residency_non_resident_strict
     pub unsafe fn assume_bound(self) -> Image {
         let memory = if self.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
             ImageMemory::Sparse

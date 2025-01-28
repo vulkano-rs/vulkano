@@ -296,7 +296,7 @@ impl SparseBufferMemoryBindInfo {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`binds[{}].offset` is not less than \
-						`buffer.memory_requirements().layout.size()`",
+                        `buffer.memory_requirements().layout.size()`",
                         index
                     )
                     .into(),
@@ -309,7 +309,7 @@ impl SparseBufferMemoryBindInfo {
                 return Err(Box::new(ValidationError {
                     problem: format!(
                         "`binds[{0}].offset + binds[{0}].size` is greater than \
-						`buffer.memory_requirements().layout.size()`",
+                        `buffer.memory_requirements().layout.size()`",
                         index
                     )
                     .into(),
@@ -350,7 +350,7 @@ impl SparseBufferMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.0.allocation_size()` is less than \
-							`buffer.memory_requirements().layout.size()`",
+                            `buffer.memory_requirements().layout.size()`",
                             index
                         )
                         .into(),
@@ -363,7 +363,7 @@ impl SparseBufferMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.1` is not aligned according to \
-							`buffer.memory_requirements().layout.alignment()`",
+                            `buffer.memory_requirements().layout.alignment()`",
                             index
                         )
                         .into(),
@@ -376,7 +376,7 @@ impl SparseBufferMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.0.memory_type_index()` is not a bit set in \
-							`buffer.memory_requirements().memory_type_bits`",
+                            `buffer.memory_requirements().memory_type_bits`",
                             index
                         )
                         .into(),
@@ -783,7 +783,7 @@ impl SparseImageOpaqueMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.0.allocation_size()` is less than \
-							`image.memory_requirements()[0].layout.size()`",
+                            `image.memory_requirements()[0].layout.size()`",
                             index
                         )
                         .into(),
@@ -796,7 +796,7 @@ impl SparseImageOpaqueMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.1` is not aligned according to \
-							`image.memory_requirements()[0].layout.alignment()`",
+                            `image.memory_requirements()[0].layout.alignment()`",
                             index
                         )
                         .into(),
@@ -809,7 +809,7 @@ impl SparseImageOpaqueMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.0.memory_type_index()` is not a bit set in \
-							`image.memory_requirements()[0].memory_type_bits`",
+                            `image.memory_requirements()[0].memory_type_bits`",
                             index
                         )
                         .into(),
@@ -1267,7 +1267,7 @@ impl SparseImageMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.0.allocation_size()` is less than \
-							`image.memory_requirements()[0].layout.size()`",
+                            `image.memory_requirements()[0].layout.size()`",
                             index
                         )
                         .into(),
@@ -1280,7 +1280,7 @@ impl SparseImageMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.1` is not aligned according to \
-							`image.memory_requirements()[0].layout.alignment()`",
+                            `image.memory_requirements()[0].layout.alignment()`",
                             index
                         )
                         .into(),
@@ -1293,7 +1293,7 @@ impl SparseImageMemoryBindInfo {
                     return Err(Box::new(ValidationError {
                         problem: format!(
                             "`binds[{}].memory.0.memory_type_index()` is not a bit set in \
-							`image.memory_requirements()[0].memory_type_bits`",
+                            `image.memory_requirements()[0].memory_type_bits`",
                             index
                         )
                         .into(),
