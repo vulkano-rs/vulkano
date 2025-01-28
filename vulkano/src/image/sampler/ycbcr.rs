@@ -480,10 +480,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 .set_vuids(&["VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-parameter"])
         })?;
 
-        if !format
-            .numeric_format_color()
-            .map_or(false, |ty| ty == NumericFormat::UNORM)
-        {
+        if !(format.numeric_format_color() == Some(NumericFormat::UNORM)) {
             return Err(Box::new(ValidationError {
                 context: "format".into(),
                 problem: "the numeric type is not `UNORM`".into(),
@@ -725,7 +722,7 @@ impl SamplerYcbcrConversionCreateInfo {
             // TODO: Spec doesn't say how many bits `Zero` and `One` are considered to have, so
             // just skip them for now.
 
-            if components_bits[0].map_or(false, |bits| bits < 8) {
+            if components_bits[0].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.r` maps to a component in `format` with less than \
@@ -736,7 +733,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 }));
             }
 
-            if components_bits[1].map_or(false, |bits| bits < 8) {
+            if components_bits[1].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.g` maps to a component in `format` with less than \
@@ -747,7 +744,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 }));
             }
 
-            if components_bits[2].map_or(false, |bits| bits < 8) {
+            if components_bits[2].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.b` maps to a component in `format` with less than \
@@ -758,7 +755,7 @@ impl SamplerYcbcrConversionCreateInfo {
                 }));
             }
 
-            if components_bits[3].map_or(false, |bits| bits < 8) {
+            if components_bits[3].is_some_and(|bits| bits < 8) {
                 return Err(Box::new(ValidationError {
                     problem: "`ycbcr_range` is `SamplerYcbcrRange::ItuNarrow`, and \
                         `component_mapping.a` maps to a component in `format` with less than \

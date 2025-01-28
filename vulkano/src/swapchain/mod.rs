@@ -642,7 +642,7 @@ impl Swapchain {
 
         if surface_capabilities
             .max_image_count
-            .map_or(false, |c| min_image_count > c)
+            .is_some_and(|c| min_image_count > c)
         {
             return Err(Box::new(ValidationError {
                 problem: "`create_info.min_image_count` is greater than the `max_image_count` \

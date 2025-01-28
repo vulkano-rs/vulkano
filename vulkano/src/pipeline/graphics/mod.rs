@@ -2109,7 +2109,7 @@ impl GraphicsPipelineCreateInfo {
                         .subpass_desc()
                         .depth_stencil_attachment
                         .as_ref()
-                        .map_or(false, |depth_stencil_attachment| {
+                        .is_some_and(|depth_stencil_attachment| {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
                                 .format
@@ -2145,7 +2145,7 @@ impl GraphicsPipelineCreateInfo {
                                         .layout
                                         .is_writable(ImageAspect::Depth)
                                 })
-                                .map_or(false, |depth_stencil_attachment| {
+                                .is_some_and(|depth_stencil_attachment| {
                                     subpass.render_pass().attachments()
                                         [depth_stencil_attachment.attachment as usize]
                                         .format
@@ -2176,7 +2176,7 @@ impl GraphicsPipelineCreateInfo {
                         .subpass_desc()
                         .depth_stencil_attachment
                         .as_ref()
-                        .map_or(false, |depth_stencil_attachment| {
+                        .is_some_and(|depth_stencil_attachment| {
                             subpass.render_pass().attachments()
                                 [depth_stencil_attachment.attachment as usize]
                                 .format
@@ -2305,7 +2305,7 @@ impl GraphicsPipelineCreateInfo {
                         }
                     };
 
-                    if !attachment_format.map_or(false, |format| {
+                    if !attachment_format.is_some_and(|format| {
                         let format_properties =
                             unsafe { device.physical_device().format_properties_unchecked(format) };
                         format_properties

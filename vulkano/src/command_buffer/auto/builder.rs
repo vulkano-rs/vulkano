@@ -306,7 +306,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             self.inner
                 .inheritance_info()
                 .as_ref()
-                .map_or(false, |info| info.render_pass.is_some()),
+                .is_some_and(|info| info.render_pass.is_some()),
         );
 
         // Add barriers between the commands.

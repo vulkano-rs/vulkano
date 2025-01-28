@@ -315,7 +315,7 @@ fn inspect_entry_point(
                             desc_reqs.memory_read = stage.into();
                             desc_reqs.sampler_no_ycbcr_conversion = true;
 
-                            if image_operands.as_ref().map_or(false, |image_operands| {
+                            if image_operands.as_ref().is_some_and(|image_operands| {
                                 image_operands.bias.is_some()
                                     || image_operands.const_offset.is_some()
                                     || image_operands.offset.is_some()
@@ -362,7 +362,7 @@ fn inspect_entry_point(
                             desc_reqs.memory_read = stage.into();
                             desc_reqs.sampler_no_unnormalized_coordinates = true;
 
-                            if image_operands.as_ref().map_or(false, |image_operands| {
+                            if image_operands.as_ref().is_some_and(|image_operands| {
                                 image_operands.const_offset.is_some()
                                     || image_operands.offset.is_some()
                             }) {
@@ -422,7 +422,7 @@ fn inspect_entry_point(
                             desc_reqs.sampler_no_unnormalized_coordinates = true;
                             desc_reqs.sampler_compare = true;
 
-                            if image_operands.as_ref().map_or(false, |image_operands| {
+                            if image_operands.as_ref().is_some_and(|image_operands| {
                                 image_operands.const_offset.is_some()
                                     || image_operands.offset.is_some()
                             }) {

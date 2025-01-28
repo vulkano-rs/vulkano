@@ -127,9 +127,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             .builder_state
             .queries
             .get(&query_pool.query_type())
-            .map_or(false, |state| {
-                *state.query_pool == *query_pool && state.query == query
-            })
+            .is_some_and(|state| *state.query_pool == *query_pool && state.query == query)
         {
             return Err(Box::new(ValidationError {
                 problem: "no query with the same type as `query_pool.query_type()` is active"

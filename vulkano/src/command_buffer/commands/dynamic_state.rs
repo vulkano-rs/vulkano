@@ -33,7 +33,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             .builder_state
             .pipeline_graphics
             .as_ref()
-            .map_or(false, |pipeline| pipeline.fixed_state().contains(&state))
+            .is_some_and(|pipeline| pipeline.fixed_state().contains(&state))
         {
             return Err(Box::new(ValidationError {
                 problem: "the state for this value in the currently bound graphics pipeline \

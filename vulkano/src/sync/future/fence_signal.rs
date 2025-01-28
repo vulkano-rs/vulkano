@@ -303,12 +303,9 @@ where
                     .map_err(OutcomeErr::Partial)
                 } else {
                     for swapchain_info in &present_info.swapchain_infos {
-                        if swapchain_info
-                            .present_id
-                            .map_or(false, |present_id| !unsafe {
-                                swapchain_info.swapchain.try_claim_present_id(present_id)
-                            })
-                        {
+                        if swapchain_info.present_id.is_some_and(|present_id| !unsafe {
+                            swapchain_info.swapchain.try_claim_present_id(present_id)
+                        }) {
                             return Err(Box::new(ValidationError {
                                 problem: "the provided `present_id` was not greater than any \
                                         `present_id` passed previously for the same swapchain"

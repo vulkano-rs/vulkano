@@ -722,7 +722,7 @@ impl Instance {
                 group.contains(&first.handle()).then_some(group)
             })
             // ...then check if all the remaining physical devices belong to that group too.
-            .map_or(false, |group| {
+            .is_some_and(|group| {
                 physical_devices.all(|physical_device| {
                     physical_device.instance() == self && group.contains(&physical_device.handle())
                 })

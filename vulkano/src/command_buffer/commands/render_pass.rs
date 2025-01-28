@@ -2493,7 +2493,7 @@ impl RenderingInfo {
 
                 if !properties
                     .supported_depth_resolve_modes
-                    .map_or(false, |modes| modes.contains_enum(mode))
+                    .is_some_and(|modes| modes.contains_enum(mode))
                 {
                     return Err(Box::new(ValidationError {
                         problem: "`depth_attachment.resolve_info.mode` is not one of the modes in \
@@ -2614,7 +2614,7 @@ impl RenderingInfo {
 
                 if !properties
                     .supported_stencil_resolve_modes
-                    .map_or(false, |modes| modes.contains_enum(mode))
+                    .is_some_and(|modes| modes.contains_enum(mode))
                 {
                     return Err(Box::new(ValidationError {
                         problem:

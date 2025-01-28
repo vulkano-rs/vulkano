@@ -111,7 +111,7 @@ fn is_device_command(commands: &IndexMap<&str, &Command>, name: &str) -> bool {
         match command {
             Command::Alias { alias, .. } => name = alias.as_str(),
             Command::Definition(command) => {
-                break command.params.first().map_or(false, |field| {
+                break command.params.first().is_some_and(|field| {
                     matches!(
                         field.definition.type_name.as_deref(),
                         Some("VkDevice" | "VkCommandBuffer" | "VkQueue")

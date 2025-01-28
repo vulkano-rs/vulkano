@@ -292,7 +292,7 @@ impl<'r> VkRegistryData<'r> {
                         if ext
                             .supported
                             .as_deref()
-                            .map_or(false, |s| s.split(',').any(|s| s == "vulkan"))
+                            .is_some_and(|s| s.split(',').any(|s| s == "vulkan"))
                             && ext.obsoletedby.is_none()
                         {
                             return true;

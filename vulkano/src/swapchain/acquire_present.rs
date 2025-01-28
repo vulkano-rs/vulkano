@@ -478,7 +478,7 @@ impl PresentInfo {
 
         let has_present_mode = swapchain_infos
             .first()
-            .map_or(false, |first| first.present_mode.is_some());
+            .is_some_and(|first| first.present_mode.is_some());
 
         for (index, swapchain_info) in swapchain_infos.iter().enumerate() {
             swapchain_info
@@ -1109,7 +1109,7 @@ where
                 })
             }
             SubmitAnyBuilder::QueuePresent(mut present_info) => {
-                if present_info.swapchain_infos.first().map_or(false, |prev| {
+                if present_info.swapchain_infos.first().is_some_and(|prev| {
                     prev.present_mode.is_some() != self.swapchain_info.present_mode.is_some()
                 }) {
                     // If the present mode Option variants don't match, create a new command.
@@ -1156,7 +1156,7 @@ where
                         _ne: _,
                     } = swapchain_info;
 
-                    if present_id.map_or(false, |present_id| !unsafe {
+                    if present_id.is_some_and(|present_id| !unsafe {
                         swapchain.try_claim_present_id(present_id)
                     }) {
                         return Err(Box::new(ValidationError {
