@@ -40,7 +40,7 @@ use vulkano_taskgraph::{
 mod raygen {
     vulkano_shaders::shader! {
         ty: "raygen",
-        path: "raytrace.rgen",
+        path: "rgen.glsl",
         vulkan_version: "1.2"
     }
 }
@@ -48,7 +48,7 @@ mod raygen {
 mod closest_hit {
     vulkano_shaders::shader! {
         ty: "closesthit",
-        path: "raytrace.rchit",
+        path: "rchit.glsl",
         vulkan_version: "1.2"
     }
 }
@@ -56,7 +56,7 @@ mod closest_hit {
 mod miss {
     vulkano_shaders::shader! {
         ty: "miss",
-        path: "raytrace.miss",
+        path: "rmiss.glsl",
         vulkan_version: "1.2"
     }
 }
