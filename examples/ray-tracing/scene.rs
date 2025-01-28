@@ -16,7 +16,7 @@ use vulkano::{
         PrimaryCommandBufferAbstract,
     },
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, sys::RawDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet,
     },
     device::{Device, Queue},
     format::Format,
@@ -37,40 +37,9 @@ use vulkano_taskgraph::{
     command_buffer::RecordingCommandBuffer, resource::Resources, Id, Task, TaskContext, TaskResult,
 };
 
-mod raygen {
-    vulkano_shaders::shader! {
-        ty: "raygen",
-        path: "rgen.glsl",
-        vulkan_version: "1.2"
-    }
-}
-
-mod closest_hit {
-    vulkano_shaders::shader! {
-        ty: "closesthit",
-        path: "rchit.glsl",
-        vulkan_version: "1.2"
-    }
-}
-
-mod miss {
-    vulkano_shaders::shader! {
-        ty: "miss",
-        path: "rmiss.glsl",
-        vulkan_version: "1.2"
-    }
-}
-
-#[derive(BufferContents, Vertex)]
-#[repr(C)]
-struct MyVertex {
-    #[format(R32G32B32_SFLOAT)]
-    position: [f32; 3],
-}
-
 pub struct SceneTask {
-    descriptor_set_0: Arc<RawDescriptorSet>,
-    swapchain_image_sets: Vec<(Arc<ImageView>, Arc<RawDescriptorSet>)>,
+    descriptor_set: Arc<DescriptorSet>,
+    swapchain_image_sets: Vec<(Arc<ImageView>, Arc<DescriptorSet>)>,
     pipeline_layout: Arc<PipelineLayout>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     virtual_swapchain_id: Id<Swapchain>,
@@ -87,8 +56,8 @@ impl SceneTask {
         pipeline_layout: Arc<PipelineLayout>,
         swapchain_id: Id<Swapchain>,
         virtual_swapchain_id: Id<Swapchain>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         memory_allocator: Arc<dyn MemoryAllocator>,
+        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
         command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
     ) -> Self {
         let pipeline = {
@@ -100,7 +69,6 @@ impl SceneTask {
                 .unwrap()
                 .entry_point("main")
                 .unwrap();
-
             let miss = miss::load(app.device.clone())
                 .unwrap()
                 .entry_point("main")
@@ -113,6 +81,8 @@ impl SceneTask {
                 PipelineShaderStageCreateInfo::new(closest_hit),
             ];
 
+            // Define the shader groups that will eventually turn into the shader binding table.
+            // The numbers are the indices of the stages in the `stages` array.
             let groups = [
                 RayTracingShaderGroupCreateInfo::General { general_shader: 0 },
                 RayTracingShaderGroupCreateInfo::General { general_shader: 1 },
@@ -129,7 +99,6 @@ impl SceneTask {
                     stages: stages.into_iter().collect(),
                     groups: groups.into_iter().collect(),
                     max_pipeline_ray_recursion_depth: 1,
-
                     ..RayTracingPipelineCreateInfo::layout(pipeline_layout.clone())
                 },
             )
@@ -164,6 +133,11 @@ impl SceneTask {
         )
         .unwrap();
 
+        // Build the bottom-level acceleration structure and then the top-level acceleration
+        // structure. Acceleration structures are used to accelerate ray tracing. The bottom-level
+        // acceleration structure contains the geometry data. The top-level acceleration structure
+        // contains the instances of the bottom-level acceleration structures. In our shader, we
+        // will trace rays against the top-level acceleration structure.
         let blas = unsafe {
             build_acceleration_structure_triangles(
                 vertex_buffer,
@@ -173,7 +147,6 @@ impl SceneTask {
                 app.queue.clone(),
             )
         };
-
         let tlas = unsafe {
             build_top_level_acceleration_structure(
                 vec![AccelerationStructureInstance {
@@ -213,20 +186,16 @@ impl SceneTask {
         )
         .unwrap();
 
-        let descriptor_set_0 = RawDescriptorSet::new(
+        let descriptor_set = DescriptorSet::new(
             descriptor_set_allocator.clone(),
-            &pipeline_layout.set_layouts()[0],
-            0,
-        )
-        .unwrap();
-
-        unsafe {
-            let writes = &[
+            pipeline_layout.set_layouts()[0].clone(),
+            [
                 WriteDescriptorSet::acceleration_structure(0, tlas.clone()),
                 WriteDescriptorSet::buffer(1, uniform_buffer.clone()),
-            ];
-            descriptor_set_0.update(writes, &[]).unwrap();
-        }
+            ],
+            [],
+        )
+        .unwrap();
 
         let swapchain_image_sets = window_size_dependent_setup(
             &app.resources,
@@ -239,7 +208,7 @@ impl SceneTask {
             ShaderBindingTable::new(memory_allocator.clone(), &pipeline).unwrap();
 
         SceneTask {
-            descriptor_set_0: Arc::new(descriptor_set_0),
+            descriptor_set,
             swapchain_image_sets,
             descriptor_set_allocator,
             pipeline_layout,
@@ -279,12 +248,11 @@ impl Task for SceneTask {
             &self.pipeline_layout,
             0,
             &[
-                &self.descriptor_set_0,
-                &self.swapchain_image_sets[image_index as usize].1,
+                self.descriptor_set.as_raw(),
+                self.swapchain_image_sets[image_index as usize].1.as_raw(),
             ],
             &[],
         )?;
-
         cbf.bind_pipeline_ray_tracing(&self.pipeline)?;
 
         let extent = self.swapchain_image_sets[0].0.image().extent();
@@ -298,17 +266,48 @@ impl Task for SceneTask {
             )
         }?;
 
-        for (image_view, descriptor_set) in self.swapchain_image_sets.iter() {
+        for (_, descriptor_set) in self.swapchain_image_sets.iter() {
             cbf.destroy_object(descriptor_set.clone());
-            cbf.destroy_object(image_view.clone());
         }
+
         cbf.destroy_object(self.blas.clone());
         cbf.destroy_object(self.tlas.clone());
         cbf.destroy_object(self.uniform_buffer.clone().into());
-        cbf.destroy_object(self.descriptor_set_0.clone());
+        cbf.destroy_object(self.descriptor_set.clone());
 
         Ok(())
     }
+}
+
+mod raygen {
+    vulkano_shaders::shader! {
+        ty: "raygen",
+        path: "rgen.glsl",
+        vulkan_version: "1.2",
+    }
+}
+
+mod closest_hit {
+    vulkano_shaders::shader! {
+        ty: "closesthit",
+        path: "rchit.glsl",
+        vulkan_version: "1.2",
+    }
+}
+
+mod miss {
+    vulkano_shaders::shader! {
+        ty: "miss",
+        path: "rmiss.glsl",
+        vulkan_version: "1.2",
+    }
+}
+
+#[derive(BufferContents, Vertex)]
+#[repr(C)]
+struct MyVertex {
+    #[format(R32G32B32_SFLOAT)]
+    position: [f32; 3],
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
@@ -317,29 +316,35 @@ fn window_size_dependent_setup(
     swapchain_id: Id<Swapchain>,
     pipeline_layout: &Arc<PipelineLayout>,
     descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
-) -> Vec<(Arc<ImageView>, Arc<RawDescriptorSet>)> {
+) -> Vec<(Arc<ImageView>, Arc<DescriptorSet>)> {
     let swapchain_state = resources.swapchain(swapchain_id).unwrap();
     let images = swapchain_state.images();
 
     let swapchain_image_sets = images
         .iter()
         .map(|image| {
-            let descriptor_set = RawDescriptorSet::new(
+            let image_view = ImageView::new_default(image.clone()).unwrap();
+            let descriptor_set = DescriptorSet::new(
                 descriptor_set_allocator.clone(),
-                &pipeline_layout.set_layouts()[1],
-                0,
+                pipeline_layout.set_layouts()[1].clone(),
+                [WriteDescriptorSet::image_view(0, image_view.clone())],
+                [],
             )
             .unwrap();
-            let image_view = ImageView::new_default(image.clone()).unwrap();
-            let writes = &[WriteDescriptorSet::image_view(0, image_view.clone())];
-            unsafe { descriptor_set.update(writes, &[]) }.unwrap();
-            (image_view, Arc::new(descriptor_set))
+
+            (image_view, descriptor_set)
         })
         .collect();
 
     swapchain_image_sets
 }
 
+/// A helper function to build a acceleration structure and wait for its completion.
+///
+/// # Safety
+///
+/// - If you are referencing a bottom-level acceleration structure in a top-level acceleration
+///   structure, you must ensure that the bottom-level acceleration structure is kept alive.
 unsafe fn build_acceleration_structure_common(
     geometries: AccelerationStructureGeometries,
     primitive_count: u32,
@@ -349,13 +354,6 @@ unsafe fn build_acceleration_structure_common(
     device: Arc<Device>,
     queue: Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
-    let mut builder = AutoCommandBufferBuilder::primary(
-        command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    )
-    .unwrap();
-
     let mut as_build_geometry_info = AccelerationStructureBuildGeometryInfo {
         mode: BuildAccelerationStructureMode::Build,
         flags: BuildAccelerationStructureFlags::PREFER_FAST_TRACE,
@@ -370,6 +368,8 @@ unsafe fn build_acceleration_structure_common(
         )
         .unwrap();
 
+    // We create a new scratch buffer for each acceleration structure for simplicity. You may want
+    // to reuse scratch buffers if you need to build many acceleration structures.
     let scratch_buffer = Buffer::new_slice::<u8>(
         memory_allocator.clone(),
         BufferCreateInfo {
@@ -398,7 +398,7 @@ unsafe fn build_acceleration_structure_common(
         )
     };
 
-    let acceleration = unsafe { AccelerationStructure::new(device, as_create_info).unwrap() };
+    let acceleration = unsafe { AccelerationStructure::new(device, as_create_info) }.unwrap();
 
     as_build_geometry_info.dst_acceleration_structure = Some(acceleration.clone());
     as_build_geometry_info.scratch_data = Some(scratch_buffer);
@@ -407,6 +407,15 @@ unsafe fn build_acceleration_structure_common(
         primitive_count,
         ..Default::default()
     };
+
+    // For simplicity, we build a single command buffer that builds the acceleration structure,
+    // then waits for its execution to complete.
+    let mut builder = AutoCommandBufferBuilder::primary(
+        command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
 
     builder
         .build_acceleration_structure(

@@ -73,7 +73,6 @@ impl App {
             InstanceCreateInfo {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 enabled_extensions: InstanceExtensions {
-                    ext_debug_utils: true,
                     ext_swapchain_colorspace: true,
                     ..required_extensions
                 },
@@ -91,11 +90,21 @@ impl App {
             khr_acceleration_structure: true,
             ..DeviceExtensions::empty()
         };
+        let device_features = DeviceFeatures {
+            acceleration_structure: true,
+            ray_tracing_pipeline: true,
+            buffer_device_address: true,
+            synchronization2: true,
+            ..Default::default()
+        };
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
             .filter(|p| p.api_version() >= Version::V1_3)
-            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter(|p| {
+                p.supported_extensions().contains(&device_extensions)
+                    && p.supported_features().contains(&device_features)
+            })
             .filter_map(|p| {
                 p.queue_family_properties()
                     .iter()
@@ -117,6 +126,12 @@ impl App {
             })
             .unwrap();
 
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
         let (device, mut queues) = Device::new(
             physical_device,
             DeviceCreateInfo {
@@ -125,13 +140,7 @@ impl App {
                     queue_family_index,
                     ..Default::default()
                 }],
-                enabled_features: DeviceFeatures {
-                    acceleration_structure: true,
-                    ray_tracing_pipeline: true,
-                    buffer_device_address: true,
-                    synchronization2: true,
-                    ..Default::default()
-                },
+                enabled_features: device_features,
                 ..Default::default()
             },
         )
@@ -162,32 +171,7 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
-
-        let physical_device = self.device.physical_device();
-        let supported_surface_formats = physical_device
-            .surface_formats(&surface, Default::default())
-            .unwrap();
-
-        // For each supported format, check if it is supported for storage images
-        let supported_storage_formats = supported_surface_formats
-            .into_iter()
-            .filter(|(format, _)| {
-                physical_device
-                    .image_format_properties(ImageFormatInfo {
-                        format: *format,
-                        usage: ImageUsage::STORAGE,
-                        ..Default::default()
-                    })
-                    .unwrap()
-                    .is_some()
-            })
-            .collect::<Vec<_>>();
-
-        println!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
+        let window_size = window.inner_size();
 
         let swapchain_id = {
             let surface_capabilities = self
@@ -195,10 +179,23 @@ impl ApplicationHandler for App {
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
-
-            let (swapchain_format, swapchain_color_space) = supported_storage_formats
-                .first()
-                .map(|(format, color_space)| (*format, *color_space))
+            let (image_format, image_color_space) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()
+                .into_iter()
+                .find(|(format, _)| {
+                    self.device
+                        .physical_device()
+                        .image_format_properties(ImageFormatInfo {
+                            format: *format,
+                            usage: ImageUsage::STORAGE,
+                            ..Default::default()
+                        })
+                        .unwrap()
+                        .is_some()
+                })
                 .unwrap();
 
             self.resources
@@ -207,10 +204,13 @@ impl ApplicationHandler for App {
                     surface,
                     SwapchainCreateInfo {
                         min_image_count: surface_capabilities.min_image_count.max(3),
-                        image_format: swapchain_format,
-                        image_extent: window.inner_size().into(),
-                        image_usage: ImageUsage::STORAGE | ImageUsage::COLOR_ATTACHMENT,
-                        image_color_space: swapchain_color_space,
+                        image_format,
+                        image_extent: window_size.into(),
+                        // To simplify the example, we will directly write to the swapchain images
+                        // from the ray tracing shader. This requires the images to support storage
+                        // usage.
+                        image_usage: ImageUsage::STORAGE,
+                        image_color_space,
                         composite_alpha: surface_capabilities
                             .supported_composite_alpha
                             .into_iter()
@@ -274,19 +274,16 @@ impl ApplicationHandler for App {
                     )
                     .unwrap(),
                 ],
-                push_constant_ranges: vec![],
                 ..Default::default()
             },
         )
         .unwrap();
 
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             self.device.clone(),
             Default::default(),
         ));
-
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
-
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             self.device.clone(),
             Default::default(),
@@ -305,8 +302,8 @@ impl ApplicationHandler for App {
                     pipeline_layout.clone(),
                     swapchain_id,
                     virtual_swapchain_id,
-                    descriptor_set_allocator,
                     memory_allocator,
+                    descriptor_set_allocator,
                     command_buffer_allocator,
                 ),
             )
