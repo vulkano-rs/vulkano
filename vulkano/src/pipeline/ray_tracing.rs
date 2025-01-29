@@ -43,16 +43,18 @@ use super::{
     PipelineShaderStageCreateInfoFields1Vk, PipelineShaderStageCreateInfoFields2Vk,
 };
 use crate::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::{AllocateBufferError, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     device::{Device, DeviceOwned, DeviceOwnedDebugWrapper},
     instance::InstanceOwnedDebugWrapper,
     macros::impl_id_counter,
     memory::{
-        allocator::{align_up, AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+        allocator::{
+            align_up, AllocationCreateInfo, DeviceLayout, MemoryAllocator, MemoryTypeFilter,
+        },
         DeviceAlignment,
     },
     shader::{spirv::ExecutionModel, DescriptorBindingRequirements},
-    StridedDeviceAddressRegion, Validated, ValidationError, VulkanError, VulkanObject,
+    DeviceSize, StridedDeviceAddressRegion, Validated, ValidationError, VulkanError, VulkanObject,
 };
 use foldhash::{HashMap, HashSet};
 use smallvec::SmallVec;
@@ -921,7 +923,7 @@ impl ShaderBindingTable {
             device_address: 0,
         };
 
-        let sbt_buffer = Buffer::new_slice::<u8>(
+        let sbt_buffer = new_bytes_buffer_with_alignment(
             allocator,
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC
@@ -935,6 +937,7 @@ impl ShaderBindingTable {
                 ..Default::default()
             },
             raygen.size + miss.size + hit.size + callable.size,
+            shader_group_base_alignment,
         )
         .expect("todo: raytracing: better error type for buffer errors");
 
@@ -975,4 +978,21 @@ impl ShaderBindingTable {
             _buffer: sbt_buffer,
         })
     }
+}
+
+fn new_bytes_buffer_with_alignment(
+    allocator: Arc<dyn MemoryAllocator>,
+    create_info: BufferCreateInfo,
+    allocation_info: AllocationCreateInfo,
+    size: DeviceSize,
+    alignment: DeviceAlignment,
+) -> Result<Subbuffer<[u8]>, Validated<AllocateBufferError>> {
+    let layout = DeviceLayout::from_size_alignment(size, alignment.as_devicesize()).unwrap();
+    let buffer = Subbuffer::new(Buffer::new(
+        allocator,
+        create_info,
+        allocation_info,
+        layout,
+    )?);
+    Ok(buffer)
 }
