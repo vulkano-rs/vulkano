@@ -179,7 +179,10 @@ impl Scene {
 
         let tlas = unsafe {
             build_top_level_acceleration_structure(
-                blas.clone(),
+                vec![AccelerationStructureInstance {
+                    acceleration_structure_reference: blas.device_address().into(),
+                    ..Default::default()
+                }],
                 memory_allocator.clone(),
                 command_buffer_allocator.clone(),
                 app.device.clone(),
@@ -187,7 +190,7 @@ impl Scene {
             )
         };
 
-        let proj = Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, 4.0 / 3.0, 0.01, 100.0);
+        let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 4.0 / 3.0, 0.01, 100.0);
         let view = Mat4::look_at_rh(
             Vec3::new(0.0, 0.0, 1.0),
             Vec3::new(0.0, 0.0, 0.0),
@@ -436,16 +439,13 @@ unsafe fn build_acceleration_structure_triangles(
 }
 
 unsafe fn build_top_level_acceleration_structure(
-    acceleration_structure: Arc<AccelerationStructure>,
+    as_instances: Vec<AccelerationStructureInstance>,
     allocator: Arc<dyn MemoryAllocator>,
     command_buffer_allocator: Arc<dyn CommandBufferAllocator>,
     device: Arc<Device>,
     queue: Arc<Queue>,
 ) -> Arc<AccelerationStructure> {
-    let as_instance = AccelerationStructureInstance {
-        acceleration_structure_reference: acceleration_structure.device_address().into(),
-        ..Default::default()
-    };
+    let primitive_count = as_instances.len() as u32;
 
     let instance_buffer = Buffer::from_iter(
         allocator.clone(),
@@ -459,7 +459,7 @@ unsafe fn build_top_level_acceleration_structure(
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
-        [as_instance],
+        as_instances,
     )
     .unwrap();
 
@@ -471,7 +471,7 @@ unsafe fn build_top_level_acceleration_structure(
 
     build_acceleration_structure_common(
         geometries,
-        1,
+        primitive_count,
         AccelerationStructureType::TopLevel,
         allocator,
         command_buffer_allocator,
