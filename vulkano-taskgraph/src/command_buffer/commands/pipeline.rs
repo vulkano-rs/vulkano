@@ -662,31 +662,37 @@ impl RecordingCommandBuffer<'_> {
         self
     }
 
+    /// Performs a single ray tracing operation using a ray tracing pipeline.
+    ///
+    /// A ray tracing pipeline must have been bound using [`bind_pipeline_ray_tracing`]. Any
+    /// resources used by the ray tracing pipeline, such as descriptor sets, must have been set
+    /// beforehand.
+    ///
+    /// # Safety
+    ///
+    /// - The general [shader safety requirements] apply.
+    ///
+    /// [`bind_pipeline_ray_tracing`]: Self::bind_pipeline_ray_tracing
+    /// [shader safety requirements]: vulkano::shader#safety
     pub unsafe fn trace_rays(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        width: u32,
-        height: u32,
-        depth: u32,
+        dimensions: [u32; 3],
     ) -> Result<&mut Self> {
-        Ok(unsafe {
-            self.trace_rays_unchecked(shader_binding_table_addresses, width, height, depth)
-        })
+        Ok(unsafe { self.trace_rays_unchecked(shader_binding_table_addresses, dimensions) })
     }
 
     pub unsafe fn trace_rays_unchecked(
         &mut self,
         shader_binding_table_addresses: &ShaderBindingTableAddresses,
-        width: u32,
-        height: u32,
-        depth: u32,
+        dimensions: [u32; 3],
     ) -> &mut Self {
-        let fns = self.device().fns();
-
         let raygen = shader_binding_table_addresses.raygen.to_vk();
         let miss = shader_binding_table_addresses.miss.to_vk();
         let hit = shader_binding_table_addresses.hit.to_vk();
         let callable = shader_binding_table_addresses.callable.to_vk();
+
+        let fns = self.device().fns();
         unsafe {
             (fns.khr_ray_tracing_pipeline.cmd_trace_rays_khr)(
                 self.handle(),
@@ -694,11 +700,11 @@ impl RecordingCommandBuffer<'_> {
                 &miss,
                 &hit,
                 &callable,
-                width,
-                height,
-                depth,
-            );
-        }
+                dimensions[0],
+                dimensions[1],
+                dimensions[2],
+            )
+        };
 
         self
     }

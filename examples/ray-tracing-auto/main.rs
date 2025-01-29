@@ -24,7 +24,7 @@ use vulkano::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
     sync::{self, GpuFuture},
-    Version, VulkanLibrary,
+    Validated, Version, VulkanError, VulkanLibrary,
 };
 use winit::{
     application::ApplicationHandler,
@@ -46,8 +46,8 @@ struct App {
     instance: Arc<Instance>,
     device: Arc<Device>,
     queue: Arc<Queue>,
-    rcx: Option<RenderContext>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    rcx: Option<RenderContext>,
 }
 
 pub struct RenderContext {
@@ -84,11 +84,21 @@ impl App {
             khr_acceleration_structure: true,
             ..DeviceExtensions::empty()
         };
+        let device_features = DeviceFeatures {
+            acceleration_structure: true,
+            ray_tracing_pipeline: true,
+            buffer_device_address: true,
+            synchronization2: true,
+            ..Default::default()
+        };
         let (physical_device, queue_family_index) = instance
             .enumerate_physical_devices()
             .unwrap()
             .filter(|p| p.api_version() >= Version::V1_3)
-            .filter(|p| p.supported_extensions().contains(&device_extensions))
+            .filter(|p| {
+                p.supported_extensions().contains(&device_extensions)
+                    && p.supported_features().contains(&device_features)
+            })
             .filter_map(|p| {
                 p.queue_family_properties()
                     .iter()
@@ -110,6 +120,12 @@ impl App {
             })
             .unwrap();
 
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
         let (device, mut queues) = Device::new(
             physical_device,
             DeviceCreateInfo {
@@ -118,13 +134,7 @@ impl App {
                     queue_family_index,
                     ..Default::default()
                 }],
-                enabled_features: DeviceFeatures {
-                    acceleration_structure: true,
-                    ray_tracing_pipeline: true,
-                    buffer_device_address: true,
-                    synchronization2: true,
-                    ..Default::default()
-                },
+                enabled_features: device_features,
                 ..Default::default()
             },
         )
@@ -141,8 +151,8 @@ impl App {
             instance,
             device,
             queue,
-            rcx: None,
             command_buffer_allocator,
+            rcx: None,
         }
     }
 }
@@ -155,32 +165,7 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
-
-        let physical_device = self.device.physical_device();
-        let supported_surface_formats = physical_device
-            .surface_formats(&surface, Default::default())
-            .unwrap();
-
-        // For each supported format, check if it is supported for storage images
-        let supported_storage_formats = supported_surface_formats
-            .into_iter()
-            .filter(|(format, _)| {
-                physical_device
-                    .image_format_properties(ImageFormatInfo {
-                        format: *format,
-                        usage: ImageUsage::STORAGE,
-                        ..Default::default()
-                    })
-                    .unwrap()
-                    .is_some()
-            })
-            .collect::<Vec<_>>();
-
-        println!(
-            "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
-        );
+        let window_size = window.inner_size();
 
         let (swapchain, images) = {
             let surface_capabilities = self
@@ -188,22 +173,35 @@ impl ApplicationHandler for App {
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
-
-            let (swapchain_format, swapchain_color_space) = supported_storage_formats
-                .first()
-                .map(|(format, color_space)| (*format, *color_space))
+            let (image_format, image_color_space) = self
+                .device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()
+                .into_iter()
+                .find(|(format, _)| {
+                    self.device
+                        .physical_device()
+                        .image_format_properties(ImageFormatInfo {
+                            format: *format,
+                            usage: ImageUsage::STORAGE,
+                            ..Default::default()
+                        })
+                        .unwrap()
+                        .is_some()
+                })
                 .unwrap();
+
             Swapchain::new(
                 self.device.clone(),
                 surface.clone(),
                 SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count.max(2),
-                    image_format: swapchain_format,
-                    image_color_space: swapchain_color_space,
-                    image_extent: window.inner_size().into(),
-                    // To simplify the example, we will directly write to the swapchain images
-                    // from the ray tracing shader. This requires the images to support storage
-                    // usage.
+                    image_format,
+                    image_color_space,
+                    image_extent: window_size.into(),
+                    // To simplify the example, we will directly write to the swapchain images from
+                    // the ray tracing shader. This requires the images to support storage usage.
                     image_usage: ImageUsage::STORAGE,
                     composite_alpha: surface_capabilities
                         .supported_composite_alpha
@@ -273,12 +271,11 @@ impl ApplicationHandler for App {
         )
         .unwrap();
 
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             self.device.clone(),
             Default::default(),
         ));
-
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(self.device.clone()));
 
         let scene = Scene::new(
             self,
@@ -288,12 +285,15 @@ impl ApplicationHandler for App {
             memory_allocator.clone(),
             self.command_buffer_allocator.clone(),
         );
+
+        let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+
         self.rcx = Some(RenderContext {
             window,
             swapchain,
             recreate_swapchain: false,
-            previous_frame_end: None,
             scene,
+            previous_frame_end,
         });
     }
 
@@ -319,37 +319,35 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                // Cleanup previous frame
-                if let Some(previous_frame_end) = rcx.previous_frame_end.as_mut() {
-                    previous_frame_end.cleanup_finished();
-                }
+                rcx.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-                // Recreate swapchain if needed
                 if rcx.recreate_swapchain {
-                    let (new_swapchain, new_images) =
-                        match rcx.swapchain.recreate(SwapchainCreateInfo {
+                    let (new_swapchain, new_images) = rcx
+                        .swapchain
+                        .recreate(SwapchainCreateInfo {
                             image_extent: window_size.into(),
                             ..rcx.swapchain.create_info()
-                        }) {
-                            Ok(r) => r,
-                            Err(e) => panic!("Failed to recreate swapchain: {e:?}"),
-                        };
+                        })
+                        .expect("failed to recreate swapchain");
 
                     rcx.swapchain = new_swapchain;
                     rcx.scene.handle_resize(&new_images);
                     rcx.recreate_swapchain = false;
                 }
 
-                // Acquire next image
-                let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(rcx.swapchain.clone(), None) {
-                        Ok(r) => r,
-                        Err(e) => {
-                            eprintln!("Failed to acquire next image: {e:?}");
-                            rcx.recreate_swapchain = true;
-                            return;
-                        }
-                    };
+                let (image_index, suboptimal, acquire_future) = match acquire_next_image(
+                    rcx.swapchain.clone(),
+                    None,
+                )
+                .map_err(Validated::unwrap)
+                {
+                    Ok(r) => r,
+                    Err(VulkanError::OutOfDate) => {
+                        rcx.recreate_swapchain = true;
+                        return;
+                    }
+                    Err(e) => panic!("failed to acquire next image: {e}"),
+                };
 
                 if suboptimal {
                     rcx.recreate_swapchain = true;
@@ -365,13 +363,10 @@ impl ApplicationHandler for App {
                 rcx.scene.record_commands(image_index, &mut builder);
 
                 let command_buffer = builder.build().unwrap();
-
                 let future = rcx
                     .previous_frame_end
                     .take()
-                    .unwrap_or_else(|| {
-                        Box::new(sync::now(self.device.clone())) as Box<dyn GpuFuture>
-                    })
+                    .unwrap()
                     .join(acquire_future)
                     .then_execute(self.queue.clone(), command_buffer)
                     .unwrap()
@@ -384,13 +379,17 @@ impl ApplicationHandler for App {
                     )
                     .then_signal_fence_and_flush();
 
-                match future {
+                match future.map_err(Validated::unwrap) {
                     Ok(future) => {
-                        rcx.previous_frame_end = Some(Box::new(future) as Box<dyn GpuFuture>);
+                        rcx.previous_frame_end = Some(future.boxed());
+                    }
+                    Err(VulkanError::OutOfDate) => {
+                        rcx.recreate_swapchain = true;
+                        rcx.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
                     }
                     Err(e) => {
-                        println!("Failed to flush future: {e:?}");
-                        rcx.previous_frame_end = Some(Box::new(sync::now(self.device.clone())));
+                        println!("failed to flush future: {e}");
+                        rcx.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
                     }
                 }
             }
