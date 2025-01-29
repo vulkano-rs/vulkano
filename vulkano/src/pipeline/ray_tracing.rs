@@ -393,6 +393,19 @@ impl RayTracingPipelineCreateInfo {
                 ..Default::default()
             }));
         }
+
+        let has_raygen = stages.iter().any(|stage| {
+            stage.entry_point.info().execution_model == ExecutionModel::RayGenerationKHR
+        });
+        if !has_raygen {
+            return Err(Box::new(ValidationError {
+                context: "stages".into(),
+                problem: "does not contain a `RayGeneration` shader".into(),
+                vuids: &["VUID-VkRayTracingPipelineCreateInfoKHR-stage-03425"],
+                ..Default::default()
+            }));
+        }
+
         for stage in stages {
             stage.validate(device).map_err(|err| {
                 err.add_context("stages")
@@ -819,32 +832,12 @@ impl ShaderBindingTable {
         allocator: Arc<dyn MemoryAllocator>,
         ray_tracing_pipeline: &RayTracingPipeline,
     ) -> Result<Self, Validated<VulkanError>> {
-        let mut miss_shader_count: u64 = 0;
-        let mut hit_shader_count: u64 = 0;
-        let mut callable_shader_count: u64 = 0;
-
-        for group in ray_tracing_pipeline.groups() {
-            match group {
-                RayTracingShaderGroupCreateInfo::General { general_shader } => {
-                    match ray_tracing_pipeline.stages()[*general_shader as usize]
-                        .entry_point
-                        .info()
-                        .execution_model
-                    {
-                        ExecutionModel::RayGenerationKHR => {}
-                        ExecutionModel::MissKHR => miss_shader_count += 1,
-                        ExecutionModel::CallableKHR => callable_shader_count += 1,
-                        _ => {
-                            panic!("Unexpected shader type in general shader group");
-                        }
-                    }
-                }
-                RayTracingShaderGroupCreateInfo::ProceduralHit { .. }
-                | RayTracingShaderGroupCreateInfo::TrianglesHit { .. } => {
-                    hit_shader_count += 1;
-                }
-            }
-        }
+        // VUID-vkCmdTraceRaysKHR-size-04023
+        // There should be exactly one raygen shader group.
+        let mut raygen_shader_handle = None;
+        let mut miss_shader_handles = Vec::new();
+        let mut hit_shader_handles = Vec::new();
+        let mut callable_shader_handles = Vec::new();
 
         let handle_data = ray_tracing_pipeline
             .device()
@@ -853,6 +846,39 @@ impl ShaderBindingTable {
                 0,
                 ray_tracing_pipeline.groups().len() as u32,
             )?;
+        let mut handle_iter = handle_data.iter();
+
+        for group in ray_tracing_pipeline.groups() {
+            let handle = handle_iter.next().unwrap();
+            match group {
+                RayTracingShaderGroupCreateInfo::General { general_shader } => {
+                    match ray_tracing_pipeline.stages()[*general_shader as usize]
+                        .entry_point
+                        .info()
+                        .execution_model
+                    {
+                        ExecutionModel::RayGenerationKHR => {
+                            raygen_shader_handle = Some(handle);
+                        }
+                        ExecutionModel::MissKHR => {
+                            miss_shader_handles.push(handle);
+                        }
+                        ExecutionModel::CallableKHR => {
+                            callable_shader_handles.push(handle);
+                        }
+                        _ => {
+                            panic!("Unexpected shader type in general shader group");
+                        }
+                    }
+                }
+                RayTracingShaderGroupCreateInfo::ProceduralHit { .. }
+                | RayTracingShaderGroupCreateInfo::TrianglesHit { .. } => {
+                    hit_shader_handles.push(handle);
+                }
+            }
+        }
+
+        let raygen_shader_handle = raygen_shader_handle.expect("no raygen shader group found");
 
         let properties = ray_tracing_pipeline.device().physical_device().properties();
         let handle_size_aligned = align_up(
@@ -873,7 +899,7 @@ impl ShaderBindingTable {
         let mut miss = StridedDeviceAddressRegion {
             stride: handle_size_aligned,
             size: align_up(
-                handle_size_aligned * miss_shader_count,
+                handle_size_aligned * miss_shader_handles.len() as u64,
                 shader_group_base_alignment,
             ),
             device_address: 0,
@@ -881,7 +907,7 @@ impl ShaderBindingTable {
         let mut hit = StridedDeviceAddressRegion {
             stride: handle_size_aligned,
             size: align_up(
-                handle_size_aligned * hit_shader_count,
+                handle_size_aligned * hit_shader_handles.len() as u64,
                 shader_group_base_alignment,
             ),
             device_address: 0,
@@ -889,7 +915,7 @@ impl ShaderBindingTable {
         let mut callable = StridedDeviceAddressRegion {
             stride: handle_size_aligned,
             size: align_up(
-                handle_size_aligned * callable_shader_count,
+                handle_size_aligned * callable_shader_handles.len() as u64,
                 shader_group_base_alignment,
             ),
             device_address: 0,
@@ -920,26 +946,21 @@ impl ShaderBindingTable {
         {
             let mut sbt_buffer_write = sbt_buffer.write().unwrap();
 
-            let mut handle_iter = handle_data.iter();
-
             let handle_size = handle_data.handle_size() as usize;
-            sbt_buffer_write[..handle_size].copy_from_slice(handle_iter.next().unwrap());
+            sbt_buffer_write[..handle_size].copy_from_slice(raygen_shader_handle);
             let mut offset = raygen.size as usize;
-            for _ in 0..miss_shader_count {
-                sbt_buffer_write[offset..offset + handle_size]
-                    .copy_from_slice(handle_iter.next().unwrap());
+            for handle in miss_shader_handles {
+                sbt_buffer_write[offset..offset + handle_size].copy_from_slice(handle);
                 offset += miss.stride as usize;
             }
             offset = (raygen.size + miss.size) as usize;
-            for _ in 0..hit_shader_count {
-                sbt_buffer_write[offset..offset + handle_size]
-                    .copy_from_slice(handle_iter.next().unwrap());
+            for handle in hit_shader_handles {
+                sbt_buffer_write[offset..offset + handle_size].copy_from_slice(handle);
                 offset += hit.stride as usize;
             }
             offset = (raygen.size + miss.size + hit.size) as usize;
-            for _ in 0..callable_shader_count {
-                sbt_buffer_write[offset..offset + handle_size]
-                    .copy_from_slice(handle_iter.next().unwrap());
+            for handle in callable_shader_handles {
+                sbt_buffer_write[offset..offset + handle_size].copy_from_slice(handle);
                 offset += callable.stride as usize;
             }
         }
