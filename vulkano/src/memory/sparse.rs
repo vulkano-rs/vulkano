@@ -1237,19 +1237,6 @@ impl SparseImageMemoryBindInfo {
                     requires_dedicated_allocation: _,
                 } = &image.memory_requirements()[0]; // TODO: what to do about disjoint images?
 
-                if memory.allocation_size() < layout.size() {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`binds[{}].memory.0.allocation_size()` is less than \
-                            `image.memory_requirements()[0].layout.size()`",
-                            index
-                        )
-                        .into(),
-                        vuids: &["VUID-VkSparseImageMemoryBind-memory-01105"],
-                        ..Default::default()
-                    }));
-                }
-
                 if !is_aligned(memory_offset, layout.alignment()) {
                     return Err(Box::new(ValidationError {
                         problem: format!(
