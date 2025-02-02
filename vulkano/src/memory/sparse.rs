@@ -346,19 +346,6 @@ impl SparseBufferMemoryBindInfo {
             }
 
             if let &Some((ref memory, memory_offset)) = memory {
-                if memory.allocation_size() < layout.size() {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`binds[{}].memory.0.allocation_size()` is less than \
-                            `buffer.memory_requirements().layout.size()`",
-                            index
-                        )
-                        .into(),
-                        vuids: &["VUID-VkSparseMemoryBind-memory-01096"],
-                        ..Default::default()
-                    }));
-                }
-
                 if !is_aligned(memory_offset, layout.alignment()) {
                     return Err(Box::new(ValidationError {
                         problem: format!(
@@ -779,19 +766,6 @@ impl SparseImageOpaqueMemoryBindInfo {
             }
 
             if let &Some((ref memory, memory_offset)) = memory {
-                if memory.allocation_size() < layout.size() {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`binds[{}].memory.0.allocation_size()` is less than \
-                            `image.memory_requirements()[0].layout.size()`",
-                            index
-                        )
-                        .into(),
-                        vuids: &["VUID-VkSparseMemoryBind-memory-01096"],
-                        ..Default::default()
-                    }));
-                }
-
                 if !is_aligned(memory_offset, layout.alignment()) {
                     return Err(Box::new(ValidationError {
                         problem: format!(
