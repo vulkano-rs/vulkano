@@ -234,20 +234,19 @@ impl CommandBufferBeginInfo {
         fields1_vk: &'a BeginInfoFields1Vk<'_>,
     ) -> ash::vk::CommandBufferBeginInfo<'a> {
         let &Self {
-            usage: _,
+            usage,
             ref inheritance_info,
             _ne: _,
         } = self;
 
-        let flags_vk = inheritance_info
+        let mut flags_vk = ash::vk::CommandBufferUsageFlags::from(usage);
+
+        if inheritance_info
             .as_ref()
-            .and_then(|inheritance_info| {
-                inheritance_info
-                    .render_pass
-                    .is_some()
-                    .then_some(ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE)
-            })
-            .unwrap_or_default();
+            .is_some_and(|inheritance_info| inheritance_info.render_pass.is_some())
+        {
+            flags_vk |= ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE;
+        }
 
         let mut val_vk = ash::vk::CommandBufferBeginInfo::default().flags(flags_vk);
 
