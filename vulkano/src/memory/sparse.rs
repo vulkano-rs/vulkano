@@ -244,6 +244,8 @@ pub struct SparseBufferMemoryBindInfo {
     ///
     /// The default value is empty.
     pub binds: Vec<SparseBufferMemoryBind>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl SparseBufferMemoryBindInfo {
@@ -253,6 +255,7 @@ impl SparseBufferMemoryBindInfo {
         Self {
             buffer,
             binds: Vec::new(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -260,6 +263,7 @@ impl SparseBufferMemoryBindInfo {
         let &Self {
             ref buffer,
             ref binds,
+            _ne: _,
         } = self;
 
         assert_eq!(device, buffer.device().as_ref());
@@ -290,6 +294,7 @@ impl SparseBufferMemoryBindInfo {
                 offset,
                 size,
                 ref memory,
+                _ne: _,
             } = bind;
 
             if offset >= layout.size() {
@@ -413,7 +418,11 @@ impl SparseBufferMemoryBindInfo {
         &self,
         fields1_vk: &'a SparseBufferMemoryBindInfoFields1Vk,
     ) -> ash::vk::SparseBufferMemoryBindInfo<'a> {
-        let Self { buffer, binds: _ } = self;
+        let Self {
+            buffer,
+            binds: _,
+            _ne: _,
+        } = self;
         let SparseBufferMemoryBindInfoFields1Vk { binds_vk } = fields1_vk;
 
         ash::vk::SparseBufferMemoryBindInfo::default()
@@ -422,7 +431,11 @@ impl SparseBufferMemoryBindInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> SparseBufferMemoryBindInfoFields1Vk {
-        let Self { buffer: _, binds } = self;
+        let Self {
+            buffer: _,
+            binds,
+            _ne: _,
+        } = self;
 
         let binds_vk = binds.iter().map(SparseBufferMemoryBind::to_vk).collect();
 
@@ -435,7 +448,7 @@ pub(crate) struct SparseBufferMemoryBindInfoFields1Vk {
 }
 
 /// Parameters for a single sparse bind operation on a buffer.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SparseBufferMemoryBind {
     /// The offset in bytes from the start of the buffer's memory, where memory is to be (un)bound.
     ///
@@ -454,6 +467,19 @@ pub struct SparseBufferMemoryBind {
     ///
     /// The default value is `None`.
     pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SparseBufferMemoryBind {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            size: 0,
+            memory: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl SparseBufferMemoryBind {
@@ -462,6 +488,7 @@ impl SparseBufferMemoryBind {
             offset: _,
             size,
             ref memory,
+            _ne: _,
         } = self;
 
         if size == 0 {
@@ -517,6 +544,7 @@ impl SparseBufferMemoryBind {
             offset,
             size,
             ref memory,
+            _ne: _,
         } = self;
 
         let (memory, memory_offset) = memory
@@ -550,6 +578,8 @@ pub struct SparseImageOpaqueMemoryBindInfo {
     ///
     /// The default value is empty.
     pub binds: Vec<SparseImageOpaqueMemoryBind>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl SparseImageOpaqueMemoryBindInfo {
@@ -559,6 +589,7 @@ impl SparseImageOpaqueMemoryBindInfo {
         Self {
             image,
             binds: Vec::new(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -566,6 +597,7 @@ impl SparseImageOpaqueMemoryBindInfo {
         let &Self {
             ref image,
             ref binds,
+            _ne: crate::NonExhaustive(()),
         } = self;
 
         assert_eq!(device, image.device().as_ref());
@@ -602,6 +634,7 @@ impl SparseImageOpaqueMemoryBindInfo {
                 size,
                 ref memory,
                 metadata,
+                _ne: _,
             } = bind;
 
             if metadata {
@@ -833,7 +866,11 @@ impl SparseImageOpaqueMemoryBindInfo {
         &self,
         fields1_vk: &'a SparseImageOpaqueMemoryBindInfoFields1Vk,
     ) -> ash::vk::SparseImageOpaqueMemoryBindInfo<'a> {
-        let Self { image, binds: _ } = self;
+        let Self {
+            image,
+            binds: _,
+            _ne: _,
+        } = self;
         let SparseImageOpaqueMemoryBindInfoFields1Vk { binds_vk } = fields1_vk;
 
         ash::vk::SparseImageOpaqueMemoryBindInfo::default()
@@ -842,7 +879,11 @@ impl SparseImageOpaqueMemoryBindInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> SparseImageOpaqueMemoryBindInfoFields1Vk {
-        let Self { image: _, binds } = self;
+        let Self {
+            image: _,
+            binds,
+            _ne: _,
+        } = self;
 
         let binds_vk = binds
             .iter()
@@ -862,7 +903,7 @@ pub(crate) struct SparseImageOpaqueMemoryBindInfoFields1Vk {
 ///
 /// This type of sparse bind should be used for mip tail regions, the metadata aspect, and for the
 /// normal regions of images that do not have the `sparse_residency` flag set.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SparseImageOpaqueMemoryBind {
     /// The offset in bytes from the start of the image's memory, where memory is to be (un)bound.
     ///
@@ -887,6 +928,20 @@ pub struct SparseImageOpaqueMemoryBind {
     ///
     /// The default value is `false`.
     pub metadata: bool,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SparseImageOpaqueMemoryBind {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            size: 0,
+            memory: None,
+            metadata: false,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl SparseImageOpaqueMemoryBind {
@@ -896,6 +951,7 @@ impl SparseImageOpaqueMemoryBind {
             size,
             ref memory,
             metadata: _,
+            _ne: _,
         } = self;
 
         if size == 0 {
@@ -952,6 +1008,7 @@ impl SparseImageOpaqueMemoryBind {
             size,
             ref memory,
             metadata,
+            _ne: _,
         } = self;
 
         let (memory, memory_offset) = memory
@@ -990,6 +1047,8 @@ pub struct SparseImageMemoryBindInfo {
     ///
     /// The default value is empty.
     pub binds: Vec<SparseImageMemoryBind>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl SparseImageMemoryBindInfo {
@@ -999,6 +1058,7 @@ impl SparseImageMemoryBindInfo {
         Self {
             image,
             binds: Vec::new(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 
@@ -1006,6 +1066,7 @@ impl SparseImageMemoryBindInfo {
         let &Self {
             ref image,
             ref binds,
+            _ne: _,
         } = self;
 
         assert_eq!(device, image.device().as_ref());
@@ -1046,6 +1107,7 @@ impl SparseImageMemoryBindInfo {
                 offset,
                 extent,
                 ref memory,
+                _ne: _,
             } = bind;
 
             if mip_level >= image.mip_levels() {
@@ -1317,7 +1379,11 @@ impl SparseImageMemoryBindInfo {
         &self,
         fields1_vk: &'a SparseImageMemoryBindInfoFields1Vk,
     ) -> ash::vk::SparseImageMemoryBindInfo<'a> {
-        let Self { image, binds: _ } = self;
+        let Self {
+            image,
+            binds: _,
+            _ne: _,
+        } = self;
         let SparseImageMemoryBindInfoFields1Vk { binds_vk } = fields1_vk;
 
         ash::vk::SparseImageMemoryBindInfo::default()
@@ -1326,7 +1392,11 @@ impl SparseImageMemoryBindInfo {
     }
 
     pub(crate) fn to_vk_fields1(&self) -> SparseImageMemoryBindInfoFields1Vk {
-        let Self { image: _, binds } = self;
+        let Self {
+            image: _,
+            binds,
+            _ne: _,
+        } = self;
 
         let binds_vk = binds.iter().map(SparseImageMemoryBind::to_vk).collect();
 
@@ -1343,7 +1413,7 @@ pub(crate) struct SparseImageMemoryBindInfoFields1Vk {
 /// This type of sparse bind can only be used for images that have the `sparse_residency` flag set.
 /// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
 /// aspect.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SparseImageMemoryBind {
     /// The aspects of the image where memory is to be (un)bound.
     ///
@@ -1388,6 +1458,22 @@ pub struct SparseImageMemoryBind {
     ///
     /// The default value is `None`.
     pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SparseImageMemoryBind {
+    fn default() -> Self {
+        Self {
+            aspects: ImageAspects::empty(),
+            mip_level: 0,
+            array_layer: 0,
+            offset: [0; 3],
+            extent: [0; 3],
+            memory: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl SparseImageMemoryBind {
@@ -1399,6 +1485,7 @@ impl SparseImageMemoryBind {
             offset: _,
             extent,
             ref memory,
+            _ne: _,
         } = self;
 
         aspects.validate_device(device).map_err(|err| {
@@ -1468,6 +1555,7 @@ impl SparseImageMemoryBind {
             offset,
             extent,
             ref memory,
+            _ne: _,
         } = self;
 
         let (memory, memory_offset) = memory
