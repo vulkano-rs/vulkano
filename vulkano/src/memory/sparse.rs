@@ -30,14 +30,14 @@ pub struct BindSparseInfo {
     /// The bind operations to perform for images with an opaque memory layout.
     ///
     /// This should be used for mip tail regions, the metadata aspect, and for the normal regions
-    /// of images that do not have the `sparse_residency` flag set.
+    /// of images that do not have the `SPARSE_RESIDENCY` flag set.
     ///
     /// The default value is empty.
     pub image_opaque_binds: Vec<SparseImageOpaqueMemoryBindInfo>,
 
     /// The bind operations to perform for images with a known memory layout.
     ///
-    /// This type of sparse bind can only be used for images that have the `sparse_residency`
+    /// This type of sparse bind can only be used for images that have the `SPARSE_RESIDENCY`
     /// flag set.
     /// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
     /// aspect.
@@ -902,7 +902,7 @@ pub(crate) struct SparseImageOpaqueMemoryBindInfoFields1Vk {
 /// layout.
 ///
 /// This type of sparse bind should be used for mip tail regions, the metadata aspect, and for the
-/// normal regions of images that do not have the `sparse_residency` flag set.
+/// normal regions of images that do not have the `SPARSE_RESIDENCY` flag set.
 #[derive(Clone, Debug)]
 pub struct SparseImageOpaqueMemoryBind {
     /// The offset in bytes from the start of the image's memory, where memory is to be (un)bound.
@@ -1192,7 +1192,7 @@ impl SparseImageMemoryBindInfo {
             if offset[0] % image_granularity[0] != 0 {
                 return Err(Box::new(ValidationError {
                     problem: format!(
-                        "`binds[{}].offset[0]` is not a multiple of `
+                        "`binds[{}].offset[0]` is not a multiple of \
                         `SparseImageMemoryRequirements::format_properties.image_granularity[0]` \
                         for `image`",
                         index
@@ -1299,19 +1299,6 @@ impl SparseImageMemoryBindInfo {
                     requires_dedicated_allocation: _,
                 } = &image.memory_requirements()[0]; // TODO: what to do about disjoint images?
 
-                if memory.allocation_size() < layout.size() {
-                    return Err(Box::new(ValidationError {
-                        problem: format!(
-                            "`binds[{}].memory.0.allocation_size()` is less than \
-                            `image.memory_requirements()[0].layout.size()`",
-                            index
-                        )
-                        .into(),
-                        vuids: &["VUID-VkSparseImageMemoryBind-memory-01105"],
-                        ..Default::default()
-                    }));
-                }
-
                 if !is_aligned(memory_offset, layout.alignment()) {
                     return Err(Box::new(ValidationError {
                         problem: format!(
@@ -1410,7 +1397,7 @@ pub(crate) struct SparseImageMemoryBindInfoFields1Vk {
 
 /// Parameters for a single sparse bind operation on parts of an image with a known memory layout.
 ///
-/// This type of sparse bind can only be used for images that have the `sparse_residency` flag set.
+/// This type of sparse bind can only be used for images that have the `SPARSE_RESIDENCY` flag set.
 /// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
 /// aspect.
 #[derive(Clone, Debug)]
