@@ -1240,6 +1240,54 @@ impl SparseImageMemoryBindInfo {
                 subresource_extent = image_format_subsampled_extent;
             }
 
+            if offset[0]
+                .checked_add(extent[0])
+                .map_or(true, |sum| sum > subresource_extent[0])
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`binds[{0}].offset[0]` + `binds[{0}].extent[0]` is greater than the \
+                        width of the selected subresource of `image`",
+                        index
+                    )
+                    .into(),
+                    // VUID? See https://github.com/KhronosGroup/Vulkan-Docs/issues/2490
+                    ..Default::default()
+                }));
+            }
+
+            if offset[1]
+                .checked_add(extent[1])
+                .map_or(true, |sum| sum > subresource_extent[1])
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`binds[{0}].offset[1]` + `binds[{0}].extent[1]` is greater than the \
+                        height of the selected subresource of `image`",
+                        index
+                    )
+                    .into(),
+                    // VUID? See https://github.com/KhronosGroup/Vulkan-Docs/issues/2490
+                    ..Default::default()
+                }));
+            }
+
+            if offset[2]
+                .checked_add(extent[2])
+                .map_or(true, |sum| sum > subresource_extent[2])
+            {
+                return Err(Box::new(ValidationError {
+                    problem: format!(
+                        "`binds[{0}].offset[2]` + `binds[{0}].extent[2]` is greater than the \
+                        depth of the selected subresource of `image`",
+                        index
+                    )
+                    .into(),
+                    // VUID? See https://github.com/KhronosGroup/Vulkan-Docs/issues/2490
+                    ..Default::default()
+                }));
+            }
+
             if !(offset[0] + extent[0] == subresource_extent[0]
                 || extent[0] % image_granularity[0] == 0)
             {
