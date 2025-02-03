@@ -1,6 +1,8 @@
 use super::{DedicatedAllocation, DedicatedTo, DeviceAlignment};
 use crate::{
+    buffer::BufferCreateFlags,
     device::{Device, DeviceOwned},
+    image::ImageCreateFlags,
     instance::InstanceOwnedDebugWrapper,
     macros::{impl_id_counter, vulkan_bitflags, vulkan_bitflags_enum},
     memory::{is_aligned, MemoryPropertyFlags},
@@ -948,6 +950,15 @@ impl<'d> MemoryAllocateInfo<'d> {
                             ..Default::default()
                         }));
                     }
+
+                    if buffer.flags().intersects(BufferCreateFlags::SPARSE_BINDING) {
+                        return Err(Box::new(ValidationError {
+                            context: "dedicated_allocation.flags()".into(),
+                            problem: "contains `BufferCreateFlags::SPARSE_BINDING`".into(),
+                            vuids: &["VUID-VkMemoryDedicatedAllocateInfo-buffer-01436"],
+                            ..Default::default()
+                        }));
+                    }
                 }
                 DedicatedAllocation::Image(image) => {
                     // VUID-VkMemoryDedicatedAllocateInfo-commonparent
@@ -961,6 +972,15 @@ impl<'d> MemoryAllocateInfo<'d> {
                                 image specified in `dedicated_allocation`"
                                 .into(),
                             vuids: &["VUID-VkMemoryDedicatedAllocateInfo-image-02964"],
+                            ..Default::default()
+                        }));
+                    }
+
+                    if image.flags().intersects(ImageCreateFlags::SPARSE_BINDING) {
+                        return Err(Box::new(ValidationError {
+                            context: "dedicated_allocation.flags()".into(),
+                            problem: "contains `ImageCreateFlags::SPARSE_BINDING`".into(),
+                            vuids: &["VUID-VkMemoryDedicatedAllocateInfo-image-01434"],
                             ..Default::default()
                         }));
                     }

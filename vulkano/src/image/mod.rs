@@ -125,7 +125,7 @@ pub enum ImageMemory {
     /// The image is backed by sparse memory, bound with [`bind_sparse`].
     ///
     /// [`bind_sparse`]: crate::device::QueueGuard::bind_sparse
-    Sparse(Vec<SparseImageMemoryRequirements>),
+    Sparse,
 
     /// The image is backed by memory owned by a [`Swapchain`].
     Swapchain {
@@ -247,12 +247,22 @@ impl Image {
     /// Returns the memory requirements for this image.
     ///
     /// - If the image is a swapchain image, this returns a slice with a length of 0.
-    /// - If `self.flags().disjoint` is not set, this returns a slice with a length of 1.
-    /// - If `self.flags().disjoint` is set, this returns a slice with a length equal to
-    ///   `self.format().planes().len()`.
+    /// - If `self.flags()` does not contain `ImageCreateFlags::DISJOINT`, this returns a slice
+    ///   with a length of 1.
+    /// - If `self.flags()` does contain `ImageCreateFlags::DISJOINT`, this returns a slice with a
+    ///   length equal to `self.format().unwrap().planes().len()`.
     #[inline]
     pub fn memory_requirements(&self) -> &[MemoryRequirements] {
         self.inner.memory_requirements()
+    }
+
+    /// Returns the sparse memory requirements for this image.
+    ///
+    /// If `self.flags()` does not contain both `ImageCreateFlags::SPARSE_BINDING` and
+    /// `ImageCreateFlags::SPARSE_RESIDENCY`, this returns an empty slice.
+    #[inline]
+    pub fn sparse_memory_requirements(&self) -> &[SparseImageMemoryRequirements] {
+        self.inner.sparse_memory_requirements()
     }
 
     /// Returns the flags the image was created with.
@@ -510,7 +520,7 @@ impl Image {
 
     pub(crate) unsafe fn layout_initialized(&self) {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) | ImageMemory::External => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse | ImageMemory::External => {
                 self.is_layout_initialized.store(true, Ordering::Release);
             }
             ImageMemory::Swapchain {
@@ -524,7 +534,7 @@ impl Image {
 
     pub(crate) fn is_layout_initialized(&self) -> bool {
         match &self.memory {
-            ImageMemory::Normal(..) | ImageMemory::Sparse(..) | ImageMemory::External => {
+            ImageMemory::Normal(..) | ImageMemory::Sparse | ImageMemory::External => {
                 self.is_layout_initialized.load(Ordering::Acquire)
             }
             ImageMemory::Swapchain {
@@ -980,20 +990,21 @@ vulkan_bitflags! {
     /// Flags specifying additional properties of an image.
     ImageCreateFlags = ImageCreateFlags(u32);
 
-    /* TODO: enable
-    /// The image will be backed by sparse memory binding (through queue commands) instead of
-    /// regular binding (through [`bind_memory`]).
+    /// The image will be backed by sparse memory binding (through the [`bind_sparse`] queue
+    /// command) instead of regular binding (through [`bind_memory`]).
     ///
     /// The [`sparse_binding`] feature must be enabled on the device.
     ///
+    /// [`bind_sparse`]: crate::device::queue::QueueGuard::bind_sparse
     /// [`bind_memory`]: sys::RawImage::bind_memory
     /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
-    SPARSE_BINDING = SPARSE_BINDING,*/
+    SPARSE_BINDING = SPARSE_BINDING,
 
-    /* TODO: enable
     /// The image can be used without being fully resident in memory at the time of use.
+    /// It also allows non-opaque sparse binding operations, using the dimensions of the image,
+    /// to be performed.
     ///
-    /// This requires the `sparse_binding` flag as well.
+    /// This requires the [`ImageCreateFlags::SPARSE_BINDING`] flag as well.
     ///
     /// Depending on the image type, either the [`sparse_residency_image2_d`] or the
     /// [`sparse_residency_image3_d`] feature must be enabled on the device.
@@ -1004,12 +1015,12 @@ vulkan_bitflags! {
     ///
     /// [`sparse_binding`]: crate::device::DeviceFeatures::sparse_binding
     /// [`sparse_residency_image2_d`]: crate::device::DeviceFeatures::sparse_residency_image2_d
-    /// [`sparse_residency_image2_3`]: crate::device::DeviceFeatures::sparse_residency_image3_d
+    /// [`sparse_residency_image2_d`]: crate::device::DeviceFeatures::sparse_residency_image3_d
     /// [`sparse_residency2_samples`]: crate::device::DeviceFeatures::sparse_residency2_samples
     /// [`sparse_residency4_samples`]: crate::device::DeviceFeatures::sparse_residency4_samples
     /// [`sparse_residency8_samples`]: crate::device::DeviceFeatures::sparse_residency8_samples
     /// [`sparse_residency16_samples`]: crate::device::DeviceFeatures::sparse_residency16_samples
-    SPARSE_RESIDENCY = SPARSE_RESIDENCY,*/
+    SPARSE_RESIDENCY = SPARSE_RESIDENCY,
 
     /* TODO: enable
     /// The buffer's memory can alias with another image or a different part of the same image.
@@ -2585,8 +2596,8 @@ pub struct SparseImageMemoryRequirements {
     /// The memory offset that must be used to bind the mip tail region.
     pub image_mip_tail_offset: DeviceSize,
 
-    /// If `format_properties.flags.single_miptail` is not set, specifies the stride between
-    /// the mip tail regions of each array layer.
+    /// If `format_properties.flags` does not contain `SparseImageFormatFlags::SINGLE_MIPTAIL`,
+    /// then this specifies the stride between the mip tail regions of each array layer.
     pub image_mip_tail_stride: Option<DeviceSize>,
 }
 
