@@ -834,22 +834,22 @@ mod tests {
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Compute)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&0)));
         assert!(!sync
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Graphics)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&0)));
         assert!(sync
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Graphics)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&1)));
         assert!(!sync
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Graphics)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&2)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&2)));
 
         unsafe {
             sync.bind_descriptor_sets_unchecked(
@@ -864,12 +864,12 @@ mod tests {
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Graphics)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&0)));
         assert!(sync
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Graphics)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&1)));
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
@@ -908,11 +908,11 @@ mod tests {
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Graphics)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&0)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&0)));
         assert!(sync
             .builder_state
             .descriptor_sets
             .get(&PipelineBindPoint::Graphics)
-            .map_or(false, |state| state.descriptor_sets.contains_key(&1)));
+            .is_some_and(|state| state.descriptor_sets.contains_key(&1)));
     }
 }
