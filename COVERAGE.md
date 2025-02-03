@@ -8,7 +8,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano, as of th
 
 ### Unsupported
 
-- Sparse binding
 - `VkAllocationCallbacks`
 - Possibly more?
 

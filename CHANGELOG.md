@@ -75,6 +75,7 @@ Changes to buffers:
 
 Changes to images:
 - `ImageMemory` is now marked non-exhaustive.
+- `ImageMemory::Sparse` no longer has a field for memory requirements, this is now queried directly from the image.
 
 Changes to draw/dispatch commands:
 - These are now `unsafe`, as the shader can perform invalid operations outside of Vulkano's control.
@@ -128,6 +129,7 @@ Device features:
 Vulkan APIs:
 - Ability to update existing descriptor sets.
 - Support for querying memory requirements directly from the device.
+- Support for sparse binding.
 
 Other:
 - Partially validated versions of `submit` and `present` commands (called via `QueueGuard`).
