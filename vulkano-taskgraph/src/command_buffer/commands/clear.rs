@@ -1,6 +1,6 @@
 use crate::{
     command_buffer::{RecordingCommandBuffer, Result},
-    resource::{AccessType, ImageLayoutType},
+    resource::{AccessTypes, ImageLayoutType},
     Id,
 };
 use smallvec::SmallVec;
@@ -36,7 +36,7 @@ impl RecordingCommandBuffer<'_> {
         } = clear_info;
 
         let image = unsafe { self.accesses.image_unchecked(image) };
-        let image_layout = AccessType::ClearTransferWrite.image_layout(image_layout);
+        let image_layout = AccessTypes::CLEAR_TRANSFER_WRITE.image_layout(image_layout);
 
         let fns = self.device().fns();
         let cmd_clear_color_image = fns.v1_0.cmd_clear_color_image;
@@ -96,7 +96,7 @@ impl RecordingCommandBuffer<'_> {
         } = clear_info;
 
         let image = unsafe { self.accesses.image_unchecked(image) };
-        let image_layout = AccessType::ClearTransferWrite.image_layout(image_layout);
+        let image_layout = AccessTypes::CLEAR_TRANSFER_WRITE.image_layout(image_layout);
 
         let fns = self.device().fns();
         let cmd_clear_depth_stencil_image = fns.v1_0.cmd_clear_depth_stencil_image;

@@ -3231,7 +3231,8 @@ impl ClearAttachment {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::ClearAttachment {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ClearAttachment {
         match *self {
             ClearAttachment::Color {
                 color_attachment,
@@ -3287,7 +3288,8 @@ pub struct ClearRect {
 }
 
 impl ClearRect {
-    pub(crate) fn to_vk(&self) -> ash::vk::ClearRect {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ClearRect {
         let &Self {
             offset,
             extent,

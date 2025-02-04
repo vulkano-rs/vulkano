@@ -466,7 +466,8 @@ impl ClearValue {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::ClearValue {
+    #[doc(hidden)]
+    pub fn to_vk(&self) -> ash::vk::ClearValue {
         match *self {
             ClearValue::Float(val) => ash::vk::ClearValue {
                 color: ash::vk::ClearColorValue { float32: val },

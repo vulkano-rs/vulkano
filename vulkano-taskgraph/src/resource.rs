@@ -9,6 +9,7 @@ use std::{
     any::Any,
     hash::Hash,
     num::{NonZeroU32, NonZeroU64},
+    ops::{BitOr, BitOrAssign},
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
         Arc,
@@ -760,25 +761,14 @@ impl BufferAccess {
     /// - Panics if `access_types` contains any access type that's not valid for buffers.
     #[inline]
     #[must_use]
-    pub const fn new(access_types: &[AccessType], queue_family_index: u32) -> Self {
-        let mut access = BufferAccess {
-            stage_mask: PipelineStages::empty(),
-            access_mask: AccessFlags::empty(),
+    pub const fn new(access_types: AccessTypes, queue_family_index: u32) -> Self {
+        assert!(access_types.are_valid_buffer_access_types());
+
+        BufferAccess {
+            stage_mask: access_types.stage_mask(),
+            access_mask: access_types.access_mask(),
             queue_family_index,
-        };
-        let mut i = 0;
-
-        while i < access_types.len() {
-            let access_type = access_types[i];
-
-            assert!(access_type.is_valid_buffer_access_type());
-
-            access.stage_mask = access.stage_mask.union(access_type.stage_mask());
-            access.access_mask = access.access_mask.union(access_type.access_mask());
-            i += 1;
         }
-
-        access
     }
 
     pub(crate) const fn from_masks(
@@ -858,38 +848,18 @@ impl ImageAccess {
     #[inline]
     #[must_use]
     pub const fn new(
-        access_types: &[AccessType],
+        access_types: AccessTypes,
         layout_type: ImageLayoutType,
         queue_family_index: u32,
     ) -> Self {
-        let mut access = ImageAccess {
-            stage_mask: PipelineStages::empty(),
-            access_mask: AccessFlags::empty(),
-            image_layout: ImageLayout::Undefined,
+        assert!(access_types.are_valid_image_access_types());
+
+        ImageAccess {
+            stage_mask: access_types.stage_mask(),
+            access_mask: access_types.access_mask(),
+            image_layout: access_types.image_layout(layout_type),
             queue_family_index,
-        };
-        let mut i = 0;
-
-        while i < access_types.len() {
-            let access_type = access_types[i];
-
-            assert!(access_type.is_valid_image_access_type());
-
-            let image_layout = access_type.image_layout(layout_type);
-
-            access.stage_mask = access.stage_mask.union(access_type.stage_mask());
-            access.access_mask = access.access_mask.union(access_type.access_mask());
-            access.image_layout = if matches!(access.image_layout, ImageLayout::Undefined)
-                || access.image_layout as i32 == image_layout as i32
-            {
-                image_layout
-            } else {
-                ImageLayout::General
-            };
-            i += 1;
         }
-
-        access
     }
 
     pub(crate) const fn from_masks(
@@ -1109,6 +1079,14 @@ impl Default for ResourcesCreateInfo<'_> {
     }
 }
 
+/// Specifies which types of accesses are performed on a resource.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AccessTypes {
+    stage_mask: PipelineStages,
+    access_mask: AccessFlags,
+    image_layout: ImageLayout,
+}
+
 macro_rules! access_types {
     (
         $(
@@ -1117,673 +1095,639 @@ macro_rules! access_types {
                 stage_mask: $($stage_flag:ident)|+,
                 access_mask: $($access_flag:ident)|+,
                 image_layout: $image_layout:ident,
-                valid_for: $($valid_for:ident)|+,
             }
         )*
     ) => {
-        /// Specifies which type of access is performed on a resource.
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-        #[non_exhaustive]
-        pub enum AccessType {
+        impl AccessTypes {
             $(
                 $(#[$meta])*
-                $name,
+                pub const $name: Self = AccessTypes {
+                    stage_mask: PipelineStages::empty()$(.union(PipelineStages::$stage_flag))+,
+                    access_mask: AccessFlags::empty()$(.union(AccessFlags::$access_flag))+,
+                    image_layout: ImageLayout::$image_layout,
+                };
             )*
-        }
-
-        impl AccessType {
-            /// Returns the stage mask of this type of access.
-            #[inline]
-            #[must_use]
-            pub const fn stage_mask(self) -> PipelineStages {
-                match self {
-                    $(
-                        Self::$name => PipelineStages::empty()
-                            $(.union(PipelineStages::$stage_flag))+,
-                    )*
-                }
-            }
-
-            /// Returns the access mask of this type of access.
-            #[inline]
-            #[must_use]
-            pub const fn access_mask(self) -> AccessFlags {
-                match self {
-                    $(
-                        Self::$name => AccessFlags::empty()
-                            $(.union(AccessFlags::$access_flag))+,
-                    )*
-                }
-            }
-
-            /// Returns the image layout for this type of access.
-            #[inline]
-            #[must_use]
-            pub const fn image_layout(self, layout_type: ImageLayoutType) -> ImageLayout {
-                if layout_type.is_general() {
-                    return ImageLayout::General;
-                }
-
-                match self {
-                    $(
-                        Self::$name => ImageLayout::$image_layout,
-                    )*
-                }
-            }
-
-            const fn valid_for(self) -> u8 {
-                match self {
-                    $(
-                        Self::$name => $($valid_for)|+,
-                    )*
-                }
-            }
         }
     };
 }
 
-const BUFFER: u8 = 1 << 0;
-const IMAGE: u8 = 1 << 1;
-
 access_types! {
-    IndirectCommandRead {
+    INDIRECT_COMMAND_READ {
         stage_mask: DRAW_INDIRECT,
         access_mask: INDIRECT_COMMAND_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    IndexRead {
+    INDEX_READ {
         stage_mask: INDEX_INPUT,
         access_mask: INDEX_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    VertexAttributeRead {
+    VERTEX_ATTRIBUTE_READ {
         stage_mask: VERTEX_ATTRIBUTE_INPUT,
         access_mask: VERTEX_ATTRIBUTE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    VertexShaderUniformRead {
+    VERTEX_SHADER_UNIFORM_READ {
         stage_mask: VERTEX_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    VertexShaderSampledRead {
+    VERTEX_SHADER_SAMPLED_READ {
         stage_mask: VERTEX_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    VertexShaderStorageRead {
+    VERTEX_SHADER_STORAGE_READ {
         stage_mask: VERTEX_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    VertexShaderStorageWrite {
+    VERTEX_SHADER_STORAGE_WRITE {
         stage_mask: VERTEX_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    VertexShaderAccelerationStructureRead {
+    VERTEX_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: VERTEX_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    TessellationControlShaderUniformRead {
+    TESSELLATION_CONTROL_SHADER_UNIFORM_READ {
         stage_mask: TESSELLATION_CONTROL_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    TessellationControlShaderSampledRead {
+    TESSELLATION_CONTROL_SHADER_SAMPLED_READ {
         stage_mask: TESSELLATION_CONTROL_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TessellationControlShaderStorageRead {
+    TESSELLATION_CONTROL_SHADER_STORAGE_READ {
         stage_mask: TESSELLATION_CONTROL_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TessellationControlShaderStorageWrite {
+    TESSELLATION_CONTROL_SHADER_STORAGE_WRITE {
         stage_mask: TESSELLATION_CONTROL_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TessellationControlShaderAccelerationStructureRead {
+    TESSELLATION_CONTROL_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: TESSELLATION_CONTROL_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    TessellationEvaluationShaderUniformRead {
+    TESSELLATION_EVALUATION_SHADER_UNIFORM_READ {
         stage_mask: TESSELLATION_EVALUATION_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    TessellationEvaluationShaderSampledRead {
+    TESSELLATION_EVALUATION_SHADER_SAMPLED_READ {
         stage_mask: TESSELLATION_EVALUATION_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TessellationEvaluationShaderStorageRead {
+    TESSELLATION_EVALUATION_SHADER_STORAGE_READ {
         stage_mask: TESSELLATION_EVALUATION_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TessellationEvaluationShaderStorageWrite {
+    TESSELLATION_EVALUATION_SHADER_STORAGE_WRITE {
         stage_mask: TESSELLATION_EVALUATION_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TessellationEvaluationShaderAccelerationStructureRead {
+    TESSELLATION_EVALUATION_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: TESSELLATION_EVALUATION_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    GeometryShaderUniformRead {
+    GEOMETRY_SHADER_UNIFORM_READ {
         stage_mask: GEOMETRY_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    GeometryShaderSampledRead {
+    GEOMETRY_SHADER_SAMPLED_READ {
         stage_mask: GEOMETRY_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    GeometryShaderStorageRead {
+    GEOMETRY_SHADER_STORAGE_READ {
         stage_mask: GEOMETRY_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    GeometryShaderStorageWrite {
+    GEOMETRY_SHADER_STORAGE_WRITE {
         stage_mask: GEOMETRY_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    GeometryShaderAccelerationStructureRead {
+    GEOMETRY_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: GEOMETRY_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    FragmentShaderUniformRead {
+    FRAGMENT_SHADER_UNIFORM_READ {
         stage_mask: FRAGMENT_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    FragmentShaderColorInputAttachmentRead {
+    FRAGMENT_SHADER_COLOR_INPUT_ATTACHMENT_READ {
         stage_mask: FRAGMENT_SHADER,
         access_mask: INPUT_ATTACHMENT_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: IMAGE,
     }
 
-    FragmentShaderDepthStencilInputAttachmentRead {
+    FRAGMENT_SHADER_DEPTH_STENCIL_INPUT_ATTACHMENT_READ {
         stage_mask: FRAGMENT_SHADER,
         access_mask: INPUT_ATTACHMENT_READ,
         image_layout: DepthStencilReadOnlyOptimal,
-        valid_for: IMAGE,
     }
 
-    FragmentShaderSampledRead {
+    FRAGMENT_SHADER_SAMPLED_READ {
         stage_mask: FRAGMENT_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    FragmentShaderStorageRead {
+    FRAGMENT_SHADER_STORAGE_READ {
         stage_mask: FRAGMENT_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    FragmentShaderStorageWrite {
+    FRAGMENT_SHADER_STORAGE_WRITE {
         stage_mask: FRAGMENT_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    FragmentShaderAccelerationStructureRead {
+    FRAGMENT_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: FRAGMENT_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    DepthStencilAttachmentRead {
+    DEPTH_STENCIL_ATTACHMENT_READ {
         stage_mask: EARLY_FRAGMENT_TESTS | LATE_FRAGMENT_TESTS,
         access_mask: DEPTH_STENCIL_ATTACHMENT_READ,
         image_layout: DepthStencilReadOnlyOptimal,
-        valid_for: IMAGE,
     }
 
-    DepthStencilAttachmentWrite {
+    DEPTH_STENCIL_ATTACHMENT_WRITE {
         stage_mask: EARLY_FRAGMENT_TESTS | LATE_FRAGMENT_TESTS,
         access_mask: DEPTH_STENCIL_ATTACHMENT_WRITE,
         image_layout: DepthStencilAttachmentOptimal,
-        valid_for: IMAGE,
     }
 
-    DepthAttachmentWriteStencilReadOnly {
+    DEPTH_ATTACHMENT_WRITE_STENCIL_READ_ONLY {
         stage_mask: EARLY_FRAGMENT_TESTS | LATE_FRAGMENT_TESTS,
         access_mask: DEPTH_STENCIL_ATTACHMENT_READ | DEPTH_STENCIL_ATTACHMENT_WRITE,
         image_layout: DepthAttachmentStencilReadOnlyOptimal,
-        valid_for: IMAGE,
     }
 
-    DepthReadOnlyStencilAttachmentWrite {
+    DEPTH_READ_ONLY_STENCIL_ATTACHMENT_WRITE {
         stage_mask: EARLY_FRAGMENT_TESTS | LATE_FRAGMENT_TESTS,
         access_mask: DEPTH_STENCIL_ATTACHMENT_READ | DEPTH_STENCIL_ATTACHMENT_WRITE,
         image_layout: DepthReadOnlyStencilAttachmentOptimal,
-        valid_for: IMAGE,
     }
 
-    ColorAttachmentRead {
+    COLOR_ATTACHMENT_READ {
         stage_mask: COLOR_ATTACHMENT_OUTPUT,
         access_mask: COLOR_ATTACHMENT_READ,
         image_layout: ColorAttachmentOptimal,
-        valid_for: IMAGE,
     }
 
-    ColorAttachmentWrite {
+    COLOR_ATTACHMENT_WRITE {
         stage_mask: COLOR_ATTACHMENT_OUTPUT,
         access_mask: COLOR_ATTACHMENT_WRITE,
         image_layout: ColorAttachmentOptimal,
-        valid_for: IMAGE,
     }
 
-    ComputeShaderUniformRead {
+    COMPUTE_SHADER_UNIFORM_READ {
         stage_mask: COMPUTE_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    ComputeShaderSampledRead {
+    COMPUTE_SHADER_SAMPLED_READ {
         stage_mask: COMPUTE_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    ComputeShaderStorageRead {
+    COMPUTE_SHADER_STORAGE_READ {
         stage_mask: COMPUTE_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    ComputeShaderStorageWrite {
+    COMPUTE_SHADER_STORAGE_WRITE {
         stage_mask: COMPUTE_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    ComputeShaderAccelerationStructureRead {
+    COMPUTE_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: COMPUTE_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    CopyTransferRead {
+    COPY_TRANSFER_READ {
         stage_mask: COPY,
         access_mask: TRANSFER_READ,
         image_layout: TransferSrcOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    CopyTransferWrite {
+    COPY_TRANSFER_WRITE {
         stage_mask: COPY,
         access_mask: TRANSFER_WRITE,
         image_layout: TransferDstOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    BlitTransferRead {
+    BLIT_TRANSFER_READ {
         stage_mask: BLIT,
         access_mask: TRANSFER_READ,
         image_layout: TransferSrcOptimal,
-        valid_for: IMAGE,
     }
 
-    BlitTransferWrite {
+    BLIT_TRANSFER_WRITE {
         stage_mask: BLIT,
         access_mask: TRANSFER_WRITE,
         image_layout: TransferDstOptimal,
-        valid_for: IMAGE,
     }
 
-    ResolveTransferRead {
+    RESOLVE_TRANSFER_READ {
         stage_mask: RESOLVE,
         access_mask: TRANSFER_READ,
         image_layout: TransferSrcOptimal,
-        valid_for: IMAGE,
     }
 
-    ResolveTransferWrite {
+    RESOLVE_TRANSFER_WRITE {
         stage_mask: RESOLVE,
         access_mask: TRANSFER_WRITE,
         image_layout: TransferDstOptimal,
-        valid_for: IMAGE,
     }
 
-    ClearTransferWrite {
+    CLEAR_TRANSFER_WRITE {
         stage_mask: CLEAR,
         access_mask: TRANSFER_WRITE,
         image_layout: TransferDstOptimal,
-        valid_for: IMAGE,
     }
 
-    AccelerationStructureCopyTransferRead {
+    ACCELERATION_STRUCTURE_COPY_TRANSFER_READ {
         stage_mask: ACCELERATION_STRUCTURE_COPY,
         access_mask: TRANSFER_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    AccelerationStructureCopyTransferWrite {
+    ACCELERATION_STRUCTURE_COPY_TRANSFER_WRITE {
         stage_mask: ACCELERATION_STRUCTURE_COPY,
         access_mask: TRANSFER_WRITE,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
     // TODO:
-    // VideoDecodeRead {
+    // VIDEO_DECODE_READ {
     //     stage_mask: VIDEO_DECODE,
     //     access_mask: VIDEO_DECODE_READ,
     //     image_layout: Undefined,
-    //     valid_for: BUFFER,
     // }
 
     // TODO:
-    // VideoDecodeWrite {
+    // VIDEO_DECODE_WRITE {
     //     stage_mask: VIDEO_DECODE,
     //     access_mask: VIDEO_DECODE_WRITE,
     //     image_layout: VideoDecodeDst,
-    //     valid_for: IMAGE,
     // }
 
     // TODO:
-    // VideoDecodeDpbRead {
+    // VIDEO_DECODE_DPB_READ {
     //     stage_mask: VIDEO_DECODE,
     //     access_mask: VIDEO_DECODE_READ,
     //     image_layout: VideoDecodeDpb,
-    //     valid_for: IMAGE,
     // }
 
     // TODO:
-    // VideoDecodeDpbWrite {
+    // VIDEO_DECODE_DPB_WRITE {
     //     stage_mask: VIDEO_DECODE,
     //     access_mask: VIDEO_DECODE_WRITE,
     //     image_layout: VideoDecodeDpb,
-    //     valid_for: IMAGE,
     // }
 
     // TODO:
-    // VideoEncodeRead {
+    // VIDEO_ENCODE_READ {
     //     stage_mask: VIDEO_ENCODE,
     //     access_mask: VIDEO_ENCODE_READ,
     //     image_layout: VideoEncodeSrc,
-    //     valid_for: IMAGE,
     // }
 
     // TODO:
-    // VideoEncodeWrite {
+    // VIDEO_ENCODE_WRITE {
     //     stage_mask: VIDEO_ENCODE,
     //     access_mask: VIDEO_ENCODE_WRITE,
     //     image_layout: Undefined,
-    //     valid_for: BUFFER,
     // }
 
     // TODO:
-    // VideoEncodeDpbRead {
+    // VIDEO_ENCODE_DPB_READ {
     //     stage_mask: VIDEO_ENCODE,
     //     access_mask: VIDEO_ENCODE_READ,
     //     image_layout: VideoEncodeDpb,
-    //     valid_for: IMAGE,
     // }
 
     // TODO:
-    // VideoEncodeDpbWrite {
+    // VIDEO_ENCODE_DPB_WRITE {
     //     stage_mask: VIDEO_ENCODE,
     //     access_mask: VIDEO_ENCODE_WRITE,
     //     image_layout: VideoEncodeDpb,
-    //     valid_for: IMAGE,
     // }
 
-    RayTracingShaderUniformRead {
+    RAY_TRACING_SHADER_UNIFORM_READ {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    RayTracingShaderColorInputAttachmentRead {
+    RAY_TRACING_SHADER_COLOR_INPUT_ATTACHMENT_READ {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: INPUT_ATTACHMENT_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: IMAGE,
     }
 
-    RayTracingShaderDepthStencilInputAttachmentRead {
+    RAY_TRACING_SHADER_DEPTH_STENCIL_INPUT_ATTACHMENT_READ {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: INPUT_ATTACHMENT_READ,
         image_layout: DepthStencilReadOnlyOptimal,
-        valid_for: IMAGE,
     }
 
-    RayTracingShaderSampledRead {
+    RAY_TRACING_SHADER_SAMPLED_READ {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    RayTracingShaderStorageRead {
+    RAY_TRACING_SHADER_STORAGE_READ {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    RayTracingShaderStorageWrite {
+    RAY_TRACING_SHADER_STORAGE_WRITE {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    RayTracingShaderBindingTableRead {
+    RAY_TRACING_SHADER_BINDING_TABLE_READ {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: SHADER_BINDING_TABLE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    RayTracingShaderAccelerationStructureRead {
+    RAY_TRACING_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: RAY_TRACING_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    TaskShaderUniformRead {
+    TASK_SHADER_UNIFORM_READ {
         stage_mask: TASK_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    TaskShaderSampledRead {
+    TASK_SHADER_SAMPLED_READ {
         stage_mask: TASK_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TaskShaderStorageRead {
+    TASK_SHADER_STORAGE_READ {
         stage_mask: TASK_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TaskShaderStorageWrite {
+    TASK_SHADER_STORAGE_WRITE {
         stage_mask: TASK_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    TaskShaderAccelerationStructureRead {
+    TASK_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: TASK_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    MeshShaderUniformRead {
+    MESH_SHADER_UNIFORM_READ {
         stage_mask: MESH_SHADER,
         access_mask: UNIFORM_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    MeshShaderSampledRead {
+    MESH_SHADER_SAMPLED_READ {
         stage_mask: MESH_SHADER,
         access_mask: SHADER_SAMPLED_READ,
         image_layout: ShaderReadOnlyOptimal,
-        valid_for: BUFFER | IMAGE,
     }
 
-    MeshShaderStorageRead {
+    MESH_SHADER_STORAGE_READ {
         stage_mask: MESH_SHADER,
         access_mask: SHADER_STORAGE_READ,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    MeshShaderStorageWrite {
+    MESH_SHADER_STORAGE_WRITE {
         stage_mask: MESH_SHADER,
         access_mask: SHADER_STORAGE_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 
-    MeshShaderAccelerationStructureRead {
+    MESH_SHADER_ACCELERATION_STRUCTURE_READ {
         stage_mask: MESH_SHADER,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    AccelerationStructureBuildIndirectCommandRead {
+    ACCELERATION_STRUCTURE_BUILD_INDIRECT_COMMAND_READ {
         stage_mask: ACCELERATION_STRUCTURE_BUILD,
         access_mask: INDIRECT_COMMAND_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    AccelerationStructureBuildShaderRead {
+    ACCELERATION_STRUCTURE_BUILD_SHADER_READ {
         stage_mask: ACCELERATION_STRUCTURE_BUILD,
         access_mask: SHADER_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    AccelerationStructureBuildAccelerationStructureRead {
+    ACCELERATION_STRUCTURE_BUILD_ACCELERATION_STRUCTURE_READ {
         stage_mask: ACCELERATION_STRUCTURE_BUILD,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    AccelerationStructureBuildAccelerationStructureWrite {
+    ACCELERATION_STRUCTURE_BUILD_ACCELERATION_STRUCTURE_WRITE {
         stage_mask: ACCELERATION_STRUCTURE_BUILD,
         access_mask: ACCELERATION_STRUCTURE_WRITE,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    AccelerationStructureCopyAccelerationStructureRead {
+    ACCELERATION_STRUCTURE_COPY_ACCELERATION_STRUCTURE_READ {
         stage_mask: ACCELERATION_STRUCTURE_COPY,
         access_mask: ACCELERATION_STRUCTURE_READ,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
-    AccelerationStructureCopyAccelerationStructureWrite {
+    ACCELERATION_STRUCTURE_COPY_ACCELERATION_STRUCTURE_WRITE {
         stage_mask: ACCELERATION_STRUCTURE_COPY,
         access_mask: ACCELERATION_STRUCTURE_WRITE,
         image_layout: Undefined,
-        valid_for: BUFFER,
     }
 
     /// Only use this for prototyping or debugging please. 🔫 Please. 🔫
-    General {
+    GENERAL {
         stage_mask: ALL_COMMANDS,
         access_mask: MEMORY_READ | MEMORY_WRITE,
         image_layout: General,
-        valid_for: BUFFER | IMAGE,
     }
 }
 
-impl AccessType {
-    pub(crate) const fn is_valid_buffer_access_type(self) -> bool {
-        self.valid_for() & BUFFER != 0
+impl AccessTypes {
+    /// Returns the stage mask of these types of accesses.
+    #[inline]
+    #[must_use]
+    pub const fn stage_mask(&self) -> PipelineStages {
+        self.stage_mask
     }
 
-    pub(crate) const fn is_valid_image_access_type(self) -> bool {
-        self.valid_for() & IMAGE != 0
+    /// Returns the access mask of these types of accesses.
+    #[inline]
+    #[must_use]
+    pub const fn access_mask(&self) -> AccessFlags {
+        self.access_mask
+    }
+
+    /// Returns the image layout of these types of accesses.
+    #[inline]
+    #[must_use]
+    pub const fn image_layout(&self, layout_type: ImageLayoutType) -> ImageLayout {
+        if layout_type.is_optimal() {
+            self.image_layout
+        } else {
+            ImageLayout::General
+        }
+    }
+
+    /// Returns the union of `self` and `other`.
+    ///
+    /// If the image layouts don't match, [`ImageLayout::General`] is used.
+    #[inline]
+    #[must_use]
+    pub const fn union(self, other: Self) -> Self {
+        AccessTypes {
+            stage_mask: self.stage_mask.union(other.stage_mask),
+            access_mask: self.access_mask.union(other.access_mask),
+            image_layout: if self.image_layout as i32 == other.image_layout as i32 {
+                self.image_layout
+            } else {
+                ImageLayout::General
+            },
+        }
+    }
+
+    pub(crate) const fn are_valid_buffer_access_types(self) -> bool {
+        const VALID_STAGE_FLAGS: PipelineStages = PipelineStages::DRAW_INDIRECT
+            .union(PipelineStages::VERTEX_SHADER)
+            .union(PipelineStages::TESSELLATION_CONTROL_SHADER)
+            .union(PipelineStages::TESSELLATION_EVALUATION_SHADER)
+            .union(PipelineStages::GEOMETRY_SHADER)
+            .union(PipelineStages::FRAGMENT_SHADER)
+            .union(PipelineStages::COMPUTE_SHADER)
+            .union(PipelineStages::ALL_COMMANDS)
+            .union(PipelineStages::COPY)
+            .union(PipelineStages::INDEX_INPUT)
+            .union(PipelineStages::VERTEX_ATTRIBUTE_INPUT)
+            .union(PipelineStages::VIDEO_DECODE)
+            .union(PipelineStages::VIDEO_ENCODE)
+            .union(PipelineStages::ACCELERATION_STRUCTURE_BUILD)
+            .union(PipelineStages::RAY_TRACING_SHADER)
+            .union(PipelineStages::TASK_SHADER)
+            .union(PipelineStages::MESH_SHADER)
+            .union(PipelineStages::ACCELERATION_STRUCTURE_COPY);
+        const VALID_ACCESS_FLAGS: AccessFlags = AccessFlags::INDIRECT_COMMAND_READ
+            .union(AccessFlags::INDEX_READ)
+            .union(AccessFlags::VERTEX_ATTRIBUTE_READ)
+            .union(AccessFlags::UNIFORM_READ)
+            .union(AccessFlags::TRANSFER_READ)
+            .union(AccessFlags::TRANSFER_WRITE)
+            .union(AccessFlags::MEMORY_READ)
+            .union(AccessFlags::MEMORY_WRITE)
+            .union(AccessFlags::SHADER_STORAGE_READ)
+            .union(AccessFlags::SHADER_STORAGE_WRITE)
+            .union(AccessFlags::VIDEO_DECODE_READ)
+            .union(AccessFlags::VIDEO_ENCODE_WRITE)
+            .union(AccessFlags::ACCELERATION_STRUCTURE_READ)
+            .union(AccessFlags::ACCELERATION_STRUCTURE_WRITE)
+            .union(AccessFlags::SHADER_BINDING_TABLE_READ);
+
+        VALID_STAGE_FLAGS.contains(self.stage_mask)
+            && VALID_ACCESS_FLAGS.contains(self.access_mask)
+            && matches!(
+                self.image_layout,
+                ImageLayout::Undefined
+                    | ImageLayout::General
+                    | ImageLayout::ShaderReadOnlyOptimal
+                    | ImageLayout::TransferSrcOptimal
+                    | ImageLayout::TransferDstOptimal,
+            )
+    }
+
+    pub(crate) const fn are_valid_image_access_types(self) -> bool {
+        !matches!(self.image_layout, ImageLayout::Undefined)
+    }
+}
+
+impl BitOr for AccessTypes {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
+    }
+}
+
+impl BitOrAssign for AccessTypes {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = self.union(rhs);
     }
 }
 
