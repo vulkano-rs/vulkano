@@ -1,3 +1,7 @@
+//! Vulkano's **EXPERIMENTAL** task graph implementation. Expect many bugs and incomplete features.
+//! There is also currently no validation except the most barebones sanity checks. You many also
+//! get panics in random places.
+
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use command_buffer::RecordingCommandBuffer;
