@@ -15,7 +15,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.75.0"
+rust-version = "1.80.0"
 license = "MIT OR Apache-2.0"
 homepage = "https://vulkano.rs"
 keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
@@ -56,7 +56,6 @@ heck = "0.4"
 indexmap = "2.0"
 libloading = "0.8"
 nom = "7.1"
-once_cell = "1.17"
 parking_lot = "0.12"
 proc-macro2 = "1.0"
 proc-macro-crate = "3.0"

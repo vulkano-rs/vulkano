@@ -1837,7 +1837,6 @@ dependencies = [
  "libc",
  "libloading",
  "nom",
- "once_cell",
  "parking_lot",
  "proc-macro2",
  "quote",
