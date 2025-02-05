@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-macros"
-version = "0.34.0"
+version = "0.35.0"
 authors = ["The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-macros"
 description = "Macros used by vulkano"

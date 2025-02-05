@@ -99,7 +99,6 @@
 //!
 //! [`Instance`]: instance::Instance
 //! [`Surface`]: swapchain::Surface
-//! [`vulkano-win`]: https://crates.io/crates/vulkano-win
 //! [Enumerate the physical devices]: instance::Instance::enumerate_physical_devices
 //! [`PhysicalDevice`]: device::physical::PhysicalDevice
 //! [`Device`]: device::Device

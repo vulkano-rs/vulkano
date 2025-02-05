@@ -409,7 +409,6 @@ impl Swapchain {
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
     /// - Panics if `create_info.usage` is empty.
-    // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     #[inline]
     pub fn new(
         device: Arc<Device>,

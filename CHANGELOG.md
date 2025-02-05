@@ -9,6 +9,16 @@
 
 ### Public dependency updates
 
+### Breaking changes
+
+### Additions
+
+### Bugs fixed
+
+# Version 0.35.0 (2025-02-05)
+
+### Public dependency updates
+
 - [ash](https://crates.io/crates/ash) 0.38.0 (Vulkan 1.3.281)
 - [raw-window-handle](https://crates.io/raw-window-handle) 0.6
 - [winit](https://crates.io/crates/winit) 0.30
