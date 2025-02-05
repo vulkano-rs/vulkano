@@ -115,18 +115,20 @@ impl RawImage {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_image)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_image)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Self::from_handle(device, handle, create_info)
+        unsafe { Self::from_handle(device, handle, create_info) }
     }
 
     /// Creates a new `RawImage` from a raw object handle.
@@ -143,7 +145,7 @@ impl RawImage {
         handle: ash::vk::Image,
         create_info: ImageCreateInfo,
     ) -> Result<Self, VulkanError> {
-        Self::from_handle_with_destruction(device, handle, create_info, true)
+        unsafe { Self::from_handle_with_destruction(device, handle, create_info, true) }
     }
 
     /// Creates a new `RawImage` from a raw object handle. Unlike `from_handle`, the created
@@ -163,7 +165,7 @@ impl RawImage {
         handle: ash::vk::Image,
         create_info: ImageCreateInfo,
     ) -> Result<Self, VulkanError> {
-        Self::from_handle_with_destruction(device, handle, create_info, false)
+        unsafe { Self::from_handle_with_destruction(device, handle, create_info, false) }
     }
 
     pub(super) unsafe fn from_handle_with_destruction(
@@ -196,7 +198,8 @@ impl RawImage {
             unsafe { device.physical_device().format_properties_unchecked(format) };
 
         let drm_format_modifier = if tiling == ImageTiling::DrmFormatModifier {
-            let drm_format_modifier = Self::get_drm_format_modifier_properties(&device, handle)?;
+            let drm_format_modifier =
+                unsafe { Self::get_drm_format_modifier_properties(&device, handle) }?;
             let drm_format_modifier_plane_count = format_properties
                 .drm_format_modifier_properties
                 .iter()
@@ -224,13 +227,13 @@ impl RawImage {
                 );
 
                 (0..plane_count)
-                    .map(|plane| {
+                    .map(|plane| unsafe {
                         Self::get_memory_requirements(&device, handle, Some((plane, tiling)))
                     })
                     .collect()
             } else {
                 // VUID-VkImageMemoryRequirementsInfo2-image-01590
-                smallvec![Self::get_memory_requirements(&device, handle, None)]
+                smallvec![unsafe { Self::get_memory_requirements(&device, handle, None) }]
             }
         } else {
             smallvec![]
@@ -239,7 +242,7 @@ impl RawImage {
         let sparse_memory_requirements = if flags
             .contains(ImageCreateFlags::SPARSE_BINDING | ImageCreateFlags::SPARSE_RESIDENCY)
         {
-            Self::get_sparse_memory_requirements(&device, handle)
+            unsafe { Self::get_sparse_memory_requirements(&device, handle) }
         } else {
             Vec::new()
         };
@@ -472,12 +475,14 @@ impl RawImage {
         let mut properties_vk = ash::vk::ImageDrmFormatModifierPropertiesEXT::default();
 
         let fns = device.fns();
-        (fns.ext_image_drm_format_modifier
-            .get_image_drm_format_modifier_properties_ext)(
-            device.handle(),
-            handle,
-            &mut properties_vk,
-        )
+        unsafe {
+            (fns.ext_image_drm_format_modifier
+                .get_image_drm_format_modifier_properties_ext)(
+                device.handle(),
+                handle,
+                &mut properties_vk,
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -939,27 +944,33 @@ impl RawImage {
             || self.device.enabled_extensions().khr_bind_memory2
         {
             if self.device.api_version() >= Version::V1_1 {
-                (fns.v1_1.bind_image_memory2)(
-                    self.device.handle(),
-                    infos_vk.len() as u32,
-                    infos_vk.as_ptr(),
-                )
+                unsafe {
+                    (fns.v1_1.bind_image_memory2)(
+                        self.device.handle(),
+                        infos_vk.len() as u32,
+                        infos_vk.as_ptr(),
+                    )
+                }
             } else {
-                (fns.khr_bind_memory2.bind_image_memory2_khr)(
-                    self.device.handle(),
-                    infos_vk.len() as u32,
-                    infos_vk.as_ptr(),
-                )
+                unsafe {
+                    (fns.khr_bind_memory2.bind_image_memory2_khr)(
+                        self.device.handle(),
+                        infos_vk.len() as u32,
+                        infos_vk.as_ptr(),
+                    )
+                }
             }
         } else {
             let info_vk = &infos_vk[0];
 
-            (fns.v1_0.bind_image_memory)(
-                self.device.handle(),
-                info_vk.image,
-                info_vk.memory,
-                info_vk.memory_offset,
-            )
+            unsafe {
+                (fns.v1_0.bind_image_memory)(
+                    self.device.handle(),
+                    info_vk.image,
+                    info_vk.memory,
+                    info_vk.memory_offset,
+                )
+            }
         }
         .result();
 
@@ -969,11 +980,7 @@ impl RawImage {
 
         let layout = self.default_layout();
 
-        Ok(Image::from_raw(
-            self,
-            ImageMemory::Normal(allocations),
-            layout,
-        ))
+        Ok(unsafe { Image::from_raw(self, ImageMemory::Normal(allocations), layout) })
     }
 
     /// Converts a raw image into a full image without binding any memory.
@@ -1004,7 +1011,7 @@ impl RawImage {
         };
         let layout = self.default_layout();
 
-        Image::from_raw(self, memory, layout)
+        unsafe { Image::from_raw(self, memory, layout) }
     }
 
     fn default_layout(&self) -> ImageLayout {
@@ -1423,30 +1430,38 @@ impl RawImage {
         self.subresource_layout.get_or_insert(
             (aspect, mip_level, array_layer),
             |&(aspect, mip_level, array_layer)| {
-                let fns = self.device.fns();
-
                 let subresource_vk = ash::vk::ImageSubresource {
                     aspect_mask: aspect.into(),
                     mip_level,
                     array_layer,
                 };
 
-                let mut output = MaybeUninit::uninit();
-                (fns.v1_0.get_image_subresource_layout)(
-                    self.device.handle(),
-                    self.handle,
-                    &subresource_vk,
-                    output.as_mut_ptr(),
-                );
-                let output = output.assume_init();
+                let ash::vk::SubresourceLayout {
+                    offset,
+                    size,
+                    row_pitch,
+                    array_pitch,
+                    depth_pitch,
+                } = {
+                    let fns = self.device.fns();
+                    let mut output = MaybeUninit::uninit();
+                    unsafe {
+                        (fns.v1_0.get_image_subresource_layout)(
+                            self.device.handle(),
+                            self.handle,
+                            &subresource_vk,
+                            output.as_mut_ptr(),
+                        )
+                    };
+                    unsafe { output.assume_init() }
+                };
 
                 SubresourceLayout {
-                    offset: output.offset,
-                    size: output.size,
-                    row_pitch: output.row_pitch,
-                    array_pitch: (self.array_layers > 1).then_some(output.array_pitch),
-                    depth_pitch: matches!(self.image_type, ImageType::Dim3d)
-                        .then_some(output.depth_pitch),
+                    offset,
+                    size,
+                    row_pitch,
+                    array_pitch: (self.array_layers > 1).then_some(array_pitch),
+                    depth_pitch: matches!(self.image_type, ImageType::Dim3d).then_some(depth_pitch),
                 }
             },
         )

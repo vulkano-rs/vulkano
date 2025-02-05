@@ -64,8 +64,8 @@ where
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
         // TODO: review this function
-        let first = self.first.build_submission()?;
-        let second = self.second.build_submission()?;
+        let first = unsafe { self.first.build_submission()? };
+        let second = unsafe { self.second.build_submission()? };
 
         // In some cases below we have to submit previous command buffers already, this s done by
         // flushing previous. Since the implementation should remember being flushed it's
@@ -162,8 +162,8 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        self.first.signal_finished();
-        self.second.signal_finished();
+        unsafe { self.first.signal_finished() };
+        unsafe { self.second.signal_finished() };
     }
 
     fn queue_change_allowed(&self) -> bool {

@@ -139,7 +139,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.begin_render_pass_unchecked(&render_pass_begin_info, &subpass_begin_info);
+                unsafe { out.begin_render_pass_unchecked(&render_pass_begin_info, &subpass_begin_info) };
             },
         );
 
@@ -241,7 +241,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "next_subpass",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.next_subpass_unchecked(&subpass_end_info, &subpass_begin_info);
+                unsafe { out.next_subpass_unchecked(&subpass_end_info, &subpass_begin_info) };
             },
         );
 
@@ -322,7 +322,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "end_render_pass",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.end_render_pass_unchecked(&subpass_end_info);
+                unsafe { out.end_render_pass_unchecked(&subpass_end_info) };
             },
         );
 
@@ -562,7 +562,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             }))
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.begin_rendering_unchecked(&rendering_info);
+                unsafe { out.begin_rendering_unchecked(&rendering_info) };
             },
         );
 
@@ -629,7 +629,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "end_rendering",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.end_rendering_unchecked();
+                unsafe { out.end_rendering_unchecked() };
             },
         );
 
@@ -881,7 +881,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "clear_attachments",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.clear_attachments_unchecked(&attachments, &rects);
+                unsafe { out.clear_attachments_unchecked(&attachments, &rects) };
             },
         );
 
@@ -898,7 +898,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_render_pass(render_pass_begin_info, subpass_begin_info)?;
 
-        Ok(self.begin_render_pass_unchecked(render_pass_begin_info, subpass_begin_info))
+        Ok(unsafe { self.begin_render_pass_unchecked(render_pass_begin_info, subpass_begin_info) })
     }
 
     fn validate_begin_render_pass(
@@ -1256,26 +1256,32 @@ impl RecordingCommandBuffer {
             || self.device().enabled_extensions().khr_create_renderpass2
         {
             if self.device().api_version() >= Version::V1_2 {
-                (fns.v1_2.cmd_begin_render_pass2)(
-                    self.handle(),
-                    &render_pass_begin_info_vk,
-                    &subpass_begin_info_vk,
-                );
+                unsafe {
+                    (fns.v1_2.cmd_begin_render_pass2)(
+                        self.handle(),
+                        &render_pass_begin_info_vk,
+                        &subpass_begin_info_vk,
+                    )
+                };
             } else {
-                (fns.khr_create_renderpass2.cmd_begin_render_pass2_khr)(
-                    self.handle(),
-                    &render_pass_begin_info_vk,
-                    &subpass_begin_info_vk,
-                );
+                unsafe {
+                    (fns.khr_create_renderpass2.cmd_begin_render_pass2_khr)(
+                        self.handle(),
+                        &render_pass_begin_info_vk,
+                        &subpass_begin_info_vk,
+                    )
+                };
             }
         } else {
             debug_assert!(subpass_begin_info_vk.p_next.is_null());
 
-            (fns.v1_0.cmd_begin_render_pass)(
-                self.handle(),
-                &render_pass_begin_info_vk,
-                subpass_begin_info_vk.contents,
-            );
+            unsafe {
+                (fns.v1_0.cmd_begin_render_pass)(
+                    self.handle(),
+                    &render_pass_begin_info_vk,
+                    subpass_begin_info_vk.contents,
+                )
+            };
         }
 
         self
@@ -1289,7 +1295,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_next_subpass(subpass_end_info, subpass_begin_info)?;
 
-        Ok(self.next_subpass_unchecked(subpass_end_info, subpass_begin_info))
+        Ok(unsafe { self.next_subpass_unchecked(subpass_end_info, subpass_begin_info) })
     }
 
     fn validate_next_subpass(
@@ -1345,23 +1351,27 @@ impl RecordingCommandBuffer {
             || self.device().enabled_extensions().khr_create_renderpass2
         {
             if self.device().api_version() >= Version::V1_2 {
-                (fns.v1_2.cmd_next_subpass2)(
-                    self.handle(),
-                    &subpass_begin_info_vk,
-                    &subpass_end_info_vk,
-                );
+                unsafe {
+                    (fns.v1_2.cmd_next_subpass2)(
+                        self.handle(),
+                        &subpass_begin_info_vk,
+                        &subpass_end_info_vk,
+                    )
+                };
             } else {
-                (fns.khr_create_renderpass2.cmd_next_subpass2_khr)(
-                    self.handle(),
-                    &subpass_begin_info_vk,
-                    &subpass_end_info_vk,
-                );
+                unsafe {
+                    (fns.khr_create_renderpass2.cmd_next_subpass2_khr)(
+                        self.handle(),
+                        &subpass_begin_info_vk,
+                        &subpass_end_info_vk,
+                    )
+                };
             }
         } else {
             debug_assert!(subpass_begin_info_vk.p_next.is_null());
             debug_assert!(subpass_end_info_vk.p_next.is_null());
 
-            (fns.v1_0.cmd_next_subpass)(self.handle(), subpass_begin_info_vk.contents);
+            unsafe { (fns.v1_0.cmd_next_subpass)(self.handle(), subpass_begin_info_vk.contents) };
         }
 
         self
@@ -1374,7 +1384,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_render_pass(subpass_end_info)?;
 
-        Ok(self.end_render_pass_unchecked(subpass_end_info))
+        Ok(unsafe { self.end_render_pass_unchecked(subpass_end_info) })
     }
 
     fn validate_end_render_pass(
@@ -1423,17 +1433,19 @@ impl RecordingCommandBuffer {
             || self.device().enabled_extensions().khr_create_renderpass2
         {
             if self.device().api_version() >= Version::V1_2 {
-                (fns.v1_2.cmd_end_render_pass2)(self.handle(), &subpass_end_info_vk);
+                unsafe { (fns.v1_2.cmd_end_render_pass2)(self.handle(), &subpass_end_info_vk) };
             } else {
-                (fns.khr_create_renderpass2.cmd_end_render_pass2_khr)(
-                    self.handle(),
-                    &subpass_end_info_vk,
-                );
+                unsafe {
+                    (fns.khr_create_renderpass2.cmd_end_render_pass2_khr)(
+                        self.handle(),
+                        &subpass_end_info_vk,
+                    )
+                };
             }
         } else {
             debug_assert!(subpass_end_info_vk.p_next.is_null());
 
-            (fns.v1_0.cmd_end_render_pass)(self.handle());
+            unsafe { (fns.v1_0.cmd_end_render_pass)(self.handle()) };
         }
 
         self
@@ -1446,7 +1458,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_rendering(rendering_info)?;
 
-        Ok(self.begin_rendering_unchecked(rendering_info))
+        Ok(unsafe { self.begin_rendering_unchecked(rendering_info) })
     }
 
     fn validate_begin_rendering(
@@ -1521,9 +1533,14 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_begin_rendering)(self.handle(), &rendering_info_vk);
+            unsafe { (fns.v1_3.cmd_begin_rendering)(self.handle(), &rendering_info_vk) };
         } else {
-            (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle(), &rendering_info_vk);
+            unsafe {
+                (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(
+                    self.handle(),
+                    &rendering_info_vk,
+                )
+            };
         }
 
         self
@@ -1533,7 +1550,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn end_rendering(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_rendering()?;
 
-        Ok(self.end_rendering_unchecked())
+        Ok(unsafe { self.end_rendering_unchecked() })
     }
 
     fn validate_end_rendering(&self) -> Result<(), Box<ValidationError>> {
@@ -1559,9 +1576,9 @@ impl RecordingCommandBuffer {
         let fns = self.device().fns();
 
         if self.device().api_version() >= Version::V1_3 {
-            (fns.v1_3.cmd_end_rendering)(self.handle());
+            unsafe { (fns.v1_3.cmd_end_rendering)(self.handle()) };
         } else {
-            (fns.khr_dynamic_rendering.cmd_end_rendering_khr)(self.handle());
+            unsafe { (fns.khr_dynamic_rendering.cmd_end_rendering_khr)(self.handle()) };
         }
 
         self
@@ -1575,7 +1592,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_clear_attachments(attachments, rects)?;
 
-        Ok(self.clear_attachments_unchecked(attachments, rects))
+        Ok(unsafe { self.clear_attachments_unchecked(attachments, rects) })
     }
 
     fn validate_clear_attachments(
@@ -1656,13 +1673,15 @@ impl RecordingCommandBuffer {
         let rects_vk: SmallVec<[_; 4]> = rects.iter().map(ClearRect::to_vk).collect();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_clear_attachments)(
-            self.handle(),
-            attachments_vk.len() as u32,
-            attachments_vk.as_ptr(),
-            rects_vk.len() as u32,
-            rects_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_clear_attachments)(
+                self.handle(),
+                attachments_vk.len() as u32,
+                attachments_vk.as_ptr(),
+                rects_vk.len() as u32,
+                rects_vk.as_ptr(),
+            )
+        };
 
         self
     }

@@ -131,23 +131,25 @@ impl RayTracingPipeline {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
 
-            (fns.khr_ray_tracing_pipeline
-                .create_ray_tracing_pipelines_khr)(
-                device.handle(),
-                ash::vk::DeferredOperationKHR::null(), // TODO: RayTracing: deferred_operation
-                cache.map_or(ash::vk::PipelineCache::null(), |c| c.handle()),
-                1,
-                &create_infos_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_ray_tracing_pipeline
+                    .create_ray_tracing_pipelines_khr)(
+                    device.handle(),
+                    ash::vk::DeferredOperationKHR::null(), // TODO: RayTracing: deferred_operation
+                    cache.map_or(ash::vk::PipelineCache::null(), |c| c.handle()),
+                    1,
+                    &create_infos_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `RayTracingPipeline` from a raw object handle.

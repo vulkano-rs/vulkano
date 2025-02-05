@@ -87,7 +87,7 @@ impl PipelineCache {
     ) -> Result<Arc<PipelineCache>, Validated<VulkanError>> {
         Self::validate_new(&device, &create_info)?;
 
-        Ok(Self::new_unchecked(device, create_info)?)
+        Ok(unsafe { Self::new_unchecked(device, create_info) }?)
     }
 
     fn validate_new(
@@ -111,18 +111,20 @@ impl PipelineCache {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_pipeline_cache)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_pipeline_cache)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `PipelineCache` from a raw object handle.
@@ -258,12 +260,14 @@ impl PipelineCache {
             src_caches.into_iter().map(VulkanObject::handle).collect();
 
         let fns = self.device.fns();
-        (fns.v1_0.merge_pipeline_caches)(
-            self.device.handle(),
-            self.handle,
-            src_caches_vk.len() as u32,
-            src_caches_vk.as_ptr(),
-        )
+        unsafe {
+            (fns.v1_0.merge_pipeline_caches)(
+                self.device.handle(),
+                self.handle,
+                src_caches_vk.len() as u32,
+                src_caches_vk.as_ptr(),
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 

@@ -98,51 +98,55 @@ impl Surface {
             .map_err(FromWindowError::RetrieveHandle)?;
 
         match (window_handle.as_raw(), display_handle.as_raw()) {
-            (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => {
+            (RawWindowHandle::AndroidNdk(window), RawDisplayHandle::Android(_display)) => unsafe {
                 Self::from_android(instance, window.a_native_window.as_ptr().cast(), None)
-            }
+            },
             #[cfg(target_vendor = "apple")]
             (RawWindowHandle::AppKit(handle), _) => {
                 let layer = raw_window_metal::Layer::from_ns_view(handle.ns_view);
 
                 // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
-                Self::from_metal(instance, layer.as_ptr().as_ptr(), None)
+                unsafe { Self::from_metal(instance, layer.as_ptr().as_ptr(), None) }
             }
             #[cfg(target_vendor = "apple")]
             (RawWindowHandle::UiKit(handle), _) => {
                 let layer = raw_window_metal::Layer::from_ui_view(handle.ui_view);
 
                 // Vulkan retains the CAMetalLayer, so no need to retain it past this invocation
-                Self::from_metal(instance, layer.as_ptr().as_ptr(), None)
+                unsafe { Self::from_metal(instance, layer.as_ptr().as_ptr(), None) }
             }
-            (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => {
+            (RawWindowHandle::Wayland(window), RawDisplayHandle::Wayland(display)) => unsafe {
                 Self::from_wayland(
                     instance,
                     display.display.as_ptr().cast(),
                     window.surface.as_ptr().cast(),
                     None,
                 )
-            }
-            (RawWindowHandle::Win32(window), RawDisplayHandle::Windows(_display)) => {
+            },
+            (RawWindowHandle::Win32(window), RawDisplayHandle::Windows(_display)) => unsafe {
                 Self::from_win32(
                     instance,
                     window.hinstance.unwrap().get() as ash::vk::HINSTANCE,
                     window.hwnd.get() as ash::vk::HWND,
                     None,
                 )
-            }
-            (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => Self::from_xcb(
-                instance,
-                display.connection.unwrap().as_ptr().cast(),
-                window.window.get() as ash::vk::xcb_window_t,
-                None,
-            ),
-            (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => Self::from_xlib(
-                instance,
-                display.display.unwrap().as_ptr().cast(),
-                window.window as ash::vk::Window,
-                None,
-            ),
+            },
+            (RawWindowHandle::Xcb(window), RawDisplayHandle::Xcb(display)) => unsafe {
+                Self::from_xcb(
+                    instance,
+                    display.connection.unwrap().as_ptr().cast(),
+                    window.window.get() as ash::vk::xcb_window_t,
+                    None,
+                )
+            },
+            (RawWindowHandle::Xlib(window), RawDisplayHandle::Xlib(display)) => unsafe {
+                Self::from_xlib(
+                    instance,
+                    display.display.unwrap().as_ptr().cast(),
+                    window.window as ash::vk::Window,
+                    None,
+                )
+            },
             _ => unimplemented!(
                 "the window was created with a windowing API that is not supported \
                 by Vulkan/Vulkano"
@@ -215,23 +219,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.ext_headless_surface.create_headless_surface_ext)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.ext_headless_surface.create_headless_surface_ext)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Headless,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Headless, object)
+        }))
     }
 
     /// Creates a `Surface` from a `DisplayMode` and display plane.
@@ -367,23 +370,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_display.create_display_plane_surface_khr)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_display.create_display_plane_surface_khr)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance.clone(),
-            handle,
-            SurfaceApi::DisplayPlane,
-            None,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance.clone(), handle, SurfaceApi::DisplayPlane, None)
+        }))
     }
 
     /// Creates a `Surface` from an Android window.
@@ -400,7 +402,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_android(&instance, window)?;
 
-        Ok(Self::from_android_unchecked(instance, window, object)?)
+        Ok(unsafe { Self::from_android_unchecked(instance, window, object) }?)
     }
 
     fn validate_from_android(
@@ -435,23 +437,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_android_surface.create_android_surface_khr)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_android_surface.create_android_surface_khr)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Android,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Android, object)
+        }))
     }
 
     /// Creates a `Surface` from a DirectFB surface.
@@ -470,9 +471,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_directfb(&instance, dfb, surface)?;
 
-        Ok(Self::from_directfb_unchecked(
-            instance, dfb, surface, object,
-        )?)
+        Ok(unsafe { Self::from_directfb_unchecked(instance, dfb, surface, object) }?)
     }
 
     fn validate_from_directfb(
@@ -513,23 +512,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::DirectFB,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::DirectFB, object)
+        }))
     }
 
     /// Creates a `Surface` from an Fuchsia ImagePipe.
@@ -546,11 +544,11 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_fuchsia_image_pipe(&instance, image_pipe_handle)?;
 
-        Ok(Self::from_fuchsia_image_pipe_unchecked(
-            instance,
-            image_pipe_handle,
-            object,
-        )?)
+        Ok(
+            unsafe {
+                Self::from_fuchsia_image_pipe_unchecked(instance, image_pipe_handle, object)
+            }?,
+        )
     }
 
     fn validate_from_fuchsia_image_pipe(
@@ -585,24 +583,23 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.fuchsia_imagepipe_surface
-                .create_image_pipe_surface_fuchsia)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.fuchsia_imagepipe_surface
+                    .create_image_pipe_surface_fuchsia)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::FuchsiaImagePipe,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::FuchsiaImagePipe, object)
+        }))
     }
 
     /// Creates a `Surface` from a Google Games Platform stream descriptor.
@@ -619,11 +616,9 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_ggp_stream_descriptor(&instance, stream_descriptor)?;
 
-        Ok(Self::from_ggp_stream_descriptor_unchecked(
-            instance,
-            stream_descriptor,
-            object,
-        )?)
+        Ok(unsafe {
+            Self::from_ggp_stream_descriptor_unchecked(instance, stream_descriptor, object)
+        }?)
     }
 
     fn validate_from_ggp_stream_descriptor(
@@ -658,24 +653,23 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.ggp_stream_descriptor_surface
-                .create_stream_descriptor_surface_ggp)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.ggp_stream_descriptor_surface
+                    .create_stream_descriptor_surface_ggp)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::GgpStreamDescriptor,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::GgpStreamDescriptor, object)
+        }))
     }
 
     /// Creates a `Surface` from an iOS `UIView`.
@@ -693,7 +687,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_ios(&instance, view)?;
 
-        Ok(Self::from_ios_unchecked(instance, view, object)?)
+        Ok(unsafe { Self::from_ios_unchecked(instance, view, object) }?)
     }
 
     fn validate_from_ios(
@@ -731,23 +725,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.mvk_ios_surface.create_ios_surface_mvk)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.mvk_ios_surface.create_ios_surface_mvk)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Ios,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Ios, object)
+        }))
     }
 
     /// Creates a `Surface` from a MacOS `NSView`.
@@ -765,7 +758,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_mac_os(&instance, view)?;
 
-        Ok(Self::from_mac_os_unchecked(instance, view, object)?)
+        Ok(unsafe { Self::from_mac_os_unchecked(instance, view, object) }?)
     }
 
     fn validate_from_mac_os(
@@ -803,23 +796,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.mvk_macos_surface.create_mac_os_surface_mvk)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.mvk_macos_surface.create_mac_os_surface_mvk)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::MacOs,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::MacOs, object)
+        }))
     }
 
     /// Create a `Surface` from a [`CAMetalLayer`].
@@ -843,7 +835,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_metal(&instance, layer)?;
 
-        Ok(Self::from_metal_unchecked(instance, layer, object)?)
+        Ok(unsafe { Self::from_metal_unchecked(instance, layer, object) }?)
     }
 
     fn validate_from_metal(
@@ -877,23 +869,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.ext_metal_surface.create_metal_surface_ext)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.ext_metal_surface.create_metal_surface_ext)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Metal,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Metal, object)
+        }))
     }
 
     /// Creates a `Surface` from a QNX Screen window.
@@ -912,9 +903,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_qnx_screen(&instance, context, window)?;
 
-        Ok(Self::from_qnx_screen_unchecked(
-            instance, context, window, object,
-        )?)
+        Ok(unsafe { Self::from_qnx_screen_unchecked(instance, context, window, object) }?)
     }
 
     fn validate_from_qnx_screen(
@@ -957,23 +946,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.qnx_screen_surface.create_screen_surface_qnx)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.qnx_screen_surface.create_screen_surface_qnx)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::QnxScreen,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::QnxScreen, object)
+        }))
     }
 
     /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
@@ -990,7 +978,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_vi(&instance, window)?;
 
-        Ok(Self::from_vi_unchecked(instance, window, object)?)
+        Ok(unsafe { Self::from_vi_unchecked(instance, window, object) }?)
     }
 
     fn validate_from_vi(
@@ -1025,23 +1013,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.nn_vi_surface.create_vi_surface_nn)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.nn_vi_surface.create_vi_surface_nn)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Vi,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Vi, object)
+        }))
     }
 
     /// Creates a `Surface` from a Wayland window.
@@ -1062,9 +1049,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_wayland(&instance, display, surface)?;
 
-        Ok(Self::from_wayland_unchecked(
-            instance, display, surface, object,
-        )?)
+        Ok(unsafe { Self::from_wayland_unchecked(instance, display, surface, object) }?)
     }
 
     fn validate_from_wayland(
@@ -1105,23 +1090,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_wayland_surface.create_wayland_surface_khr)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_wayland_surface.create_wayland_surface_khr)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Wayland,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Wayland, object)
+        }))
     }
 
     /// Creates a `Surface` from a Win32 window.
@@ -1142,9 +1126,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_win32(&instance, hinstance, hwnd)?;
 
-        Ok(Self::from_win32_unchecked(
-            instance, hinstance, hwnd, object,
-        )?)
+        Ok(unsafe { Self::from_win32_unchecked(instance, hinstance, hwnd, object) }?)
     }
 
     fn validate_from_win32(
@@ -1185,23 +1167,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_win32_surface.create_win32_surface_khr)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_win32_surface.create_win32_surface_khr)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Win32,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Win32, object)
+        }))
     }
 
     /// Creates a `Surface` from an XCB window.
@@ -1222,9 +1203,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_xcb(&instance, connection, window)?;
 
-        Ok(Self::from_xcb_unchecked(
-            instance, connection, window, object,
-        )?)
+        Ok(unsafe { Self::from_xcb_unchecked(instance, connection, window, object) }?)
     }
 
     fn validate_from_xcb(
@@ -1265,23 +1244,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_xcb_surface.create_xcb_surface_khr)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_xcb_surface.create_xcb_surface_khr)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Xcb,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Xcb, object)
+        }))
     }
 
     /// Creates a `Surface` from an Xlib window.
@@ -1302,9 +1280,7 @@ impl Surface {
     ) -> Result<Arc<Self>, Validated<VulkanError>> {
         Self::validate_from_xlib(&instance, display, window)?;
 
-        Ok(Self::from_xlib_unchecked(
-            instance, display, window, object,
-        )?)
+        Ok(unsafe { Self::from_xlib_unchecked(instance, display, window, object) }?)
     }
 
     fn validate_from_xlib(
@@ -1345,23 +1321,22 @@ impl Surface {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_xlib_surface.create_xlib_surface_khr)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_xlib_surface.create_xlib_surface_khr)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Arc::new(Self::from_handle(
-            instance,
-            handle,
-            SurfaceApi::Xlib,
-            object,
-        )))
+        Ok(Arc::new(unsafe {
+            Self::from_handle(instance, handle, SurfaceApi::Xlib, object)
+        }))
     }
 
     /// Returns the instance this surface was created with.

@@ -384,16 +384,18 @@ impl DisplayMode {
         let handle = {
             let fns = physical_device.instance().fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_display.create_display_mode_khr)(
-                physical_device.handle(),
-                display.handle,
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.khr_display.create_display_mode_khr)(
+                    physical_device.handle(),
+                    display.handle,
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(display.display_modes.get_or_insert(handle, |&handle| {

@@ -227,12 +227,14 @@ impl DescriptorSet {
             return;
         }
 
-        Self::update_inner(
-            &self.inner,
-            self.resources.get_mut(),
-            &descriptor_writes,
-            &descriptor_copies,
-        );
+        unsafe {
+            Self::update_inner(
+                &self.inner,
+                self.resources.get_mut(),
+                &descriptor_writes,
+                &descriptor_copies,
+            )
+        };
     }
 
     /// Updates the descriptor set with new values.
@@ -254,12 +256,14 @@ impl DescriptorSet {
         self.inner
             .validate_update(&descriptor_writes, &descriptor_copies)?;
 
-        Self::update_inner(
-            &self.inner,
-            &mut self.resources.write(),
-            &descriptor_writes,
-            &descriptor_copies,
-        );
+        unsafe {
+            Self::update_inner(
+                &self.inner,
+                &mut self.resources.write(),
+                &descriptor_writes,
+                &descriptor_copies,
+            )
+        };
 
         Ok(())
     }
@@ -276,12 +280,14 @@ impl DescriptorSet {
             return;
         }
 
-        Self::update_inner(
-            &self.inner,
-            &mut self.resources.write(),
-            &descriptor_writes,
-            &descriptor_copies,
-        );
+        unsafe {
+            Self::update_inner(
+                &self.inner,
+                &mut self.resources.write(),
+                &descriptor_writes,
+                &descriptor_copies,
+            )
+        };
     }
 
     unsafe fn update_inner(
@@ -290,7 +296,7 @@ impl DescriptorSet {
         descriptor_writes: &[WriteDescriptorSet],
         descriptor_copies: &[CopyDescriptorSet],
     ) {
-        inner.update_unchecked(descriptor_writes, descriptor_copies);
+        unsafe { inner.update_unchecked(descriptor_writes, descriptor_copies) };
 
         for write in descriptor_writes {
             resources.write(write, inner.layout());

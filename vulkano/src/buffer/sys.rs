@@ -88,18 +88,20 @@ impl RawBuffer {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_buffer)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.create_buffer)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `RawBuffer` from a raw object handle.
@@ -116,7 +118,7 @@ impl RawBuffer {
         handle: ash::vk::Buffer,
         create_info: BufferCreateInfo,
     ) -> Self {
-        Self::from_handle_with_destruction(device, handle, create_info, true)
+        unsafe { Self::from_handle_with_destruction(device, handle, create_info, true) }
     }
 
     /// Creates a new `RawBuffer` from a raw object handle. Unlike `from_handle`, the created
@@ -136,7 +138,7 @@ impl RawBuffer {
         handle: ash::vk::Buffer,
         create_info: BufferCreateInfo,
     ) -> Self {
-        Self::from_handle_with_destruction(device, handle, create_info, false)
+        unsafe { Self::from_handle_with_destruction(device, handle, create_info, false) }
     }
 
     unsafe fn from_handle_with_destruction(
@@ -493,25 +495,31 @@ impl RawBuffer {
             let bind_infos_vk = [bind_info_vk];
 
             if self.device.api_version() >= Version::V1_1 {
-                (fns.v1_1.bind_buffer_memory2)(
-                    self.device.handle(),
-                    bind_infos_vk.len() as u32,
-                    bind_infos_vk.as_ptr(),
-                )
+                unsafe {
+                    (fns.v1_1.bind_buffer_memory2)(
+                        self.device.handle(),
+                        bind_infos_vk.len() as u32,
+                        bind_infos_vk.as_ptr(),
+                    )
+                }
             } else {
-                (fns.khr_bind_memory2.bind_buffer_memory2_khr)(
-                    self.device.handle(),
-                    bind_infos_vk.len() as u32,
-                    bind_infos_vk.as_ptr(),
-                )
+                unsafe {
+                    (fns.khr_bind_memory2.bind_buffer_memory2_khr)(
+                        self.device.handle(),
+                        bind_infos_vk.len() as u32,
+                        bind_infos_vk.as_ptr(),
+                    )
+                }
             }
         } else {
-            (fns.v1_0.bind_buffer_memory)(
-                self.device.handle(),
-                bind_info_vk.buffer,
-                bind_info_vk.memory,
-                bind_info_vk.memory_offset,
-            )
+            unsafe {
+                (fns.v1_0.bind_buffer_memory)(
+                    self.device.handle(),
+                    bind_info_vk.buffer,
+                    bind_info_vk.memory,
+                    bind_info_vk.memory_offset,
+                )
+            }
         }
         .result();
 

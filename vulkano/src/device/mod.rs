@@ -379,7 +379,7 @@ impl Device {
             unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(physical_device, handle, create_info))
+        Ok(unsafe { Self::from_handle(physical_device, handle, create_info) })
     }
 
     /// Creates a new `Device` from a raw object handle.
@@ -710,14 +710,16 @@ impl Device {
         let mut build_sizes_info_vk = AccelerationStructureBuildSizesInfo::to_mut_vk();
 
         let fns = self.fns();
-        (fns.khr_acceleration_structure
-            .get_acceleration_structure_build_sizes_khr)(
-            self.handle,
-            build_type.into(),
-            &build_info_vk,
-            max_primitive_counts.as_ptr(),
-            &mut build_sizes_info_vk,
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .get_acceleration_structure_build_sizes_khr)(
+                self.handle,
+                build_type.into(),
+                &build_info_vk,
+                max_primitive_counts.as_ptr(),
+                &mut build_sizes_info_vk,
+            )
+        };
 
         AccelerationStructureBuildSizesInfo::from_vk(&build_sizes_info_vk)
     }
@@ -770,12 +772,14 @@ impl Device {
         let mut compatibility_vk = ash::vk::AccelerationStructureCompatibilityKHR::default();
 
         let fns = self.fns();
-        (fns.khr_acceleration_structure
-            .get_device_acceleration_structure_compatibility_khr)(
-            self.handle,
-            &version_info_vk,
-            &mut compatibility_vk,
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .get_device_acceleration_structure_compatibility_khr)(
+                self.handle,
+                &version_info_vk,
+                &mut compatibility_vk,
+            )
+        };
 
         compatibility_vk == ash::vk::AccelerationStructureCompatibilityKHR::COMPATIBLE
     }
@@ -842,17 +846,21 @@ impl Device {
         let fns = self.fns();
 
         if self.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_descriptor_set_layout_support)(
-                self.handle(),
-                &create_info_vk,
-                &mut support_vk,
-            )
+            unsafe {
+                (fns.v1_1.get_descriptor_set_layout_support)(
+                    self.handle(),
+                    &create_info_vk,
+                    &mut support_vk,
+                )
+            }
         } else {
-            (fns.khr_maintenance3.get_descriptor_set_layout_support_khr)(
-                self.handle(),
-                &create_info_vk,
-                &mut support_vk,
-            )
+            unsafe {
+                (fns.khr_maintenance3.get_descriptor_set_layout_support_khr)(
+                    self.handle(),
+                    &create_info_vk,
+                    &mut support_vk,
+                )
+            }
         }
 
         // Unborrow
@@ -1189,7 +1197,7 @@ impl Device {
     ) -> Result<MemoryFdProperties, Validated<VulkanError>> {
         self.validate_memory_fd_properties(handle_type, &file)?;
 
-        Ok(self.memory_fd_properties_unchecked(handle_type, file)?)
+        Ok(unsafe { self.memory_fd_properties_unchecked(handle_type, file) }?)
     }
 
     fn validate_memory_fd_properties(
@@ -1244,12 +1252,14 @@ impl Device {
         };
 
         let fns = self.fns();
-        (fns.khr_external_memory_fd.get_memory_fd_properties_khr)(
-            self.handle,
-            handle_type.into(),
-            fd,
-            &mut memory_fd_properties,
-        )
+        unsafe {
+            (fns.khr_external_memory_fd.get_memory_fd_properties_khr)(
+                self.handle,
+                handle_type.into(),
+                fd,
+                &mut memory_fd_properties,
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
@@ -1298,7 +1308,7 @@ impl Device {
     #[inline]
     pub unsafe fn wait_idle(&self) -> Result<(), VulkanError> {
         let fns = self.fns();
-        (fns.v1_0.device_wait_idle)(self.handle)
+        unsafe { (fns.v1_0.device_wait_idle)(self.handle) }
             .result()
             .map_err(VulkanError::from)?;
 

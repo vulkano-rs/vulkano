@@ -508,14 +508,14 @@ impl Buffer {
 
         let ptr = {
             let fns = device.fns();
-            let f = if device.api_version() >= Version::V1_2 {
+            let func = if device.api_version() >= Version::V1_2 {
                 fns.v1_2.get_buffer_device_address
             } else if device.enabled_extensions().khr_buffer_device_address {
                 fns.khr_buffer_device_address.get_buffer_device_address_khr
             } else {
                 fns.ext_buffer_device_address.get_buffer_device_address_ext
             };
-            f(device.handle(), &info_vk)
+            unsafe { func(device.handle(), &info_vk) }
         };
 
         NonNullDeviceAddress::new(ptr).unwrap()

@@ -113,13 +113,16 @@ impl VulkanLibrary {
         // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
         // to determine the version of Vulkan.
 
-        let name = CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0");
-        let func = loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr());
+        let name = unsafe { CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0") };
+        let func =
+            unsafe { loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr()) };
 
         let version = if let Some(func) = func {
-            let func: ash::vk::PFN_vkEnumerateInstanceVersion = transmute(func);
+            let func: ash::vk::PFN_vkEnumerateInstanceVersion = unsafe { transmute(func) };
             let mut api_version = 0;
-            func(&mut api_version).result().map_err(VulkanError::from)?;
+            unsafe { func(&mut api_version) }
+                .result()
+                .map_err(VulkanError::from)?;
             Version::from(api_version)
         } else {
             Version {
@@ -140,28 +143,32 @@ impl VulkanLibrary {
 
         loop {
             let mut count = 0;
-            (fns.v1_0.enumerate_instance_extension_properties)(
-                layer_vk
-                    .as_ref()
-                    .map_or(ptr::null(), |layer| layer.as_ptr()),
-                &mut count,
-                ptr::null_mut(),
-            )
+            unsafe {
+                (fns.v1_0.enumerate_instance_extension_properties)(
+                    layer_vk
+                        .as_ref()
+                        .map_or(ptr::null(), |layer| layer.as_ptr()),
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
             let mut output = Vec::with_capacity(count as usize);
-            let result = (fns.v1_0.enumerate_instance_extension_properties)(
-                layer_vk
-                    .as_ref()
-                    .map_or(ptr::null(), |layer| layer.as_ptr()),
-                &mut count,
-                output.as_mut_ptr(),
-            );
+            let result = unsafe {
+                (fns.v1_0.enumerate_instance_extension_properties)(
+                    layer_vk
+                        .as_ref()
+                        .map_or(ptr::null(), |layer| layer.as_ptr()),
+                    &mut count,
+                    output.as_mut_ptr(),
+                )
+            };
 
             match result {
                 ash::vk::Result::SUCCESS => {
-                    output.set_len(count as usize);
+                    unsafe { output.set_len(count as usize) };
                     return Ok(output.into_iter().map(Into::into).collect());
                 }
                 ash::vk::Result::INCOMPLETE => (),
@@ -292,7 +299,7 @@ impl VulkanLibrary {
         instance: ash::vk::Instance,
         name: *const c_char,
     ) -> ash::vk::PFN_vkVoidFunction {
-        self.loader.get_instance_proc_addr(instance, name)
+        unsafe { self.loader.get_instance_proc_addr(instance, name) }
     }
 }
 
@@ -318,7 +325,7 @@ where
         instance: ash::vk::Instance,
         name: *const c_char,
     ) -> ash::vk::PFN_vkVoidFunction {
-        (**self).get_instance_proc_addr(instance, name)
+        unsafe { (**self).get_instance_proc_addr(instance, name) }
     }
 }
 
@@ -342,10 +349,10 @@ impl DynamicLibraryLoader {
     ///
     /// - The dynamic library must be a valid Vulkan implementation.
     pub unsafe fn new(path: impl AsRef<Path>) -> Result<DynamicLibraryLoader, LoadingError> {
-        let vk_lib = Library::new(path.as_ref()).map_err(LoadingError::LibraryLoadFailure)?;
+        let vk_lib =
+            unsafe { Library::new(path.as_ref()) }.map_err(LoadingError::LibraryLoadFailure)?;
 
-        let get_instance_proc_addr = *vk_lib
-            .get(b"vkGetInstanceProcAddr")
+        let get_instance_proc_addr = *unsafe { vk_lib.get(b"vkGetInstanceProcAddr") }
             .map_err(LoadingError::LibraryLoadFailure)?;
 
         Ok(DynamicLibraryLoader {
@@ -362,7 +369,7 @@ unsafe impl Loader for DynamicLibraryLoader {
         instance: ash::vk::Instance,
         name: *const c_char,
     ) -> ash::vk::PFN_vkVoidFunction {
-        (self.get_instance_proc_addr)(instance, name)
+        unsafe { (self.get_instance_proc_addr)(instance, name) }
     }
 }
 

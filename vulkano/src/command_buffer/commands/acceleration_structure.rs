@@ -83,7 +83,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_build_acceleration_structure(&info, &build_range_infos)?;
 
-        Ok(self.build_acceleration_structure_unchecked(info, build_range_infos))
+        Ok(unsafe { self.build_acceleration_structure_unchecked(info, build_range_infos) })
     }
 
     fn validate_build_acceleration_structure(
@@ -119,7 +119,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "build_acceleration_structure",
             used_resources,
             move |out: &mut RecordingCommandBuffer| {
-                out.build_acceleration_structure_unchecked(&info, &build_range_infos);
+                unsafe { out.build_acceleration_structure_unchecked(&info, &build_range_infos) };
             },
         );
 
@@ -198,12 +198,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             &max_primitive_counts,
         )?;
 
-        Ok(self.build_acceleration_structure_indirect_unchecked(
-            info,
-            indirect_buffer,
-            stride,
-            max_primitive_counts,
-        ))
+        Ok(unsafe {
+            self.build_acceleration_structure_indirect_unchecked(
+                info,
+                indirect_buffer,
+                stride,
+                max_primitive_counts,
+            )
+        })
     }
 
     fn validate_build_acceleration_structure_indirect(
@@ -248,12 +250,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             "build_acceleration_structure_indirect",
             used_resources,
             move |out: &mut RecordingCommandBuffer| {
-                out.build_acceleration_structure_indirect_unchecked(
-                    &info,
-                    &indirect_buffer,
-                    stride,
-                    &max_primitive_counts,
-                );
+                unsafe {
+                    out.build_acceleration_structure_indirect_unchecked(
+                        &info,
+                        &indirect_buffer,
+                        stride,
+                        &max_primitive_counts,
+                    )
+                };
             },
         );
 
@@ -277,7 +281,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure(&info)?;
 
-        Ok(self.copy_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure(
@@ -337,7 +341,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             .into_iter()
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.copy_acceleration_structure_unchecked(&info);
+                unsafe { out.copy_acceleration_structure_unchecked(&info) };
             },
         );
 
@@ -361,7 +365,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure_to_memory(&info)?;
 
-        Ok(self.copy_acceleration_structure_to_memory_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_to_memory_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure_to_memory(
@@ -421,7 +425,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             .into_iter()
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.copy_acceleration_structure_to_memory_unchecked(&info);
+                unsafe { out.copy_acceleration_structure_to_memory_unchecked(&info) };
             },
         );
 
@@ -448,7 +452,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_memory_to_acceleration_structure(&info)?;
 
-        Ok(self.copy_memory_to_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_memory_to_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_memory_to_acceleration_structure(
@@ -508,7 +512,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             .into_iter()
             .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.copy_memory_to_acceleration_structure_unchecked(&info);
+                unsafe { out.copy_memory_to_acceleration_structure_unchecked(&info) };
             },
         );
 
@@ -544,11 +548,13 @@ impl<L> AutoCommandBufferBuilder<L> {
             first_query,
         )?;
 
-        Ok(self.write_acceleration_structures_properties_unchecked(
-            acceleration_structures,
-            query_pool,
-            first_query,
-        ))
+        Ok(unsafe {
+            self.write_acceleration_structures_properties_unchecked(
+                acceleration_structures,
+                query_pool,
+                first_query,
+            )
+        })
     }
 
     fn validate_write_acceleration_structures_properties(
@@ -604,11 +610,11 @@ impl<L> AutoCommandBufferBuilder<L> {
                 )
             }).collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.write_acceleration_structures_properties_unchecked(
+                unsafe { out.write_acceleration_structures_properties_unchecked(
                     &acceleration_structures,
                     &query_pool,
                     first_query,
-                );
+                ) };
             },
         );
 
@@ -799,7 +805,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_build_acceleration_structure(info, build_range_infos)?;
 
-        Ok(self.build_acceleration_structure_unchecked(info, build_range_infos))
+        Ok(unsafe { self.build_acceleration_structure_unchecked(info, build_range_infos) })
     }
 
     fn validate_build_acceleration_structure(
@@ -1552,13 +1558,15 @@ impl RecordingCommandBuffer {
             .collect();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_build_acceleration_structures_khr)(
-            self.handle(),
-            1,
-            &info_vk,
-            build_range_info_pointers_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_build_acceleration_structures_khr)(
+                self.handle(),
+                1,
+                &info_vk,
+                build_range_info_pointers_vk.as_ptr(),
+            )
+        };
 
         self
     }
@@ -1578,12 +1586,14 @@ impl RecordingCommandBuffer {
             max_primitive_counts,
         )?;
 
-        Ok(self.build_acceleration_structure_indirect_unchecked(
-            info,
-            indirect_buffer,
-            stride,
-            max_primitive_counts,
-        ))
+        Ok(unsafe {
+            self.build_acceleration_structure_indirect_unchecked(
+                info,
+                indirect_buffer,
+                stride,
+                max_primitive_counts,
+            )
+        })
     }
 
     fn validate_build_acceleration_structure_indirect(
@@ -2168,15 +2178,17 @@ impl RecordingCommandBuffer {
         let info_vk = info.to_vk(&info_fields1_vk);
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_build_acceleration_structures_indirect_khr)(
-            self.handle(),
-            1,
-            &info_vk,
-            &indirect_buffer.device_address().unwrap().get(),
-            &stride,
-            &max_primitive_counts.as_ptr(),
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_build_acceleration_structures_indirect_khr)(
+                self.handle(),
+                1,
+                &info_vk,
+                &indirect_buffer.device_address().unwrap().get(),
+                &stride,
+                &max_primitive_counts.as_ptr(),
+            )
+        };
 
         self
     }
@@ -2188,7 +2200,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure(info)?;
 
-        Ok(self.copy_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure(
@@ -2223,8 +2235,10 @@ impl RecordingCommandBuffer {
         let info_vk = info.to_vk();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_copy_acceleration_structure_khr)(self.handle(), &info_vk);
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_copy_acceleration_structure_khr)(self.handle(), &info_vk)
+        };
 
         self
     }
@@ -2236,7 +2250,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_acceleration_structure_to_memory(info)?;
 
-        Ok(self.copy_acceleration_structure_to_memory_unchecked(info))
+        Ok(unsafe { self.copy_acceleration_structure_to_memory_unchecked(info) })
     }
 
     fn validate_copy_acceleration_structure_to_memory(
@@ -2280,8 +2294,10 @@ impl RecordingCommandBuffer {
         let info_vk = info.to_vk();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_copy_acceleration_structure_to_memory_khr)(self.handle(), &info_vk);
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_copy_acceleration_structure_to_memory_khr)(self.handle(), &info_vk)
+        };
 
         self
     }
@@ -2293,7 +2309,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_copy_memory_to_acceleration_structure(info)?;
 
-        Ok(self.copy_memory_to_acceleration_structure_unchecked(info))
+        Ok(unsafe { self.copy_memory_to_acceleration_structure_unchecked(info) })
     }
 
     fn validate_copy_memory_to_acceleration_structure(
@@ -2337,8 +2353,10 @@ impl RecordingCommandBuffer {
         let info_vk = info.to_vk();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_copy_memory_to_acceleration_structure_khr)(self.handle(), &info_vk);
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_copy_memory_to_acceleration_structure_khr)(self.handle(), &info_vk)
+        };
 
         self
     }
@@ -2356,11 +2374,13 @@ impl RecordingCommandBuffer {
             first_query,
         )?;
 
-        Ok(self.write_acceleration_structures_properties_unchecked(
-            acceleration_structures,
-            query_pool,
-            first_query,
-        ))
+        Ok(unsafe {
+            self.write_acceleration_structures_properties_unchecked(
+                acceleration_structures,
+                query_pool,
+                first_query,
+            )
+        })
     }
 
     fn validate_write_acceleration_structures_properties(
@@ -2447,15 +2467,17 @@ impl RecordingCommandBuffer {
             .collect();
 
         let fns = self.device().fns();
-        (fns.khr_acceleration_structure
-            .cmd_write_acceleration_structures_properties_khr)(
-            self.handle(),
-            acceleration_structures_vk.len() as u32,
-            acceleration_structures_vk.as_ptr(),
-            query_pool.query_type().into(),
-            query_pool.handle(),
-            first_query,
-        );
+        unsafe {
+            (fns.khr_acceleration_structure
+                .cmd_write_acceleration_structures_properties_khr)(
+                self.handle(),
+                acceleration_structures_vk.len() as u32,
+                acceleration_structures_vk.as_ptr(),
+                query_pool.query_type().into(),
+                query_pool.handle(),
+                first_query,
+            )
+        };
 
         self
     }

@@ -35,24 +35,35 @@ impl Queue {
     pub(super) unsafe fn new(device: Arc<Device>, queue_info: DeviceQueueInfo) -> Arc<Self> {
         let queue_info_vk = queue_info.to_vk();
 
-        let fns = device.fns();
-        let mut output = MaybeUninit::uninit();
+        let handle = {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
 
-        if device.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_device_queue2)(device.handle(), &queue_info_vk, output.as_mut_ptr());
-        } else {
-            debug_assert!(queue_info_vk.flags.is_empty());
-            debug_assert!(queue_info_vk.p_next.is_null());
-            (fns.v1_0.get_device_queue)(
-                device.handle(),
-                queue_info_vk.queue_family_index,
-                queue_info_vk.queue_index,
-                output.as_mut_ptr(),
-            );
-        }
+            if device.api_version() >= Version::V1_1 {
+                unsafe {
+                    (fns.v1_1.get_device_queue2)(
+                        device.handle(),
+                        &queue_info_vk,
+                        output.as_mut_ptr(),
+                    )
+                };
+            } else {
+                debug_assert!(queue_info_vk.flags.is_empty());
+                debug_assert!(queue_info_vk.p_next.is_null());
+                unsafe {
+                    (fns.v1_0.get_device_queue)(
+                        device.handle(),
+                        queue_info_vk.queue_family_index,
+                        queue_info_vk.queue_index,
+                        output.as_mut_ptr(),
+                    )
+                };
+            }
 
-        let handle = output.assume_init();
-        Self::from_handle(device, handle, queue_info)
+            unsafe { output.assume_init() }
+        };
+
+        unsafe { Self::from_handle(device, handle, queue_info) }
     }
 
     // TODO: Make public
@@ -253,7 +264,7 @@ impl QueueGuard<'_> {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_bind_sparse(bind_infos, fence)?;
 
-        Ok(self.bind_sparse_unchecked(bind_infos, fence)?)
+        Ok(unsafe { self.bind_sparse_unchecked(bind_infos, fence) }?)
     }
 
     fn validate_bind_sparse(
@@ -323,14 +334,16 @@ impl QueueGuard<'_> {
             .collect();
 
         let fns = self.queue.device.fns();
-        (fns.v1_0.queue_bind_sparse)(
-            self.queue.handle,
-            bind_infos_vk.len() as u32,
-            bind_infos_vk.as_ptr(),
-            fence
-                .as_ref()
-                .map_or_else(Default::default, VulkanObject::handle),
-        )
+        unsafe {
+            (fns.v1_0.queue_bind_sparse)(
+                self.queue.handle,
+                bind_infos_vk.len() as u32,
+                bind_infos_vk.as_ptr(),
+                fence
+                    .as_ref()
+                    .map_or_else(Default::default, VulkanObject::handle),
+            )
+        }
         .result()
         .map_err(VulkanError::from)
     }
@@ -366,7 +379,7 @@ impl QueueGuard<'_> {
     {
         self.validate_present(present_info)?;
 
-        Ok(self.present_unchecked(present_info)?)
+        Ok(unsafe { self.present_unchecked(present_info) }?)
     }
 
     fn validate_present(&self, present_info: &PresentInfo) -> Result<(), Box<ValidationError>> {
@@ -447,7 +460,7 @@ impl QueueGuard<'_> {
         );
 
         let fns = self.queue.device().fns();
-        let result = (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk);
+        let result = unsafe { (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk) };
 
         // Per the documentation of `vkQueuePresentKHR`, certain results indicate that the whole
         // operation has failed, while others only indicate failure of a particular present.
@@ -518,7 +531,7 @@ impl QueueGuard<'_> {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_submit(submit_infos, fence)?;
 
-        Ok(self.submit_unchecked(submit_infos, fence)?)
+        Ok(unsafe { self.submit_unchecked(submit_infos, fence) }?)
     }
 
     fn validate_submit(
@@ -661,24 +674,28 @@ impl QueueGuard<'_> {
             let fns = self.queue.device.fns();
 
             if self.queue.device.api_version() >= Version::V1_3 {
-                (fns.v1_3.queue_submit2)(
-                    self.queue.handle,
-                    submit_infos_vk.len() as u32,
-                    submit_infos_vk.as_ptr(),
-                    fence
-                        .as_ref()
-                        .map_or_else(Default::default, VulkanObject::handle),
-                )
+                unsafe {
+                    (fns.v1_3.queue_submit2)(
+                        self.queue.handle,
+                        submit_infos_vk.len() as u32,
+                        submit_infos_vk.as_ptr(),
+                        fence
+                            .as_ref()
+                            .map_or_else(Default::default, VulkanObject::handle),
+                    )
+                }
             } else {
                 debug_assert!(self.queue.device.enabled_extensions().khr_synchronization2);
-                (fns.khr_synchronization2.queue_submit2_khr)(
-                    self.queue.handle,
-                    submit_infos_vk.len() as u32,
-                    submit_infos_vk.as_ptr(),
-                    fence
-                        .as_ref()
-                        .map_or_else(Default::default, VulkanObject::handle),
-                )
+                unsafe {
+                    (fns.khr_synchronization2.queue_submit2_khr)(
+                        self.queue.handle,
+                        submit_infos_vk.len() as u32,
+                        submit_infos_vk.as_ptr(),
+                        fence
+                            .as_ref()
+                            .map_or_else(Default::default, VulkanObject::handle),
+                    )
+                }
             }
             .result()
             .map_err(VulkanError::from)
@@ -706,14 +723,16 @@ impl QueueGuard<'_> {
                 .collect();
 
             let fns = self.queue.device.fns();
-            (fns.v1_0.queue_submit)(
-                self.queue.handle,
-                submit_infos_vk.len() as u32,
-                submit_infos_vk.as_ptr(),
-                fence
-                    .as_ref()
-                    .map_or_else(Default::default, VulkanObject::handle),
-            )
+            unsafe {
+                (fns.v1_0.queue_submit)(
+                    self.queue.handle,
+                    submit_infos_vk.len() as u32,
+                    submit_infos_vk.as_ptr(),
+                    fence
+                        .as_ref()
+                        .map_or_else(Default::default, VulkanObject::handle),
+                )
+            }
             .result()
             .map_err(VulkanError::from)
         }
@@ -765,7 +784,12 @@ impl QueueGuard<'_> {
         let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
         let fns = self.queue.device.fns();
-        (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(self.queue.handle, &label_info_vk);
+        unsafe {
+            (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(
+                self.queue.handle,
+                &label_info_vk,
+            )
+        };
     }
 
     /// Closes a queue debug label region.
@@ -780,7 +804,7 @@ impl QueueGuard<'_> {
     #[inline]
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
-        self.end_debug_utils_label_unchecked();
+        unsafe { self.end_debug_utils_label_unchecked() };
 
         Ok(())
     }
@@ -811,7 +835,7 @@ impl QueueGuard<'_> {
     #[inline]
     pub unsafe fn end_debug_utils_label_unchecked(&mut self) {
         let fns = self.queue.device.fns();
-        (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(self.queue.handle);
+        unsafe { (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(self.queue.handle) };
     }
 
     /// Inserts a queue debug label.
@@ -859,7 +883,12 @@ impl QueueGuard<'_> {
         let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
         let fns = self.queue.device.fns();
-        (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(self.queue.handle, &label_info_vk);
+        unsafe {
+            (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(
+                self.queue.handle,
+                &label_info_vk,
+            )
+        };
     }
 }
 
