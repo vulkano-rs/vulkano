@@ -8,13 +8,13 @@
 <br/>
 [![vulkano crates.io](https://img.shields.io/crates/v/vulkano?label=vulkano)](https://crates.io/crates/vulkano)
 [![vulkano-shaders crates.io](https://img.shields.io/crates/v/vulkano-shaders?label=shaders)](https://crates.io/crates/vulkano-shaders)
+[![vulkano-taskgraph crates.io](https://img.shields.io/crates/v/vulkano-taskgraph?label=taskgraph)](https://crates.io/crates/vulkano-taskgraph)
 [![vulkano-util crates.io](https://img.shields.io/crates/v/vulkano-util?label=util)](https://crates.io/crates/vulkano-util)
-[![vulkano-win crates.io](https://img.shields.io/crates/v/vulkano-win?label=win)](https://crates.io/crates/vulkano-win)
 <br/>
 [![vulkano docs](https://img.shields.io/docsrs/vulkano?label=vulkano%20docs)](https://docs.rs/vulkano)
 [![vulkano-shaders docs](https://img.shields.io/docsrs/vulkano-shaders?label=shaders%20docs)](https://docs.rs/vulkano-shaders)
+[![vulkano-taskgraph docs](https://img.shields.io/docsrs/vulkano-taskgraph?label=taskgraph%20docs)](https://docs.rs/vulkano-taskgraph)
 [![vulkano-util docs](https://img.shields.io/docsrs/vulkano-util?label=util%20docs)](https://docs.rs/vulkano-util)
-[![vulkano-win docs](https://img.shields.io/docsrs/vulkano-win?label=win%20docs)](https://docs.rs/vulkano-win)
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
@@ -131,8 +131,9 @@ This repository contains four libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` provides the `shader!` macro for compiling glsl shaders.
+- `vulkano-taskgraph` allows building a dependency graph of tasks, which are automatically
+  synchronized and are then executed on the Vulkan device.
 - `vulkano-util` provides a variety of utility functions to streamline certain common operations such as device and swapchain creation.
-- `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan

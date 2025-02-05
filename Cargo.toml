@@ -6,7 +6,6 @@ members = [
     "vulkano-shaders",
     "vulkano-taskgraph",
     "vulkano-util",
-    # "vulkano-win",
 ]
 # NOTE(Marc): Linux CI is failing because of a transitive dependency of the old winit that this
 # example depends on. I don't know how to update glium to the new version.
@@ -22,24 +21,24 @@ keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
 
 [workspace.dependencies.vulkano]
-version = "0.34"
+version = "0.35"
 path = "vulkano"
 default-features = false
 
 [workspace.dependencies.vulkano-macros]
-version = "0.34"
+version = "0.35"
 path = "vulkano-macros"
 
 [workspace.dependencies.vulkano-shaders]
-version = "0.34"
+version = "0.35"
 path = "vulkano-shaders"
 
 [workspace.dependencies.vulkano-taskgraph]
-version = "0.34"
+version = "0.35"
 path = "vulkano-taskgraph"
 
 [workspace.dependencies.vulkano-util]
-version = "0.34"
+version = "0.35"
 path = "vulkano-util"
 
 [workspace.dependencies]
