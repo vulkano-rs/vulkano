@@ -25,7 +25,7 @@ use vulkano::{
 };
 use vulkano_taskgraph::{
     graph::{CompileInfo, ExecutableTaskGraph, ExecuteError, NodeId, TaskGraph},
-    resource::{AccessType, Flight, ImageLayoutType, Resources},
+    resource::{AccessTypes, Flight, ImageLayoutType, Resources},
     resource_map, Id, QueueFamilyType,
 };
 use winit::{
@@ -309,7 +309,7 @@ impl ApplicationHandler for App {
             )
             .image_access(
                 virtual_swapchain_id.current_image_id(),
-                AccessType::RayTracingShaderStorageWrite,
+                AccessTypes::RAY_TRACING_SHADER_STORAGE_WRITE,
                 ImageLayoutType::General,
             )
             .build();
