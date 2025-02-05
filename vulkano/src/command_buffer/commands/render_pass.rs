@@ -1604,7 +1604,7 @@ impl RecordingCommandBuffer {
         }
 
         for (rect_index, rect) in rects.iter().enumerate() {
-            let ClearRect {
+            let &ClearRect {
                 offset: _,
                 extent,
                 ref array_layers,

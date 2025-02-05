@@ -310,7 +310,7 @@ impl Spirv {
                                 let id_info = ids.get_mut(&target).unwrap();
 
                                 match instruction {
-                                    Instruction::Decorate { ref decoration, .. } => {
+                                    Instruction::Decorate { decoration, .. } => {
                                         let instruction = Instruction::Decorate {
                                             target,
                                             decoration: decoration.clone(),
@@ -318,7 +318,7 @@ impl Spirv {
                                         id_info.decorations.push(instruction.clone());
                                         instruction
                                     }
-                                    Instruction::DecorateId { ref decoration, .. } => {
+                                    Instruction::DecorateId { decoration, .. } => {
                                         let instruction = Instruction::DecorateId {
                                             target,
                                             decoration: decoration.clone(),
@@ -351,7 +351,7 @@ impl Spirv {
                                         [member as usize];
 
                                 match instruction {
-                                    Instruction::Decorate { ref decoration, .. } => {
+                                    Instruction::Decorate { decoration, .. } => {
                                         let instruction = Instruction::MemberDecorate {
                                             structure_type,
                                             member,

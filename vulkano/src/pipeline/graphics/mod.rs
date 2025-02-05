@@ -1616,8 +1616,8 @@ impl GraphicsPipelineCreateInfo {
 
         if let Some(viewport_state) = viewport_state {
             let ViewportState {
-                ref viewports,
-                ref scissors,
+                viewports,
+                scissors,
                 _ne: _,
             } = viewport_state;
 

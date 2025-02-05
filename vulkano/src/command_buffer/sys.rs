@@ -211,11 +211,11 @@ impl Default for CommandBufferBeginInfo {
 
 impl CommandBufferBeginInfo {
     pub(crate) fn validate(&self, device: &Device) -> Result<(), Box<ValidationError>> {
-        let &Self {
+        let Self {
             usage: _,
-            ref inheritance_info,
+            inheritance_info,
             _ne: _,
-        } = &self;
+        } = self;
 
         if let Some(inheritance_info) = &inheritance_info {
             inheritance_info

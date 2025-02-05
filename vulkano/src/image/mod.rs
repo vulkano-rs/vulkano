@@ -2348,7 +2348,7 @@ impl ImageFormatProperties {
 
         if let Some(val_vk) = external_vk {
             let ash::vk::ExternalImageFormatProperties {
-                ref external_memory_properties,
+                external_memory_properties,
                 ..
             } = val_vk;
 
@@ -2612,7 +2612,7 @@ impl SparseImageMemoryRequirements {
 
     pub(crate) fn from_vk2(val_vk: &ash::vk::SparseImageMemoryRequirements2<'_>) -> Self {
         let ash::vk::SparseImageMemoryRequirements2 {
-            ref memory_requirements,
+            memory_requirements,
             ..
         } = val_vk;
 
