@@ -18,6 +18,7 @@ use crate::{
     sync::PipelineStageAccessFlags,
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::{cmp::min, ops::Range, sync::Arc};
 
@@ -1874,7 +1875,7 @@ impl RenderPassBeginInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a RenderPassBeginInfoFields1Vk,
-    ) -> ash::vk::RenderPassBeginInfo<'a> {
+    ) -> vk::RenderPassBeginInfo<'a> {
         let &Self {
             ref render_pass,
             ref framebuffer,
@@ -1885,15 +1886,15 @@ impl RenderPassBeginInfo {
         } = self;
         let RenderPassBeginInfoFields1Vk { clear_values_vk } = fields1_vk;
 
-        ash::vk::RenderPassBeginInfo::default()
+        vk::RenderPassBeginInfo::default()
             .render_pass(render_pass.handle())
             .framebuffer(framebuffer.handle())
-            .render_area(ash::vk::Rect2D {
-                offset: ash::vk::Offset2D {
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D {
                     x: render_area_offset[0] as i32,
                     y: render_area_offset[1] as i32,
                 },
-                extent: ash::vk::Extent2D {
+                extent: vk::Extent2D {
                     width: render_area_extent[0],
                     height: render_area_extent[1],
                 },
@@ -1917,7 +1918,7 @@ impl RenderPassBeginInfo {
 }
 
 pub(crate) struct RenderPassBeginInfoFields1Vk {
-    pub(crate) clear_values_vk: SmallVec<[ash::vk::ClearValue; 4]>,
+    pub(crate) clear_values_vk: SmallVec<[vk::ClearValue; 4]>,
 }
 
 /// Parameters to begin a new subpass within a render pass.
@@ -1953,10 +1954,10 @@ impl SubpassBeginInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::SubpassBeginInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::SubpassBeginInfo<'static> {
         let &Self { contents, _ne: _ } = self;
 
-        ash::vk::SubpassBeginInfo::default().contents(contents.into())
+        vk::SubpassBeginInfo::default().contents(contents.into())
     }
 }
 
@@ -1982,10 +1983,10 @@ impl SubpassEndInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::SubpassEndInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::SubpassEndInfo<'static> {
         let &Self { _ne: _ } = self;
 
-        ash::vk::SubpassEndInfo::default()
+        vk::SubpassEndInfo::default()
     }
 }
 
@@ -2769,7 +2770,7 @@ impl RenderingInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a RenderingInfoFields1Vk,
-    ) -> ash::vk::RenderingInfo<'a> {
+    ) -> vk::RenderingInfo<'a> {
         let &Self {
             render_area_offset,
             render_area_extent,
@@ -2787,14 +2788,14 @@ impl RenderingInfo {
             stencil_attachment_vk,
         } = fields1_vk;
 
-        ash::vk::RenderingInfo::default()
+        vk::RenderingInfo::default()
             .flags(contents.into())
-            .render_area(ash::vk::Rect2D {
-                offset: ash::vk::Offset2D {
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D {
                     x: render_area_offset[0] as i32,
                     y: render_area_offset[1] as i32,
                 },
-                extent: ash::vk::Extent2D {
+                extent: vk::Extent2D {
                     width: render_area_extent[0],
                     height: render_area_extent[1],
                 },
@@ -2818,20 +2819,19 @@ impl RenderingInfo {
             .iter()
             .map(|attachment_info| {
                 attachment_info.as_ref().map_or(
-                    ash::vk::RenderingAttachmentInfo::default()
-                        .image_view(ash::vk::ImageView::null()),
+                    vk::RenderingAttachmentInfo::default().image_view(vk::ImageView::null()),
                     RenderingAttachmentInfo::to_vk,
                 )
             })
             .collect();
 
         let depth_attachment_vk = depth_attachment.as_ref().map_or(
-            ash::vk::RenderingAttachmentInfo::default().image_view(ash::vk::ImageView::null()),
+            vk::RenderingAttachmentInfo::default().image_view(vk::ImageView::null()),
             RenderingAttachmentInfo::to_vk,
         );
 
         let stencil_attachment_vk = stencil_attachment.as_ref().map_or(
-            ash::vk::RenderingAttachmentInfo::default().image_view(ash::vk::ImageView::null()),
+            vk::RenderingAttachmentInfo::default().image_view(vk::ImageView::null()),
             RenderingAttachmentInfo::to_vk,
         );
 
@@ -2844,9 +2844,9 @@ impl RenderingInfo {
 }
 
 pub(crate) struct RenderingInfoFields1Vk {
-    pub(crate) color_attachments_vk: SmallVec<[ash::vk::RenderingAttachmentInfo<'static>; 2]>,
-    pub(crate) depth_attachment_vk: ash::vk::RenderingAttachmentInfo<'static>,
-    pub(crate) stencil_attachment_vk: ash::vk::RenderingAttachmentInfo<'static>,
+    pub(crate) color_attachments_vk: SmallVec<[vk::RenderingAttachmentInfo<'static>; 2]>,
+    pub(crate) depth_attachment_vk: vk::RenderingAttachmentInfo<'static>,
+    pub(crate) stencil_attachment_vk: vk::RenderingAttachmentInfo<'static>,
 }
 
 /// Parameters to specify properties of an attachment.
@@ -3024,7 +3024,7 @@ impl RenderingAttachmentInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::RenderingAttachmentInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::RenderingAttachmentInfo<'static> {
         let &Self {
             ref image_view,
             image_layout,
@@ -3038,14 +3038,14 @@ impl RenderingAttachmentInfo {
         let (resolve_mode, resolve_image_view, resolve_image_layout) =
             resolve_info.as_ref().map_or(
                 (
-                    ash::vk::ResolveModeFlags::NONE,
+                    vk::ResolveModeFlags::NONE,
                     Default::default(),
                     Default::default(),
                 ),
                 RenderingAttachmentResolveInfo::to_vk,
             );
 
-        ash::vk::RenderingAttachmentInfo::default()
+        vk::RenderingAttachmentInfo::default()
             .image_view(image_view.handle())
             .image_layout(image_layout.into())
             .resolve_mode(resolve_mode)
@@ -3189,13 +3189,7 @@ impl RenderingAttachmentResolveInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(
-        &self,
-    ) -> (
-        ash::vk::ResolveModeFlags,
-        ash::vk::ImageView,
-        ash::vk::ImageLayout,
-    ) {
+    pub(crate) fn to_vk(&self) -> (vk::ResolveModeFlags, vk::ImageView, vk::ImageLayout) {
         let &Self {
             mode,
             ref image_view,
@@ -3251,40 +3245,40 @@ impl ClearAttachment {
 
     #[allow(clippy::wrong_self_convention)]
     #[doc(hidden)]
-    pub fn to_vk(&self) -> ash::vk::ClearAttachment {
+    pub fn to_vk(&self) -> vk::ClearAttachment {
         match *self {
             ClearAttachment::Color {
                 color_attachment,
                 clear_value,
-            } => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+            } => vk::ClearAttachment {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
                 color_attachment,
-                clear_value: ash::vk::ClearValue {
+                clear_value: vk::ClearValue {
                     color: clear_value.to_vk(),
                 },
             },
-            ClearAttachment::Depth(depth) => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::DEPTH,
+            ClearAttachment::Depth(depth) => vk::ClearAttachment {
+                aspect_mask: vk::ImageAspectFlags::DEPTH,
                 color_attachment: 0,
-                clear_value: ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil: 0 },
+                clear_value: vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue { depth, stencil: 0 },
                 },
             },
-            ClearAttachment::Stencil(stencil) => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::STENCIL,
+            ClearAttachment::Stencil(stencil) => vk::ClearAttachment {
+                aspect_mask: vk::ImageAspectFlags::STENCIL,
                 color_attachment: 0,
-                clear_value: ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue {
+                clear_value: vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue {
                         depth: 0.0,
                         stencil,
                     },
                 },
             },
-            ClearAttachment::DepthStencil((depth, stencil)) => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::DEPTH | ash::vk::ImageAspectFlags::STENCIL,
+            ClearAttachment::DepthStencil((depth, stencil)) => vk::ClearAttachment {
+                aspect_mask: vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
                 color_attachment: 0,
-                clear_value: ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil },
+                clear_value: vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue { depth, stencil },
                 },
             },
         }
@@ -3308,20 +3302,20 @@ pub struct ClearRect {
 
 impl ClearRect {
     #[doc(hidden)]
-    pub fn to_vk(&self) -> ash::vk::ClearRect {
+    pub fn to_vk(&self) -> vk::ClearRect {
         let &Self {
             offset,
             extent,
             ref array_layers,
         } = self;
 
-        ash::vk::ClearRect {
-            rect: ash::vk::Rect2D {
-                offset: ash::vk::Offset2D {
+        vk::ClearRect {
+            rect: vk::Rect2D {
+                offset: vk::Offset2D {
                     x: offset[0] as i32,
                     y: offset[1] as i32,
                 },
-                extent: ash::vk::Extent2D {
+                extent: vk::Extent2D {
                     width: extent[0],
                     height: extent[1],
                 },

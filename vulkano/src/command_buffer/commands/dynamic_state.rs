@@ -17,6 +17,7 @@ use crate::{
     },
     Requires, RequiresAllOf, RequiresOneOf, ValidationError, Version, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::ops::RangeInclusive;
 
@@ -846,13 +847,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         faces: StencilFaces,
         compare_mask: u32,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_compare_mask.front = Some(compare_mask);
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_compare_mask.back = Some(compare_mask);
         }
 
@@ -908,9 +909,9 @@ impl<L> AutoCommandBufferBuilder<L> {
         depth_fail_op: StencilOp,
         compare_op: CompareOp,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_op.front = Some(StencilOps {
                 fail_op,
                 pass_op,
@@ -919,7 +920,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             });
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_op.back = Some(StencilOps {
                 fail_op,
                 pass_op,
@@ -971,13 +972,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         faces: StencilFaces,
         reference: u32,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_reference.front = Some(reference);
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_reference.back = Some(reference);
         }
 
@@ -1054,13 +1055,13 @@ impl<L> AutoCommandBufferBuilder<L> {
         faces: StencilFaces,
         write_mask: u32,
     ) -> &mut Self {
-        let faces_vk = ash::vk::StencilFaceFlags::from(faces);
+        let faces_vk = vk::StencilFaceFlags::from(faces);
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::FRONT) {
+        if faces_vk.intersects(vk::StencilFaceFlags::FRONT) {
             self.builder_state.stencil_write_mask.front = Some(write_mask);
         }
 
-        if faces_vk.intersects(ash::vk::StencilFaceFlags::BACK) {
+        if faces_vk.intersects(vk::StencilFaceFlags::BACK) {
             self.builder_state.stencil_write_mask.back = Some(write_mask);
         }
 
@@ -1425,7 +1426,7 @@ impl RecordingCommandBuffer {
         let enables_vk = enables
             .iter()
             .copied()
-            .map(|v| v as ash::vk::Bool32)
+            .map(|v| v as vk::Bool32)
             .collect::<SmallVec<[_; 4]>>();
 
         if enables_vk.is_empty() {
@@ -3536,11 +3537,11 @@ impl RecordingCommandBuffer {
     ) -> &mut Self {
         let fns = self.device().fns();
 
-        let fragment_size = ash::vk::Extent2D {
+        let fragment_size = vk::Extent2D {
             width: fragment_size[0],
             height: fragment_size[1],
         };
-        let combiner_ops: [ash::vk::FragmentShadingRateCombinerOpKHR; 2] =
+        let combiner_ops: [vk::FragmentShadingRateCombinerOpKHR; 2] =
             [combiner_ops[0].into(), combiner_ops[1].into()];
 
         unsafe {

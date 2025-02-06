@@ -224,7 +224,7 @@ use crate::{
     instance::InstanceOwnedDebugWrapper,
     DeviceSize, Validated, Version, VulkanError,
 };
-use ash::vk::MAX_MEMORY_TYPES;
+use ash::vk::{self, MAX_MEMORY_TYPES};
 use parking_lot::{Mutex, MutexGuard};
 use slabbin::SlabAllocator;
 use std::{
@@ -1119,7 +1119,7 @@ unsafe impl<S: Suballocator + Send + 'static> MemoryAllocator for GenericMemoryA
 
         self.pools
             .iter()
-            .map(|pool| ash::vk::MemoryPropertyFlags::from(pool.property_flags))
+            .map(|pool| vk::MemoryPropertyFlags::from(pool.property_flags))
             .enumerate()
             // Filter out memory types which are supported by the memory type bits and have the
             // required flags set.

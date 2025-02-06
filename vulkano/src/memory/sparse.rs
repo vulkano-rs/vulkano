@@ -10,6 +10,7 @@ use crate::{
     sync::semaphore::Semaphore,
     DeviceSize, ValidationError, VulkanObject as _,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::sync::Arc;
 
@@ -111,7 +112,7 @@ impl BindSparseInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a BindSparseInfoFields1Vk<'_>,
-    ) -> ash::vk::BindSparseInfo<'a> {
+    ) -> vk::BindSparseInfo<'a> {
         let BindSparseInfoFields1Vk {
             wait_semaphores_vk,
             buffer_bind_infos_vk,
@@ -120,7 +121,7 @@ impl BindSparseInfo {
             signal_semaphores_vk,
         } = fields1_vk;
 
-        ash::vk::BindSparseInfo::default()
+        vk::BindSparseInfo::default()
             .wait_semaphores(wait_semaphores_vk)
             .buffer_binds(buffer_bind_infos_vk)
             .image_opaque_binds(image_opaque_bind_infos_vk)
@@ -217,12 +218,11 @@ impl BindSparseInfo {
 }
 
 pub(crate) struct BindSparseInfoFields1Vk<'a> {
-    pub(crate) wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
-    pub(crate) buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo<'a>; 4]>,
-    pub(crate) image_opaque_bind_infos_vk:
-        SmallVec<[ash::vk::SparseImageOpaqueMemoryBindInfo<'a>; 4]>,
-    pub(crate) image_bind_infos_vk: SmallVec<[ash::vk::SparseImageMemoryBindInfo<'a>; 4]>,
-    pub(crate) signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+    pub(crate) wait_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
+    pub(crate) buffer_bind_infos_vk: SmallVec<[vk::SparseBufferMemoryBindInfo<'a>; 4]>,
+    pub(crate) image_opaque_bind_infos_vk: SmallVec<[vk::SparseImageOpaqueMemoryBindInfo<'a>; 4]>,
+    pub(crate) image_bind_infos_vk: SmallVec<[vk::SparseImageMemoryBindInfo<'a>; 4]>,
+    pub(crate) signal_semaphores_vk: SmallVec<[vk::Semaphore; 4]>,
 }
 
 pub(crate) struct BindSparseInfoFields2Vk {
@@ -417,7 +417,7 @@ impl SparseBufferMemoryBindInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a SparseBufferMemoryBindInfoFields1Vk,
-    ) -> ash::vk::SparseBufferMemoryBindInfo<'a> {
+    ) -> vk::SparseBufferMemoryBindInfo<'a> {
         let Self {
             buffer,
             binds: _,
@@ -425,7 +425,7 @@ impl SparseBufferMemoryBindInfo {
         } = self;
         let SparseBufferMemoryBindInfoFields1Vk { binds_vk } = fields1_vk;
 
-        ash::vk::SparseBufferMemoryBindInfo::default()
+        vk::SparseBufferMemoryBindInfo::default()
             .buffer(buffer.handle())
             .binds(binds_vk)
     }
@@ -444,7 +444,7 @@ impl SparseBufferMemoryBindInfo {
 }
 
 pub(crate) struct SparseBufferMemoryBindInfoFields1Vk {
-    pub(crate) binds_vk: SmallVec<[ash::vk::SparseMemoryBind; 4]>,
+    pub(crate) binds_vk: SmallVec<[vk::SparseMemoryBind; 4]>,
 }
 
 /// Parameters for a single sparse bind operation on a buffer.
@@ -539,7 +539,7 @@ impl SparseBufferMemoryBind {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::SparseMemoryBind {
+    pub(crate) fn to_vk(&self) -> vk::SparseMemoryBind {
         let &Self {
             offset,
             size,
@@ -553,12 +553,12 @@ impl SparseBufferMemoryBind {
                 (memory.handle(), *memory_offset)
             });
 
-        ash::vk::SparseMemoryBind {
+        vk::SparseMemoryBind {
             resource_offset: offset,
             size,
             memory,
             memory_offset,
-            flags: ash::vk::SparseMemoryBindFlags::empty(),
+            flags: vk::SparseMemoryBindFlags::empty(),
         }
     }
 }
@@ -865,7 +865,7 @@ impl SparseImageOpaqueMemoryBindInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a SparseImageOpaqueMemoryBindInfoFields1Vk,
-    ) -> ash::vk::SparseImageOpaqueMemoryBindInfo<'a> {
+    ) -> vk::SparseImageOpaqueMemoryBindInfo<'a> {
         let Self {
             image,
             binds: _,
@@ -873,7 +873,7 @@ impl SparseImageOpaqueMemoryBindInfo {
         } = self;
         let SparseImageOpaqueMemoryBindInfoFields1Vk { binds_vk } = fields1_vk;
 
-        ash::vk::SparseImageOpaqueMemoryBindInfo::default()
+        vk::SparseImageOpaqueMemoryBindInfo::default()
             .image(image.handle())
             .binds(binds_vk)
     }
@@ -895,7 +895,7 @@ impl SparseImageOpaqueMemoryBindInfo {
 }
 
 pub(crate) struct SparseImageOpaqueMemoryBindInfoFields1Vk {
-    pub(crate) binds_vk: SmallVec<[ash::vk::SparseMemoryBind; 4]>,
+    pub(crate) binds_vk: SmallVec<[vk::SparseMemoryBind; 4]>,
 }
 
 /// Parameters for a single sparse bind operation on parts of an image with an opaque memory
@@ -1002,7 +1002,7 @@ impl SparseImageOpaqueMemoryBind {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::SparseMemoryBind {
+    pub(crate) fn to_vk(&self) -> vk::SparseMemoryBind {
         let &Self {
             offset,
             size,
@@ -1017,15 +1017,15 @@ impl SparseImageOpaqueMemoryBind {
                 (memory.handle(), *memory_offset)
             });
 
-        ash::vk::SparseMemoryBind {
+        vk::SparseMemoryBind {
             resource_offset: offset,
             size,
             memory,
             memory_offset,
             flags: if metadata {
-                ash::vk::SparseMemoryBindFlags::METADATA
+                vk::SparseMemoryBindFlags::METADATA
             } else {
-                ash::vk::SparseMemoryBindFlags::empty()
+                vk::SparseMemoryBindFlags::empty()
             },
         }
     }
@@ -1413,7 +1413,7 @@ impl SparseImageMemoryBindInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a SparseImageMemoryBindInfoFields1Vk,
-    ) -> ash::vk::SparseImageMemoryBindInfo<'a> {
+    ) -> vk::SparseImageMemoryBindInfo<'a> {
         let Self {
             image,
             binds: _,
@@ -1421,7 +1421,7 @@ impl SparseImageMemoryBindInfo {
         } = self;
         let SparseImageMemoryBindInfoFields1Vk { binds_vk } = fields1_vk;
 
-        ash::vk::SparseImageMemoryBindInfo::default()
+        vk::SparseImageMemoryBindInfo::default()
             .image(image.handle())
             .binds(binds_vk)
     }
@@ -1440,7 +1440,7 @@ impl SparseImageMemoryBindInfo {
 }
 
 pub(crate) struct SparseImageMemoryBindInfoFields1Vk {
-    pub(crate) binds_vk: SmallVec<[ash::vk::SparseImageMemoryBind; 4]>,
+    pub(crate) binds_vk: SmallVec<[vk::SparseImageMemoryBind; 4]>,
 }
 
 /// Parameters for a single sparse bind operation on parts of an image with a known memory layout.
@@ -1582,7 +1582,7 @@ impl SparseImageMemoryBind {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::SparseImageMemoryBind {
+    pub(crate) fn to_vk(&self) -> vk::SparseImageMemoryBind {
         let &Self {
             aspects,
             mip_level,
@@ -1599,25 +1599,25 @@ impl SparseImageMemoryBind {
                 (memory.handle(), *memory_offset)
             });
 
-        ash::vk::SparseImageMemoryBind {
-            subresource: ash::vk::ImageSubresource {
+        vk::SparseImageMemoryBind {
+            subresource: vk::ImageSubresource {
                 aspect_mask: aspects.into(),
                 mip_level,
                 array_layer,
             },
-            offset: ash::vk::Offset3D {
+            offset: vk::Offset3D {
                 x: offset[0] as i32,
                 y: offset[1] as i32,
                 z: offset[2] as i32,
             },
-            extent: ash::vk::Extent3D {
+            extent: vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
                 depth: extent[2],
             },
             memory,
             memory_offset,
-            flags: ash::vk::SparseMemoryBindFlags::empty(),
+            flags: vk::SparseMemoryBindFlags::empty(),
         }
     }
 }

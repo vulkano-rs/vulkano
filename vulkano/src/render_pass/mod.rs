@@ -27,6 +27,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
@@ -100,7 +101,7 @@ mod framebuffer;
 /// See the documentation of the macro for more details. TODO: put link here
 #[derive(Debug)]
 pub struct RenderPass {
-    handle: ash::vk::RenderPass,
+    handle: vk::RenderPass,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -248,7 +249,7 @@ impl RenderPass {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::RenderPass,
+        handle: vk::RenderPass,
         create_info: RenderPassCreateInfo,
     ) -> Arc<RenderPass> {
         let RenderPassCreateInfo {
@@ -322,7 +323,7 @@ impl RenderPass {
         })
     }
 
-    unsafe fn get_granularity(device: &Arc<Device>, handle: ash::vk::RenderPass) -> [u32; 2] {
+    unsafe fn get_granularity(device: &Arc<Device>, handle: vk::RenderPass) -> [u32; 2] {
         let granularity = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
@@ -661,7 +662,7 @@ impl Drop for RenderPass {
 }
 
 unsafe impl VulkanObject for RenderPass {
-    type Handle = ash::vk::RenderPass;
+    type Handle = vk::RenderPass;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -1637,7 +1638,7 @@ impl RenderPassCreateInfo {
     pub(crate) fn to_vk2<'a>(
         &'a self,
         fields1_vk: &'a RenderPassCreateInfo2Fields1Vk<'_>,
-    ) -> ash::vk::RenderPassCreateInfo2<'a> {
+    ) -> vk::RenderPassCreateInfo2<'a> {
         let &Self {
             flags,
             attachments: _,
@@ -1652,7 +1653,7 @@ impl RenderPassCreateInfo {
             dependencies_vk,
         } = fields1_vk;
 
-        ash::vk::RenderPassCreateInfo2::default()
+        vk::RenderPassCreateInfo2::default()
             .flags(flags.into())
             .attachments(attachments_vk)
             .subpasses(subpasses_vk)
@@ -1778,7 +1779,7 @@ impl RenderPassCreateInfo {
         &self,
         fields1_vk: &'a RenderPassCreateInfoFields1Vk<'_>,
         extensions_vk: &'a mut RenderPassCreateInfoExtensionsVk<'_>,
-    ) -> ash::vk::RenderPassCreateInfo<'a> {
+    ) -> vk::RenderPassCreateInfo<'a> {
         let &Self {
             flags,
             attachments: _,
@@ -1796,7 +1797,7 @@ impl RenderPassCreateInfo {
             multiview_view_offsets_vk: _,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::RenderPassCreateInfo::default()
+        let mut val_vk = vk::RenderPassCreateInfo::default()
             .flags(flags.into())
             .attachments(attachments_vk)
             .subpasses(subpasses_vk)
@@ -1841,13 +1842,13 @@ impl RenderPassCreateInfo {
 
         let input_attachment_aspect_vk =
             (!input_attachments_aspect_reference_vk.is_empty()).then(|| {
-                ash::vk::RenderPassInputAttachmentAspectCreateInfo::default()
+                vk::RenderPassInputAttachmentAspectCreateInfo::default()
                     .aspect_references(input_attachments_aspect_reference_vk)
             });
 
         let is_multiview = self.subpasses[0].view_mask != 0;
         let multiview_vk = is_multiview.then(|| {
-            ash::vk::RenderPassMultiviewCreateInfo::default()
+            vk::RenderPassMultiviewCreateInfo::default()
                 .view_masks(multiview_view_masks_vk)
                 .view_offsets(multiview_view_offsets_vk)
                 .correlation_masks(correlated_view_masks)
@@ -1913,7 +1914,7 @@ impl RenderPassCreateInfo {
                     }
 
                     input_attachments_aspect_reference_vk.push(
-                        ash::vk::InputAttachmentAspectReference {
+                        vk::InputAttachmentAspectReference {
                             subpass: subpass_num as u32,
                             input_attachment_index: atch_num as u32,
                             aspect_mask: aspects.into(),
@@ -1961,9 +1962,9 @@ impl RenderPassCreateInfo {
 }
 
 pub(crate) struct RenderPassCreateInfo2Fields1Vk<'a> {
-    pub(crate) attachments_vk: SmallVec<[ash::vk::AttachmentDescription2<'a>; 4]>,
-    pub(crate) subpasses_vk: SmallVec<[ash::vk::SubpassDescription2<'a>; 4]>,
-    pub(crate) dependencies_vk: SmallVec<[ash::vk::SubpassDependency2<'a>; 4]>,
+    pub(crate) attachments_vk: SmallVec<[vk::AttachmentDescription2<'a>; 4]>,
+    pub(crate) subpasses_vk: SmallVec<[vk::SubpassDescription2<'a>; 4]>,
+    pub(crate) dependencies_vk: SmallVec<[vk::SubpassDependency2<'a>; 4]>,
 }
 
 pub(crate) struct RenderPassCreateInfo2Fields1ExtensionsVk<'a> {
@@ -1983,16 +1984,16 @@ pub(crate) struct RenderPassCreateInfo2Fields2ExtensionsVk {
 
 pub(crate) struct RenderPassCreateInfoExtensionsVk<'a> {
     pub(crate) input_attachment_aspect_vk:
-        Option<ash::vk::RenderPassInputAttachmentAspectCreateInfo<'a>>,
-    pub(crate) multiview_vk: Option<ash::vk::RenderPassMultiviewCreateInfo<'a>>,
+        Option<vk::RenderPassInputAttachmentAspectCreateInfo<'a>>,
+    pub(crate) multiview_vk: Option<vk::RenderPassMultiviewCreateInfo<'a>>,
 }
 
 pub(crate) struct RenderPassCreateInfoFields1Vk<'a> {
-    pub(crate) attachments_vk: SmallVec<[ash::vk::AttachmentDescription; 4]>,
-    pub(crate) subpasses_vk: SmallVec<[ash::vk::SubpassDescription<'a>; 4]>,
-    pub(crate) dependencies_vk: SmallVec<[ash::vk::SubpassDependency; 4]>,
+    pub(crate) attachments_vk: SmallVec<[vk::AttachmentDescription; 4]>,
+    pub(crate) subpasses_vk: SmallVec<[vk::SubpassDescription<'a>; 4]>,
+    pub(crate) dependencies_vk: SmallVec<[vk::SubpassDependency; 4]>,
     pub(crate) input_attachments_aspect_reference_vk:
-        SmallVec<[ash::vk::InputAttachmentAspectReference; 8]>,
+        SmallVec<[vk::InputAttachmentAspectReference; 8]>,
     pub(crate) multiview_view_masks_vk: SmallVec<[u32; 4]>,
     pub(crate) multiview_view_offsets_vk: SmallVec<[i32; 4]>,
 }
@@ -2555,7 +2556,7 @@ impl AttachmentDescription {
     pub(crate) fn to_vk2<'a>(
         &self,
         extensions_vk: &'a mut AttachmentDescription2ExtensionsVk,
-    ) -> ash::vk::AttachmentDescription2<'a> {
+    ) -> vk::AttachmentDescription2<'a> {
         let &Self {
             flags,
             format,
@@ -2571,7 +2572,7 @@ impl AttachmentDescription {
             _ne: _,
         } = self;
 
-        let mut val_vk = ash::vk::AttachmentDescription2::default()
+        let mut val_vk = vk::AttachmentDescription2::default()
             .flags(flags.into())
             .format(format.into())
             .samples(samples.into())
@@ -2600,7 +2601,7 @@ impl AttachmentDescription {
 
         let stencil_layout_vk = stencil_initial_layout.zip(stencil_final_layout).map(
             |(stencil_initial_layout, stencil_final_layout)| {
-                ash::vk::AttachmentDescriptionStencilLayout::default()
+                vk::AttachmentDescriptionStencilLayout::default()
                     .stencil_initial_layout(stencil_initial_layout.into())
                     .stencil_final_layout(stencil_final_layout.into())
             },
@@ -2609,7 +2610,7 @@ impl AttachmentDescription {
         AttachmentDescription2ExtensionsVk { stencil_layout_vk }
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::AttachmentDescription {
+    pub(crate) fn to_vk(&self) -> vk::AttachmentDescription {
         let &Self {
             flags,
             format,
@@ -2625,7 +2626,7 @@ impl AttachmentDescription {
             _ne: _,
         } = self;
 
-        ash::vk::AttachmentDescription {
+        vk::AttachmentDescription {
             flags: flags.into(),
             format: format.into(),
             samples: samples.into(),
@@ -2640,7 +2641,7 @@ impl AttachmentDescription {
 }
 
 pub(crate) struct AttachmentDescription2ExtensionsVk {
-    pub(crate) stencil_layout_vk: Option<ash::vk::AttachmentDescriptionStencilLayout<'static>>,
+    pub(crate) stencil_layout_vk: Option<vk::AttachmentDescriptionStencilLayout<'static>>,
 }
 
 vulkan_bitflags! {
@@ -3476,7 +3477,7 @@ impl SubpassDescription {
         &'a self,
         fields1_vk: &'a SubpassDescription2Fields1Vk<'_>,
         extensions_vk: &'a mut SubpassDescription2ExtensionsVk<'_>,
-    ) -> ash::vk::SubpassDescription2<'a> {
+    ) -> vk::SubpassDescription2<'a> {
         let &Self {
             flags,
             view_mask,
@@ -3491,9 +3492,9 @@ impl SubpassDescription {
             depth_stencil_resolve_attachment_vk: _,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::SubpassDescription2::default()
+        let mut val_vk = vk::SubpassDescription2::default()
             .flags(flags.into())
-            .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS) // TODO: any need to make this user-specifiable?
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS) // TODO: any need to make this user-specifiable?
             .view_mask(view_mask);
 
         if !input_attachments_vk.is_empty() {
@@ -3543,12 +3544,12 @@ impl SubpassDescription {
 
         let depth_stencil_resolve_vk = depth_stencil_resolve_attachment_vk.as_ref().map(
             |depth_stencil_resolve_attachment_vk| {
-                ash::vk::SubpassDescriptionDepthStencilResolve::default()
+                vk::SubpassDescriptionDepthStencilResolve::default()
                     .depth_resolve_mode(
-                        depth_resolve_mode.map_or(ash::vk::ResolveModeFlags::NONE, Into::into),
+                        depth_resolve_mode.map_or(vk::ResolveModeFlags::NONE, Into::into),
                     )
                     .stencil_resolve_mode(
-                        stencil_resolve_mode.map_or(ash::vk::ResolveModeFlags::NONE, Into::into),
+                        stencil_resolve_mode.map_or(vk::ResolveModeFlags::NONE, Into::into),
                     )
                     .depth_stencil_resolve_attachment(depth_stencil_resolve_attachment_vk)
             },
@@ -3579,8 +3580,7 @@ impl SubpassDescription {
             depth_stencil_resolve_attachment_extensions_vk,
         } = extensions_vk;
 
-        let unused_vk =
-            ash::vk::AttachmentReference2::default().attachment(ash::vk::ATTACHMENT_UNUSED);
+        let unused_vk = vk::AttachmentReference2::default().attachment(vk::ATTACHMENT_UNUSED);
 
         let input_attachments_vk = input_attachments
             .iter()
@@ -3697,7 +3697,7 @@ impl SubpassDescription {
     pub(crate) fn to_vk<'a>(
         &'a self,
         fields1_vk: &'a SubpassDescriptionFields1Vk,
-    ) -> ash::vk::SubpassDescription<'a> {
+    ) -> vk::SubpassDescription<'a> {
         let &Self {
             flags,
             view_mask: _,
@@ -3718,9 +3718,9 @@ impl SubpassDescription {
             depth_stencil_attachment_vk,
         } = fields1_vk;
 
-        let mut val_vk = ash::vk::SubpassDescription::default()
+        let mut val_vk = vk::SubpassDescription::default()
             .flags(flags.into())
-            .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS);
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
 
         if !input_attachments_vk.is_empty() {
             val_vk = val_vk.input_attachments(input_attachments_vk);
@@ -3754,8 +3754,8 @@ impl SubpassDescription {
             ..
         } = self;
 
-        let unused_vk = ash::vk::AttachmentReference {
-            attachment: ash::vk::ATTACHMENT_UNUSED,
+        let unused_vk = vk::AttachmentReference {
+            attachment: vk::ATTACHMENT_UNUSED,
             ..Default::default()
         };
 
@@ -3800,15 +3800,15 @@ impl SubpassDescription {
 }
 
 pub(crate) struct SubpassDescription2ExtensionsVk<'a> {
-    pub(crate) depth_stencil_resolve_vk: Option<ash::vk::SubpassDescriptionDepthStencilResolve<'a>>,
+    pub(crate) depth_stencil_resolve_vk: Option<vk::SubpassDescriptionDepthStencilResolve<'a>>,
 }
 
 pub(crate) struct SubpassDescription2Fields1Vk<'a> {
-    pub(crate) input_attachments_vk: SmallVec<[ash::vk::AttachmentReference2<'a>; 4]>,
-    pub(crate) color_attachments_vk: SmallVec<[ash::vk::AttachmentReference2<'a>; 4]>,
-    pub(crate) color_resolve_attachments_vk: SmallVec<[ash::vk::AttachmentReference2<'a>; 4]>,
-    pub(crate) depth_stencil_attachment_vk: Option<ash::vk::AttachmentReference2<'a>>,
-    pub(crate) depth_stencil_resolve_attachment_vk: Option<ash::vk::AttachmentReference2<'a>>,
+    pub(crate) input_attachments_vk: SmallVec<[vk::AttachmentReference2<'a>; 4]>,
+    pub(crate) color_attachments_vk: SmallVec<[vk::AttachmentReference2<'a>; 4]>,
+    pub(crate) color_resolve_attachments_vk: SmallVec<[vk::AttachmentReference2<'a>; 4]>,
+    pub(crate) depth_stencil_attachment_vk: Option<vk::AttachmentReference2<'a>>,
+    pub(crate) depth_stencil_resolve_attachment_vk: Option<vk::AttachmentReference2<'a>>,
 }
 
 pub(crate) struct SubpassDescription2Fields1ExtensionsVk {
@@ -3824,10 +3824,10 @@ pub(crate) struct SubpassDescription2Fields1ExtensionsVk {
 }
 
 pub(crate) struct SubpassDescriptionFields1Vk {
-    pub(crate) input_attachments_vk: SmallVec<[ash::vk::AttachmentReference; 4]>,
-    pub(crate) color_attachments_vk: SmallVec<[ash::vk::AttachmentReference; 4]>,
-    pub(crate) color_resolve_attachments_vk: SmallVec<[ash::vk::AttachmentReference; 4]>,
-    pub(crate) depth_stencil_attachment_vk: Option<ash::vk::AttachmentReference>,
+    pub(crate) input_attachments_vk: SmallVec<[vk::AttachmentReference; 4]>,
+    pub(crate) color_attachments_vk: SmallVec<[vk::AttachmentReference; 4]>,
+    pub(crate) color_resolve_attachments_vk: SmallVec<[vk::AttachmentReference; 4]>,
+    pub(crate) depth_stencil_attachment_vk: Option<vk::AttachmentReference>,
 }
 
 vulkan_bitflags! {
@@ -4066,7 +4066,7 @@ impl AttachmentReference {
     fn to_vk2<'a>(
         &self,
         extensions_vk: &'a mut AttachmentReference2ExtensionsVk,
-    ) -> ash::vk::AttachmentReference2<'a> {
+    ) -> vk::AttachmentReference2<'a> {
         let &Self {
             attachment,
             layout,
@@ -4075,7 +4075,7 @@ impl AttachmentReference {
             _ne: _,
         } = self;
 
-        let mut val_vk = ash::vk::AttachmentReference2::default()
+        let mut val_vk = vk::AttachmentReference2::default()
             .attachment(attachment)
             .layout(layout.into())
             .aspect_mask(aspects.into());
@@ -4091,14 +4091,13 @@ impl AttachmentReference {
 
     fn to_vk2_extensions(&self) -> AttachmentReference2ExtensionsVk {
         let stencil_layout_vk = self.stencil_layout.map(|stencil_layout| {
-            ash::vk::AttachmentReferenceStencilLayout::default()
-                .stencil_layout(stencil_layout.into())
+            vk::AttachmentReferenceStencilLayout::default().stencil_layout(stencil_layout.into())
         });
 
         AttachmentReference2ExtensionsVk { stencil_layout_vk }
     }
 
-    fn to_vk(&self) -> ash::vk::AttachmentReference {
+    fn to_vk(&self) -> vk::AttachmentReference {
         let &Self {
             attachment,
             layout,
@@ -4107,7 +4106,7 @@ impl AttachmentReference {
             _ne: _,
         } = self;
 
-        ash::vk::AttachmentReference {
+        vk::AttachmentReference {
             attachment,
             layout: layout.into(),
         }
@@ -4116,7 +4115,7 @@ impl AttachmentReference {
 
 #[derive(Default)]
 pub(crate) struct AttachmentReference2ExtensionsVk {
-    pub(crate) stencil_layout_vk: Option<ash::vk::AttachmentReferenceStencilLayout<'static>>,
+    pub(crate) stencil_layout_vk: Option<vk::AttachmentReferenceStencilLayout<'static>>,
 }
 
 /// A dependency between two subpasses of a render pass.
@@ -4427,7 +4426,7 @@ impl SubpassDependency {
     pub(crate) fn to_vk2<'a>(
         &self,
         extensions_vk: &'a mut SubpassDependency2ExtensionsVk,
-    ) -> ash::vk::SubpassDependency2<'a> {
+    ) -> vk::SubpassDependency2<'a> {
         let &Self {
             src_subpass,
             dst_subpass,
@@ -4440,9 +4439,9 @@ impl SubpassDependency {
             _ne: _,
         } = self;
 
-        let mut val_vk = ash::vk::SubpassDependency2::default()
-            .src_subpass(src_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL))
-            .dst_subpass(dst_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL))
+        let mut val_vk = vk::SubpassDependency2::default()
+            .src_subpass(src_subpass.unwrap_or(vk::SUBPASS_EXTERNAL))
+            .dst_subpass(dst_subpass.unwrap_or(vk::SUBPASS_EXTERNAL))
             .src_stage_mask(src_stages.into())
             .dst_stage_mask(dst_stages.into())
             .src_access_mask(src_access.into())
@@ -4474,7 +4473,7 @@ impl SubpassDependency {
             || dst_stages.contains_flags2()
             || dst_access.contains_flags2())
         .then(|| {
-            ash::vk::MemoryBarrier2::default()
+            vk::MemoryBarrier2::default()
                 .src_stage_mask(src_stages.into())
                 .src_access_mask(src_access.into())
                 .dst_stage_mask(dst_stages.into())
@@ -4484,7 +4483,7 @@ impl SubpassDependency {
         SubpassDependency2ExtensionsVk { memory_barrier_vk }
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::SubpassDependency {
+    pub(crate) fn to_vk(&self) -> vk::SubpassDependency {
         let &Self {
             src_subpass,
             dst_subpass,
@@ -4497,9 +4496,9 @@ impl SubpassDependency {
             _ne: _,
         } = self;
 
-        ash::vk::SubpassDependency {
-            src_subpass: src_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL),
-            dst_subpass: dst_subpass.unwrap_or(ash::vk::SUBPASS_EXTERNAL),
+        vk::SubpassDependency {
+            src_subpass: src_subpass.unwrap_or(vk::SUBPASS_EXTERNAL),
+            dst_subpass: dst_subpass.unwrap_or(vk::SUBPASS_EXTERNAL),
             src_stage_mask: src_stages.into(),
             dst_stage_mask: dst_stages.into(),
             src_access_mask: src_access.into(),
@@ -4510,7 +4509,7 @@ impl SubpassDependency {
 }
 
 pub(crate) struct SubpassDependency2ExtensionsVk {
-    pub(crate) memory_barrier_vk: Option<ash::vk::MemoryBarrier2<'static>>,
+    pub(crate) memory_barrier_vk: Option<vk::MemoryBarrier2<'static>>,
 }
 
 vulkan_enum! {

@@ -18,6 +18,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version,
     VulkanError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::{marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc};
 
@@ -28,7 +29,7 @@ use std::{marker::PhantomData, mem::MaybeUninit, num::NonZeroU64, ptr, sync::Arc
 /// complete buffer object.
 #[derive(Debug)]
 pub struct RawBuffer {
-    handle: ash::vk::Buffer,
+    handle: vk::Buffer,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -115,7 +116,7 @@ impl RawBuffer {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::Buffer,
+        handle: vk::Buffer,
         create_info: BufferCreateInfo,
     ) -> Self {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, true) }
@@ -135,7 +136,7 @@ impl RawBuffer {
     #[inline]
     pub unsafe fn from_handle_borrowed(
         device: Arc<Device>,
-        handle: ash::vk::Buffer,
+        handle: vk::Buffer,
         create_info: BufferCreateInfo,
     ) -> Self {
         unsafe { Self::from_handle_with_destruction(device, handle, create_info, false) }
@@ -143,7 +144,7 @@ impl RawBuffer {
 
     unsafe fn from_handle_with_destruction(
         device: Arc<Device>,
-        handle: ash::vk::Buffer,
+        handle: vk::Buffer,
         create_info: BufferCreateInfo,
         needs_destruction: bool,
     ) -> Self {
@@ -198,8 +199,8 @@ impl RawBuffer {
         }
     }
 
-    fn get_memory_requirements(device: &Device, handle: ash::vk::Buffer) -> MemoryRequirements {
-        let info_vk = ash::vk::BufferMemoryRequirementsInfo2::default().buffer(handle);
+    fn get_memory_requirements(device: &Device, handle: vk::Buffer) -> MemoryRequirements {
+        let info_vk = vk::BufferMemoryRequirementsInfo2::default().buffer(handle);
 
         let mut memory_requirements2_extensions_vk =
             MemoryRequirements::to_mut_vk2_extensions(device);
@@ -240,7 +241,7 @@ impl RawBuffer {
         }
 
         // Unborrow
-        let memory_requirements2_vk = ash::vk::MemoryRequirements2 {
+        let memory_requirements2_vk = vk::MemoryRequirements2 {
             _marker: PhantomData,
             ..memory_requirements2_vk
         };
@@ -604,7 +605,7 @@ impl Drop for RawBuffer {
 }
 
 unsafe impl VulkanObject for RawBuffer {
-    type Handle = ash::vk::Buffer;
+    type Handle = vk::Buffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -839,7 +840,7 @@ impl BufferCreateInfo {
     pub(crate) fn to_vk<'a>(
         &'a self,
         extensions_vk: &'a mut BufferCreateInfoExtensionsVk,
-    ) -> ash::vk::BufferCreateInfo<'a> {
+    ) -> vk::BufferCreateInfo<'a> {
         let &Self {
             flags,
             ref sharing,
@@ -851,7 +852,7 @@ impl BufferCreateInfo {
 
         let (sharing_mode_vk, queue_family_indices) = sharing.to_vk();
 
-        let mut val_vk = ash::vk::BufferCreateInfo::default()
+        let mut val_vk = vk::BufferCreateInfo::default()
             .flags(flags.into())
             .size(size)
             .usage(usage.into())
@@ -874,7 +875,7 @@ impl BufferCreateInfo {
         } = self;
 
         let external_memory_vk = (!external_memory_handle_types.is_empty()).then(|| {
-            ash::vk::ExternalMemoryBufferCreateInfo::default()
+            vk::ExternalMemoryBufferCreateInfo::default()
                 .handle_types(external_memory_handle_types.into())
         });
 
@@ -883,7 +884,7 @@ impl BufferCreateInfo {
 }
 
 pub(crate) struct BufferCreateInfoExtensionsVk {
-    pub(crate) external_memory_vk: Option<ash::vk::ExternalMemoryBufferCreateInfo<'static>>,
+    pub(crate) external_memory_vk: Option<vk::ExternalMemoryBufferCreateInfo<'static>>,
 }
 
 #[cfg(test)]

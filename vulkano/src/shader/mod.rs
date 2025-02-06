@@ -427,6 +427,7 @@ use crate::{
     Requires, RequiresAllOf, RequiresOneOf, Validated, ValidationError, Version, VulkanError,
     VulkanObject,
 };
+use ash::vk;
 use bytemuck::bytes_of;
 use foldhash::{HashMap, HashSet};
 use half::f16;
@@ -449,7 +450,7 @@ include!(concat!(env!("OUT_DIR"), "/spirv_reqs.rs"));
 /// Contains SPIR-V code with one or more entry points.
 #[derive(Debug)]
 pub struct ShaderModule {
-    handle: ash::vk::ShaderModule,
+    handle: vk::ShaderModule,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -536,7 +537,7 @@ impl ShaderModule {
     /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::ShaderModule,
+        handle: vk::ShaderModule,
         create_info: ShaderModuleCreateInfo<'_>,
     ) -> Arc<ShaderModule> {
         let spirv = Spirv::new(create_info.code).unwrap();
@@ -545,7 +546,7 @@ impl ShaderModule {
 
     unsafe fn from_handle_with_spirv(
         device: Arc<Device>,
-        handle: ash::vk::ShaderModule,
+        handle: vk::ShaderModule,
         create_info: ShaderModuleCreateInfo<'_>,
         spirv: Spirv,
     ) -> Arc<ShaderModule> {
@@ -687,7 +688,7 @@ impl Drop for ShaderModule {
 }
 
 unsafe impl VulkanObject for ShaderModule {
-    type Handle = ash::vk::ShaderModule;
+    type Handle = vk::ShaderModule;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -825,11 +826,11 @@ impl<'a> ShaderModuleCreateInfo<'a> {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::ShaderModuleCreateInfo<'_> {
+    pub(crate) fn to_vk(&self) -> vk::ShaderModuleCreateInfo<'_> {
         let &Self { code, _ne: _ } = self;
 
-        ash::vk::ShaderModuleCreateInfo::default()
-            .flags(ash::vk::ShaderModuleCreateFlags::empty())
+        vk::ShaderModuleCreateInfo::default()
+            .flags(vk::ShaderModuleCreateFlags::empty())
             .code(code)
     }
 }
@@ -856,8 +857,8 @@ impl SpecializationConstant {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         match self {
-            Self::Bool(false) => bytes_of(&ash::vk::FALSE),
-            Self::Bool(true) => bytes_of(&ash::vk::TRUE),
+            Self::Bool(false) => bytes_of(&vk::FALSE),
+            Self::Bool(true) => bytes_of(&vk::TRUE),
             Self::U8(value) => bytes_of(value),
             Self::U16(value) => bytes_of(value),
             Self::U32(value) => bytes_of(value),
@@ -1113,7 +1114,7 @@ impl SpecializedShaderModule {
 }
 
 unsafe impl VulkanObject for SpecializedShaderModule {
-    type Handle = ash::vk::ShaderModule;
+    type Handle = vk::ShaderModule;
 
     #[inline]
     fn handle(&self) -> Self::Handle {

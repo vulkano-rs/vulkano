@@ -17,6 +17,7 @@ pub use self::{
     },
 };
 use crate::{device::Queue, VulkanError};
+use ash::vk;
 use smallvec::SmallVec;
 use std::{
     error::Error,
@@ -88,13 +89,12 @@ impl Sharing<SmallVec<[u32; 4]>> {
         matches!(self, Self::Concurrent(..))
     }
 
-    pub(crate) fn to_vk(&self) -> (ash::vk::SharingMode, &[u32]) {
+    pub(crate) fn to_vk(&self) -> (vk::SharingMode, &[u32]) {
         match self {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, [].as_slice()),
-            Sharing::Concurrent(queue_family_indices) => (
-                ash::vk::SharingMode::CONCURRENT,
-                queue_family_indices.as_slice(),
-            ),
+            Sharing::Exclusive => (vk::SharingMode::EXCLUSIVE, [].as_slice()),
+            Sharing::Concurrent(queue_family_indices) => {
+                (vk::SharingMode::CONCURRENT, queue_family_indices.as_slice())
+            }
         }
     }
 }

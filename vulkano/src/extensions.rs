@@ -1,3 +1,4 @@
+use ash::vk;
 use bytemuck::cast_slice;
 
 /// Properties of an extension in the loader or a physical device.
@@ -10,9 +11,9 @@ pub struct ExtensionProperties {
     pub spec_version: u32,
 }
 
-impl From<ash::vk::ExtensionProperties> for ExtensionProperties {
+impl From<vk::ExtensionProperties> for ExtensionProperties {
     #[inline]
-    fn from(val: ash::vk::ExtensionProperties) -> Self {
+    fn from(val: vk::ExtensionProperties) -> Self {
         Self {
             extension_name: {
                 let bytes = cast_slice(val.extension_name.as_slice());

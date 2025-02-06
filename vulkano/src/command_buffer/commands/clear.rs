@@ -10,6 +10,7 @@ use crate::{
     DeviceSize, Requires, RequiresAllOf, RequiresOneOf, SafeDeref, ValidationError, Version,
     VulkanObject,
 };
+use ash::vk;
 use smallvec::{smallvec, SmallVec};
 use std::{mem::size_of_val, sync::Arc};
 
@@ -815,7 +816,7 @@ impl ClearColorImageInfo {
         }
     }
 
-    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[ash::vk::ImageSubresourceRange; 8]> {
+    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[vk::ImageSubresourceRange; 8]> {
         self.regions
             .iter()
             .map(ImageSubresourceRange::to_vk)
@@ -824,9 +825,9 @@ impl ClearColorImageInfo {
 }
 
 pub(crate) struct ClearColorImageInfoVk {
-    pub(crate) image: ash::vk::Image,
-    pub(crate) image_layout: ash::vk::ImageLayout,
-    pub(crate) color: ash::vk::ClearColorValue,
+    pub(crate) image: vk::Image,
+    pub(crate) image_layout: vk::ImageLayout,
+    pub(crate) color: vk::ClearColorValue,
 }
 
 /// Parameters to clear a depth/stencil image.
@@ -1050,7 +1051,7 @@ impl ClearDepthStencilImageInfo {
         }
     }
 
-    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[ash::vk::ImageSubresourceRange; 8]> {
+    pub(crate) fn to_vk_ranges(&self) -> SmallVec<[vk::ImageSubresourceRange; 8]> {
         self.regions
             .iter()
             .map(ImageSubresourceRange::to_vk)
@@ -1059,7 +1060,7 @@ impl ClearDepthStencilImageInfo {
 }
 
 pub(crate) struct ClearDepthStencilImageInfoVk {
-    pub(crate) image: ash::vk::Image,
-    pub(crate) image_layout: ash::vk::ImageLayout,
-    pub(crate) depth_stencil: ash::vk::ClearDepthStencilValue,
+    pub(crate) image: vk::Image,
+    pub(crate) image_layout: vk::ImageLayout,
+    pub(crate) depth_stencil: vk::ClearDepthStencilValue,
 }

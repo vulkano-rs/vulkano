@@ -67,6 +67,7 @@ use crate::{
     shader::{DescriptorBindingRequirements, ShaderStage, ShaderStages},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use foldhash::HashMap;
 use smallvec::SmallVec;
 use std::{
@@ -84,7 +85,7 @@ use std::{
 /// Describes the layout of descriptor sets and push constants that are made available to shaders.
 #[derive(Debug)]
 pub struct PipelineLayout {
-    handle: ash::vk::PipelineLayout,
+    handle: vk::PipelineLayout,
     device: InstanceOwnedDebugWrapper<Arc<Device>>,
     id: NonZeroU64,
 
@@ -154,7 +155,7 @@ impl PipelineLayout {
     #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
-        handle: ash::vk::PipelineLayout,
+        handle: vk::PipelineLayout,
         create_info: PipelineLayoutCreateInfo,
     ) -> Arc<PipelineLayout> {
         let PipelineLayoutCreateInfo {
@@ -170,7 +171,7 @@ impl PipelineLayout {
             (
                 range.offset,
                 range.size,
-                ash::vk::ShaderStageFlags::from(range.stages),
+                vk::ShaderStageFlags::from(range.stages),
             )
         });
 
@@ -363,7 +364,7 @@ impl Drop for PipelineLayout {
 }
 
 unsafe impl VulkanObject for PipelineLayout {
-    type Handle = ash::vk::PipelineLayout;
+    type Handle = vk::PipelineLayout;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -889,7 +890,7 @@ impl PipelineLayoutCreateInfo {
     pub(crate) fn to_vk<'a>(
         &self,
         fields1_vk: &'a PipelineLayoutCreateInfoFields1Vk,
-    ) -> ash::vk::PipelineLayoutCreateInfo<'a> {
+    ) -> vk::PipelineLayoutCreateInfo<'a> {
         let &Self {
             flags,
             set_layouts: _,
@@ -901,7 +902,7 @@ impl PipelineLayoutCreateInfo {
             push_constant_ranges_vk,
         } = fields1_vk;
 
-        ash::vk::PipelineLayoutCreateInfo::default()
+        vk::PipelineLayoutCreateInfo::default()
             .flags(flags.into())
             .set_layouts(set_layouts_vk)
             .push_constant_ranges(push_constant_ranges_vk)
@@ -928,8 +929,8 @@ impl PipelineLayoutCreateInfo {
 }
 
 pub(crate) struct PipelineLayoutCreateInfoFields1Vk {
-    pub(crate) set_layouts_vk: SmallVec<[ash::vk::DescriptorSetLayout; 4]>,
-    pub(crate) push_constant_ranges_vk: SmallVec<[ash::vk::PushConstantRange; 4]>,
+    pub(crate) set_layouts_vk: SmallVec<[vk::DescriptorSetLayout; 4]>,
+    pub(crate) push_constant_ranges_vk: SmallVec<[vk::PushConstantRange; 4]>,
 }
 
 vulkan_bitflags! {
@@ -1056,14 +1057,14 @@ impl PushConstantRange {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_vk(&self) -> ash::vk::PushConstantRange {
+    pub(crate) fn to_vk(&self) -> vk::PushConstantRange {
         let &Self {
             stages,
             offset,
             size,
         } = self;
 
-        ash::vk::PushConstantRange {
+        vk::PushConstantRange {
             stage_flags: stages.into(),
             offset,
             size,

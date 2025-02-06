@@ -8,6 +8,7 @@ use crate::{
     macros::{impl_id_counter, vulkan_bitflags},
     Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use smallvec::SmallVec;
 use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 
@@ -37,7 +38,7 @@ use std::{mem::MaybeUninit, num::NonZeroU64, ops::Range, ptr, sync::Arc};
 /// ```
 #[derive(Debug)]
 pub struct Framebuffer {
-    handle: ash::vk::Framebuffer,
+    handle: vk::Framebuffer,
     render_pass: DeviceOwnedDebugWrapper<Arc<RenderPass>>,
     id: NonZeroU64,
 
@@ -278,7 +279,7 @@ impl Framebuffer {
     #[inline]
     pub unsafe fn from_handle(
         render_pass: Arc<RenderPass>,
-        handle: ash::vk::Framebuffer,
+        handle: vk::Framebuffer,
         mut create_info: FramebufferCreateInfo,
     ) -> Arc<Framebuffer> {
         create_info.set_auto_extent_layers(&render_pass);
@@ -355,7 +356,7 @@ impl Drop for Framebuffer {
 }
 
 unsafe impl VulkanObject for Framebuffer {
-    type Handle = ash::vk::Framebuffer;
+    type Handle = vk::Framebuffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -616,9 +617,9 @@ impl FramebufferCreateInfo {
 
     pub(crate) fn to_vk<'a>(
         &self,
-        render_pass_vk: ash::vk::RenderPass,
+        render_pass_vk: vk::RenderPass,
         fields1_vk: &'a FramebufferCreateInfoFields1Vk,
-    ) -> ash::vk::FramebufferCreateInfo<'a> {
+    ) -> vk::FramebufferCreateInfo<'a> {
         let &Self {
             flags,
             attachments: _,
@@ -628,7 +629,7 @@ impl FramebufferCreateInfo {
         } = self;
         let FramebufferCreateInfoFields1Vk { attachments_vk } = fields1_vk;
 
-        ash::vk::FramebufferCreateInfo::default()
+        vk::FramebufferCreateInfo::default()
             .flags(flags.into())
             .render_pass(render_pass_vk)
             .attachments(attachments_vk)
@@ -650,7 +651,7 @@ impl FramebufferCreateInfo {
 }
 
 pub(crate) struct FramebufferCreateInfoFields1Vk {
-    pub(crate) attachments_vk: SmallVec<[ash::vk::ImageView; 4]>,
+    pub(crate) attachments_vk: SmallVec<[vk::ImageView; 4]>,
 }
 
 vulkan_bitflags! {

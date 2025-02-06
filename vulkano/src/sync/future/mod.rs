@@ -101,6 +101,7 @@ use crate::{
     swapchain::{self, PresentFuture, PresentInfo, Swapchain, SwapchainPresentInfo},
     DeviceSize, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use foldhash::HashMap;
 use parking_lot::MutexGuard;
 use smallvec::{smallvec, SmallVec};
@@ -807,9 +808,9 @@ pub(crate) unsafe fn queue_submit(
 // Otherwise we get deadlocks.
 #[derive(Debug)]
 struct States<'a> {
-    buffers: HashMap<ash::vk::Buffer, MutexGuard<'a, BufferState>>,
-    command_buffers: HashMap<ash::vk::CommandBuffer, MutexGuard<'a, CommandBufferState>>,
-    images: HashMap<ash::vk::Image, MutexGuard<'a, ImageState>>,
+    buffers: HashMap<vk::Buffer, MutexGuard<'a, BufferState>>,
+    command_buffers: HashMap<vk::CommandBuffer, MutexGuard<'a, CommandBufferState>>,
+    images: HashMap<vk::Image, MutexGuard<'a, ImageState>>,
 }
 
 impl<'a> States<'a> {

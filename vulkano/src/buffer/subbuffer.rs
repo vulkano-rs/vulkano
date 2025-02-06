@@ -12,6 +12,7 @@ use crate::{
     sync::HostAccessError,
     DeviceSize, NonNullDeviceAddress, NonZeroDeviceSize, ValidationError,
 };
+use ash::vk;
 use bytemuck::AnyBitPattern;
 use std::{
     alloc::Layout,
@@ -174,8 +175,8 @@ impl<T: ?Sized> Subbuffer<T> {
         unsafe { mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self) }
     }
 
-    pub(crate) fn to_vk_device_or_host_address(&self) -> ash::vk::DeviceOrHostAddressKHR {
-        ash::vk::DeviceOrHostAddressKHR {
+    pub(crate) fn to_vk_device_or_host_address(&self) -> vk::DeviceOrHostAddressKHR {
+        vk::DeviceOrHostAddressKHR {
             device_address: self
                 .device_address()
                 .expect("Can't get device address. Is the extension enabled?")
@@ -183,10 +184,8 @@ impl<T: ?Sized> Subbuffer<T> {
         }
     }
 
-    pub(crate) fn to_vk_device_or_host_address_const(
-        &self,
-    ) -> ash::vk::DeviceOrHostAddressConstKHR {
-        ash::vk::DeviceOrHostAddressConstKHR {
+    pub(crate) fn to_vk_device_or_host_address_const(&self) -> vk::DeviceOrHostAddressConstKHR {
+        vk::DeviceOrHostAddressConstKHR {
             device_address: self
                 .device_address()
                 .expect("Can't get device address. Is the extension enabled?")

@@ -86,6 +86,7 @@ use crate::{
     DeviceSize, NonNullDeviceAddress, Requires, RequiresAllOf, RequiresOneOf, Validated,
     ValidationError, Version, VulkanError, VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
@@ -504,7 +505,7 @@ impl Buffer {
     pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
         let device = self.device();
 
-        let info_vk = ash::vk::BufferDeviceAddressInfo::default().buffer(self.handle());
+        let info_vk = vk::BufferDeviceAddressInfo::default().buffer(self.handle());
 
         let ptr = {
             let fns = device.fns();
@@ -527,7 +528,7 @@ impl Buffer {
 }
 
 unsafe impl VulkanObject for Buffer {
-    type Handle = ash::vk::Buffer;
+    type Handle = vk::Buffer;
 
     #[inline]
     fn handle(&self) -> Self::Handle {
@@ -924,7 +925,7 @@ impl ExternalBufferInfo {
         Ok(())
     }
 
-    pub(crate) fn to_vk(&self) -> ash::vk::PhysicalDeviceExternalBufferInfo<'static> {
+    pub(crate) fn to_vk(&self) -> vk::PhysicalDeviceExternalBufferInfo<'static> {
         let &Self {
             flags,
             usage,
@@ -932,7 +933,7 @@ impl ExternalBufferInfo {
             _ne: _,
         } = self;
 
-        ash::vk::PhysicalDeviceExternalBufferInfo::default()
+        vk::PhysicalDeviceExternalBufferInfo::default()
             .flags(flags.into())
             .usage(usage.into())
             .handle_type(handle_type.into())
@@ -948,12 +949,12 @@ pub struct ExternalBufferProperties {
 }
 
 impl ExternalBufferProperties {
-    pub(crate) fn to_mut_vk() -> ash::vk::ExternalBufferProperties<'static> {
-        ash::vk::ExternalBufferProperties::default()
+    pub(crate) fn to_mut_vk() -> vk::ExternalBufferProperties<'static> {
+        vk::ExternalBufferProperties::default()
     }
 
-    pub(crate) fn from_vk(val_vk: &ash::vk::ExternalBufferProperties<'_>) -> Self {
-        let &ash::vk::ExternalBufferProperties {
+    pub(crate) fn from_vk(val_vk: &vk::ExternalBufferProperties<'_>) -> Self {
+        let &vk::ExternalBufferProperties {
             ref external_memory_properties,
             ..
         } = val_vk;

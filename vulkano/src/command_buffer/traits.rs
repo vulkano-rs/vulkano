@@ -17,6 +17,7 @@ use crate::{
     },
     DeviceSize, SafeDeref, Validated, ValidationError, VulkanError, VulkanObject,
 };
+use ash::vk;
 use parking_lot::{Mutex, MutexGuard};
 use std::{
     borrow::Cow,
@@ -31,7 +32,7 @@ use std::{
 };
 
 pub unsafe trait PrimaryCommandBufferAbstract:
-    VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
+    VulkanObject<Handle = vk::CommandBuffer> + DeviceOwned + Send + Sync
 {
     /// Returns the underlying raw command buffer.
     fn as_raw(&self) -> &CommandBuffer;
@@ -141,7 +142,7 @@ impl Debug for dyn PrimaryCommandBufferAbstract {
 
 unsafe impl<T> PrimaryCommandBufferAbstract for T
 where
-    T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
+    T: VulkanObject<Handle = vk::CommandBuffer> + SafeDeref + Send + Sync,
     T::Target: PrimaryCommandBufferAbstract,
 {
     fn as_raw(&self) -> &CommandBuffer {
@@ -166,7 +167,7 @@ where
 }
 
 pub unsafe trait SecondaryCommandBufferAbstract:
-    VulkanObject<Handle = ash::vk::CommandBuffer> + DeviceOwned + Send + Sync
+    VulkanObject<Handle = vk::CommandBuffer> + DeviceOwned + Send + Sync
 {
     /// Returns the underlying raw command buffer.
     fn as_raw(&self) -> &CommandBuffer;
@@ -197,7 +198,7 @@ pub unsafe trait SecondaryCommandBufferAbstract:
 
 unsafe impl<T> SecondaryCommandBufferAbstract for T
 where
-    T: VulkanObject<Handle = ash::vk::CommandBuffer> + SafeDeref + Send + Sync,
+    T: VulkanObject<Handle = vk::CommandBuffer> + SafeDeref + Send + Sync,
     T::Target: SecondaryCommandBufferAbstract,
 {
     fn as_raw(&self) -> &CommandBuffer {
