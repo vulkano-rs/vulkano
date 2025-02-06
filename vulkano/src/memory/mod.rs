@@ -351,8 +351,10 @@ impl ResourceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_memory_range(&memory_range)?;
 
-        self.device_memory()
-            .invalidate_range(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .invalidate_range(self.create_memory_range(memory_range))
+        }
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -361,8 +363,10 @@ impl ResourceMemory {
         &self,
         memory_range: MappedMemoryRange,
     ) -> Result<(), VulkanError> {
-        self.device_memory()
-            .invalidate_range_unchecked(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .invalidate_range_unchecked(self.create_memory_range(memory_range))
+        }
     }
 
     /// Flushes the host cache for a range of the `ResourceMemory`.
@@ -385,8 +389,10 @@ impl ResourceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_memory_range(&memory_range)?;
 
-        self.device_memory()
-            .flush_range(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .flush_range(self.create_memory_range(memory_range))
+        }
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -395,8 +401,10 @@ impl ResourceMemory {
         &self,
         memory_range: MappedMemoryRange,
     ) -> Result<(), VulkanError> {
-        self.device_memory()
-            .flush_range_unchecked(self.create_memory_range(memory_range))
+        unsafe {
+            self.device_memory()
+                .flush_range_unchecked(self.create_memory_range(memory_range))
+        }
     }
 
     fn validate_memory_range(

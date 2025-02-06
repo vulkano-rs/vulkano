@@ -39,7 +39,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "begin_debug_utils_label",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.begin_debug_utils_label_unchecked(&label_info);
+                unsafe { out.begin_debug_utils_label_unchecked(&label_info) };
             },
         );
 
@@ -56,7 +56,7 @@ impl<L> AutoCommandBufferBuilder<L> {
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
 
-        Ok(self.end_debug_utils_label_unchecked())
+        Ok(unsafe { self.end_debug_utils_label_unchecked() })
     }
 
     fn validate_end_debug_utils_label(&self) -> Result<(), Box<ValidationError>> {
@@ -75,7 +75,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "end_debug_utils_label",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.end_debug_utils_label_unchecked();
+                unsafe { out.end_debug_utils_label_unchecked() };
             },
         );
 
@@ -110,7 +110,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "insert_debug_utils_label",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.insert_debug_utils_label_unchecked(&label_info);
+                unsafe { out.insert_debug_utils_label_unchecked(&label_info) };
             },
         );
 
@@ -126,7 +126,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_begin_debug_utils_label(label_info)?;
 
-        Ok(self.begin_debug_utils_label_unchecked(label_info))
+        Ok(unsafe { self.begin_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_begin_debug_utils_label(
@@ -173,7 +173,9 @@ impl RecordingCommandBuffer {
         let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
         let fns = self.device().fns();
-        (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info_vk);
+        unsafe {
+            (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle(), &label_info_vk)
+        };
 
         self
     }
@@ -182,7 +184,7 @@ impl RecordingCommandBuffer {
     pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_end_debug_utils_label()?;
 
-        Ok(self.end_debug_utils_label_unchecked())
+        Ok(unsafe { self.end_debug_utils_label_unchecked() })
     }
 
     fn validate_end_debug_utils_label(&self) -> Result<(), Box<ValidationError>> {
@@ -220,7 +222,7 @@ impl RecordingCommandBuffer {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn end_debug_utils_label_unchecked(&mut self) -> &mut Self {
         let fns = self.device().fns();
-        (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle());
+        unsafe { (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle()) };
 
         self
     }
@@ -232,7 +234,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_insert_debug_utils_label(label_info)?;
 
-        Ok(self.insert_debug_utils_label_unchecked(label_info))
+        Ok(unsafe { self.insert_debug_utils_label_unchecked(label_info) })
     }
 
     fn validate_insert_debug_utils_label(
@@ -279,7 +281,9 @@ impl RecordingCommandBuffer {
         let label_info_vk = label_info.to_vk(&label_info_fields1_vk);
 
         let fns = self.device().fns();
-        (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info_vk);
+        unsafe {
+            (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle(), &label_info_vk)
+        };
 
         self
     }

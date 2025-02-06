@@ -100,15 +100,17 @@ impl DebugUtilsMessenger {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.ext_debug_utils.create_debug_utils_messenger_ext)(
-                instance.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.ext_debug_utils.create_debug_utils_messenger_ext)(
+                    instance.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         Ok(DebugUtilsMessenger {
@@ -330,20 +332,22 @@ pub(super) unsafe extern "system" fn trampoline(
             object_count,
             p_objects,
             ..
-        } = *callback_data_vk;
+        } = unsafe { *callback_data_vk };
 
         let callback_data = DebugUtilsMessengerCallbackData {
-            message_id_name: p_message_id_name
-                .as_ref()
-                .map(|p_message_id_name| CStr::from_ptr(p_message_id_name).to_str().unwrap()),
+            message_id_name: unsafe { p_message_id_name.as_ref() }.map(|p_message_id_name| {
+                unsafe { CStr::from_ptr(p_message_id_name) }
+                    .to_str()
+                    .unwrap()
+            }),
             message_id_number,
-            message: CStr::from_ptr(p_message).to_str().unwrap(),
+            message: unsafe { CStr::from_ptr(p_message) }.to_str().unwrap(),
             queue_labels: DebugUtilsMessengerCallbackLabelIter(
                 // Some drivers give a null pointer for empty data.
                 if p_queue_labels.is_null() {
                     &[]
                 } else {
-                    slice::from_raw_parts(p_queue_labels, queue_label_count as usize)
+                    unsafe { slice::from_raw_parts(p_queue_labels, queue_label_count as usize) }
                 }
                 .iter(),
             ),
@@ -351,7 +355,7 @@ pub(super) unsafe extern "system" fn trampoline(
                 if p_cmd_buf_labels.is_null() {
                     &[]
                 } else {
-                    slice::from_raw_parts(p_cmd_buf_labels, cmd_buf_label_count as usize)
+                    unsafe { slice::from_raw_parts(p_cmd_buf_labels, cmd_buf_label_count as usize) }
                 }
                 .iter(),
             ),
@@ -359,13 +363,13 @@ pub(super) unsafe extern "system" fn trampoline(
                 if p_objects.is_null() {
                     &[]
                 } else {
-                    slice::from_raw_parts(p_objects, object_count as usize)
+                    unsafe { slice::from_raw_parts(p_objects, object_count as usize) }
                 }
                 .iter(),
             ),
         };
 
-        let user_callback: &CallbackData = &*user_data_vk.cast_const().cast();
+        let user_callback: &CallbackData = unsafe { &*user_data_vk.cast_const().cast() };
 
         user_callback(
             message_severity_vk.into(),

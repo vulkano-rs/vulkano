@@ -402,7 +402,7 @@ where
     }
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
-        (**self).build_submission()
+        unsafe { (**self).build_submission() }
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
@@ -410,7 +410,7 @@ where
     }
 
     unsafe fn signal_finished(&self) {
-        (**self).signal_finished()
+        unsafe { (**self).signal_finished() }
     }
 
     fn queue_change_allowed(&self) -> bool {
@@ -556,7 +556,8 @@ pub(crate) unsafe fn queue_bind_sparse(
     fence: Option<Arc<Fence>>,
 ) -> Result<(), Validated<VulkanError>> {
     let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
-    queue.with(|mut queue_guard| queue_guard.bind_sparse(&bind_infos, fence.as_ref()))?;
+    queue
+        .with(|mut queue_guard| unsafe { queue_guard.bind_sparse(&bind_infos, fence.as_ref()) })?;
 
     Ok(())
 }
@@ -566,7 +567,7 @@ pub(crate) unsafe fn queue_present(
     present_info: PresentInfo,
 ) -> Result<impl ExactSizeIterator<Item = Result<bool, VulkanError>>, Validated<VulkanError>> {
     let results: SmallVec<[_; 1]> = queue
-        .with(|mut queue_guard| queue_guard.present(&present_info))?
+        .with(|mut queue_guard| unsafe { queue_guard.present(&present_info) })?
         .collect();
 
     let PresentInfo {
@@ -579,9 +580,7 @@ pub(crate) unsafe fn queue_present(
     // signal that to the relevant swapchain.
     for (&result, swapchain_info) in results.iter().zip(swapchains) {
         if result == Err(VulkanError::FullScreenExclusiveModeLost) {
-            swapchain_info
-                .swapchain
-                .full_screen_exclusive_held()
+            unsafe { swapchain_info.swapchain.full_screen_exclusive_held() }
                 .store(false, Ordering::SeqCst);
         }
     }
@@ -746,7 +745,7 @@ pub(crate) unsafe fn queue_submit(
         }
     }
 
-    queue.with(|mut queue_guard| queue_guard.submit(&submit_infos, fence.as_ref()))?;
+    queue.with(|mut queue_guard| unsafe { queue_guard.submit(&submit_infos, fence.as_ref()) })?;
 
     for submit_info in &submit_infos {
         let SubmitInfo {
@@ -766,7 +765,7 @@ pub(crate) unsafe fn queue_submit(
                 .command_buffers
                 .get_mut(&command_buffer.handle())
                 .unwrap();
-            state.add_queue_submit();
+            unsafe { state.add_queue_submit() };
 
             let CommandBufferResourcesUsage {
                 buffers,
@@ -780,9 +779,9 @@ pub(crate) unsafe fn queue_submit(
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_lock(range.clone());
+                        unsafe { state.gpu_write_lock(range.clone()) };
                     } else {
-                        state.gpu_read_lock(range.clone());
+                        unsafe { state.gpu_read_lock(range.clone()) };
                     }
                 }
             }
@@ -792,9 +791,9 @@ pub(crate) unsafe fn queue_submit(
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_lock(range.clone(), range_usage.final_layout);
+                        unsafe { state.gpu_write_lock(range.clone(), range_usage.final_layout) };
                     } else {
-                        state.gpu_read_lock(range.clone());
+                        unsafe { state.gpu_read_lock(range.clone()) };
                     }
                 }
             }

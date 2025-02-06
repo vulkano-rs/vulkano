@@ -114,11 +114,7 @@ impl DeviceMemory {
 
         Self::validate_allocate(&device, &allocate_info, Some(&import_info))?;
 
-        Ok(Self::allocate_unchecked(
-            device,
-            allocate_info,
-            Some(import_info),
-        )?)
+        Ok(unsafe { Self::allocate_unchecked(device, allocate_info, Some(import_info)) }?)
     }
 
     #[inline(never)]
@@ -175,19 +171,21 @@ impl DeviceMemory {
 
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.allocate_memory)(
-                device.handle(),
-                &allocate_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.allocate_memory)(
+                    device.handle(),
+                    &allocate_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(|e| {
                 device.allocation_count.fetch_sub(1, Ordering::Release);
                 VulkanError::from(e)
             })?;
 
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         let MemoryAllocateInfo {
@@ -435,27 +433,31 @@ impl DeviceMemory {
             let mut output = MaybeUninit::uninit();
 
             if device.enabled_extensions().khr_map_memory2 {
-                (fns.khr_map_memory2.map_memory2_khr)(
-                    device.handle(),
-                    &map_info_vk,
-                    output.as_mut_ptr(),
-                )
+                unsafe {
+                    (fns.khr_map_memory2.map_memory2_khr)(
+                        device.handle(),
+                        &map_info_vk,
+                        output.as_mut_ptr(),
+                    )
+                }
                 .result()
                 .map_err(VulkanError::from)?;
             } else {
-                (fns.v1_0.map_memory)(
-                    device.handle(),
-                    map_info_vk.memory,
-                    map_info_vk.offset,
-                    map_info_vk.size,
-                    map_info_vk.flags,
-                    output.as_mut_ptr(),
-                )
+                unsafe {
+                    (fns.v1_0.map_memory)(
+                        device.handle(),
+                        map_info_vk.memory,
+                        map_info_vk.offset,
+                        map_info_vk.size,
+                        map_info_vk.flags,
+                        output.as_mut_ptr(),
+                    )
+                }
                 .result()
                 .map_err(VulkanError::from)?;
             }
 
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
         let MemoryMapInfo {
@@ -517,11 +519,11 @@ impl DeviceMemory {
         let fns = device.fns();
 
         if device.enabled_extensions().khr_map_memory2 {
-            (fns.khr_map_memory2.unmap_memory2_khr)(device.handle(), &unmap_info_vk)
+            unsafe { (fns.khr_map_memory2.unmap_memory2_khr)(device.handle(), &unmap_info_vk) }
                 .result()
                 .map_err(VulkanError::from)?;
         } else {
-            (fns.v1_0.unmap_memory)(device.handle(), unmap_info_vk.memory);
+            unsafe { (fns.v1_0.unmap_memory)(device.handle(), unmap_info_vk.memory) };
         }
 
         self.mapping_state = None;
@@ -551,7 +553,7 @@ impl DeviceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_memory_range(&memory_range)?;
 
-        Ok(self.invalidate_range_unchecked(memory_range)?)
+        Ok(unsafe { self.invalidate_range_unchecked(memory_range) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -567,9 +569,11 @@ impl DeviceMemory {
         let memory_range_vk = memory_range.to_vk(self.handle());
 
         let fns = self.device().fns();
-        (fns.v1_0.invalidate_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
-            .result()
-            .map_err(VulkanError::from)?;
+        unsafe {
+            (fns.v1_0.invalidate_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
+        }
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -595,7 +599,7 @@ impl DeviceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_memory_range(&memory_range)?;
 
-        Ok(self.flush_range_unchecked(memory_range)?)
+        Ok(unsafe { self.flush_range_unchecked(memory_range) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -611,9 +615,11 @@ impl DeviceMemory {
         let memory_range_vk = memory_range.to_vk(self.handle());
 
         let fns = self.device().fns();
-        (fns.v1_0.flush_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
-            .result()
-            .map_err(VulkanError::from)?;
+        unsafe {
+            (fns.v1_0.flush_mapped_memory_ranges)(self.device().handle(), 1, &memory_range_vk)
+        }
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -678,7 +684,9 @@ impl DeviceMemory {
         let mut output: DeviceSize = 0;
 
         let fns = self.device.fns();
-        (fns.v1_0.get_device_memory_commitment)(self.device.handle(), self.handle, &mut output);
+        unsafe {
+            (fns.v1_0.get_device_memory_commitment)(self.device.handle(), self.handle, &mut output)
+        };
 
         output
     }
@@ -744,18 +752,21 @@ impl DeviceMemory {
 
         let fns = self.device.fns();
         let mut output = MaybeUninit::uninit();
-        (fns.khr_external_memory_fd.get_memory_fd_khr)(
-            self.device.handle(),
-            &info_vk,
-            output.as_mut_ptr(),
-        )
+        unsafe {
+            (fns.khr_external_memory_fd.get_memory_fd_khr)(
+                self.device.handle(),
+                &info_vk,
+                output.as_mut_ptr(),
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::io::FromRawFd;
-            Ok(File::from_raw_fd(output.assume_init()))
+            let raw_fd = unsafe { output.assume_init() };
+            Ok(unsafe { File::from_raw_fd(raw_fd) })
         }
 
         #[cfg(not(unix))]
@@ -1838,7 +1849,7 @@ impl MappingState {
         // SAFETY: The caller must guarantee that `range` is within the currently mapped range,
         // which means that the offset pointer and length must denote a slice that's contained
         // within the allocated (mapped) object.
-        let ptr = ptr.add((range.start - self.range.start) as usize);
+        let ptr = unsafe { ptr.add((range.start - self.range.start) as usize) };
         let len = (range.end - range.start) as usize;
 
         let ptr = ptr::slice_from_raw_parts_mut(<*mut c_void>::cast::<u8>(ptr), len);
@@ -1846,7 +1857,7 @@ impl MappingState {
         // SAFETY: The original pointer was non-null, and the caller must guarantee that `range`
         // is within the currently mapped range, which means that the offset couldn't have wrapped
         // around the address space.
-        NonNull::new_unchecked(ptr)
+        unsafe { NonNull::new_unchecked(ptr) }
     }
 }
 
@@ -2200,7 +2211,7 @@ impl MappedDeviceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_range(range.clone())?;
 
-        Ok(self.invalidate_range_unchecked(range)?)
+        Ok(unsafe { self.invalidate_range_unchecked(range) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -2220,9 +2231,11 @@ impl MappedDeviceMemory {
         .to_vk(self.memory.handle());
 
         let fns = self.memory.device().fns();
-        (fns.v1_0.invalidate_mapped_memory_ranges)(self.memory.device().handle(), 1, &range_vk)
-            .result()
-            .map_err(VulkanError::from)?;
+        unsafe {
+            (fns.v1_0.invalidate_mapped_memory_ranges)(self.memory.device().handle(), 1, &range_vk)
+        }
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -2254,7 +2267,7 @@ impl MappedDeviceMemory {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_range(range.clone())?;
 
-        Ok(self.flush_range_unchecked(range)?)
+        Ok(unsafe { self.flush_range_unchecked(range) }?)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -2274,9 +2287,11 @@ impl MappedDeviceMemory {
         .to_vk(self.memory.handle());
 
         let fns = self.device().fns();
-        (fns.v1_0.flush_mapped_memory_ranges)(self.memory.device().handle(), 1, &range_vk)
-            .result()
-            .map_err(VulkanError::from)?;
+        unsafe {
+            (fns.v1_0.flush_mapped_memory_ranges)(self.memory.device().handle(), 1, &range_vk)
+        }
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -2303,18 +2318,17 @@ impl MappedDeviceMemory {
     pub unsafe fn read(&self, range: Range<DeviceSize>) -> Result<&[u8], Box<ValidationError>> {
         self.validate_range(range.clone())?;
 
-        Ok(self.read_unchecked(range))
+        Ok(unsafe { self.read_unchecked(range) })
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     pub unsafe fn read_unchecked(&self, range: Range<DeviceSize>) -> &[u8] {
-        slice::from_raw_parts(
+        let ptr = unsafe {
             self.pointer
                 .add((range.start - self.range.start).try_into().unwrap())
-                .cast(),
-            (range.end - range.start) as usize,
-        )
+        };
+        unsafe { slice::from_raw_parts(ptr.cast(), (range.end - range.start) as usize) }
     }
 
     /// Returns a mutable reference to bytes in the mapped memory.
@@ -2342,19 +2356,23 @@ impl MappedDeviceMemory {
     ) -> Result<&mut [u8], Box<ValidationError>> {
         self.validate_range(range.clone())?;
 
-        Ok(self.write_unchecked(range))
+        Ok(unsafe { self.write_unchecked(range) })
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     #[inline]
     #[allow(clippy::mut_from_ref)]
     pub unsafe fn write_unchecked(&self, range: Range<DeviceSize>) -> &mut [u8] {
-        slice::from_raw_parts_mut(
+        let ptr = unsafe {
             self.pointer
                 .add((range.start - self.range.start).try_into().unwrap())
-                .cast::<u8>(),
-            (range.end - range.start).try_into().unwrap(),
-        )
+        };
+        unsafe {
+            slice::from_raw_parts_mut(
+                ptr.cast::<u8>(),
+                (range.end - range.start).try_into().unwrap(),
+            )
+        }
     }
 
     #[inline]

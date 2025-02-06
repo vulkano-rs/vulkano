@@ -55,16 +55,20 @@ impl DeferredOperation {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.khr_deferred_host_operations
-                .create_deferred_operation_khr)(
-                device.handle(), ptr::null(), output.as_mut_ptr()
-            )
+            unsafe {
+                (fns.khr_deferred_host_operations
+                    .create_deferred_operation_khr)(
+                    device.handle(),
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle))
+        Ok(unsafe { Self::from_handle(device, handle) })
     }
 
     /// Creates a new `DeferredOperation` from a raw object handle.

@@ -169,7 +169,7 @@ impl DescriptorPool {
         let allocate_infos: SmallVec<[_; 1]> = allocate_infos.into_iter().collect();
         self.validate_allocate_descriptor_sets(&allocate_infos)?;
 
-        Ok(self.allocate_descriptor_sets_unchecked(allocate_infos)?)
+        Ok(unsafe { self.allocate_descriptor_sets_unchecked(allocate_infos) }?)
     }
 
     fn validate_allocate_descriptor_sets(
@@ -259,11 +259,13 @@ impl DescriptorPool {
             output.reserve(layouts_vk.len());
 
             let fns = self.device.fns();
-            (fns.v1_0.allocate_descriptor_sets)(
-                self.device.handle(),
-                &info_vk,
-                output.as_mut_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.allocate_descriptor_sets)(
+                    self.device.handle(),
+                    &info_vk,
+                    output.as_mut_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)
             .map_err(|err| match err {
@@ -276,7 +278,7 @@ impl DescriptorPool {
                 _ => VulkanError::FragmentedPool,
             })?;
 
-            output.set_len(layouts_vk.len());
+            unsafe { output.set_len(layouts_vk.len()) };
         }
 
         Ok(output
@@ -310,7 +312,7 @@ impl DescriptorPool {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_free_descriptor_sets()?;
 
-        Ok(self.free_descriptor_sets_unchecked(descriptor_sets)?)
+        Ok(unsafe { self.free_descriptor_sets_unchecked(descriptor_sets) }?)
     }
 
     fn validate_free_descriptor_sets(&self) -> Result<(), Box<ValidationError>> {
@@ -337,12 +339,14 @@ impl DescriptorPool {
         let sets: SmallVec<[_; 8]> = descriptor_sets.into_iter().map(|s| s.handle()).collect();
         if !sets.is_empty() {
             let fns = self.device.fns();
-            (fns.v1_0.free_descriptor_sets)(
-                self.device.handle(),
-                self.handle,
-                sets.len() as u32,
-                sets.as_ptr(),
-            )
+            unsafe {
+                (fns.v1_0.free_descriptor_sets)(
+                    self.device.handle(),
+                    self.handle,
+                    sets.len() as u32,
+                    sets.as_ptr(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
         }
@@ -361,11 +365,13 @@ impl DescriptorPool {
     #[inline]
     pub unsafe fn reset(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
-        (fns.v1_0.reset_descriptor_pool)(
-            self.device.handle(),
-            self.handle,
-            ash::vk::DescriptorPoolResetFlags::empty(),
-        )
+        unsafe {
+            (fns.v1_0.reset_descriptor_pool)(
+                self.device.handle(),
+                self.handle,
+                ash::vk::DescriptorPoolResetFlags::empty(),
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 

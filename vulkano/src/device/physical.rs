@@ -94,8 +94,8 @@ impl PhysicalDevice {
         instance: Arc<Instance>,
         handle: ash::vk::PhysicalDevice,
     ) -> Result<Arc<Self>, VulkanError> {
-        let api_version = Self::get_api_version(handle, &instance);
-        let extension_properties = Self::get_extension_properties(handle, &instance)?;
+        let api_version = unsafe { Self::get_api_version(handle, &instance) };
+        let extension_properties = unsafe { Self::get_extension_properties(handle, &instance) }?;
         let supported_extensions: DeviceExtensions = extension_properties
             .iter()
             .map(|property| property.extension_name.as_str())
@@ -113,18 +113,23 @@ impl PhysicalDevice {
                 .enabled_extensions()
                 .khr_get_physical_device_properties2
         {
-            supported_features =
-                Self::get_features2(handle, &instance, api_version, &supported_extensions);
-            properties =
-                Self::get_properties2(handle, &instance, api_version, &supported_extensions);
-            memory_properties = Self::get_memory_properties2(handle, &instance);
-            queue_family_properties = Self::get_queue_family_properties2(handle, &instance);
+            supported_features = unsafe {
+                Self::get_features2(handle, &instance, api_version, &supported_extensions)
+            };
+            properties = unsafe {
+                Self::get_properties2(handle, &instance, api_version, &supported_extensions)
+            };
+            memory_properties = unsafe { Self::get_memory_properties2(handle, &instance) };
+            queue_family_properties =
+                unsafe { Self::get_queue_family_properties2(handle, &instance) };
         } else {
-            supported_features = Self::get_features(handle, &instance);
-            properties =
-                Self::get_properties(handle, &instance, api_version, &supported_extensions);
-            memory_properties = Self::get_memory_properties(handle, &instance);
-            queue_family_properties = Self::get_queue_family_properties(handle, &instance);
+            supported_features = unsafe { Self::get_features(handle, &instance) };
+            properties = unsafe {
+                Self::get_properties(handle, &instance, api_version, &supported_extensions)
+            };
+            memory_properties = unsafe { Self::get_memory_properties(handle, &instance) };
+            queue_family_properties =
+                unsafe { Self::get_queue_family_properties(handle, &instance) };
         };
 
         Ok(Arc::new(PhysicalDevice {
@@ -152,10 +157,14 @@ impl PhysicalDevice {
     }
 
     unsafe fn get_api_version(handle: ash::vk::PhysicalDevice, instance: &Instance) -> Version {
-        let fns = instance.fns();
-        let mut output = MaybeUninit::uninit();
-        (fns.v1_0.get_physical_device_properties)(handle, output.as_mut_ptr());
-        let api_version = Version::from(output.assume_init().api_version);
+        let properties = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe { (fns.v1_0.get_physical_device_properties)(handle, output.as_mut_ptr()) };
+            unsafe { output.assume_init() }
+        };
+
+        let api_version = Version::from(properties.api_version);
         std::cmp::min(instance.max_api_version(), api_version)
     }
 
@@ -167,26 +176,30 @@ impl PhysicalDevice {
 
         loop {
             let mut count = 0;
-            (fns.v1_0.enumerate_device_extension_properties)(
-                handle,
-                ptr::null(),
-                &mut count,
-                ptr::null_mut(),
-            )
+            unsafe {
+                (fns.v1_0.enumerate_device_extension_properties)(
+                    handle,
+                    ptr::null(),
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
 
             let mut output = Vec::with_capacity(count as usize);
-            let result = (fns.v1_0.enumerate_device_extension_properties)(
-                handle,
-                ptr::null(),
-                &mut count,
-                output.as_mut_ptr(),
-            );
+            let result = unsafe {
+                (fns.v1_0.enumerate_device_extension_properties)(
+                    handle,
+                    ptr::null(),
+                    &mut count,
+                    output.as_mut_ptr(),
+                )
+            };
 
             match result {
                 ash::vk::Result::SUCCESS => {
-                    output.set_len(count as usize);
+                    unsafe { output.set_len(count as usize) };
                     return Ok(output.into_iter().map(Into::into).collect());
                 }
                 ash::vk::Result::INCOMPLETE => (),
@@ -199,7 +212,9 @@ impl PhysicalDevice {
         let mut output = DeviceFeaturesFfi::default();
 
         let fns = instance.fns();
-        (fns.v1_0.get_physical_device_features)(handle, &mut output.head_as_mut().features);
+        unsafe {
+            (fns.v1_0.get_physical_device_features)(handle, &mut output.head_as_mut().features)
+        };
 
         DeviceFeatures::from(&output)
     }
@@ -220,10 +235,12 @@ impl PhysicalDevice {
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_features2)(handle, output.head_as_mut());
+            unsafe { (fns.v1_1.get_physical_device_features2)(handle, output.head_as_mut()) };
         } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_features2_khr)(handle, output.head_as_mut());
+            unsafe {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_features2_khr)(handle, output.head_as_mut())
+            };
         }
 
         DeviceFeatures::from(&output)
@@ -243,7 +260,9 @@ impl PhysicalDevice {
         );
 
         let fns = instance.fns();
-        (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties);
+        unsafe {
+            (fns.v1_0.get_physical_device_properties)(handle, &mut output.head_as_mut().properties)
+        };
 
         DeviceProperties::from(&output)
     }
@@ -264,10 +283,14 @@ impl PhysicalDevice {
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_properties2)(handle, output.head_as_mut());
+            unsafe { (fns.v1_1.get_physical_device_properties2)(handle, output.head_as_mut()) };
         } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_properties2_khr)(handle, output.head_as_mut());
+            unsafe {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_properties2_khr)(
+                    handle, output.head_as_mut()
+                )
+            };
         }
 
         DeviceProperties::from(&output)
@@ -277,12 +300,16 @@ impl PhysicalDevice {
         handle: ash::vk::PhysicalDevice,
         instance: &Instance,
     ) -> MemoryProperties {
-        let mut output = MaybeUninit::uninit();
+        let properties = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            unsafe {
+                (fns.v1_0.get_physical_device_memory_properties)(handle, output.as_mut_ptr())
+            };
+            unsafe { output.assume_init() }
+        };
 
-        let fns = instance.fns();
-        (fns.v1_0.get_physical_device_memory_properties)(handle, output.as_mut_ptr());
-
-        MemoryProperties::from_vk(&output.assume_init())
+        MemoryProperties::from_vk(&properties)
     }
 
     unsafe fn get_memory_properties2(
@@ -294,10 +321,16 @@ impl PhysicalDevice {
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_memory_properties2)(handle, &mut properties_vk);
+            unsafe {
+                (fns.v1_1.get_physical_device_memory_properties2)(handle, &mut properties_vk)
+            };
         } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_memory_properties2_khr)(handle, &mut properties_vk);
+            unsafe {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_memory_properties2_khr)(
+                    handle, &mut properties_vk
+                )
+            };
         }
 
         MemoryProperties::from_vk2(&properties_vk)
@@ -310,15 +343,23 @@ impl PhysicalDevice {
         let fns = instance.fns();
 
         let mut num = 0;
-        (fns.v1_0.get_physical_device_queue_family_properties)(handle, &mut num, ptr::null_mut());
+        unsafe {
+            (fns.v1_0.get_physical_device_queue_family_properties)(
+                handle,
+                &mut num,
+                ptr::null_mut(),
+            )
+        };
 
         let mut output = Vec::with_capacity(num as usize);
-        (fns.v1_0.get_physical_device_queue_family_properties)(
-            handle,
-            &mut num,
-            output.as_mut_ptr(),
-        );
-        output.set_len(num as usize);
+        unsafe {
+            (fns.v1_0.get_physical_device_queue_family_properties)(
+                handle,
+                &mut num,
+                output.as_mut_ptr(),
+            )
+        };
+        unsafe { output.set_len(num as usize) };
 
         output.iter().map(QueueFamilyProperties::from_vk).collect()
     }
@@ -331,35 +372,43 @@ impl PhysicalDevice {
         let fns = instance.fns();
 
         if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_queue_family_properties2)(
-                handle,
-                &mut num,
-                ptr::null_mut(),
-            );
+            unsafe {
+                (fns.v1_1.get_physical_device_queue_family_properties2)(
+                    handle,
+                    &mut num,
+                    ptr::null_mut(),
+                )
+            };
         } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_queue_family_properties2_khr)(
-                handle,
-                &mut num,
-                ptr::null_mut(),
-            );
+            unsafe {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_queue_family_properties2_khr)(
+                    handle,
+                    &mut num,
+                    ptr::null_mut(),
+                )
+            };
         }
 
         let mut properties_vk = vec![QueueFamilyProperties::to_mut_vk2(); num as usize];
 
         if instance.api_version() >= Version::V1_1 {
-            (fns.v1_1.get_physical_device_queue_family_properties2)(
-                handle,
-                &mut num,
-                properties_vk.as_mut_ptr(),
-            );
+            unsafe {
+                (fns.v1_1.get_physical_device_queue_family_properties2)(
+                    handle,
+                    &mut num,
+                    properties_vk.as_mut_ptr(),
+                )
+            };
         } else {
-            (fns.khr_get_physical_device_properties2
-                .get_physical_device_queue_family_properties2_khr)(
-                handle,
-                &mut num,
-                properties_vk.as_mut_ptr(),
-            );
+            unsafe {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_queue_family_properties2_khr)(
+                    handle,
+                    &mut num,
+                    properties_vk.as_mut_ptr(),
+                )
+            };
         }
 
         properties_vk
@@ -576,7 +625,7 @@ impl PhysicalDevice {
     pub unsafe fn display_plane_properties_unchecked(
         self: &Arc<Self>,
     ) -> Result<Vec<DisplayPlaneProperties>, VulkanError> {
-        self.get_display_plane_properties_raw()?
+        unsafe { self.get_display_plane_properties_raw() }?
             .iter()
             .map(|properties_raw| -> Result<_, VulkanError> {
                 let &DisplayPlanePropertiesRaw {
@@ -590,7 +639,7 @@ impl PhysicalDevice {
                             .get(&display_handle)
                             .map(Ok)
                             .unwrap_or_else(|| -> Result<_, VulkanError> {
-                                self.display_properties_unchecked()?;
+                                unsafe { self.display_properties_unchecked() }?;
                                 Ok(self.display_properties.get(&display_handle).unwrap())
                             })
                     })
@@ -615,7 +664,7 @@ impl PhysicalDevice {
             }
         }
 
-        self.get_display_plane_properties_raw()
+        unsafe { self.get_display_plane_properties_raw() }
     }
 
     unsafe fn get_display_plane_properties_raw(
@@ -812,7 +861,7 @@ impl PhysicalDevice {
                     if let Some(display) = self.display_properties.get(&display_vk) {
                         display
                     } else {
-                        self.display_properties_unchecked()?;
+                        unsafe { self.display_properties_unchecked() }?;
                         self.display_properties.get(&display_vk).unwrap()
                     },
                 )
@@ -887,18 +936,22 @@ impl PhysicalDevice {
             let fns = self.instance.fns();
 
             if self.instance.api_version() >= Version::V1_1 {
-                (fns.v1_1.get_physical_device_external_buffer_properties)(
-                    self.handle,
-                    &info_vk,
-                    &mut properties_vk,
-                )
+                unsafe {
+                    (fns.v1_1.get_physical_device_external_buffer_properties)(
+                        self.handle,
+                        &info_vk,
+                        &mut properties_vk,
+                    )
+                }
             } else {
-                (fns.khr_external_memory_capabilities
-                    .get_physical_device_external_buffer_properties_khr)(
-                    self.handle,
-                    &info_vk,
-                    &mut properties_vk,
-                );
+                unsafe {
+                    (fns.khr_external_memory_capabilities
+                        .get_physical_device_external_buffer_properties_khr)(
+                        self.handle,
+                        &info_vk,
+                        &mut properties_vk,
+                    )
+                };
             }
 
             ExternalBufferProperties::from_vk(&properties_vk)
@@ -971,18 +1024,22 @@ impl PhysicalDevice {
             let fns = self.instance.fns();
 
             if self.instance.api_version() >= Version::V1_1 {
-                (fns.v1_1.get_physical_device_external_fence_properties)(
-                    self.handle,
-                    &info_vk,
-                    &mut properties_vk,
-                )
+                unsafe {
+                    (fns.v1_1.get_physical_device_external_fence_properties)(
+                        self.handle,
+                        &info_vk,
+                        &mut properties_vk,
+                    )
+                }
             } else {
-                (fns.khr_external_fence_capabilities
-                    .get_physical_device_external_fence_properties_khr)(
-                    self.handle,
-                    &info_vk,
-                    &mut properties_vk,
-                );
+                unsafe {
+                    (fns.khr_external_fence_capabilities
+                        .get_physical_device_external_fence_properties_khr)(
+                        self.handle,
+                        &info_vk,
+                        &mut properties_vk,
+                    )
+                };
             }
 
             ExternalFenceProperties::from_vk(&properties_vk)
@@ -1057,18 +1114,22 @@ impl PhysicalDevice {
                 let fns = self.instance.fns();
 
                 if self.instance.api_version() >= Version::V1_1 {
-                    (fns.v1_1.get_physical_device_external_semaphore_properties)(
-                        self.handle,
-                        &info_vk,
-                        &mut properties_vk,
-                    )
+                    unsafe {
+                        (fns.v1_1.get_physical_device_external_semaphore_properties)(
+                            self.handle,
+                            &info_vk,
+                            &mut properties_vk,
+                        )
+                    }
                 } else {
-                    (fns.khr_external_semaphore_capabilities
-                        .get_physical_device_external_semaphore_properties_khr)(
-                        self.handle,
-                        &info_vk,
-                        &mut properties_vk,
-                    );
+                    unsafe {
+                        (fns.khr_external_semaphore_capabilities
+                            .get_physical_device_external_semaphore_properties_khr)(
+                            self.handle,
+                            &info_vk,
+                            &mut properties_vk,
+                        )
+                    };
                 }
 
                 ExternalSemaphoreProperties::from_vk(&properties_vk)
@@ -1105,28 +1166,34 @@ impl PhysicalDevice {
             let fns = self.instance.fns();
             let call = |format_properties2_vk: &mut ash::vk::FormatProperties2<'_>| {
                 if self.api_version() >= Version::V1_1 {
-                    (fns.v1_1.get_physical_device_format_properties2)(
-                        self.handle,
-                        format.into(),
-                        format_properties2_vk,
-                    );
+                    unsafe {
+                        (fns.v1_1.get_physical_device_format_properties2)(
+                            self.handle,
+                            format.into(),
+                            format_properties2_vk,
+                        )
+                    };
                 } else if self
                     .instance
                     .enabled_extensions()
                     .khr_get_physical_device_properties2
                 {
-                    (fns.khr_get_physical_device_properties2
-                        .get_physical_device_format_properties2_khr)(
-                        self.handle,
-                        format.into(),
-                        format_properties2_vk,
-                    );
+                    unsafe {
+                        (fns.khr_get_physical_device_properties2
+                            .get_physical_device_format_properties2_khr)(
+                            self.handle,
+                            format.into(),
+                            format_properties2_vk,
+                        )
+                    };
                 } else {
-                    (fns.v1_0.get_physical_device_format_properties)(
-                        self.handle(),
-                        format.into(),
-                        &mut format_properties2_vk.format_properties,
-                    );
+                    unsafe {
+                        (fns.v1_0.get_physical_device_format_properties)(
+                            self.handle(),
+                            format.into(),
+                            &mut format_properties2_vk.format_properties,
+                        )
+                    };
                 }
             };
 
@@ -1220,22 +1287,26 @@ impl PhysicalDevice {
                     let fns = self.instance.fns();
 
                     if self.api_version() >= Version::V1_1 {
-                        (fns.v1_1.get_physical_device_image_format_properties2)(
-                            self.handle,
-                            &info2_vk,
-                            &mut properties2_vk,
-                        )
+                        unsafe {
+                            (fns.v1_1.get_physical_device_image_format_properties2)(
+                                self.handle,
+                                &info2_vk,
+                                &mut properties2_vk,
+                            )
+                        }
                     } else if self
                         .instance
                         .enabled_extensions()
                         .khr_get_physical_device_properties2
                     {
-                        (fns.khr_get_physical_device_properties2
-                            .get_physical_device_image_format_properties2_khr)(
-                            self.handle,
-                            &info2_vk,
-                            &mut properties2_vk,
-                        )
+                        unsafe {
+                            (fns.khr_get_physical_device_properties2
+                                .get_physical_device_image_format_properties2_khr)(
+                                self.handle,
+                                &info2_vk,
+                                &mut properties2_vk,
+                            )
+                        }
                     } else {
                         // Can't query this, return unsupported
                         if !info2_vk.p_next.is_null() {
@@ -1249,15 +1320,17 @@ impl PhysicalDevice {
                             return Ok(None);
                         }
 
-                        (fns.v1_0.get_physical_device_image_format_properties)(
-                            self.handle,
-                            info2_vk.format,
-                            info2_vk.ty,
-                            info2_vk.tiling,
-                            info2_vk.usage,
-                            info2_vk.flags,
-                            &mut properties2_vk.image_format_properties,
-                        )
+                        unsafe {
+                            (fns.v1_0.get_physical_device_image_format_properties)(
+                                self.handle,
+                                info2_vk.format,
+                                info2_vk.ty,
+                                info2_vk.tiling,
+                                info2_vk.usage,
+                                info2_vk.flags,
+                                &mut properties2_vk.image_format_properties,
+                            )
+                        }
                     }
                     .result()
                     .map_err(VulkanError::from)
@@ -1330,43 +1403,51 @@ impl PhysicalDevice {
                     let mut count = 0;
 
                     if self.api_version() >= Version::V1_1 {
-                        (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
-                            self.handle,
-                            &format_info2_vk,
-                            &mut count,
-                            ptr::null_mut(),
-                        );
+                        unsafe {
+                            (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
+                                self.handle,
+                                &format_info2_vk,
+                                &mut count,
+                                ptr::null_mut(),
+                            )
+                        };
                     } else {
-                        (fns.khr_get_physical_device_properties2
-                            .get_physical_device_sparse_image_format_properties2_khr)(
-                            self.handle,
-                            &format_info2_vk,
-                            &mut count,
-                            ptr::null_mut(),
-                        );
+                        unsafe {
+                            (fns.khr_get_physical_device_properties2
+                                .get_physical_device_sparse_image_format_properties2_khr)(
+                                self.handle,
+                                &format_info2_vk,
+                                &mut count,
+                                ptr::null_mut(),
+                            )
+                        };
                     }
 
                     let mut sparse_image_format_properties2 =
                         vec![SparseImageFormatProperties::to_mut_vk2(); count as usize];
 
                     if self.api_version() >= Version::V1_1 {
-                        (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
-                            self.handle,
-                            &format_info2_vk,
-                            &mut count,
-                            sparse_image_format_properties2.as_mut_ptr(),
-                        );
+                        unsafe {
+                            (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
+                                self.handle,
+                                &format_info2_vk,
+                                &mut count,
+                                sparse_image_format_properties2.as_mut_ptr(),
+                            )
+                        };
                     } else {
-                        (fns.khr_get_physical_device_properties2
-                            .get_physical_device_sparse_image_format_properties2_khr)(
-                            self.handle,
-                            &format_info2_vk,
-                            &mut count,
-                            sparse_image_format_properties2.as_mut_ptr(),
-                        );
+                        unsafe {
+                            (fns.khr_get_physical_device_properties2
+                                .get_physical_device_sparse_image_format_properties2_khr)(
+                                self.handle,
+                                &format_info2_vk,
+                                &mut count,
+                                sparse_image_format_properties2.as_mut_ptr(),
+                            )
+                        };
                     }
 
-                    sparse_image_format_properties2.set_len(count as usize);
+                    unsafe { sparse_image_format_properties2.set_len(count as usize) };
 
                     sparse_image_format_properties2
                         .into_iter()
@@ -1377,32 +1458,36 @@ impl PhysicalDevice {
                 } else {
                     let mut count = 0;
 
-                    (fns.v1_0.get_physical_device_sparse_image_format_properties)(
-                        self.handle,
-                        format_info2_vk.format,
-                        format_info2_vk.ty,
-                        format_info2_vk.samples,
-                        format_info2_vk.usage,
-                        format_info2_vk.tiling,
-                        &mut count,
-                        ptr::null_mut(),
-                    );
+                    unsafe {
+                        (fns.v1_0.get_physical_device_sparse_image_format_properties)(
+                            self.handle,
+                            format_info2_vk.format,
+                            format_info2_vk.ty,
+                            format_info2_vk.samples,
+                            format_info2_vk.usage,
+                            format_info2_vk.tiling,
+                            &mut count,
+                            ptr::null_mut(),
+                        )
+                    };
 
                     let mut sparse_image_format_properties =
                         vec![SparseImageFormatProperties::to_mut_vk(); count as usize];
 
-                    (fns.v1_0.get_physical_device_sparse_image_format_properties)(
-                        self.handle,
-                        format_info2_vk.format,
-                        format_info2_vk.ty,
-                        format_info2_vk.samples,
-                        format_info2_vk.usage,
-                        format_info2_vk.tiling,
-                        &mut count,
-                        sparse_image_format_properties.as_mut_ptr(),
-                    );
+                    unsafe {
+                        (fns.v1_0.get_physical_device_sparse_image_format_properties)(
+                            self.handle,
+                            format_info2_vk.format,
+                            format_info2_vk.ty,
+                            format_info2_vk.samples,
+                            format_info2_vk.usage,
+                            format_info2_vk.tiling,
+                            &mut count,
+                            sparse_image_format_properties.as_mut_ptr(),
+                        )
+                    };
 
-                    sparse_image_format_properties.set_len(count as usize);
+                    unsafe { sparse_image_format_properties.set_len(count as usize) };
 
                     sparse_image_format_properties
                         .into_iter()
@@ -1563,20 +1648,24 @@ impl PhysicalDevice {
             .enabled_extensions()
             .khr_get_surface_capabilities2
         {
-            (fns.khr_get_surface_capabilities2
-                .get_physical_device_surface_capabilities2_khr)(
-                self.handle(),
-                &info2_vk,
-                &mut capabilities_vk,
-            )
+            unsafe {
+                (fns.khr_get_surface_capabilities2
+                    .get_physical_device_surface_capabilities2_khr)(
+                    self.handle(),
+                    &info2_vk,
+                    &mut capabilities_vk,
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
         } else {
-            (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
-                self.handle(),
-                info2_vk.surface,
-                &mut capabilities_vk.surface_capabilities,
-            )
+            unsafe {
+                (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
+                    self.handle(),
+                    info2_vk.surface,
+                    &mut capabilities_vk.surface_capabilities,
+                )
+            }
             .result()
             .map_err(VulkanError::from)?;
         };
@@ -1768,30 +1857,33 @@ impl PhysicalDevice {
                 {
                     let surface_format2s_vk = loop {
                         let mut count = 0;
-                        (fns.khr_get_surface_capabilities2
-                            .get_physical_device_surface_formats2_khr)(
-                            self.handle(),
-                            &info2_vk,
-                            &mut count,
-                            ptr::null_mut(),
-                        )
+                        unsafe {
+                            (fns.khr_get_surface_capabilities2
+                                .get_physical_device_surface_formats2_khr)(
+                                self.handle(),
+                                &info2_vk,
+                                &mut count,
+                                ptr::null_mut(),
+                            )
+                        }
                         .result()
                         .map_err(VulkanError::from)?;
 
                         let mut surface_format2s_vk =
                             vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
-                        let result = (fns
-                            .khr_get_surface_capabilities2
-                            .get_physical_device_surface_formats2_khr)(
-                            self.handle(),
-                            &info2_vk,
-                            &mut count,
-                            surface_format2s_vk.as_mut_ptr(),
-                        );
+                        let result = unsafe {
+                            (fns.khr_get_surface_capabilities2
+                                .get_physical_device_surface_formats2_khr)(
+                                self.handle(),
+                                &info2_vk,
+                                &mut count,
+                                surface_format2s_vk.as_mut_ptr(),
+                            )
+                        };
 
                         match result {
                             ash::vk::Result::SUCCESS => {
-                                surface_format2s_vk.set_len(count as usize);
+                                unsafe { surface_format2s_vk.set_len(count as usize) };
                                 break surface_format2s_vk;
                             }
                             ash::vk::Result::INCOMPLETE => (),
@@ -1817,26 +1909,30 @@ impl PhysicalDevice {
                 } else {
                     let surface_formats = loop {
                         let mut count = 0;
-                        (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                            self.handle(),
-                            surface.handle(),
-                            &mut count,
-                            ptr::null_mut(),
-                        )
+                        unsafe {
+                            (fns.khr_surface.get_physical_device_surface_formats_khr)(
+                                self.handle(),
+                                surface.handle(),
+                                &mut count,
+                                ptr::null_mut(),
+                            )
+                        }
                         .result()
                         .map_err(VulkanError::from)?;
 
                         let mut surface_formats = Vec::with_capacity(count as usize);
-                        let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
-                            self.handle(),
-                            surface.handle(),
-                            &mut count,
-                            surface_formats.as_mut_ptr(),
-                        );
+                        let result = unsafe {
+                            (fns.khr_surface.get_physical_device_surface_formats_khr)(
+                                self.handle(),
+                                surface.handle(),
+                                &mut count,
+                                surface_formats.as_mut_ptr(),
+                            )
+                        };
 
                         match result {
                             ash::vk::Result::SUCCESS => {
-                                surface_formats.set_len(count as usize);
+                                unsafe { surface_formats.set_len(count as usize) };
                                 break surface_formats;
                             }
                             ash::vk::Result::INCOMPLETE => (),
@@ -2003,29 +2099,32 @@ impl PhysicalDevice {
                 if self.supported_extensions().ext_full_screen_exclusive {
                     let modes = loop {
                         let mut count = 0;
-                        (fns.ext_full_screen_exclusive
-                            .get_physical_device_surface_present_modes2_ext)(
-                            self.handle(),
-                            &info2_vk,
-                            &mut count,
-                            ptr::null_mut(),
-                        )
+                        unsafe {
+                            (fns.ext_full_screen_exclusive
+                                .get_physical_device_surface_present_modes2_ext)(
+                                self.handle(),
+                                &info2_vk,
+                                &mut count,
+                                ptr::null_mut(),
+                            )
+                        }
                         .result()
                         .map_err(VulkanError::from)?;
 
                         let mut modes = Vec::with_capacity(count as usize);
-                        let result = (fns
-                            .ext_full_screen_exclusive
-                            .get_physical_device_surface_present_modes2_ext)(
-                            self.handle(),
-                            &info2_vk,
-                            &mut count,
-                            modes.as_mut_ptr(),
-                        );
+                        let result = unsafe {
+                            (fns.ext_full_screen_exclusive
+                                .get_physical_device_surface_present_modes2_ext)(
+                                self.handle(),
+                                &info2_vk,
+                                &mut count,
+                                modes.as_mut_ptr(),
+                            )
+                        };
 
                         match result {
                             ash::vk::Result::SUCCESS => {
-                                modes.set_len(count as usize);
+                                unsafe { modes.set_len(count as usize) };
                                 break modes;
                             }
                             ash::vk::Result::INCOMPLETE => (),
@@ -2040,29 +2139,32 @@ impl PhysicalDevice {
                 } else {
                     let modes = loop {
                         let mut count = 0;
-                        (fns.khr_surface
-                            .get_physical_device_surface_present_modes_khr)(
-                            self.handle(),
-                            surface.handle(),
-                            &mut count,
-                            ptr::null_mut(),
-                        )
+                        unsafe {
+                            (fns.khr_surface
+                                .get_physical_device_surface_present_modes_khr)(
+                                self.handle(),
+                                surface.handle(),
+                                &mut count,
+                                ptr::null_mut(),
+                            )
+                        }
                         .result()
                         .map_err(VulkanError::from)?;
 
                         let mut modes = Vec::with_capacity(count as usize);
-                        let result = (fns
-                            .khr_surface
-                            .get_physical_device_surface_present_modes_khr)(
-                            self.handle(),
-                            surface.handle(),
-                            &mut count,
-                            modes.as_mut_ptr(),
-                        );
+                        let result = unsafe {
+                            (fns.khr_surface
+                                .get_physical_device_surface_present_modes_khr)(
+                                self.handle(),
+                                surface.handle(),
+                                &mut count,
+                                modes.as_mut_ptr(),
+                            )
+                        };
 
                         match result {
                             ash::vk::Result::SUCCESS => {
-                                modes.set_len(count as usize);
+                                unsafe { modes.set_len(count as usize) };
                                 break modes;
                             }
                             ash::vk::Result::INCOMPLETE => (),
@@ -2136,19 +2238,24 @@ impl PhysicalDevice {
         surface
             .surface_support
             .get_or_try_insert((self.handle, queue_family_index), |_| {
-                let fns = self.instance.fns();
+                let support = {
+                    let fns = self.instance.fns();
+                    let mut output = MaybeUninit::uninit();
+                    unsafe {
+                        (fns.khr_surface.get_physical_device_surface_support_khr)(
+                            self.handle,
+                            queue_family_index,
+                            surface.handle(),
+                            output.as_mut_ptr(),
+                        )
+                    }
+                    .result()
+                    .map_err(VulkanError::from)?;
 
-                let mut output = MaybeUninit::uninit();
-                (fns.khr_surface.get_physical_device_surface_support_khr)(
-                    self.handle,
-                    queue_family_index,
-                    surface.handle(),
-                    output.as_mut_ptr(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
+                    unsafe { output.assume_init() }
+                };
 
-                Ok(output.assume_init() != 0)
+                Ok(support != 0)
             })
     }
 
@@ -2190,40 +2297,48 @@ impl PhysicalDevice {
             let mut count = 0;
 
             if self.api_version() >= Version::V1_3 {
-                (fns.v1_3.get_physical_device_tool_properties)(
-                    self.handle(),
-                    &mut count,
-                    ptr::null_mut(),
-                )
+                unsafe {
+                    (fns.v1_3.get_physical_device_tool_properties)(
+                        self.handle(),
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                }
             } else {
-                (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
-                    self.handle(),
-                    &mut count,
-                    ptr::null_mut(),
-                )
+                unsafe {
+                    (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
+                        self.handle(),
+                        &mut count,
+                        ptr::null_mut(),
+                    )
+                }
             }
             .result()
             .map_err(VulkanError::from)?;
 
             let mut tool_properties = Vec::with_capacity(count as usize);
             let result = if self.api_version() >= Version::V1_3 {
-                (fns.v1_3.get_physical_device_tool_properties)(
-                    self.handle(),
-                    &mut count,
-                    tool_properties.as_mut_ptr(),
-                )
+                unsafe {
+                    (fns.v1_3.get_physical_device_tool_properties)(
+                        self.handle(),
+                        &mut count,
+                        tool_properties.as_mut_ptr(),
+                    )
+                }
             } else {
-                (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
-                    self.handle(),
-                    &mut count,
-                    tool_properties.as_mut_ptr(),
-                )
+                unsafe {
+                    (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
+                        self.handle(),
+                        &mut count,
+                        tool_properties.as_mut_ptr(),
+                    )
+                }
             };
 
             match result {
                 ash::vk::Result::INCOMPLETE => (),
                 ash::vk::Result::SUCCESS => {
-                    tool_properties.set_len(count as usize);
+                    unsafe { tool_properties.set_len(count as usize) };
 
                     return Ok(tool_properties
                         .iter()
@@ -2354,7 +2469,7 @@ impl PhysicalDevice {
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_wayland_presentation_support(queue_family_index, display)?;
 
-        Ok(self.wayland_presentation_support_unchecked(queue_family_index, display))
+        Ok(unsafe { self.wayland_presentation_support_unchecked(queue_family_index, display) })
     }
 
     fn validate_wayland_presentation_support(
@@ -2396,12 +2511,16 @@ impl PhysicalDevice {
         display: *mut ash::vk::wl_display,
     ) -> bool {
         let fns = self.instance.fns();
-        (fns.khr_wayland_surface
-            .get_physical_device_wayland_presentation_support_khr)(
-            self.handle,
-            queue_family_index,
-            display,
-        ) != 0
+        let support = unsafe {
+            (fns.khr_wayland_surface
+                .get_physical_device_wayland_presentation_support_khr)(
+                self.handle,
+                queue_family_index,
+                display,
+            )
+        };
+
+        support != 0
     }
 
     /// Queries whether the physical device supports presenting to Win32 surfaces from queues of
@@ -2448,10 +2567,15 @@ impl PhysicalDevice {
     #[inline]
     pub unsafe fn win32_presentation_support_unchecked(&self, queue_family_index: u32) -> bool {
         let fns = self.instance.fns();
-        (fns.khr_win32_surface
-            .get_physical_device_win32_presentation_support_khr)(
-            self.handle, queue_family_index
-        ) != 0
+        let support = unsafe {
+            (fns.khr_win32_surface
+                .get_physical_device_win32_presentation_support_khr)(
+                self.handle,
+                queue_family_index,
+            )
+        };
+
+        support != 0
     }
 
     /// Queries whether the physical device supports presenting to XCB surfaces from queues of the
@@ -2468,7 +2592,9 @@ impl PhysicalDevice {
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_xcb_presentation_support(queue_family_index, connection, visual_id)?;
 
-        Ok(self.xcb_presentation_support_unchecked(queue_family_index, connection, visual_id))
+        Ok(unsafe {
+            self.xcb_presentation_support_unchecked(queue_family_index, connection, visual_id)
+        })
     }
 
     fn validate_xcb_presentation_support(
@@ -2512,13 +2638,17 @@ impl PhysicalDevice {
         visual_id: ash::vk::xcb_visualid_t,
     ) -> bool {
         let fns = self.instance.fns();
-        (fns.khr_xcb_surface
-            .get_physical_device_xcb_presentation_support_khr)(
-            self.handle,
-            queue_family_index,
-            connection,
-            visual_id,
-        ) != 0
+        let support = unsafe {
+            (fns.khr_xcb_surface
+                .get_physical_device_xcb_presentation_support_khr)(
+                self.handle,
+                queue_family_index,
+                connection,
+                visual_id,
+            )
+        };
+
+        support != 0
     }
 
     /// Queries whether the physical device supports presenting to Xlib surfaces from queues of the
@@ -2535,7 +2665,9 @@ impl PhysicalDevice {
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_xlib_presentation_support(queue_family_index, display, visual_id)?;
 
-        Ok(self.xlib_presentation_support_unchecked(queue_family_index, display, visual_id))
+        Ok(unsafe {
+            self.xlib_presentation_support_unchecked(queue_family_index, display, visual_id)
+        })
     }
 
     fn validate_xlib_presentation_support(
@@ -2579,13 +2711,17 @@ impl PhysicalDevice {
         visual_id: ash::vk::VisualID,
     ) -> bool {
         let fns = self.instance.fns();
-        (fns.khr_xlib_surface
-            .get_physical_device_xlib_presentation_support_khr)(
-            self.handle,
-            queue_family_index,
-            display,
-            visual_id,
-        ) != 0
+        let support = unsafe {
+            (fns.khr_xlib_surface
+                .get_physical_device_xlib_presentation_support_khr)(
+                self.handle,
+                queue_family_index,
+                display,
+                visual_id,
+            )
+        };
+
+        support != 0
     }
 
     /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
@@ -2602,7 +2738,7 @@ impl PhysicalDevice {
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_directfb_presentation_support(queue_family_index, dfb)?;
 
-        Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
+        Ok(unsafe { self.directfb_presentation_support_unchecked(queue_family_index, dfb) })
     }
 
     fn validate_directfb_presentation_support(
@@ -2645,12 +2781,16 @@ impl PhysicalDevice {
         dfb: *mut ash::vk::IDirectFB,
     ) -> bool {
         let fns = self.instance.fns();
-        (fns.ext_directfb_surface
-            .get_physical_device_direct_fb_presentation_support_ext)(
-            self.handle,
-            queue_family_index,
-            dfb,
-        ) != 0
+        let support = unsafe {
+            (fns.ext_directfb_surface
+                .get_physical_device_direct_fb_presentation_support_ext)(
+                self.handle,
+                queue_family_index,
+                dfb,
+            )
+        };
+
+        support != 0
     }
 
     /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
@@ -2666,7 +2806,7 @@ impl PhysicalDevice {
     ) -> Result<bool, Box<ValidationError>> {
         self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
 
-        Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
+        Ok(unsafe { self.qnx_screen_presentation_support_unchecked(queue_family_index, window) })
     }
 
     fn validate_qnx_screen_presentation_support(
@@ -2708,12 +2848,16 @@ impl PhysicalDevice {
         window: *mut ash::vk::_screen_window,
     ) -> bool {
         let fns = self.instance.fns();
-        (fns.qnx_screen_surface
-            .get_physical_device_screen_presentation_support_qnx)(
-            self.handle,
-            queue_family_index,
-            window,
-        ) != 0
+        let support = unsafe {
+            (fns.qnx_screen_surface
+                .get_physical_device_screen_presentation_support_qnx)(
+                self.handle,
+                queue_family_index,
+                window,
+            )
+        };
+
+        support != 0
     }
 }
 

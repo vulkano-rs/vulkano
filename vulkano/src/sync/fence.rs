@@ -93,19 +93,21 @@ impl Fence {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            (fns.v1_0.create_fence)(
-                device.handle(),
-                &create_info_vk,
-                ptr::null(),
-                output.as_mut_ptr(),
-            )
-            .result()
+            unsafe {
+                (fns.v1_0.create_fence)(
+                    device.handle(),
+                    &create_info_vk,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                )
+                .result()
+            }
             .map_err(VulkanError::from)?;
 
-            output.assume_init()
+            unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Takes a fence from the vulkano-provided fence pool.
@@ -293,13 +295,15 @@ impl Fence {
 
         let result = {
             let fns = device.fns();
-            (fns.v1_0.wait_for_fences)(
-                device.handle(),
-                fences_vk.len() as u32,
-                fences_vk.as_ptr(),
-                ash::vk::TRUE, // TODO: let the user choose false here?
-                timeout_ns,
-            )
+            unsafe {
+                (fns.v1_0.wait_for_fences)(
+                    device.handle(),
+                    fences_vk.len() as u32,
+                    fences_vk.as_ptr(),
+                    ash::vk::TRUE, // TODO: let the user choose false here?
+                    timeout_ns,
+                )
+            }
         };
 
         match result {
@@ -327,7 +331,7 @@ impl Fence {
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn reset_unchecked(&self) -> Result<(), VulkanError> {
         let fns = self.device.fns();
-        (fns.v1_0.reset_fences)(self.device.handle(), 1, &self.handle)
+        unsafe { (fns.v1_0.reset_fences)(self.device.handle(), 1, &self.handle) }
             .result()
             .map_err(VulkanError::from)?;
 
@@ -377,9 +381,11 @@ impl Fence {
         let fences_vk: SmallVec<[_; 8]> = fences.iter().map(|fence| fence.handle).collect();
 
         let fns = device.fns();
-        (fns.v1_0.reset_fences)(device.handle(), fences_vk.len() as u32, fences_vk.as_ptr())
-            .result()
-            .map_err(VulkanError::from)?;
+        unsafe {
+            (fns.v1_0.reset_fences)(device.handle(), fences_vk.len() as u32, fences_vk.as_ptr())
+        }
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -460,18 +466,21 @@ impl Fence {
 
         let mut output = MaybeUninit::uninit();
         let fns = self.device.fns();
-        (fns.khr_external_fence_fd.get_fence_fd_khr)(
-            self.device.handle(),
-            &info_vk,
-            output.as_mut_ptr(),
-        )
+        unsafe {
+            (fns.khr_external_fence_fd.get_fence_fd_khr)(
+                self.device.handle(),
+                &info_vk,
+                output.as_mut_ptr(),
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::io::FromRawFd;
-            Ok(File::from_raw_fd(output.assume_init()))
+            let raw_fd = unsafe { output.assume_init() };
+            Ok(unsafe { File::from_raw_fd(raw_fd) })
         }
 
         #[cfg(not(unix))]
@@ -557,17 +566,22 @@ impl Fence {
             .fence(self.handle)
             .handle_type(handle_type.into());
 
-        let mut output = MaybeUninit::uninit();
-        let fns = self.device.fns();
-        (fns.khr_external_fence_win32.get_fence_win32_handle_khr)(
-            self.device.handle(),
-            &info_vk,
-            output.as_mut_ptr(),
-        )
-        .result()
-        .map_err(VulkanError::from)?;
+        let handle = {
+            let mut output = MaybeUninit::uninit();
+            let fns = self.device.fns();
+            unsafe {
+                (fns.khr_external_fence_win32.get_fence_win32_handle_khr)(
+                    self.device.handle(),
+                    &info_vk,
+                    output.as_mut_ptr(),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+            unsafe { output.assume_init() }
+        };
 
-        Ok(output.assume_init())
+        Ok(handle)
     }
 
     /// Imports a fence from a POSIX file descriptor.
@@ -588,7 +602,7 @@ impl Fence {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_import_fd(&import_fence_fd_info)?;
 
-        Ok(self.import_fd_unchecked(import_fence_fd_info)?)
+        Ok(unsafe { self.import_fd_unchecked(import_fence_fd_info) }?)
     }
 
     fn validate_import_fd(
@@ -619,7 +633,7 @@ impl Fence {
         let info_vk = import_fence_fd_info.into_vk(self.handle());
 
         let fns = self.device.fns();
-        (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.handle(), &info_vk)
+        unsafe { (fns.khr_external_fence_fd.import_fence_fd_khr)(self.device.handle(), &info_vk) }
             .result()
             .map_err(VulkanError::from)?;
 
@@ -644,7 +658,7 @@ impl Fence {
     ) -> Result<(), Validated<VulkanError>> {
         self.validate_import_win32_handle(&import_fence_win32_handle_info)?;
 
-        Ok(self.import_win32_handle_unchecked(import_fence_win32_handle_info)?)
+        Ok(unsafe { self.import_win32_handle_unchecked(import_fence_win32_handle_info) }?)
     }
 
     fn validate_import_win32_handle(
@@ -675,10 +689,12 @@ impl Fence {
         let info_vk = import_fence_win32_handle_info.to_vk(self.handle());
 
         let fns = self.device.fns();
-        (fns.khr_external_fence_win32.import_fence_win32_handle_khr)(
-            self.device.handle(),
-            &info_vk,
-        )
+        unsafe {
+            (fns.khr_external_fence_win32.import_fence_win32_handle_khr)(
+                self.device.handle(),
+                &info_vk,
+            )
+        }
         .result()
         .map_err(VulkanError::from)?;
 

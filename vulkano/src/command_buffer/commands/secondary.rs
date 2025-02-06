@@ -461,13 +461,15 @@ impl<L> AutoCommandBufferBuilder<L> {
         &mut self,
         command_buffers: SmallVec<[Arc<dyn SecondaryCommandBufferAbstract>; 4]>,
     ) -> &mut Self {
-        self.execute_commands_locked(
-            command_buffers
-                .into_iter()
-                .map(DropUnlockCommandBuffer::new)
-                .collect::<Result<_, _>>()
-                .unwrap(),
-        )
+        unsafe {
+            self.execute_commands_locked(
+                command_buffers
+                    .into_iter()
+                    .map(DropUnlockCommandBuffer::new)
+                    .collect::<Result<_, _>>()
+                    .unwrap(),
+            )
+        }
     }
 
     unsafe fn execute_commands_locked(
@@ -538,7 +540,7 @@ impl<L> AutoCommandBufferBuilder<L> {
                 })
                 .collect(),
             move |out: &mut RecordingCommandBuffer| {
-                out.execute_commands_locked(&command_buffers);
+                unsafe { out.execute_commands_locked(&command_buffers) };
             },
         );
 
@@ -554,7 +556,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_execute_commands(command_buffers.iter().copied())?;
 
-        Ok(self.execute_commands_unchecked(command_buffers))
+        Ok(unsafe { self.execute_commands_unchecked(command_buffers) })
     }
 
     fn validate_execute_commands<'a>(
@@ -625,11 +627,13 @@ impl RecordingCommandBuffer {
             command_buffers.iter().map(|cb| cb.handle()).collect();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_execute_commands)(
-            self.handle(),
-            command_buffers_vk.len() as u32,
-            command_buffers_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_execute_commands)(
+                self.handle(),
+                command_buffers_vk.len() as u32,
+                command_buffers_vk.as_ptr(),
+            )
+        };
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as
         // well.
@@ -653,11 +657,13 @@ impl RecordingCommandBuffer {
             command_buffers.iter().map(|cb| cb.handle()).collect();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_execute_commands)(
-            self.handle(),
-            command_buffers_vk.len() as u32,
-            command_buffers_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_execute_commands)(
+                self.handle(),
+                command_buffers_vk.len() as u32,
+                command_buffers_vk.as_ptr(),
+            )
+        };
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as
         // well.

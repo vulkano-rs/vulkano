@@ -214,28 +214,32 @@ pub unsafe fn acquire_next_image_raw(
         u64::MAX
     };
 
-    let mut out = MaybeUninit::uninit();
-    let result = (fns.khr_swapchain.acquire_next_image_khr)(
-        swapchain.device.handle(),
-        swapchain.handle,
-        timeout_ns,
-        semaphore
-            .map(|s| s.handle())
-            .unwrap_or(ash::vk::Semaphore::null()),
-        fence.map(|f| f.handle()).unwrap_or(ash::vk::Fence::null()),
-        out.as_mut_ptr(),
-    );
+    let (image_index, is_suboptimal) = {
+        let mut output = MaybeUninit::uninit();
+        let result = unsafe {
+            (fns.khr_swapchain.acquire_next_image_khr)(
+                swapchain.device.handle(),
+                swapchain.handle,
+                timeout_ns,
+                semaphore
+                    .map(|s| s.handle())
+                    .unwrap_or(ash::vk::Semaphore::null()),
+                fence.map(|f| f.handle()).unwrap_or(ash::vk::Fence::null()),
+                output.as_mut_ptr(),
+            )
+        };
 
-    let is_suboptimal = match result {
-        ash::vk::Result::SUCCESS => false,
-        ash::vk::Result::SUBOPTIMAL_KHR => true,
-        ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
-        ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
-        err => return Err(VulkanError::from(err).into()),
+        match result {
+            ash::vk::Result::SUCCESS => (unsafe { output.assume_init() }, false),
+            ash::vk::Result::SUBOPTIMAL_KHR => (unsafe { output.assume_init() }, true),
+            ash::vk::Result::NOT_READY => return Err(VulkanError::NotReady.into()),
+            ash::vk::Result::TIMEOUT => return Err(VulkanError::Timeout.into()),
+            err => return Err(VulkanError::from(err).into()),
+        }
     };
 
     Ok(AcquiredImage {
-        image_index: out.assume_init(),
+        image_index,
         is_suboptimal,
     })
 }
@@ -1077,7 +1081,7 @@ where
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
         // buffer
 
-        Ok(match self.previous.build_submission()? {
+        Ok(match unsafe { self.previous.build_submission() }? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::QueuePresent(PresentInfo {
                 swapchain_infos: vec![self.swapchain_info.clone()],
                 ..Default::default()
@@ -1198,7 +1202,7 @@ where
     unsafe fn signal_finished(&self) {
         self.flushed.store(true, Ordering::SeqCst);
         self.finished.store(true, Ordering::SeqCst);
-        self.previous.signal_finished();
+        unsafe { self.previous.signal_finished() };
     }
 
     fn queue_change_allowed(&self) -> bool {

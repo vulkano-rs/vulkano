@@ -307,7 +307,7 @@ unsafe impl<T: DescriptorSetAllocator> DescriptorSetAllocator for Arc<T> {
 
     #[inline]
     unsafe fn deallocate(&self, allocation: DescriptorSetAlloc) {
-        (**self).deallocate(allocation)
+        unsafe { (**self).deallocate(allocation) }
     }
 }
 

@@ -201,7 +201,7 @@ impl SamplerYcbcrConversion {
             unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(device, handle, create_info))
+        Ok(unsafe { Self::from_handle(device, handle, create_info) })
     }
 
     /// Creates a new `SamplerYcbcrConversion` from a raw object handle.

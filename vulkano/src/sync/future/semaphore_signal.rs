@@ -200,7 +200,7 @@ where
     unsafe fn signal_finished(&self) {
         debug_assert!(*self.wait_submitted.lock());
         self.finished.store(true, Ordering::SeqCst);
-        self.previous.signal_finished();
+        unsafe { self.previous.signal_finished() };
     }
 
     fn queue_change_allowed(&self) -> bool {

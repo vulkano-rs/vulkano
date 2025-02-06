@@ -248,13 +248,15 @@ impl<L> AutoCommandBufferBuilder<L> {
                     .map(|x| x.as_ref().0.as_raw())
                     .collect();
 
-                out.bind_descriptor_sets_unchecked(
-                    pipeline_bind_point,
-                    &pipeline_layout,
-                    first_set,
-                    &descriptor_sets,
-                    &dynamic_offsets,
-                );
+                unsafe {
+                    out.bind_descriptor_sets_unchecked(
+                        pipeline_bind_point,
+                        &pipeline_layout,
+                        first_set,
+                        &descriptor_sets,
+                        &dynamic_offsets,
+                    )
+                };
             },
         );
 
@@ -292,7 +294,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_index_buffer",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.bind_index_buffer_unchecked(&index_buffer);
+                unsafe { out.bind_index_buffer_unchecked(&index_buffer) };
             },
         );
 
@@ -328,7 +330,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_pipeline_compute",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.bind_pipeline_compute_unchecked(&pipeline);
+                unsafe { out.bind_pipeline_compute_unchecked(&pipeline) };
             },
         );
 
@@ -371,7 +373,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_pipeline_graphics",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.bind_pipeline_graphics_unchecked(&pipeline);
+                unsafe { out.bind_pipeline_graphics_unchecked(&pipeline) };
             },
         );
 
@@ -397,7 +399,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_pipeline_ray_tracing",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.bind_pipeline_ray_tracing_unchecked(&pipeline);
+                unsafe { out.bind_pipeline_ray_tracing_unchecked(&pipeline) };
             },
         );
 
@@ -445,7 +447,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "bind_vertex_buffers",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.bind_vertex_buffers_unchecked(first_binding, &vertex_buffers);
+                unsafe { out.bind_vertex_buffers_unchecked(first_binding, &vertex_buffers) };
             },
         );
 
@@ -509,7 +511,7 @@ impl<L> AutoCommandBufferBuilder<L> {
             "push_constants",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.push_constants_unchecked(&pipeline_layout, offset, &push_constants);
+                unsafe { out.push_constants_unchecked(&pipeline_layout, offset, &push_constants) };
             },
         );
 
@@ -594,12 +596,14 @@ impl<L> AutoCommandBufferBuilder<L> {
             "push_descriptor_set",
             Default::default(),
             move |out: &mut RecordingCommandBuffer| {
-                out.push_descriptor_set_unchecked(
-                    pipeline_bind_point,
-                    &pipeline_layout,
-                    set_num,
-                    &descriptor_writes,
-                );
+                unsafe {
+                    out.push_descriptor_set_unchecked(
+                        pipeline_bind_point,
+                        &pipeline_layout,
+                        set_num,
+                        &descriptor_writes,
+                    )
+                };
             },
         );
 
@@ -625,13 +629,15 @@ impl RecordingCommandBuffer {
             dynamic_offsets,
         )?;
 
-        Ok(self.bind_descriptor_sets_unchecked(
-            pipeline_bind_point,
-            pipeline_layout,
-            first_set,
-            descriptor_sets,
-            dynamic_offsets,
-        ))
+        Ok(unsafe {
+            self.bind_descriptor_sets_unchecked(
+                pipeline_bind_point,
+                pipeline_layout,
+                first_set,
+                descriptor_sets,
+                dynamic_offsets,
+            )
+        })
     }
 
     fn validate_bind_descriptor_sets(
@@ -871,16 +877,18 @@ impl RecordingCommandBuffer {
             descriptor_sets.iter().map(|x| x.handle()).collect();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_descriptor_sets)(
-            self.handle(),
-            pipeline_bind_point.into(),
-            pipeline_layout.handle(),
-            first_set,
-            descriptor_sets_vk.len() as u32,
-            descriptor_sets_vk.as_ptr(),
-            dynamic_offsets.len() as u32,
-            dynamic_offsets.as_ptr(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_bind_descriptor_sets)(
+                self.handle(),
+                pipeline_bind_point.into(),
+                pipeline_layout.handle(),
+                first_set,
+                descriptor_sets_vk.len() as u32,
+                descriptor_sets_vk.as_ptr(),
+                dynamic_offsets.len() as u32,
+                dynamic_offsets.as_ptr(),
+            )
+        };
 
         self
     }
@@ -892,7 +900,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_index_buffer(index_buffer)?;
 
-        Ok(self.bind_index_buffer_unchecked(index_buffer))
+        Ok(unsafe { self.bind_index_buffer_unchecked(index_buffer) })
     }
 
     fn validate_bind_index_buffer(
@@ -955,12 +963,14 @@ impl RecordingCommandBuffer {
         let index_buffer_bytes = index_buffer.as_bytes();
 
         let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_index_buffer)(
-            self.handle(),
-            index_buffer_bytes.buffer().handle(),
-            index_buffer_bytes.offset(),
-            index_buffer.index_type().into(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_bind_index_buffer)(
+                self.handle(),
+                index_buffer_bytes.buffer().handle(),
+                index_buffer_bytes.offset(),
+                index_buffer.index_type().into(),
+            )
+        };
 
         self
     }
@@ -972,7 +982,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_pipeline_compute(pipeline)?;
 
-        Ok(self.bind_pipeline_compute_unchecked(pipeline))
+        Ok(unsafe { self.bind_pipeline_compute_unchecked(pipeline) })
     }
 
     fn validate_bind_pipeline_compute(
@@ -1005,11 +1015,13 @@ impl RecordingCommandBuffer {
         pipeline: &ComputePipeline,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_pipeline)(
-            self.handle(),
-            ash::vk::PipelineBindPoint::COMPUTE,
-            pipeline.handle(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_bind_pipeline)(
+                self.handle(),
+                ash::vk::PipelineBindPoint::COMPUTE,
+                pipeline.handle(),
+            )
+        };
 
         self
     }
@@ -1021,7 +1033,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_pipeline_graphics(pipeline)?;
 
-        Ok(self.bind_pipeline_graphics_unchecked(pipeline))
+        Ok(unsafe { self.bind_pipeline_graphics_unchecked(pipeline) })
     }
 
     fn validate_bind_pipeline_graphics(
@@ -1054,11 +1066,13 @@ impl RecordingCommandBuffer {
         pipeline: &GraphicsPipeline,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_pipeline)(
-            self.handle(),
-            ash::vk::PipelineBindPoint::GRAPHICS,
-            pipeline.handle(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_bind_pipeline)(
+                self.handle(),
+                ash::vk::PipelineBindPoint::GRAPHICS,
+                pipeline.handle(),
+            )
+        };
 
         self
     }
@@ -1068,7 +1082,7 @@ impl RecordingCommandBuffer {
         pipeline: &RayTracingPipeline,
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_pipeline_ray_tracing(pipeline)?;
-        Ok(self.bind_pipeline_ray_tracing_unchecked(pipeline))
+        Ok(unsafe { self.bind_pipeline_ray_tracing_unchecked(pipeline) })
     }
 
     fn validate_bind_pipeline_ray_tracing(
@@ -1103,11 +1117,13 @@ impl RecordingCommandBuffer {
         pipeline: &RayTracingPipeline,
     ) -> &mut Self {
         let fns = self.device().fns();
-        (fns.v1_0.cmd_bind_pipeline)(
-            self.handle(),
-            ash::vk::PipelineBindPoint::RAY_TRACING_KHR,
-            pipeline.handle(),
-        );
+        unsafe {
+            (fns.v1_0.cmd_bind_pipeline)(
+                self.handle(),
+                ash::vk::PipelineBindPoint::RAY_TRACING_KHR,
+                pipeline.handle(),
+            )
+        };
 
         self
     }
@@ -1120,7 +1136,7 @@ impl RecordingCommandBuffer {
     ) -> Result<&mut Self, Box<ValidationError>> {
         self.validate_bind_vertex_buffers(first_binding, vertex_buffers)?;
 
-        Ok(self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers))
+        Ok(unsafe { self.bind_vertex_buffers_unchecked(first_binding, vertex_buffers) })
     }
 
     fn validate_bind_vertex_buffers(
@@ -1213,15 +1229,17 @@ impl RecordingCommandBuffer {
                 fns.ext_shader_object.cmd_bind_vertex_buffers2_ext
             };
 
-            cmd_bind_vertex_buffers2(
-                self.handle(),
-                first_binding,
-                buffers_vk.len() as u32,
-                buffers_vk.as_ptr(),
-                offsets_vk.as_ptr(),
-                sizes_vk.as_ptr(),
-                ptr::null(),
-            )
+            unsafe {
+                cmd_bind_vertex_buffers2(
+                    self.handle(),
+                    first_binding,
+                    buffers_vk.len() as u32,
+                    buffers_vk.as_ptr(),
+                    offsets_vk.as_ptr(),
+                    sizes_vk.as_ptr(),
+                    ptr::null(),
+                )
+            }
         } else {
             let mut buffers_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
             let mut offsets_vk: SmallVec<[_; 2]> = SmallVec::with_capacity(vertex_buffers.len());
@@ -1232,13 +1250,15 @@ impl RecordingCommandBuffer {
             }
 
             let fns = self.device().fns();
-            (fns.v1_0.cmd_bind_vertex_buffers)(
-                self.handle(),
-                first_binding,
-                buffers_vk.len() as u32,
-                buffers_vk.as_ptr(),
-                offsets_vk.as_ptr(),
-            );
+            unsafe {
+                (fns.v1_0.cmd_bind_vertex_buffers)(
+                    self.handle(),
+                    first_binding,
+                    buffers_vk.len() as u32,
+                    buffers_vk.as_ptr(),
+                    offsets_vk.as_ptr(),
+                )
+            };
         }
 
         self
@@ -1256,7 +1276,7 @@ impl RecordingCommandBuffer {
     {
         self.validate_push_constants(pipeline_layout, offset, push_constants)?;
 
-        Ok(self.push_constants_unchecked(pipeline_layout, offset, push_constants))
+        Ok(unsafe { self.push_constants_unchecked(pipeline_layout, offset, push_constants) })
     }
 
     fn validate_push_constants<Pc: BufferContents>(
@@ -1380,16 +1400,18 @@ impl RecordingCommandBuffer {
             let push_size = remaining_size.min(range.offset + range.size - current_offset);
             let data_offset = (current_offset - offset) as usize;
             debug_assert!(data_offset < size as usize);
-            let data = <*const _>::cast::<c_void>(push_constants).add(data_offset);
+            let data = unsafe { <*const _>::cast::<c_void>(push_constants).add(data_offset) };
 
-            (fns.v1_0.cmd_push_constants)(
-                self.handle(),
-                pipeline_layout.handle(),
-                range.stages.into(),
-                current_offset,
-                push_size,
-                data,
-            );
+            unsafe {
+                (fns.v1_0.cmd_push_constants)(
+                    self.handle(),
+                    pipeline_layout.handle(),
+                    range.stages.into(),
+                    current_offset,
+                    push_size,
+                    data,
+                )
+            };
 
             current_offset += push_size;
             remaining_size -= push_size;
@@ -1419,12 +1441,14 @@ impl RecordingCommandBuffer {
             descriptor_writes,
         )?;
 
-        Ok(self.push_descriptor_set_unchecked(
-            pipeline_bind_point,
-            pipeline_layout,
-            set_num,
-            descriptor_writes,
-        ))
+        Ok(unsafe {
+            self.push_descriptor_set_unchecked(
+                pipeline_bind_point,
+                pipeline_layout,
+                set_num,
+                descriptor_writes,
+            )
+        })
     }
 
     fn validate_push_descriptor_set(
@@ -1590,14 +1614,16 @@ impl RecordingCommandBuffer {
             .collect();
 
         let fns = self.device().fns();
-        (fns.khr_push_descriptor.cmd_push_descriptor_set_khr)(
-            self.handle(),
-            pipeline_bind_point.into(),
-            pipeline_layout.handle(),
-            set_num,
-            writes_vk.len() as u32,
-            writes_vk.as_ptr(),
-        );
+        unsafe {
+            (fns.khr_push_descriptor.cmd_push_descriptor_set_khr)(
+                self.handle(),
+                pipeline_bind_point.into(),
+                pipeline_layout.handle(),
+                set_num,
+                writes_vk.len() as u32,
+                writes_vk.as_ptr(),
+            )
+        };
 
         self
     }

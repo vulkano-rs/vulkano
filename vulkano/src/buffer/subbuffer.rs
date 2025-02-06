@@ -139,12 +139,12 @@ impl<T: ?Sized> Subbuffer<T> {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn device_address_unchecked(&self) -> NonNullDeviceAddress {
+        let buffer_device_address = unsafe { self.buffer().device_address_unchecked() };
+
         // SAFETY: The original address came from the Vulkan implementation, and allocation
         // sizes are guaranteed to not exceed `DeviceLayout::MAX_SIZE`, so the offset better be
         // in range.
-        NonNullDeviceAddress::new_unchecked(
-            self.buffer().device_address_unchecked().get() + self.offset,
-        )
+        unsafe { NonNullDeviceAddress::new_unchecked(buffer_device_address.get() + self.offset) }
     }
 
     /// Casts the subbuffer to a slice of raw bytes.
@@ -162,7 +162,7 @@ impl<T: ?Sized> Subbuffer<T> {
     #[inline(always)]
     unsafe fn reinterpret_unchecked_inner<U: ?Sized>(self) -> Subbuffer<U> {
         // SAFETY: All `Subbuffer`s share the same layout.
-        mem::transmute::<Subbuffer<T>, Subbuffer<U>>(self)
+        unsafe { mem::transmute::<Subbuffer<T>, Subbuffer<U>>(self) }
     }
 
     #[inline(always)]
@@ -171,7 +171,7 @@ impl<T: ?Sized> Subbuffer<T> {
         assert_eq!(align_of::<Subbuffer<T>>(), align_of::<Subbuffer<U>>());
 
         // SAFETY: All `Subbuffer`s share the same layout.
-        mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self)
+        unsafe { mem::transmute::<&Subbuffer<T>, &Subbuffer<U>>(self) }
     }
 
     pub(crate) fn to_vk_device_or_host_address(&self) -> ash::vk::DeviceOrHostAddressKHR {
@@ -244,7 +244,7 @@ where
         #[cfg(debug_assertions)]
         self.validate_reinterpret(U::LAYOUT);
 
-        self.reinterpret_unchecked_inner()
+        unsafe { self.reinterpret_unchecked_inner() }
     }
 
     /// Same as [`reinterpret`], except it works with a reference to the subbuffer.
@@ -274,7 +274,7 @@ where
         #[cfg(debug_assertions)]
         self.validate_reinterpret(U::LAYOUT);
 
-        self.reinterpret_unchecked_ref_inner()
+        unsafe { self.reinterpret_unchecked_ref_inner() }
     }
 
     fn validate_reinterpret(&self, new_layout: BufferContentsLayout) {
@@ -560,10 +560,9 @@ impl<T> Subbuffer<[T]> {
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
     pub unsafe fn split_at_unchecked(self, mid: DeviceSize) -> (Subbuffer<[T]>, Subbuffer<[T]>) {
-        (
-            self.clone().slice_unchecked(..mid),
-            self.slice_unchecked(mid..),
-        )
+        let first = unsafe { self.clone().slice_unchecked(..mid) };
+        let second = unsafe { self.slice_unchecked(mid..) };
+        (first, second)
     }
 }
 

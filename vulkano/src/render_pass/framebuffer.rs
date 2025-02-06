@@ -266,7 +266,7 @@ impl Framebuffer {
             unsafe { output.assume_init() }
         };
 
-        Ok(Self::from_handle(render_pass, handle, create_info))
+        Ok(unsafe { Self::from_handle(render_pass, handle, create_info) })
     }
 
     /// Creates a new `Framebuffer` from a raw object handle.

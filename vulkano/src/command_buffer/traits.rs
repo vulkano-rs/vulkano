@@ -217,7 +217,7 @@ where
     }
 
     unsafe fn unlock(&self) {
-        (**self).unlock();
+        unsafe { (**self).unlock() };
     }
 
     fn resources_usage(&self) -> &SecondaryCommandBufferResourcesUsage {
@@ -250,7 +250,7 @@ where
     // Implementation of `build_submission`. Doesn't check whenever the future was already flushed.
     // You must make sure to not submit same command buffer multiple times.
     unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, Validated<VulkanError>> {
-        Ok(match self.previous.build_submission()? {
+        Ok(match unsafe { self.previous.build_submission() }? {
             SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
                 SubmitInfo {
                     command_buffers: vec![CommandBufferSubmitInfo::new(
@@ -312,7 +312,7 @@ where
             return Ok(SubmitAnyBuilder::Empty);
         }
 
-        self.build_submission_impl()
+        unsafe { self.build_submission_impl() }
     }
 
     fn flush(&self) -> Result<(), Validated<VulkanError>> {
@@ -344,9 +344,9 @@ where
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_unlock(range.clone());
+                        unsafe { state.gpu_write_unlock(range.clone()) };
                     } else {
-                        state.gpu_read_unlock(range.clone());
+                        unsafe { state.gpu_read_unlock(range.clone()) };
                     }
                 }
             }
@@ -356,17 +356,17 @@ where
 
                 for (range, range_usage) in usage.ranges.iter() {
                     if range_usage.mutable {
-                        state.gpu_write_unlock(range.clone());
+                        unsafe { state.gpu_write_unlock(range.clone()) };
                     } else {
-                        state.gpu_read_unlock(range.clone());
+                        unsafe { state.gpu_read_unlock(range.clone()) };
                     }
                 }
             }
 
-            self.command_buffer.state().set_submit_finished();
+            unsafe { self.command_buffer.state().set_submit_finished() };
         }
 
-        self.previous.signal_finished();
+        unsafe { self.previous.signal_finished() };
     }
 
     fn queue_change_allowed(&self) -> bool {
